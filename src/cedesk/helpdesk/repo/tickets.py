@@ -184,11 +184,11 @@ async def insert_message(
     body: str,
     author_member_id: UUID | None,
     author_name: str | None,
-) -> None:
-    await session.execute(
+) -> UUID:
+    result = await session.execute(
         text(
             "INSERT INTO hd_message (workspace_id, ticket_id, kind, body, author_member_id, "
-            "author_name) VALUES (:ws, :ticket, :kind, :body, :author, :name)"
+            "author_name) VALUES (:ws, :ticket, :kind, :body, :author, :name) RETURNING id"
         ),
         {
             "ws": workspace_id,
@@ -199,13 +199,16 @@ async def insert_message(
             "name": author_name,
         },
     )
+    return UUID(str(result.scalar_one()))
 
 
 async def messages(session: AsyncSession, ticket_id: UUID) -> Sequence[Row]:
     result = await session.execute(
         text(
-            "SELECT id, kind, body, author_member_id, author_name, created_at FROM hd_message "
-            "WHERE ticket_id = :id ORDER BY created_at, id"
+            "SELECT m.id, m.kind, m.body, m.author_member_id, m.author_name, m.created_at, "
+            "coalesce((SELECT array_agg(x.member_id ORDER BY x.created_at, x.member_id) "
+            "FROM hd_mention x WHERE x.message_id = m.id), '{}') AS mention_ids "
+            "FROM hd_message m WHERE m.ticket_id = :id ORDER BY m.created_at, m.id"
         ),
         {"id": ticket_id},
     )

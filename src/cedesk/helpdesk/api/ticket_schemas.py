@@ -181,6 +181,7 @@ class MessageOut(BaseModel):
     author_member_id: UUID | None
     author_name: str | None
     created_at: datetime
+    mention_ids: list[UUID] = []
 
 
 class TicketOut(TicketRowOut):

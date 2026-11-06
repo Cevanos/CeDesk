@@ -1,0 +1,106 @@
+"""Replies and private notes on a ticket, and the signed-in member's notifications."""
+
+from datetime import datetime
+from typing import Annotated
+from uuid import UUID
+
+from fastapi import APIRouter, Query, status
+from pydantic import BaseModel, Field
+
+from cedesk.helpdesk.api.deps import CallerDep, SessionmakerDep
+from cedesk.helpdesk.api.schemas import Body
+from cedesk.helpdesk.api.ticket_schemas import MessageOut, Text
+from cedesk.helpdesk.domain.tickets import label
+from cedesk.helpdesk.service import messages
+from cedesk.helpdesk.service.messages import MessageKind
+
+router = APIRouter()
+
+
+class MessageIn(Body):
+    kind: MessageKind = Field(description="reply: to the customer. note: team only.")
+    body: Text = Field(
+        description="Replies fill {{customer.first_name}}, {{customer.name}}, {{agent.name}} "
+        'and {{fields.<key>}} ("—" when empty).'
+    )
+    mention_ids: list[UUID] = Field(
+        default=[], max_length=20, description="Notes only: members to notify."
+    )
+
+
+class NotificationOut(BaseModel):
+    id: UUID
+    kind: str
+    text: str
+    ticket_id: UUID | None
+    ticket_label: str | None
+    read_at: datetime | None
+    created_at: datetime
+
+
+class InboxOut(BaseModel):
+    notifications: list[NotificationOut]
+    unread: int
+
+
+@router.post(
+    "/tickets/{ticket_id}/messages",
+    response_model=MessageOut,
+    status_code=status.HTTP_201_CREATED,
+    tags=["tickets"],
+    summary="Reply to the customer or add a private note (with @mentions)",
+)
+async def post_message(
+    ticket_id: UUID, body: MessageIn, caller: CallerDep, sm: SessionmakerDep
+) -> MessageOut:
+    row = await messages.post_message(
+        sm, caller, ticket_id, kind=body.kind, body=body.body, mention_ids=body.mention_ids
+    )
+    return MessageOut.model_validate(dict(row))
+
+
+@router.get(
+    "/notifications",
+    response_model=InboxOut,
+    tags=["notifications"],
+    summary="Your notifications, newest first",
+)
+async def list_notifications(
+    caller: CallerDep,
+    sm: SessionmakerDep,
+    unread: bool = False,
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+) -> InboxOut:
+    box = await messages.inbox(sm, caller, unread_only=unread, limit=limit)
+    return InboxOut(
+        notifications=[
+            NotificationOut.model_validate(
+                {
+                    **dict(n),
+                    "ticket_label": label(n["ticket_number"]) if n["ticket_number"] else None,
+                }
+            )
+            for n in box.notifications
+        ],
+        unread=box.unread,
+    )
+
+
+@router.post(
+    "/notifications/read-all",
+    status_code=status.HTTP_204_NO_CONTENT,
+    tags=["notifications"],
+    summary="Mark all your notifications read",
+)
+async def read_all(caller: CallerDep, sm: SessionmakerDep) -> None:
+    await messages.mark_all_read(sm, caller)
+
+
+@router.post(
+    "/notifications/{notification_id}/read",
+    status_code=status.HTTP_204_NO_CONTENT,
+    tags=["notifications"],
+    summary="Mark one notification read",
+)
+async def read_one(notification_id: UUID, caller: CallerDep, sm: SessionmakerDep) -> None:
+    await messages.mark_read(sm, caller, notification_id)
