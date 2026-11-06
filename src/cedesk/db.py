@@ -1,0 +1,43 @@
+"""Database engine and the tenancy session.
+
+Every query on tenant data runs inside `workspace_session`, which sets
+`cedesk.workspace_id` for the transaction; the RLS policies on every tenant
+table read that setting, so a missing or wrong workspace sees no rows.
+"""
+
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+from uuid import UUID
+
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
+
+WORKSPACE_SETTING = "cedesk.workspace_id"
+
+
+def make_engine(url: str) -> AsyncEngine:
+    return create_async_engine(url, pool_pre_ping=True)
+
+
+def make_sessionmaker(engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:
+    return async_sessionmaker(engine, expire_on_commit=False)
+
+
+@asynccontextmanager
+async def workspace_session(
+    sessionmaker: async_sessionmaker[AsyncSession], workspace_id: UUID
+) -> AsyncIterator[AsyncSession]:
+    """One transaction scoped to one workspace. Commits on success, rolls back on error."""
+    async with sessionmaker() as session, session.begin():
+        # `is_local = true`: the setting ends with the transaction and never leaks
+        # to the next user of the pooled connection.
+        await session.execute(
+            text("SELECT set_config(:name, :value, true)"),
+            {"name": WORKSPACE_SETTING, "value": str(workspace_id)},
+        )
+        yield session

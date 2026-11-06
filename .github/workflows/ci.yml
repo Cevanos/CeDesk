@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    services:
+      db:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres_dev
+          POSTGRES_DB: cedesk
+        ports: ["5447:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres -d cedesk"
+          --health-interval 2s --health-timeout 3s --health-retries 30
+    env:
+      CEDESK_REQUIRE_DB: "1"
+      PGPASSWORD: postgres_dev
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - name: Create the database roles
+        run: psql -h localhost -p 5447 -U postgres -d cedesk -v ON_ERROR_STOP=1 -f infra/postgres/init/01-roles.sql
+      - run: uv sync --frozen
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run mypy
+      - run: uv run lint-imports
+      - run: uv run pytest -q

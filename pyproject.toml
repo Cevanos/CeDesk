@@ -1,0 +1,79 @@
+[project]
+name = "cedesk"
+version = "0.1.0"
+description = "CeDesk help desk backend: tickets, routing, SLA, macros, rules, portal and imports."
+authors = [
+    { name = "ritesh-cogninest-ai", email = "ritesh.choudhary@cogninest.ai" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "alembic>=1.20.1",
+    "asyncpg>=0.32.0",
+    "fastapi>=0.162.0",
+    "pydantic-settings>=2.16.2",
+    "sqlalchemy[asyncio]>=2.1.8",
+    "uvicorn[standard]>=0.54.0",
+]
+
+[project.scripts]
+cedesk = "cedesk.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.12.21,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+    "import-linter>=2.15",
+    "mypy>=2.4.1",
+    "pytest>=9.2.0",
+    "pytest-asyncio>=1.4.1.post1",
+    "ruff>=0.17.4",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests", "migrations"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "S", "ASYNC", "RUF"]
+ignore = ["S101"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S105", "S106"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+packages = ["cedesk"]
+mypy_path = "src"
+plugins = ["pydantic.mypy"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+markers = ["db: needs the test Postgres (docker compose up -d db)"]
+
+# Layer rules from the plan: api -> service -> (domain, repo, events); domain touches no database.
+[tool.importlinter]
+root_package = "cedesk"
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "Helpdesk layers"
+type = "layers"
+layers = [
+    "cedesk.helpdesk.api",
+    "cedesk.helpdesk.service",
+    "cedesk.helpdesk.repo",
+    "cedesk.helpdesk.domain",
+]
+
+[[tool.importlinter.contracts]]
+name = "Domain is pure: no database, no web framework"
+type = "forbidden"
+source_modules = ["cedesk.helpdesk.domain"]
+forbidden_modules = ["sqlalchemy", "asyncpg", "fastapi", "cedesk.db"]
