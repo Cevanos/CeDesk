@@ -16,6 +16,7 @@ class Role(StrEnum):
 
 class Action(StrEnum):
     read_ticket = "read_ticket"
+    create_ticket = "create_ticket"
     reply = "reply"  # also macros, accept chat and resolve
     private_note = "private_note"
     change_fields = "change_fields"
@@ -31,6 +32,7 @@ class Action(StrEnum):
 _AGENT = frozenset(
     {
         Action.read_ticket,
+        Action.create_ticket,
         Action.reply,
         Action.private_note,
         Action.change_fields,

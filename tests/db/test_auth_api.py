@@ -1,65 +1,14 @@
 """Sign-in, sessions and members through the real API, as `cedesk_app` with RLS on."""
 
-from collections.abc import AsyncIterator
 from uuid import uuid4
 
 import pytest
-from httpx import ASGITransport, AsyncClient
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from httpx import AsyncClient
 
-from cedesk.helpdesk.service.auth import SIGN_IN_FAILED, create_workspace
-from cedesk.main import create_app
-from cedesk.settings import Settings
+from cedesk.helpdesk.service.auth import SIGN_IN_FAILED
+from tests.db.helpers import PASSWORD, Sm, add, bearer, new_workspace, sign_in
 
 pytestmark = pytest.mark.db
-
-PASSWORD = "correct-horse-battery"
-Sm = async_sessionmaker[AsyncSession]
-
-
-@pytest.fixture
-async def client(app_sessionmaker: Sm) -> AsyncIterator[AsyncClient]:
-    app = create_app(Settings())
-    app.state.sessionmaker = app_sessionmaker
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as c:
-        yield c
-
-
-async def new_workspace(sm: Sm) -> str:
-    slug = f"ws-{uuid4().hex[:10]}"
-    await create_workspace(
-        sm,
-        name="Test",
-        slug=slug,
-        admin_email="Admin@Example.com",
-        admin_name="Admin",
-        admin_password=PASSWORD,
-    )
-    return slug
-
-
-async def sign_in(c: AsyncClient, slug: str, email: str, password: str = PASSWORD) -> str:
-    r = await c.post(
-        "/api/v1/auth/sign-in", json={"workspace": slug, "email": email, "password": password}
-    )
-    assert r.status_code == 200, r.text
-    token: str = r.json()["token"]
-    return token
-
-
-def bearer(token: str) -> dict[str, str]:
-    return {"Authorization": f"Bearer {token}"}
-
-
-async def add(c: AsyncClient, admin: str, email: str, role: str) -> str:
-    r = await c.post(
-        "/api/v1/members",
-        headers=bearer(admin),
-        json={"email": email, "name": email, "role": role, "password": PASSWORD},
-    )
-    assert r.status_code == 201, r.text
-    member_id: str = r.json()["id"]
-    return member_id
 
 
 async def test_sign_in_and_me(client: AsyncClient, app_sessionmaker: Sm) -> None:

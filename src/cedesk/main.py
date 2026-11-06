@@ -11,7 +11,9 @@ from sqlalchemy import text
 
 from cedesk.db import make_engine, make_sessionmaker
 from cedesk.helpdesk.api import auth as auth_api
+from cedesk.helpdesk.api import catalog as catalog_api
 from cedesk.helpdesk.api import members as members_api
+from cedesk.helpdesk.api import tickets as tickets_api
 from cedesk.helpdesk.service.errors import ServiceError
 from cedesk.settings import Settings, get_settings
 
@@ -48,6 +50,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.include_router(auth_api.router, prefix="/api/v1")
     app.include_router(members_api.router, prefix="/api/v1")
+    app.include_router(tickets_api.router, prefix="/api/v1")
+    app.include_router(catalog_api.router, prefix="/api/v1")
 
     @app.get("/healthz", tags=["health"], summary="The process is up")
     async def healthz() -> dict[str, str]:

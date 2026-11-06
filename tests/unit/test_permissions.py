@@ -11,6 +11,7 @@ from cedesk.helpdesk.domain.permissions import Action, Role, can
 A, S, G, L = Role.admin, Role.supervisor, Role.agent, Role.light_agent
 EXPECTED: dict[Action, set[Role]] = {
     Action.read_ticket: {A, S, G, L},
+    Action.create_ticket: {A, S, G},
     Action.reply: {A, S, G},
     Action.private_note: {A, S, G, L},
     Action.change_fields: {A, S, G},
