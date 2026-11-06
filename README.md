@@ -39,6 +39,28 @@ uv run pytest                # DB tests use the cedesk_test database, never cede
 4. **One migration head.** Only one person adds migrations at a time;
    `tests/db/test_migrations.py` fails on two heads.
 
+## Standalone, and how Cevanos connects
+
+CeDesk is its own service with its own database, sign-in and deployment. It never imports
+Cevanos code, and it runs fully without Cevanos.
+
+When a workspace connects Cevanos (not built yet), the link is one interface,
+`helpdesk/service/cevanos.py` (`CevanosConnector`), over Cevanos's public API only:
+
+- **In:** Cevanos's signed webhooks (for example `conversation.escalated` for an AI handover)
+  arrive at a CeDesk endpoint; the signature is checked before anything acts.
+- **Out:** CeDesk calls Cevanos's `/v1` API with the workspace's Cevanos API key
+  (read the chat, take over, reply). The key is stored encrypted, never in config or logs.
+- **Off:** with no key configured the connector does nothing; Cevanos features are hidden.
+
+AI (summaries, writing help, translation, the AI agent) lives only in Cevanos.
+
+## Local development passwords
+
+The passwords in `docker-compose.yml`, `.env.example` and `infra/postgres/init/` are for
+local development and CI only. Production roles and passwords are created separately and
+supplied through `CEDESK_*` environment variables.
+
 ## Layout
 
 ```

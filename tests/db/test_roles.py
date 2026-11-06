@@ -34,6 +34,29 @@ async def test_app_role_is_plain(app_sessionmaker: async_sessionmaker[AsyncSessi
     assert row["owned"] == 0
 
 
+async def test_app_role_cannot_change_the_migration_marker(
+    app_sessionmaker: async_sessionmaker[AsyncSession],
+) -> None:
+    async with app_sessionmaker() as session:
+        row = (
+            (
+                await session.execute(
+                    text(
+                        "SELECT has_table_privilege('alembic_version', 'SELECT') AS can_read, "
+                        "has_table_privilege('alembic_version', 'INSERT') "
+                        " OR has_table_privilege('alembic_version', 'UPDATE') "
+                        " OR has_table_privilege('alembic_version', 'DELETE') "
+                        " OR has_table_privilege('alembic_version', 'TRUNCATE') AS can_write"
+                    )
+                )
+            )
+            .mappings()
+            .one()
+        )
+    assert row["can_read"] is True
+    assert row["can_write"] is False
+
+
 async def test_a_workspace_sees_only_itself(
     app_sessionmaker: async_sessionmaker[AsyncSession],
 ) -> None:
