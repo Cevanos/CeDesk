@@ -5,11 +5,18 @@ import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
 from cedesk.db import make_engine, make_sessionmaker
+from cedesk.helpdesk.api import auth as auth_api
+from cedesk.helpdesk.api import catalog as catalog_api
+from cedesk.helpdesk.api import members as members_api
+from cedesk.helpdesk.api import messages as messages_api
+from cedesk.helpdesk.api import routing as routing_api
+from cedesk.helpdesk.api import tickets as tickets_api
+from cedesk.helpdesk.service.errors import ServiceError
 from cedesk.settings import Settings, get_settings
 
 logger = logging.getLogger("cedesk")
@@ -36,6 +43,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         lifespan=lifespan,
     )
     app.state.settings = settings
+
+    @app.exception_handler(ServiceError)
+    async def service_error(request: Request, exc: ServiceError) -> JSONResponse:
+        headers = {"WWW-Authenticate": "Bearer"} if exc.status == 401 else None
+        body = {"error": {"code": type(exc).__name__, "message": exc.message}}
+        return JSONResponse(body, status_code=exc.status, headers=headers)
+
+    app.include_router(auth_api.router, prefix="/api/v1")
+    app.include_router(members_api.router, prefix="/api/v1")
+    app.include_router(tickets_api.router, prefix="/api/v1")
+    app.include_router(catalog_api.router, prefix="/api/v1")
+    app.include_router(messages_api.router, prefix="/api/v1")
+    app.include_router(routing_api.router, prefix="/api/v1")
 
     @app.get("/healthz", tags=["health"], summary="The process is up")
     async def healthz() -> dict[str, str]:
