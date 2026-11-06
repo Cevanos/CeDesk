@@ -193,6 +193,7 @@ async def test_changes_write_system_lines(client: AsyncClient, app_sessionmaker:
     assert system_lines(changed)[1:] == [
         "Priority set to Urgent by Admin",
         "Team set to Billing by Admin",
+        "Left unassigned: Billing has no members",
         "Tag refund added by Admin",
         "Tag vip removed by Admin",
     ]

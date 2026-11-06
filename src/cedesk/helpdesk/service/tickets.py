@@ -1,6 +1,8 @@
 """Creating, listing, opening and changing tickets.
 
 Every change writes a system line on the ticket ("Priority set to High by Neha").
+A ticket that lands in a team with nobody assigned is auto-assigned (W8): on create,
+and when it moves to another team without a chosen assignee.
 """
 
 from collections.abc import Mapping, Sequence
@@ -16,8 +18,10 @@ from cedesk.helpdesk.domain.auth import Caller, normalise_email
 from cedesk.helpdesk.domain.permissions import Action, Role
 from cedesk.helpdesk.domain.tickets import Channel, FieldDef, FieldError, Priority, Status
 from cedesk.helpdesk.repo import catalog
+from cedesk.helpdesk.repo import messages as message_repo
 from cedesk.helpdesk.repo import tickets as repo
 from cedesk.helpdesk.repo.tickets import Row
+from cedesk.helpdesk.service import routing
 from cedesk.helpdesk.service.auth import Sessionmaker
 from cedesk.helpdesk.service.catalog import field_defs
 from cedesk.helpdesk.service.errors import Invalid, NotFound
@@ -113,6 +117,21 @@ async def _line(s: AsyncSession, caller: Caller, ticket_id: UUID, body: str) -> 
     )
 
 
+async def _tell_assignee(
+    s: AsyncSession, caller: Caller, ticket_id: UUID, member_id: UUID, number: int, subject: str
+) -> None:
+    if member_id == caller.member_id:
+        return
+    await message_repo.notify(
+        s,
+        workspace_id=caller.workspace_id,
+        member_ids=[member_id],
+        ticket_id=ticket_id,
+        kind="assigned",
+        body=f"You were auto-assigned {rules.label(number)}: {subject}"[:500],
+    )
+
+
 async def _view(s: AsyncSession, ticket_id: UUID) -> TicketView:
     ticket = await repo.ticket_detail(s, ticket_id)
     if ticket is None:
@@ -174,6 +193,21 @@ async def create_ticket(sm: Sessionmaker, caller: Caller, new: NewTicket) -> Tic
             await _line(s, caller, ticket_id, f"Team set to {team} by {who}")
         if assignee:
             await _line(s, caller, ticket_id, f"Assigned to {assignee} by {who}")
+        if new.team_id and new.assignee_id is None:
+            pick = await routing.route(
+                s,
+                ticket_id=ticket_id,
+                team_id=new.team_id,
+                channel=new.channel.value,
+                type_id=new.type_id,
+            )
+            await _line(s, caller, ticket_id, pick.line)
+            if pick.agent:
+                await repo.set_assignee(s, ticket_id, pick.agent.member_id)
+                view = await _view(s, ticket_id)
+                await _tell_assignee(
+                    s, caller, ticket_id, pick.agent.member_id, view.ticket["number"], new.subject
+                )
         return await _view(s, ticket_id)
 
 
@@ -302,6 +336,20 @@ async def change_ticket(
             name = await _check_assignee(s, caller, new["assignee_id"], current["assignee_id"])
             lines.append(f"Assigned to {name} by {who}" if name else f"Unassigned by {who}")
 
+        routed_to: UUID | None = None
+        moved_team = "team_id" in changes and changes["team_id"] != current["team_id"]
+        if moved_team and new["team_id"] is not None and "assignee_id" not in changes:
+            pick = await routing.route(
+                s,
+                ticket_id=ticket_id,
+                team_id=new["team_id"],
+                channel=current["channel"],
+                type_id=new["type_id"],
+            )
+            routed_to = pick.agent.member_id if pick.agent else None
+            new["assignee_id"] = routed_to
+            lines.append(pick.line)
+
         if changes.get("add_tags") or changes.get("remove_tags"):
             try:
                 add = rules.clean_tags(changes.get("add_tags") or [])
@@ -317,4 +365,6 @@ async def change_ticket(
             await repo.update_ticket(s, ticket_id, new)
             for body in lines:
                 await _line(s, caller, ticket_id, body)
+        if routed_to is not None:
+            await _tell_assignee(s, caller, ticket_id, routed_to, current["number"], new["subject"])
         return await _view(s, ticket_id)

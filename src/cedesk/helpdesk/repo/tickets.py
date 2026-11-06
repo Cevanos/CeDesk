@@ -104,8 +104,9 @@ async def insert_ticket(session: AsyncSession, values: Mapping[str, Any]) -> UUI
 async def lock_ticket(session: AsyncSession, ticket_id: UUID) -> Row | None:
     result = await session.execute(
         text(
-            "SELECT id, number, subject, status, priority, type_id, team_id, assignee_id, "
-            "fields, tags, resolved_at, reopen_count FROM hd_ticket WHERE id = :id FOR UPDATE"
+            "SELECT id, number, subject, status, priority, channel, type_id, team_id, "
+            "assignee_id, fields, tags, resolved_at, reopen_count "
+            "FROM hd_ticket WHERE id = :id FOR UPDATE"
         ),
         {"id": ticket_id},
     )
@@ -124,6 +125,13 @@ async def update_ticket(session: AsyncSession, ticket_id: UUID, values: Mapping[
             "reopen_count = :reopen_count, updated_at = now() WHERE id = :id"
         ),
         {**params, "id": ticket_id},
+    )
+
+
+async def set_assignee(session: AsyncSession, ticket_id: UUID, member_id: UUID | None) -> None:
+    await session.execute(
+        text("UPDATE hd_ticket SET assignee_id = :m, updated_at = now() WHERE id = :id"),
+        {"id": ticket_id, "m": member_id},
     )
 
 

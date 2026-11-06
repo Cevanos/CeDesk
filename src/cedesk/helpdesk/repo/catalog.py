@@ -12,7 +12,7 @@ Row = RowMapping
 
 _TEAM = """
     SELECT t.id, t.name, t.auto_assign, t.max_open_per_agent,
-           coalesce(array_agg(m.member_id ORDER BY m.created_at)
+           coalesce(array_agg(m.member_id ORDER BY m.position, m.member_id)
                     FILTER (WHERE m.member_id IS NOT NULL), '{}') AS member_ids
     FROM hd_team t LEFT JOIN hd_team_member m ON m.team_id = t.id
 """
@@ -68,8 +68,9 @@ async def set_team_members(
     if member_ids:
         await session.execute(
             text(
-                "INSERT INTO hd_team_member (workspace_id, team_id, member_id) "
-                "SELECT :ws, :t, unnest(CAST(:ids AS uuid[]))"
+                "INSERT INTO hd_team_member (workspace_id, team_id, member_id, position) "
+                "SELECT :ws, :t, o.id, o.pos FROM unnest(CAST(:ids AS uuid[])) "
+                "WITH ORDINALITY AS o(id, pos)"
             ),
             {"ws": workspace_id, "t": team_id, "ids": list(member_ids)},
         )
