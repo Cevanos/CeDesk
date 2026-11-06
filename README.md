@@ -13,6 +13,8 @@ uv sync                      # install
 docker compose up -d db      # Postgres 17 on localhost:5447 (roles from infra/postgres/init)
 cp .env.example .env
 uv run cedesk migrate        # apply migrations as cedesk_owner
+uv run cedesk create-workspace --name "Acme Support" --slug acme \
+    --admin-email you@example.com --admin-name "Your Name"   # asks for the password
 uv run cedesk serve --reload # API on http://127.0.0.1:8100, docs at /docs
 ```
 

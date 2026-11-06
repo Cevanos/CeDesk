@@ -6,8 +6,13 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 pytestmark = pytest.mark.db
 
-# Tables that hold no workspace data. Adding one here needs a reason in the PR.
-GLOBAL_TABLES = {"alembic_version"}
+# Tables that hold no workspace data. Adding one here needs a reason.
+GLOBAL_TABLES = {
+    "alembic_version",
+    # slug -> workspace id, read at sign-in before any workspace is known.
+    # No names, members or tickets; the app can add rows but not change or remove them.
+    "workspace_directory",
+}
 
 TABLES = text(
     """
