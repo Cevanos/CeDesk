@@ -2,16 +2,21 @@
 
 import asyncio
 import logging
+import re
+import time
+import uuid
 from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager
+from typing import Any
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from cedesk import logs
 from cedesk.db import make_engine, make_sessionmaker
 from cedesk.helpdesk.api import auth as auth_api
 from cedesk.helpdesk.api import catalog as catalog_api
@@ -33,6 +38,8 @@ HTTP_CODES = {
     409: "Conflict",
     422: "Invalid",
 }
+# A caller's X-Request-ID is reused only when it looks like an id, never free text.
+REQUEST_ID = re.compile(r"^[A-Za-z0-9._-]{8,64}$")
 # Deadlock, serialization failure, lock not available: losing a race, safe to retry.
 RETRYABLE_SQLSTATES = {"40P01", "40001", "55P03"}
 
@@ -49,6 +56,14 @@ def _error(
     if details is not None:
         error["details"] = details
     return JSONResponse({"error": error}, status_code=status, headers=headers)
+
+
+def _template(path: str, params: Mapping[str, Any]) -> str:
+    """`/api/v1/tickets/9f1c.../messages` -> `/api/v1/tickets/{ticket_id}/messages`, so a
+    log line names the route without any value taken from the URL."""
+    parts = path.split("/")
+    names = {str(value): name for name, value in params.items()}
+    return "/".join("{" + names[p] + "}" if p in names else p for p in parts)
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -71,6 +86,35 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         lifespan=lifespan,
     )
     app.state.settings = settings
+
+    @app.middleware("http")
+    async def request_log(request: Request, call_next: Any) -> Response:
+        """One log line per request with its ids and timing (md 2B). The route template
+        (`/api/v1/tickets/{ticket_id}`) is logged, not the URL, so query strings such as
+        search text never reach the logs."""
+        logs.reset()
+        given = request.headers.get("x-request-id", "")
+        request_id = given if REQUEST_ID.match(given) else uuid.uuid4().hex
+        logs.bind(request_id=request_id)
+        started = time.perf_counter()
+        status = 500
+        try:
+            response: Response = await call_next(request)
+            status = response.status_code
+            response.headers["X-Request-ID"] = request_id
+            return response
+        finally:
+            params = request.scope.get("path_params") or {}
+            logs.bind(ticket_id=params.get("ticket_id"))
+            logger.info(
+                "request",
+                extra={
+                    "method": request.method,
+                    "route": _template(request.url.path, params),
+                    "status": status,
+                    "ms": round((time.perf_counter() - started) * 1000, 1),
+                },
+            )
 
     # Every error has one shape (README, "Errors"):
     #   {"error": {"code": "...", "message": "...", "details": [...]}}
