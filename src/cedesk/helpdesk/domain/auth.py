@@ -9,6 +9,8 @@ from uuid import UUID
 from cedesk.helpdesk.domain.permissions import Role
 
 SESSION_LIFETIME = timedelta(hours=12)
+# Sessions that expired or were signed out are deleted once they ended this long ago.
+ENDED_SESSION_KEPT = timedelta(days=7)
 MAX_FAILED_LOGINS = 10
 LOCKOUT = timedelta(minutes=15)
 PASSWORD_MIN, PASSWORD_MAX = 10, 128

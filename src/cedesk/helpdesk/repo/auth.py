@@ -150,6 +150,28 @@ async def revoke_member_sessions(session: AsyncSession, member_id: UUID) -> None
     )
 
 
+async def prune_sessions(
+    session: AsyncSession, ended_before: datetime, member_id: UUID | None = None
+) -> int:
+    """Deletes sessions that expired or were signed out before `ended_before`;
+    only one member's when `member_id` is given. Returns how many."""
+    result = await session.execute(
+        text(
+            "DELETE FROM auth_session "
+            "WHERE (CAST(:member AS uuid) IS NULL OR member_id = CAST(:member AS uuid)) "
+            "AND (expires_at < :before OR revoked_at < :before)"
+        ),
+        {"member": member_id, "before": ended_before},
+    )
+    return int(result.rowcount)  # type: ignore[attr-defined]
+
+
+async def all_workspace_ids(session: AsyncSession) -> list[UUID]:
+    """Every workspace, from the global slug directory (it has no RLS)."""
+    result = await session.execute(text("SELECT workspace_id FROM workspace_directory"))
+    return [UUID(str(v)) for v in result.scalars().all()]
+
+
 async def list_members(session: AsyncSession, after: UUID | None, limit: int) -> Sequence[Row]:
     result = await session.execute(
         text(
@@ -172,12 +194,27 @@ async def get_member(session: AsyncSession, member_id: UUID, *, lock: bool = Fal
     return result.mappings().first()
 
 
-async def lock_active_admins(session: AsyncSession) -> int:
-    """Locks the active admins and counts them, so two concurrent demotions can't both pass."""
+async def lock_admins_and_member(
+    session: AsyncSession, member_id: UUID
+) -> tuple[set[UUID], Row | None]:
+    """Locks every active Admin and the member being changed, in one id-ordered sweep.
+
+    Returns the active Admin ids and the member's row (None if not in this workspace).
+    Taking all these locks in one statement, in id order, means two member changes
+    always lock rows in the same order, so they queue instead of deadlocking (B5);
+    and two demotions can't both see a second Admin."""
     result = await session.execute(
-        text("SELECT id FROM member WHERE role = 'admin' AND is_active ORDER BY id FOR UPDATE")
+        text(
+            "SELECT id, workspace_id, email, name, role, is_active, created_at, updated_at "
+            "FROM member WHERE (role = 'admin' AND is_active) OR id = :id "
+            "ORDER BY id FOR UPDATE"
+        ),
+        {"id": member_id},
     )
-    return len(result.all())
+    rows = result.mappings().all()
+    admins = {UUID(str(r["id"])) for r in rows if r["role"] == "admin" and r["is_active"]}
+    target = next((r for r in rows if r["id"] == member_id), None)
+    return admins, target
 
 
 async def update_member(

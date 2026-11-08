@@ -13,6 +13,7 @@ uv sync                      # install
 docker compose up -d db      # Postgres 17 on localhost:5447 (roles from infra/postgres/init)
 cp .env.example .env
 uv run cedesk migrate        # apply migrations as cedesk_owner
+uv run cedesk prune-sessions # delete sign-in sessions that ended over 7 days ago (run daily)
 uv run cedesk create-workspace --name "Acme Support" --slug acme \
     --admin-email you@example.com --admin-name "Your Name"   # asks for the password
 uv run cedesk serve --reload # API on http://127.0.0.1:8100, docs at /docs
@@ -40,6 +41,32 @@ uv run pytest                # DB tests use the cedesk_test database, never cede
    (`uv run lint-imports`).
 4. **One migration head.** Only one person adds migrations at a time;
    `tests/db/test_migrations.py` fails on two heads.
+5. **Lock order.** Member changes lock every active Admin and the target member in one
+   id-ordered statement.
+   Routing takes the workspace's routing lock, then the team row. New code that locks
+   several of these takes them in the same order.
+
+## Errors
+
+Every error, whatever its status, has one shape:
+
+```json
+{"error": {"code": "Invalid", "message": "Some fields are not valid.",
+           "details": [{"field": "contact.email", "location": "body",
+                        "message": "String should match pattern ..."}]}}
+```
+
+| Status | `code` | When |
+|---|---|---|
+| 401 | `NotSignedIn` | No token, or the session ended (also sends `WWW-Authenticate: Bearer`) |
+| 403 | `Forbidden` | The role can't do this |
+| 404 | `NotFound` | Missing, or in another workspace (never revealed) |
+| 405 | `MethodNotAllowed` | Wrong HTTP method |
+| 409 | `Conflict` | Clashes with the current state, or lost a race with another request; retry |
+| 422 | `Invalid` | Bad input. `details` lists each field for request-shape errors; never the submitted values |
+| 500 | `Internal` | Unexpected; details are logged, not returned |
+
+`details` appears only on request validation errors.
 
 ## Standalone, and how Cevanos connects
 

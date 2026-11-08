@@ -37,6 +37,11 @@ GROUP_LABEL = {
     ChannelGroup.chat: "Website chat",
     ChannelGroup.messaging: "Messaging",
 }
+# md W5: a workspace's default capacity per channel until its Admin changes it.
+DEFAULT_CAPS = {ChannelGroup.email: 5, ChannelGroup.chat: 2, ChannelGroup.messaging: 3}
+CAP_MAX = 100
+TEAM_MAX_OPEN = 50  # md W1: a team's maximum open tickets per agent is 1-50
+
 # Email, portal, web form, API and phone tickets are worked like email; the chat widget is chat.
 _GROUP_OF_CHANNEL = {"chat": ChannelGroup.chat, "whatsapp": ChannelGroup.messaging}
 

@@ -100,6 +100,58 @@ def clean_values(defs: Sequence[FieldDef], values: Mapping[str, object]) -> dict
     return cleaned
 
 
+def clean_changes(
+    defs: Sequence[FieldDef], changes: Mapping[str, object]
+) -> dict[str, FieldValue | None]:
+    """Checks only the values being changed; None means "clear this field".
+
+    Values already on the ticket are not re-checked, so a ticket whose type changed
+    later (a field became a number, an option was removed) stays editable."""
+    by_key = {d.key: d for d in defs}
+    unknown = sorted(set(changes) - set(by_key))
+    if unknown:
+        raise FieldError(f"This ticket type has no field {', '.join(unknown)}.")
+    cleaned: dict[str, FieldValue | None] = {}
+    for key, value in changes.items():
+        d = by_key[key]
+        if isinstance(value, str):
+            value = value.strip()
+        if value is None or value == "":
+            if d.required:
+                raise FieldError(f"{d.label} is required.")
+            cleaned[key] = None
+        else:
+            cleaned[key] = _clean_one(d, value)
+    return cleaned
+
+
+def carry_over(
+    defs: Sequence[FieldDef], values: Mapping[str, object]
+) -> tuple[dict[str, FieldValue], dict[str, str]]:
+    """On a type change: the values that still fit the new type's fields, and every
+    other key with why it was dropped ("missing": no such field, "invalid": wrong kind
+    or option)."""
+    by_key = {d.key: d for d in defs}
+    kept: dict[str, FieldValue] = {}
+    dropped: dict[str, str] = {}
+    for key, value in values.items():
+        d = by_key.get(key)
+        if d is None:
+            dropped[key] = "missing"
+            continue
+        try:
+            kept[key] = _clean_one(d, value)
+        except FieldError:
+            dropped[key] = "invalid"
+    return kept, dropped
+
+
+def first_missing_required(
+    defs: Sequence[FieldDef], values: Mapping[str, object]
+) -> FieldDef | None:
+    return next((d for d in defs if d.required and values.get(d.key) in (None, "")), None)
+
+
 def _clean_one(d: FieldDef, value: object) -> FieldValue:
     if d.kind is FieldKind.text:
         if not isinstance(value, str) or len(value) > TEXT_MAX:

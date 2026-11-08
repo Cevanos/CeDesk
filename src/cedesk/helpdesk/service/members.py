@@ -72,7 +72,12 @@ async def change_member(
     if member_id == caller.member_id and (role is not None or is_active is False):
         raise Forbidden("You can't change your own role or deactivate yourself.")
     async with workspace_session(sm, caller.workspace_id) as s:
-        current = await repo.get_member(s, member_id, lock=True)
+        # Every active Admin and the target are locked together, in id order (B5).
+        admins, current = await repo.lock_admins_and_member(s, member_id)
+        # The role was read when the request started; another change may have
+        # removed it since. Checked again under the lock.
+        if caller.member_id not in admins:
+            raise Forbidden("Your role can't do this.")
         if current is None:
             raise NotFound("Member not found.")
         loses_admin = (
@@ -80,7 +85,7 @@ async def change_member(
             and current["is_active"]
             and ((role is not None and role != Role.admin) or is_active is False)
         )
-        if loses_admin and await repo.lock_active_admins(s) <= 1:
+        if loses_admin and len(admins) <= 1:
             raise Conflict("A workspace needs at least one active Admin.")
         updated = await repo.update_member(
             s,
