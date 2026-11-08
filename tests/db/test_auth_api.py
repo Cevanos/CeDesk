@@ -1,10 +1,16 @@
 """Sign-in, sessions and members through the real API, as `cedesk_app` with RLS on."""
 
-from uuid import uuid4
+import asyncio
+import threading
+import time
+from uuid import UUID, uuid4
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import text
 
+from cedesk.db import workspace_session
+from cedesk.helpdesk.service import passwords
 from cedesk.helpdesk.service.auth import SIGN_IN_FAILED
 from tests.db.helpers import PASSWORD, Sm, add, bearer, new_workspace, sign_in
 
@@ -172,3 +178,49 @@ async def test_paging_members(client: AsyncClient, app_sessionmaker: Sm) -> None
     assert second["next_after"] is None
     ids = {m["id"] for m in first["members"] + second["members"]}
     assert len(ids) == 4
+
+
+async def test_wrong_passwords_in_parallel_all_count(
+    client: AsyncClient, app_sessionmaker: Sm
+) -> None:
+    slug = await new_workspace(app_sessionmaker)
+    wrong = {"workspace": slug, "email": "admin@example.com", "password": "wrong-pass-123"}
+    tries = await asyncio.gather(
+        *(client.post("/api/v1/auth/sign-in", json=wrong) for _ in range(10))
+    )
+    assert {r.status_code for r in tries} == {401}
+    right = wrong | {"password": PASSWORD}
+    assert (await client.post("/api/v1/auth/sign-in", json=right)).status_code == 401  # locked
+
+
+async def test_password_check_holds_no_lock_and_does_not_block(
+    client: AsyncClient, app_sessionmaker: Sm, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """While a (slow) password check runs, the member's row can be written and other
+    requests are answered."""
+    slug = await new_workspace(app_sessionmaker)
+    token = await sign_in(client, slug, "admin@example.com")
+    workspace_id = UUID(token.split(".")[0])
+    me = (await client.get("/api/v1/me", headers=bearer(token))).json()["member"]["id"]
+
+    real_verify = passwords.verify
+    started = threading.Event()
+
+    def slow_verify(password_hash: str | None, password: str) -> tuple[bool, str | None]:
+        started.set()
+        time.sleep(0.6)
+        return real_verify(password_hash, password)
+
+    monkeypatch.setattr(passwords, "verify", slow_verify)
+    body = {"workspace": slug, "email": "admin@example.com", "password": "wrong-pass-123"}
+    attempt = asyncio.create_task(client.post("/api/v1/auth/sign-in", json=body))
+    assert await asyncio.to_thread(started.wait, 5)
+
+    t0 = time.perf_counter()
+    assert (await client.get("/healthz")).status_code == 200
+    async with workspace_session(app_sessionmaker, workspace_id) as s:
+        await s.execute(text("SET LOCAL lock_timeout = '200ms'"))
+        await s.execute(text("SELECT 1 FROM member WHERE id = :id FOR UPDATE"), {"id": me})
+    assert time.perf_counter() - t0 < 0.4  # neither waited for the password check
+    assert not attempt.done()  # ... which is still running
+    assert (await attempt).status_code == 401

@@ -48,7 +48,10 @@ async def test_each_change_writes_its_events(client: AsyncClient, app_sessionmak
     t = ok(await client.post(T, headers=h, json=body), 201)
     url = f"{T}/{t['id']}"
 
-    created, routed = await events(app_sessionmaker, w["ws"], t["id"])
+    created, first, routed = await events(app_sessionmaker, w["ws"], t["id"])
+    # The description is the customer's first message, so it is announced too.
+    assert first["event"] == "message.created"
+    assert first["message"]["kind"] == "customer" and first["message"]["author_member_id"] is None
     assert created["event"] == "ticket.created"
     assert created["ticket"] == {
         "id": t["id"], "number": t["number"], "subject": "Refund", "status": "open",
@@ -68,7 +71,7 @@ async def test_each_change_writes_its_events(client: AsyncClient, app_sessionmak
     ok(await client.post(f"{url}/resolve", headers=h))  # already resolved: no new event
     ok(await client.patch(url, headers=h, json={"status": "open", "priority": "low"}))
 
-    later = (await events(app_sessionmaker, w["ws"], t["id"]))[2:]
+    later = (await events(app_sessionmaker, w["ws"], t["id"]))[3:]
     assert [(e["event"], e.get("changes")) for e in later] == [
         ("ticket.updated", ["priority", "tags"]),
         ("ticket.updated", ["assignee_id"]),
@@ -127,3 +130,35 @@ async def test_events_stay_in_their_workspace(client: AsyncClient, app_sessionma
                                 "admin@example.com")).split(".")[0])  # fmt: skip
     assert await events(app_sessionmaker, other, t["id"]) == []
     assert len(await events(app_sessionmaker, w["ws"], t["id"])) == 1
+
+
+async def test_resolved_ticket_keeps_its_assignee_on_team_change(
+    client: AsyncClient, app_sessionmaker: Sm
+) -> None:
+    """Moving a resolved ticket to another team keeps the person who resolved it, writes
+    no assignment event, and spends nobody's round-robin turn."""
+    w = await desk(client, app_sessionmaker)
+    h = w["admin"]
+    shipping = ok(
+        await client.post(
+            "/api/v1/teams", headers=h, json={"name": "Shipping", "member_ids": [w["bilal"]]}
+        ),
+        201,
+    )
+    body = {"subject": "Refund", "contact": {"email": "ana@shop.test", "name": "Ana"},
+            "team_id": w["team"]["id"]}  # fmt: skip
+    t = ok(await client.post(T, headers=h, json=body), 201)
+    assert t["assignee_id"] == w["asha"]
+    url = f"{T}/{t['id']}"
+    ok(await client.post(f"{url}/resolve", headers=h))
+
+    moved = ok(await client.patch(url, headers=h, json={"team_id": shipping["id"]}))
+    assert moved["status"] == "resolved" and moved["team_name"] == "Shipping"
+    assert moved["assignee_id"] == w["asha"]
+    assert "Auto-assigned" not in moved["messages"][-1]["body"]
+    last = (await events(app_sessionmaker, w["ws"], t["id"]))[-1]
+    assert last["event"] == "ticket.updated" and last["changes"] == ["team_id"]
+
+    # Bilal's turn was not spent: the next Shipping ticket goes to him.
+    body["team_id"] = shipping["id"]
+    assert ok(await client.post(T, headers=h, json=body), 201)["assignee_id"] == w["bilal"]

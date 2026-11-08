@@ -1,5 +1,6 @@
 """Sign-in, sign-out, resolving a request's token, and creating a workspace."""
 
+import asyncio
 import logging
 import re
 from dataclasses import dataclass
@@ -46,18 +47,30 @@ async def sign_in(sm: Sessionmaker, *, workspace: str, email: str, password: str
         passwords.verify(None, password)
         raise NotSignedIn(SIGN_IN_FAILED)
 
-    now = _now()
+    # The password is checked (slow, Argon2) in a worker thread and before any row is
+    # locked, so wrong-password attempts never hold up the member's other writes or the
+    # event loop. The row is locked afterwards only to save the result.
     async with workspace_session(sm, workspace_id) as s:
         member = await repo.member_for_login(s, email)
-        if member is None or not member["is_active"]:
-            passwords.verify(None, password)
-            raise NotSignedIn(SIGN_IN_FAILED)
-        if rules.is_locked(member["locked_until"], now):
-            passwords.verify(None, password)
-            raise NotSignedIn(SIGN_IN_FAILED)
+    if member is None or not member["is_active"] or rules.is_locked(member["locked_until"], _now()):
+        await asyncio.to_thread(passwords.verify, None, password)
+        raise NotSignedIn(SIGN_IN_FAILED)
+    read_hash = member["password_hash"]
+    ok, new_hash = await asyncio.to_thread(passwords.verify, read_hash, password)
 
-        ok, new_hash = passwords.verify(member["password_hash"], password)
+    now = _now()
+    async with workspace_session(sm, workspace_id) as s:
+        member = await repo.lock_member_for_login(s, member["id"])
+        if (
+            member is None
+            or not member["is_active"]
+            or rules.is_locked(member["locked_until"], now)
+            or member["password_hash"] != read_hash
+        ):
+            # Deactivated, locked or given a new password while the password was checked.
+            raise NotSignedIn(SIGN_IN_FAILED)
         if not ok:
+            # Counted from the locked row, so parallel wrong attempts all count.
             failed, locked_until = rules.after_failure(member["failed_logins"], now)
             await repo.record_login_failure(s, member["id"], failed, locked_until)
             if locked_until is not None:
