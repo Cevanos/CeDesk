@@ -11,12 +11,12 @@ from enum import StrEnum
 from uuid import UUID
 
 from cedesk.db import workspace_session
-from cedesk.helpdesk.domain import paging
+from cedesk.helpdesk.domain import events, paging
 from cedesk.helpdesk.domain.auth import Caller
 from cedesk.helpdesk.domain.permissions import Action
 from cedesk.helpdesk.domain.placeholders import render
 from cedesk.helpdesk.domain.tickets import label
-from cedesk.helpdesk.repo import catalog, tickets
+from cedesk.helpdesk.repo import catalog, outbox, tickets
 from cedesk.helpdesk.repo import messages as repo
 from cedesk.helpdesk.repo.messages import Row
 from cedesk.helpdesk.service.auth import Sessionmaker
@@ -123,6 +123,17 @@ async def post_message(
                     kind="mention",
                     body=text[:500],
                 )
+        await outbox.add(
+            s,
+            caller.workspace_id,
+            events.Event.message_created.value,
+            ticket_id,
+            events.payload(
+                events.Event.message_created,
+                detail,
+                events.message(message_id, _STORED_KIND[kind], caller.member_id),
+            ),
+        )
         row = await repo.get_message(s, message_id)
     assert row is not None
     return row

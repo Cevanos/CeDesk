@@ -18,7 +18,10 @@ _COLUMNS = """
            t.assignee_id, a.name AS assignee_name,
            t.contact_id, c.name AS contact_name, c.email AS contact_email,
            c.vip AS contact_vip, c.customer_since AS contact_since,
-           t.first_reply_at, t.resolved_at, t.reopen_count, t.created_at, t.updated_at
+           t.first_reply_at, t.resolved_at, t.reopen_count, t.created_at, t.updated_at,
+           t.accepted, t.conversation_id, t.handover, t.topic, t.sentiment, t.language,
+           t.source, t.source_id, t.parent_id, t.merged_into_id,
+           (SELECT count(*) FROM hd_ticket ch WHERE ch.parent_id = t.id) AS child_count
 """
 
 _FROM = """
@@ -31,37 +34,44 @@ _FROM = """
 
 _DETAIL = "SELECT " + _COLUMNS + _FROM
 
-# Every sort order as four ascending keys (k1, k2, k3, k4), so the page after a cursor
-# is one row comparison for any sort. k3 is an exact numeric epoch (negated for "newest
-# first"); k4 is the ticket number, unique per workspace, as the final tie-break.
-_KEYS = """,
-    CASE WHEN CAST(:sort AS text) = 'priority' AND t.status = 'resolved' THEN 1 ELSE 0 END
-        AS k1,
-    CASE WHEN CAST(:sort AS text) = 'priority' AND t.status <> 'resolved'
-         THEN array_position(ARRAY['urgent', 'high', 'medium', 'low'], t.priority)
-         ELSE 0 END AS k2,
-    CASE CAST(:sort AS text)
-         WHEN 'priority' THEN
-              CASE WHEN t.status = 'resolved'
-                   THEN -extract(epoch FROM coalesce(t.resolved_at, t.updated_at))
-                   ELSE extract(epoch FROM t.created_at) END
-         WHEN 'newest' THEN -extract(epoch FROM t.created_at)
-         WHEN 'oldest' THEN extract(epoch FROM t.created_at)
-         ELSE -extract(epoch FROM t.updated_at) END AS k3,
-    CASE WHEN CAST(:sort AS text) = 'oldest'
-              OR (CAST(:sort AS text) = 'priority' AND t.status <> 'resolved')
-         THEN t.number ELSE -t.number END AS k4
-"""
+# The ticket list orders by plain key expressions so an index can serve each page:
+# migration 0009 creates one index per sort on exactly these expressions (an index is
+# used only when they match). Times become numbers with the immutable
+# `extract(epoch FROM (t - fixed instant))`. Each sort is (keys, direction): every key
+# runs the same direction, so "after the cursor" is one row comparison.
+_EPOCH = "extract(epoch FROM ({} - TIMESTAMPTZ '1970-01-01 00:00:00+00'))"
+_INT, _NUM = "integer", "numeric"
 
-# One static query; every filter is "parameter is NULL or matches", so nothing is
-# ever built from strings. `q_like` is already escaped with '!' by the caller.
-# Fixed strings joined; every value is a bound parameter.
-_LIST = (
-    "SELECT * FROM (SELECT "  # noqa: S608
-    + _COLUMNS
-    + _KEYS
-    + _FROM
-    + """
+_PRIORITY_KEYS = (
+    ("(CASE WHEN t.status = 'resolved' THEN 1 ELSE 0 END)", _INT),
+    (
+        "(CASE WHEN t.status <> 'resolved' "
+        "THEN array_position(ARRAY['urgent', 'high', 'medium', 'low'], t.priority) ELSE 0 END)",
+        _INT,
+    ),
+    (
+        "(CASE WHEN t.status = 'resolved' THEN -" + _EPOCH.format("t.resolved_at") + " "
+        "ELSE " + _EPOCH.format("t.created_at") + " END)",
+        _NUM,
+    ),
+    ("(CASE WHEN t.status = 'resolved' THEN -t.number ELSE t.number END)", _INT),
+)
+_CREATED_KEYS = (("(" + _EPOCH.format("t.created_at") + ")", _NUM), ("t.number", _INT))
+_UPDATED_KEYS = (("(" + _EPOCH.format("t.updated_at") + ")", _NUM), ("t.number", _INT))
+
+# sort -> (keys, ascending)
+SORT_KEYS: dict[str, tuple[tuple[tuple[str, str], ...], bool]] = {
+    "priority": (_PRIORITY_KEYS, True),
+    "newest": (_CREATED_KEYS, False),
+    "oldest": (_CREATED_KEYS, True),
+    "updated": (_UPDATED_KEYS, False),
+}
+
+# One static query; every filter is "parameter is NULL or matches", so nothing is ever
+# built from request data. `q_like` is already escaped with '!' by the caller. Search
+# (T8) reads `search_text` (subject, field values and tags, kept by a trigger) and the
+# contact's name and email.
+_FILTERS = """
     WHERE (CAST(:status AS text) IS NULL OR t.status = CAST(:status AS text))
       AND (CAST(:priority AS text) IS NULL OR t.priority = CAST(:priority AS text))
       AND (CAST(:team AS uuid) IS NULL OR t.team_id = CAST(:team AS uuid))
@@ -71,21 +81,33 @@ _LIST = (
            OR (CAST(:scope AS text) = 'unassigned' AND t.assignee_id IS NULL))
       AND (CAST(:q_like AS text) IS NULL
            OR t.number = CAST(:q_number AS integer)
-           OR t.subject ILIKE CAST(:q_like AS text) ESCAPE '!'
-           OR c.name ILIKE CAST(:q_like AS text) ESCAPE '!'
-           OR c.email ILIKE CAST(:q_like AS text) ESCAPE '!'
-           OR EXISTS (SELECT 1 FROM jsonb_each_text(t.fields) f
-                      WHERE f.value ILIKE CAST(:q_like AS text) ESCAPE '!')
-           OR EXISTS (SELECT 1 FROM unnest(t.tags) tag
-                      WHERE tag ILIKE CAST(:q_like AS text) ESCAPE '!'))
-    ) x
-    WHERE CAST(:c1 AS integer) IS NULL
-       OR (x.k1, x.k2, x.k3, x.k4) > (CAST(:c1 AS integer), CAST(:c2 AS integer),
-                                      CAST(:c3 AS numeric), CAST(:c4 AS integer))
-    ORDER BY x.k1, x.k2, x.k3, x.k4
-    LIMIT :limit
+           OR t.search_text ILIKE CAST(:q_like AS text) ESCAPE '!'
+           OR t.contact_id IN (SELECT c2.id FROM hd_contact c2
+                               WHERE (c2.name || E'\\n' || c2.email)
+                                     ILIKE CAST(:q_like AS text) ESCAPE '!'))
 """
-)
+
+
+def _list_query(keys: tuple[tuple[str, str], ...], ascending: bool) -> str:
+    """Fixed strings only: the key expressions above and bound parameter names."""
+    selected = "".join(f", {expr} AS k{i}" for i, (expr, _) in enumerate(keys, 1))
+    row = ", ".join(expr for expr, _ in keys)
+    after = ", ".join(f"CAST(:c{i} AS {kind})" for i, (_, kind) in enumerate(keys, 1))
+    direction = "ASC" if ascending else "DESC"
+    order = ", ".join(f"{expr} {direction}" for expr, _ in keys)
+    return (
+        "SELECT "
+        + _COLUMNS
+        + selected
+        + _FROM
+        + _FILTERS
+        + f"  AND (CAST(:c1 AS {keys[0][1]}) IS NULL OR ({row}) {'>' if ascending else '<'} "
+        + f"({after}))\n"
+        + f"    ORDER BY {order}\n    LIMIT :limit"
+    )
+
+
+_LIST = {sort: _list_query(keys, asc) for sort, (keys, asc) in SORT_KEYS.items()}
 
 
 async def next_number(session: AsyncSession, workspace_id: UUID) -> int:
@@ -118,12 +140,21 @@ async def upsert_contact(session: AsyncSession, workspace_id: UUID, email: str, 
 async def insert_ticket(session: AsyncSession, values: Mapping[str, Any]) -> UUID:
     params = dict(values)
     params["fields"] = json.dumps(params["fields"])
+    handover = params.get("handover")
+    params["handover"] = None if handover is None else json.dumps(handover)
+    for key in ("conversation_id", "topic", "sentiment", "language", "source", "source_id"):
+        params.setdefault(key, None)
+    params.setdefault("accepted", True)
     result = await session.execute(
         text(
             "INSERT INTO hd_ticket (workspace_id, number, subject, status, priority, type_id, "
-            "team_id, assignee_id, contact_id, channel, fields, tags, created_by_id) "
+            "team_id, assignee_id, contact_id, channel, fields, tags, created_by_id, "
+            "conversation_id, accepted, handover, topic, sentiment, language, source, "
+            "source_id) "
             "VALUES (:workspace_id, :number, :subject, 'open', :priority, :type_id, :team_id, "
-            ":assignee_id, :contact_id, :channel, CAST(:fields AS jsonb), :tags, :created_by_id) "
+            ":assignee_id, :contact_id, :channel, CAST(:fields AS jsonb), :tags, :created_by_id, "
+            ":conversation_id, :accepted, CAST(:handover AS jsonb), :topic, :sentiment, "
+            ":language, :source, :source_id) "
             "RETURNING id"
         ),
         params,
@@ -182,14 +213,16 @@ async def list_tickets(
     q_like: str | None,
     q_number: int | None,
     sort: str,
-    after: tuple[int, int, str, int] | None,
+    after: Sequence[int | str] | None,
     limit: int,
 ) -> Sequence[Row]:
-    """Rows carry their sort keys k1..k4; the caller builds the next cursor from them."""
-    c1, c2, c3, c4 = after if after else (None, None, None, None)
+    """Rows carry their sort keys k1..kN; the caller builds the next cursor from them."""
+    keys, _ = SORT_KEYS[sort]
+    cursor = list(after) if after else [None] * len(keys)
     result = await session.execute(
-        text(_LIST),
+        text(_LIST[sort]),
         {
+            **{f"c{i}": value for i, value in enumerate(cursor, 1)},
             "me": me,
             "status": status,
             "priority": priority,
@@ -198,11 +231,6 @@ async def list_tickets(
             "scope": scope,
             "q_like": q_like,
             "q_number": q_number,
-            "sort": sort,
-            "c1": c1,
-            "c2": c2,
-            "c3": c3,
-            "c4": c4,
             "limit": limit,
         },
     )
@@ -286,6 +314,7 @@ async def messages(
     result = await session.execute(
         text(
             "SELECT m.id, m.kind, m.body, m.author_member_id, m.author_name, m.created_at, "
+            "m.email, m.channel_message_id, "
             "coalesce((SELECT array_agg(x.member_id ORDER BY x.created_at, x.member_id) "
             "FROM hd_mention x WHERE x.message_id = m.id), '{}') AS mention_ids "
             "FROM hd_message m WHERE m.ticket_id = :id "

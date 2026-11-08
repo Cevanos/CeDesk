@@ -67,6 +67,7 @@ async def get_message(session: AsyncSession, message_id: UUID) -> Row | None:
     result = await session.execute(
         text(
             "SELECT m.id, m.kind, m.body, m.author_member_id, m.author_name, m.created_at, "
+            "m.email, m.channel_message_id, "
             "coalesce((SELECT array_agg(x.member_id ORDER BY x.created_at, x.member_id) "
             "FROM hd_mention x WHERE x.message_id = m.id), '{}') AS mention_ids "
             "FROM hd_message m WHERE m.id = :id"

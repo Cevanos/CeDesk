@@ -5,6 +5,7 @@ from typing import Annotated
 from fastapi import Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
+from cedesk import logs
 from cedesk.helpdesk.domain.auth import Caller
 from cedesk.helpdesk.service import auth
 from cedesk.helpdesk.service.auth import Sessionmaker
@@ -27,7 +28,9 @@ async def get_caller(
 ) -> Caller:
     if credentials is None or not credentials.credentials:
         raise NotSignedIn("Sign in first.")
-    return await auth.resolve(sm, credentials.credentials.strip())
+    caller = await auth.resolve(sm, credentials.credentials.strip())
+    logs.bind(workspace_id=caller.workspace_id, member_id=caller.member_id)
+    return caller
 
 
 CallerDep = Annotated[Caller, Depends(get_caller)]
