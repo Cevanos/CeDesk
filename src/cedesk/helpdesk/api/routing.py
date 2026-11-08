@@ -10,12 +10,15 @@ from pydantic import BaseModel, Field, StringConstraints
 from cedesk.helpdesk.api.deps import CallerDep, SessionmakerDep
 from cedesk.helpdesk.api.schemas import Body
 from cedesk.helpdesk.domain.permissions import Role
-from cedesk.helpdesk.domain.routing import AgentStatus, ChannelGroup
+from cedesk.helpdesk.domain.routing import CAP_MAX, AgentStatus, ChannelGroup
 from cedesk.helpdesk.service import routing
 
 router = APIRouter(tags=["teams & agents"])
 
 Skill = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=40)]
+Cap = Annotated[int, Field(ge=0, le=CAP_MAX)]
+_RESET = "null: follow the workspace default again."
+CAPS = ("cap_email", "cap_chat", "cap_messaging")
 
 
 class AgentOut(BaseModel):
@@ -28,6 +31,10 @@ class AgentOut(BaseModel):
     cap_email: int
     cap_chat: int
     cap_messaging: int
+    cap_overrides: list[ChannelGroup] = Field(
+        description="Channels where this agent has their own limit; the rest follow "
+        "the workspace default."
+    )
     skills: list[str]
     open_tickets: int
     open_by_channel: dict[str, int]
@@ -40,10 +47,22 @@ class StatusIn(Body):
 class RoutingPatch(Body):
     status: AgentStatus | None = None
     channels: list[ChannelGroup] | None = Field(default=None, max_length=3)
-    cap_email: int | None = Field(default=None, ge=0, le=100)
-    cap_chat: int | None = Field(default=None, ge=0, le=100)
-    cap_messaging: int | None = Field(default=None, ge=0, le=100)
+    cap_email: Cap | None = Field(default=None, description=_RESET)
+    cap_chat: Cap | None = Field(default=None, description=_RESET)
+    cap_messaging: Cap | None = Field(default=None, description=_RESET)
     skills: list[Skill] | None = Field(default=None, max_length=30)
+
+
+class DefaultsOut(BaseModel):
+    cap_email: int
+    cap_chat: int
+    cap_messaging: int
+
+
+class DefaultsPatch(Body):
+    cap_email: Cap | None = None
+    cap_chat: Cap | None = None
+    cap_messaging: Cap | None = None
 
 
 def _out(row: Mapping[Any, Any]) -> AgentOut:
@@ -77,5 +96,26 @@ async def set_my_status(body: StatusIn, caller: CallerDep, sm: SessionmakerDep) 
 async def set_routing(
     member_id: UUID, body: RoutingPatch, caller: CallerDep, sm: SessionmakerDep
 ) -> AgentOut:
-    values = {k: v for k, v in body.model_dump(exclude_unset=True).items() if v is not None}
+    # null on a cap is a reset to the workspace default; on anything else it changes nothing.
+    sent = body.model_dump(exclude_unset=True)
+    values = {k: v for k, v in sent.items() if v is not None or k in CAPS}
     return _out(await routing.set_routing(sm, caller, member_id, values))
+
+
+@router.get(
+    "/routing-defaults",
+    response_model=DefaultsOut,
+    summary="The workspace's default capacity per channel",
+)
+async def get_defaults(caller: CallerDep, sm: SessionmakerDep) -> DefaultsOut:
+    return DefaultsOut.model_validate(dict(await routing.get_defaults(sm, caller)))
+
+
+@router.patch(
+    "/routing-defaults",
+    response_model=DefaultsOut,
+    summary="Change the default capacity per channel (Admin)",
+)
+async def set_defaults(body: DefaultsPatch, caller: CallerDep, sm: SessionmakerDep) -> DefaultsOut:
+    values = {k: v for k, v in body.model_dump(exclude_unset=True).items() if v is not None}
+    return DefaultsOut.model_validate(dict(await routing.set_defaults(sm, caller, values)))
