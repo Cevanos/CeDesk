@@ -14,6 +14,7 @@ docker compose up -d db      # Postgres 17 on localhost:5447 (roles from infra/p
 cp .env.example .env
 uv run cedesk migrate        # apply migrations as cedesk_owner
 uv run cedesk prune-sessions # delete sign-in sessions that ended over 7 days ago (run daily)
+uv run cedesk openapi        # rewrite docs/api/openapi.json after an API change
 uv run cedesk create-workspace --name "Acme Support" --slug acme \
     --admin-email you@example.com --admin-name "Your Name"   # asks for the password;
     # starts with the mock's teams (Billing, Shipping, Tech) and 5 ticket types; --no-seed for none
@@ -84,6 +85,30 @@ Every error, whatever its status, has one shape:
   `If-Match` on `PATCH /tickets/{id}` or `POST /tickets/{id}/resolve`; if anyone changed
   the ticket since, the request gets 409 and nothing is saved. Without the header the
   last save wins.
+- **Search.** `q` matches the ticket number (`T-1042` or `1042`), subject, field values,
+  tags, and the customer's name and email, ignoring case. Subject, fields and tags are
+  kept in one `search_text` column by a trigger.
+- **Speed.** Each sort has its own index (migration 0009), so a page reads only the rows
+  it returns, however deep. `uv run python scripts/bench_ticket_list.py` fills a new
+  workspace in the dev database with 100k tickets and prints p50/p95 per list and search
+  (target p95 under 300 ms; measured about 10–60 ms for lists, 120 ms at most for search).
+  It leaves the `bench-…` workspace behind.
+
+## Events, logs and the API file
+
+- **Outbox.** Every ticket change writes its events to `hd_outbox` in the same
+  transaction: `ticket.created`, `ticket.updated` (with the changed fields),
+  `ticket.resolved`, `message.created`, `assignment.changed` (`by` is null when routing
+  chose). Payload: `{id, occurred_at, event, ticket: {id, number, subject, status,
+  priority, team, topic}, ...}`, with ids only, never message text. A refused or failed
+  change leaves no event. The worker that delivers them (webhooks, emails) comes with
+  the job queue.
+- **Logs.** `cedesk serve` writes one JSON line per request with `request_id` (yours, from
+  `X-Request-ID`, if it looks like an id), `workspace_id`, `member_id`, `ticket_id`, the
+  route template, status and ms. Never bodies, query strings, tokens or customer data.
+- **OpenAPI.** `docs/api/openapi.json` is the API as served; `docs/api/CHANGELOG.md`
+  lists what changed. After changing a route or schema run `uv run cedesk openapi` and
+  add a changelog line; a test fails while the file is out of date.
 
 ## Standalone, and how Cevanos connects
 

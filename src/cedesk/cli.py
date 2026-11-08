@@ -1,4 +1,5 @@
-"""`uv run cedesk <command>`: serve the API, run migrations, or create a workspace."""
+"""`uv run cedesk <command>`: serve the API, run migrations, create a workspace, prune
+sessions, or write the OpenAPI file."""
 
 import argparse
 import asyncio
@@ -75,6 +76,25 @@ def _prune_sessions() -> int:
     return 0
 
 
+def _openapi(out: Path, check: bool) -> int:
+    """Writes the API description to docs/api/ for the frontend and integrators. With
+    --check, fails when the file is out of date (CI and the test suite run that)."""
+    import json
+
+    from cedesk.main import create_app
+
+    text = json.dumps(create_app().openapi(), indent=2, ensure_ascii=False) + "\n"
+    if check:
+        if not out.exists() or out.read_text(encoding="utf-8") != text:
+            print(f"{out} is out of date: run `uv run cedesk openapi`.", file=sys.stderr)
+            return 1
+        return 0
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(text, encoding="utf-8")
+    print(f"Wrote {out}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="cedesk")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -95,17 +115,32 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Start empty, without the default teams and ticket types",
     )
+    spec = sub.add_parser("openapi", help="Write the API description to docs/api/openapi.json")
+    spec.add_argument("--out", type=Path, default=ROOT / "docs" / "api" / "openapi.json")
+    spec.add_argument("--check", action="store_true", help="Fail if the file is out of date")
     args = parser.parse_args(argv)
 
     if args.command == "serve":
         import uvicorn
 
-        uvicorn.run("cedesk.main:app", host="127.0.0.1", port=args.port, reload=args.reload)
+        from cedesk import logs
+        from cedesk.settings import get_settings
+
+        logs.configure(get_settings().log_level)
+        uvicorn.run(
+            "cedesk.main:app",
+            host="127.0.0.1",
+            port=args.port,
+            reload=args.reload,
+            log_config=None,  # keep the JSON logging set up above
+        )
         return 0
     if args.command == "migrate":
         return _migrate()
     if args.command == "prune-sessions":
         return _prune_sessions()
+    if args.command == "openapi":
+        return _openapi(args.out, args.check)
     return _create_workspace(args)
 
 

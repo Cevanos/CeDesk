@@ -72,3 +72,33 @@ def test_ticket_numbers() -> None:
     for q in ("T-1005", "t1005", " 1005 "):
         assert number_in_query(q) == 1005
     assert number_in_query("refund") is None
+
+
+def test_cursor_shape_matches_the_list_query_keys() -> None:
+    """The cursor check (domain) and the SQL casts (repo) must agree on every key."""
+    from cedesk.helpdesk.domain.tickets import CURSOR_SHAPE, Sort
+    from cedesk.helpdesk.repo.tickets import SORT_KEYS
+
+    kinds = {"integer": "int", "numeric": "decimal"}
+    for sort in Sort:
+        keys, _ = SORT_KEYS[sort.value]
+        assert CURSOR_SHAPE[sort] == tuple(kinds[kind] for _, kind in keys), sort
+
+
+def test_events_after_a_change() -> None:
+    from uuid import uuid4
+
+    from cedesk.helpdesk.domain.events import Event, after_change
+
+    a, b, me = uuid4(), uuid4(), uuid4()
+    base = {"subject": "Hi", "status": "open", "priority": "low", "type_id": None,
+            "team_id": None, "assignee_id": a, "fields": {}, "tags": []}  # fmt: skip
+    assert after_change(base, dict(base), me) == []
+    resolved = after_change(base, base | {"status": "resolved"}, me)
+    assert resolved == [(Event.ticket_resolved, {})]
+    both = after_change(base, base | {"status": "resolved", "priority": "high"}, me)
+    assert both == [(Event.ticket_updated, {"changes": ["priority"]}), (Event.ticket_resolved, {})]
+    moved = after_change(base, base | {"assignee_id": b}, None)
+    assert moved[1] == (
+        Event.assignment_changed, {"from": str(a), "to": str(b), "by": None}
+    )  # fmt: skip
