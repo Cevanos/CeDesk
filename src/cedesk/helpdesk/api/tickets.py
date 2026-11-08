@@ -1,15 +1,22 @@
-"""Tickets: create, list with filters and search, open, change."""
+"""Tickets: create, list with filters, search and sort, open, change, resolve; and the
+customer card behind them (VIP and the customer's other tickets).
+
+Ticket responses carry an `ETag` (the ticket's `updated_at`). Send it back as `If-Match`
+on a change or resolve, and the request gets 409 if someone changed the ticket since."""
 
 from collections.abc import Mapping
 from typing import Annotated, Any, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Query, status
+from fastapi import APIRouter, Header, Query, Response, status
 
 from cedesk.helpdesk.api.deps import CallerDep, SessionmakerDep
 from cedesk.helpdesk.api.ticket_schemas import (
     ContactCard,
     ContactOut,
+    ContactPatch,
+    ContactProfileOut,
+    ContactTicketsOut,
     Counts,
     MessageOut,
     TicketIn,
@@ -18,11 +25,24 @@ from cedesk.helpdesk.api.ticket_schemas import (
     TicketPatch,
     TicketRowOut,
 )
-from cedesk.helpdesk.domain.tickets import Priority, Status, label
+from cedesk.helpdesk.domain.tickets import Priority, Sort, Status, etag, label
 from cedesk.helpdesk.service import tickets
 from cedesk.helpdesk.service.tickets import NewTicket, TicketView
 
 router = APIRouter(tags=["tickets"])
+
+IfMatch = Annotated[
+    str | None,
+    Header(
+        alias="If-Match",
+        max_length=100,
+        description="The ETag from reading the ticket. 409 if the ticket changed since.",
+    ),
+]
+Cursor = Annotated[
+    str | None, Query(max_length=200, description="`next_cursor` from the previous page.")
+]
+Limit = Annotated[int, Query(ge=1, le=200)]
 
 
 def _row(r: Mapping[Any, Any]) -> dict[str, Any]:
@@ -38,7 +58,12 @@ def _row(r: Mapping[Any, Any]) -> dict[str, Any]:
     }
 
 
-def _detail(view: TicketView) -> TicketOut:
+def _detail(view: TicketView, response: Response) -> TicketOut:
+    response.headers["ETag"] = etag(view.ticket["updated_at"])
+    return _ticket_out(view)
+
+
+def _ticket_out(view: TicketView) -> TicketOut:
     t = view.ticket
     card = ContactCard(
         id=t["contact_id"],
@@ -53,6 +78,7 @@ def _detail(view: TicketView) -> TicketOut:
             **_row(t),
             "contact": card,
             "messages": [MessageOut.model_validate(dict(m)) for m in view.messages],
+            "older_messages_cursor": view.older_messages_cursor,
         }
     )
 
@@ -63,7 +89,9 @@ def _detail(view: TicketView) -> TicketOut:
     status_code=status.HTTP_201_CREATED,
     summary="Create a ticket (gets the next T-number)",
 )
-async def create_ticket(body: TicketIn, caller: CallerDep, sm: SessionmakerDep) -> TicketOut:
+async def create_ticket(
+    body: TicketIn, caller: CallerDep, sm: SessionmakerDep, response: Response
+) -> TicketOut:
     view = await tickets.create_ticket(
         sm,
         caller,
@@ -81,13 +109,13 @@ async def create_ticket(body: TicketIn, caller: CallerDep, sm: SessionmakerDep) 
             tags=body.tags,
         ),
     )
-    return _detail(view)
+    return _detail(view, response)
 
 
 @router.get(
     "/tickets",
     response_model=TicketListOut,
-    summary="List tickets with status tabs, filters and search",
+    summary="List tickets with status tabs, filters, search and sort (cursor pages)",
 )
 async def list_tickets(
     caller: CallerDep,
@@ -104,8 +132,16 @@ async def list_tickets(
             "any field value, or tag. Not case-sensitive.",
         ),
     ] = None,
-    limit: Annotated[int, Query(ge=1, le=100)] = 50,
-    offset: Annotated[int, Query(ge=0, le=100_000)] = 0,
+    sort: Annotated[
+        Sort,
+        Query(
+            description="priority (default): Open and Pending most urgent first, then "
+            "oldest; Resolved last, newest first. newest, oldest, or updated (most "
+            "recently changed first)."
+        ),
+    ] = Sort.priority,
+    cursor: Cursor = None,
+    limit: Limit = 50,
 ) -> TicketListOut:
     page = await tickets.list_tickets(
         sm,
@@ -115,19 +151,22 @@ async def list_tickets(
         priority=priority,
         team_id=team,
         q=q,
+        sort=sort,
+        cursor=cursor,
         limit=limit,
-        offset=offset,
     )
     return TicketListOut(
         tickets=[TicketRowOut.model_validate(_row(r)) for r in page.tickets],
         counts=Counts.model_validate(page.counts),
-        next_offset=page.next_offset,
+        next_cursor=page.next_cursor,
     )
 
 
 @router.get("/tickets/{ticket_id}", response_model=TicketOut, summary="Open a ticket")
-async def get_ticket(ticket_id: UUID, caller: CallerDep, sm: SessionmakerDep) -> TicketOut:
-    return _detail(await tickets.get_ticket(sm, caller, ticket_id))
+async def get_ticket(
+    ticket_id: UUID, caller: CallerDep, sm: SessionmakerDep, response: Response
+) -> TicketOut:
+    return _detail(await tickets.get_ticket(sm, caller, ticket_id), response)
 
 
 @router.patch(
@@ -136,6 +175,62 @@ async def get_ticket(ticket_id: UUID, caller: CallerDep, sm: SessionmakerDep) ->
     summary="Change status, priority, type, fields, team, assignee, subject or tags",
 )
 async def change_ticket(
-    ticket_id: UUID, body: TicketPatch, caller: CallerDep, sm: SessionmakerDep
+    ticket_id: UUID,
+    body: TicketPatch,
+    caller: CallerDep,
+    sm: SessionmakerDep,
+    response: Response,
+    if_match: IfMatch = None,
 ) -> TicketOut:
-    return _detail(await tickets.change_ticket(sm, caller, ticket_id, body.changes()))
+    view = await tickets.change_ticket(sm, caller, ticket_id, body.changes(), if_match=if_match)
+    return _detail(view, response)
+
+
+@router.post(
+    "/tickets/{ticket_id}/resolve",
+    response_model=TicketOut,
+    summary="Resolve a ticket (already resolved: no change)",
+)
+async def resolve_ticket(
+    ticket_id: UUID,
+    caller: CallerDep,
+    sm: SessionmakerDep,
+    response: Response,
+    if_match: IfMatch = None,
+) -> TicketOut:
+    view = await tickets.resolve_ticket(sm, caller, ticket_id, if_match=if_match)
+    return _detail(view, response)
+
+
+@router.get(
+    "/contacts/{contact_id}/tickets",
+    response_model=ContactTicketsOut,
+    tags=["contacts"],
+    summary="A customer's card and all their tickets, newest first",
+)
+async def contact_tickets(
+    contact_id: UUID,
+    caller: CallerDep,
+    sm: SessionmakerDep,
+    cursor: Cursor = None,
+    limit: Limit = 50,
+) -> ContactTicketsOut:
+    page = await tickets.contact_tickets(sm, caller, contact_id, cursor=cursor, limit=limit)
+    return ContactTicketsOut(
+        contact=ContactProfileOut.model_validate(dict(page.contact)),
+        tickets=[TicketRowOut.model_validate(_row(r)) for r in page.tickets],
+        next_cursor=page.next_cursor,
+    )
+
+
+@router.patch(
+    "/contacts/{contact_id}/profile",
+    response_model=ContactProfileOut,
+    tags=["contacts"],
+    summary="Change a customer's name or VIP flag",
+)
+async def change_contact(
+    contact_id: UUID, body: ContactPatch, caller: CallerDep, sm: SessionmakerDep
+) -> ContactProfileOut:
+    row = await tickets.change_contact(sm, caller, contact_id, name=body.name, vip=body.vip)
+    return ContactProfileOut.model_validate(dict(row))

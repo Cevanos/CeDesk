@@ -304,10 +304,10 @@ async def test_list_tabs_filters_search_and_order(
     assert urgent["number"] < mine["number"]
 
     page = ok(await client.get(f"{T}?limit=2", headers=h))
-    assert page["next_offset"] == 2
-    rest = ok(await client.get(f"{T}?limit=10&offset=2", headers=h))
+    assert page["next_cursor"]
+    rest = ok(await client.get(f"{T}?limit=10&cursor={page['next_cursor']}", headers=h))
     assert len(page["tickets"]) + len(rest["tickets"]) == 6
-    assert rest["next_offset"] is None
+    assert rest["next_cursor"] is None
 
 
 async def test_teams(client: AsyncClient, app_sessionmaker: Sm) -> None:
