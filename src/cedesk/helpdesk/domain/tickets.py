@@ -33,6 +33,18 @@ class Channel(StrEnum):
     phone = "phone"
 
 
+class Sentiment(StrEnum):
+    """Set by triage (keyword rules, Phase 2) or the Cevanos handover."""
+
+    negative = "negative"
+    neutral = "neutral"
+    positive = "positive"
+
+
+LANGUAGE = re.compile(r"^[a-z]{2,3}(-[A-Za-z0-9]{2,8})?$")  # "hi", "en", "en-IN"
+SOURCE = re.compile(r"^[a-z][a-z0-9_-]{0,39}$")  # "cevanos", "intercom", "email"
+
+
 class Sort(StrEnum):
     """Ticket list orders. `priority`: Open and Pending most urgent first, then oldest;
     Resolved after them, newest resolved first (T9; SLA time left joins when SLA lands)."""
@@ -214,26 +226,42 @@ def title(value: str) -> str:
 # (see repo.tickets), so "the rows after this one" is a single row comparison. The cursor
 # is those keys for the last row returned, plus the sort they belong to.
 
-CursorKeys = tuple[int, int, str, int]
+CursorKey = int | str  # whole numbers as int, exact decimals as text
 _DECIMAL = re.compile(r"^-?\d{1,20}(?:\.\d{1,12})?$")
 
+# The kind of each sort key, in order: "int" or "decimal" (an exact epoch). Must agree
+# with repo.tickets.SORT_KEYS (a unit test checks).
+CURSOR_SHAPE: dict[Sort, tuple[str, ...]] = {
+    Sort.priority: ("int", "int", "decimal", "int"),
+    Sort.newest: ("decimal", "int"),
+    Sort.oldest: ("decimal", "int"),
+    Sort.updated: ("decimal", "int"),
+}
 
-def encode_cursor(sort: Sort, keys: CursorKeys) -> str:
+
+def encode_cursor(sort: Sort, keys: Sequence[CursorKey]) -> str:
     return paging.encode([sort.value, *keys])
 
 
-def decode_cursor(cursor: str, sort: Sort) -> CursorKeys:
+def decode_cursor(cursor: str, sort: Sort) -> list[CursorKey]:
+    """The keys of the row a page ended on, checked against the sort's key shape, so
+    nothing malformed reaches the database."""
     value = paging.decode(cursor)
-    if len(value) != 5:
-        raise CursorError("This cursor is not valid.")
-    name, k1, k2, k3, k4 = value
-    if name != sort.value:
+    shape = CURSOR_SHAPE[sort]
+    if not value or value[0] != sort.value:
         raise CursorError("This cursor belongs to another sort order.")
-    if type(k1) is not int or type(k2) is not int or type(k4) is not int:
+    keys = value[1:]
+    if len(keys) != len(shape):
         raise CursorError("This cursor is not valid.")
-    if not isinstance(k3, str) or not _DECIMAL.match(k3):
-        raise CursorError("This cursor is not valid.")
-    return k1, k2, k3, k4
+    for key, kind in zip(keys, shape, strict=True):
+        ok = (
+            type(key) is int and abs(key) < 2**31
+            if kind == "int"
+            else isinstance(key, str) and bool(_DECIMAL.match(key))
+        )
+        if not ok:
+            raise CursorError("This cursor is not valid.")
+    return keys  # type: ignore[return-value]
 
 
 # If-Match (md 2B): the client sends back the ticket's `updated_at` (the ETag) and the

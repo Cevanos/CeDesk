@@ -16,7 +16,7 @@ from pydantic import (
 
 from cedesk.helpdesk.api.schemas import Body, Email, Name
 from cedesk.helpdesk.domain.routing import TEAM_MAX_OPEN
-from cedesk.helpdesk.domain.tickets import Channel, FieldKind, Priority, Status
+from cedesk.helpdesk.domain.tickets import Channel, FieldKind, Priority, Sentiment, Status
 
 Short = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=80)]
 Subject = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=250)]
@@ -173,6 +173,15 @@ class TicketRowOut(BaseModel):
     created_at: datetime
     updated_at: datetime
     resolved_at: datetime | None
+    # The list chips (T10). Filled by the handover, triage, imports and ticket tools.
+    accepted: bool = Field(description="false: a handover waiting for an agent to accept it.")
+    topic: str | None
+    sentiment: Sentiment | None
+    language: str | None
+    source: str | None = Field(description="cevanos, intercom, email, ... or null.")
+    parent_id: UUID | None
+    merged_into_id: UUID | None
+    child_count: int
 
 
 class MessageOut(BaseModel):
@@ -183,12 +192,19 @@ class MessageOut(BaseModel):
     author_name: str | None
     created_at: datetime
     mention_ids: list[UUID] = []
+    email: dict[str, Any] | None = Field(
+        default=None, description="Email messages: from, to, cc, message_id."
+    )
+    channel_message_id: str | None = None
 
 
 class TicketOut(TicketRowOut):
     fields: dict[str, Any]
     first_reply_at: datetime | None
     reopen_count: int
+    conversation_id: str | None = Field(description="The Cevanos chat, for handovers.")
+    handover: dict[str, Any] | None = Field(description="The AI summary and reason.")
+    source_id: str | None
     contact: ContactCard
     messages: list[MessageOut] = Field(description="The latest 50 messages, oldest to newest.")
     older_messages_cursor: str | None = Field(

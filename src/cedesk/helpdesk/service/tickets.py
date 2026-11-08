@@ -10,10 +10,11 @@ from dataclasses import dataclass, field
 from typing import Any
 from uuid import UUID
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cedesk.db import workspace_session
-from cedesk.helpdesk.domain import paging
+from cedesk.helpdesk.domain import events, paging
 from cedesk.helpdesk.domain import tickets as rules
 from cedesk.helpdesk.domain.auth import Caller, normalise_email
 from cedesk.helpdesk.domain.paging import CursorError
@@ -23,10 +24,11 @@ from cedesk.helpdesk.domain.tickets import (
     FieldDef,
     FieldError,
     Priority,
+    Sentiment,
     Sort,
     Status,
 )
-from cedesk.helpdesk.repo import catalog
+from cedesk.helpdesk.repo import catalog, outbox
 from cedesk.helpdesk.repo import messages as message_repo
 from cedesk.helpdesk.repo import tickets as repo
 from cedesk.helpdesk.repo.tickets import Row
@@ -52,6 +54,28 @@ class NewTicket:
     assignee_id: UUID | None = None
     fields: Mapping[str, object] = field(default_factory=dict)
     tags: Sequence[str] = ()
+    # Filled by the Cevanos handover, triage and imports (md 4.1), not by the agent API.
+    conversation_id: str | None = None
+    accepted: bool = True  # a handover waits for an agent to accept it
+    handover: Mapping[str, Any] | None = None  # the AI summary and reason
+    topic: str | None = None
+    sentiment: Sentiment | None = None
+    language: str | None = None
+    source: str | None = None  # where it came from: "cevanos", "intercom", "email", ...
+    source_id: str | None = None  # that source's id; one ticket per (source, source_id)
+
+
+def _check_origin(new: NewTicket) -> None:
+    if new.language is not None and not rules.LANGUAGE.match(new.language):
+        raise Invalid("language is a code such as hi, en or en-IN.")
+    if new.source is not None and not rules.SOURCE.match(new.source):
+        raise Invalid("source uses a-z, 0-9, - or _ (max 40).")
+    if new.source_id is not None and (new.source is None or not 1 <= len(new.source_id) <= 200):
+        raise Invalid("source_id needs a source and 1-200 characters.")
+    if new.topic is not None and not 1 <= len(new.topic) <= 60:
+        raise Invalid("topic is 1-60 characters.")
+    if new.conversation_id is not None and not 1 <= len(new.conversation_id) <= 100:
+        raise Invalid("conversation_id is 1-100 characters.")
 
 
 @dataclass(frozen=True)
@@ -152,6 +176,23 @@ async def _tell_assignee(
     )
 
 
+async def _emit(
+    s: AsyncSession,
+    caller: Caller,
+    ticket: Mapping[Any, Any],
+    event: events.Event,
+    extra: Mapping[str, Any] | None = None,
+) -> None:
+    """Writes the event in the caller's transaction (md 3.2 step 5)."""
+    await outbox.add(
+        s,
+        caller.workspace_id,
+        event.value,
+        ticket["id"],
+        events.payload(event, ticket, extra or {}),
+    )
+
+
 async def _view(s: AsyncSession, ticket_id: UUID) -> TicketView:
     ticket = await repo.ticket_detail(s, ticket_id)
     if ticket is None:
@@ -172,6 +213,16 @@ async def create_ticket(sm: Sessionmaker, caller: Caller, new: NewTicket) -> Tic
         tags = rules.clean_tags(new.tags)
     except FieldError as exc:
         raise _invalid(exc) from exc
+    _check_origin(new)
+    try:
+        return await _create(sm, caller, new, tags)
+    except IntegrityError as exc:
+        if "hd_ticket_source" in str(exc.orig):
+            raise Conflict(f"A ticket already exists for {new.source} {new.source_id}.") from exc
+        raise
+
+
+async def _create(sm: Sessionmaker, caller: Caller, new: NewTicket, tags: list[str]) -> TicketView:
     async with workspace_session(sm, caller.workspace_id) as s:
         _, defs = await _type_defs(s, new.type_id)
         try:
@@ -199,6 +250,14 @@ async def create_ticket(sm: Sessionmaker, caller: Caller, new: NewTicket) -> Tic
                 "fields": values,
                 "tags": tags,
                 "created_by_id": caller.member_id,
+                "conversation_id": new.conversation_id,
+                "accepted": new.accepted,
+                "handover": dict(new.handover) if new.handover is not None else None,
+                "topic": new.topic,
+                "sentiment": new.sentiment.value if new.sentiment else None,
+                "language": new.language,
+                "source": new.source,
+                "source_id": new.source_id,
             },
         )
         if new.description:
@@ -231,7 +290,13 @@ async def create_ticket(sm: Sessionmaker, caller: Caller, new: NewTicket) -> Tic
                 await _tell_assignee(
                     s, caller, ticket_id, pick.agent.member_id, view.ticket["number"], new.subject
                 )
-        return await _view(s, ticket_id)
+        view = await _view(s, ticket_id)
+        await _emit(s, caller, view.ticket, events.Event.ticket_created)
+        if view.ticket["assignee_id"] is not None:
+            by = caller.member_id if new.assignee_id is not None else None  # None: routing
+            await _emit(s, caller, view.ticket, events.Event.assignment_changed,
+                        events.assignment(None, view.ticket["assignee_id"], by))  # fmt: skip
+        return view
 
 
 async def get_ticket(sm: Sessionmaker, caller: Caller, ticket_id: UUID) -> TicketView:
@@ -281,7 +346,11 @@ async def _page(
     next_cursor = None
     if len(rows) > limit:
         last = page[-1]
-        keys = (int(last["k1"]), int(last["k2"]), str(last["k3"]), int(last["k4"]))
+        shape = rules.CURSOR_SHAPE[sort]
+        keys: list[rules.CursorKey] = [
+            int(last[f"k{i}"]) if kind == "int" else str(last[f"k{i}"])
+            for i, kind in enumerate(shape, 1)
+        ]
         next_cursor = rules.encode_cursor(sort, keys)
     return page, next_cursor
 
@@ -385,7 +454,7 @@ async def resolve_ticket(
     """Resolves the ticket (T15), the same flow as setting the status to Resolved (T16).
     Resolving a ticket that is already resolved changes nothing.
 
-    CSAT (Phase 2) and the `ticket.resolved` event (outbox) hook in here."""
+    `change_ticket` writes the `ticket.resolved` event; CSAT (Phase 2) hooks in here."""
     require(caller, Action.reply)
     return await change_ticket(
         sm, caller, ticket_id, {"status": Status.resolved.value}, if_match=if_match
@@ -537,4 +606,10 @@ async def change_ticket(
                 await _line(s, caller, ticket_id, body)
         if routed_to is not None:
             await _tell_assignee(s, caller, ticket_id, routed_to, current["number"], new["subject"])
-        return await _view(s, ticket_id)
+        view = await _view(s, ticket_id)
+        if lines:
+            routed = moved_team and new["team_id"] is not None and "assignee_id" not in changes
+            actor = None if routed else caller.member_id
+            for event, extra in events.after_change(current, new, actor):
+                await _emit(s, caller, view.ticket, event, extra)
+        return view
