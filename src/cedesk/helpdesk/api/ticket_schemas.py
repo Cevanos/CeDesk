@@ -15,6 +15,7 @@ from pydantic import (
 )
 
 from cedesk.helpdesk.api.schemas import Body, Email, Name
+from cedesk.helpdesk.domain.routing import TEAM_MAX_OPEN
 from cedesk.helpdesk.domain.tickets import Channel, FieldKind, Priority, Status
 
 Short = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=80)]
@@ -77,14 +78,14 @@ class ReorderBody(Body):
 class TeamIn(Body):
     name: Short
     auto_assign: bool = True
-    max_open_per_agent: int = Field(default=5, ge=1, le=500)
+    max_open_per_agent: int = Field(default=5, ge=1, le=TEAM_MAX_OPEN)
     member_ids: list[UUID] = Field(default=[], max_length=500)
 
 
 class TeamPatch(Body):
     name: Short | None = None
     auto_assign: bool | None = None
-    max_open_per_agent: int | None = Field(default=None, ge=1, le=500)
+    max_open_per_agent: int | None = Field(default=None, ge=1, le=TEAM_MAX_OPEN)
     member_ids: list[UUID] | None = Field(default=None, max_length=500)
 
 

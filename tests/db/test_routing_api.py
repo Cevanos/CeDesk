@@ -195,3 +195,80 @@ async def test_status_and_routing_permissions(client: AsyncClient, app_sessionma
     assert agents["Asha"]["status"] == "available"
     mine = ok(await client.put("/api/v1/me/status", headers=asha, json={"status": "offline"}))
     assert mine["status"] == "offline"
+
+
+async def test_workspace_default_capacity(client: AsyncClient, app_sessionmaker: Sm) -> None:
+    w = await desk(client, app_sessionmaker, names=("Asha", "Bilal"))
+    h = w["admin"]
+    asha, bilal = w["ids"]["Asha"], w["ids"]["Bilal"]
+    agent = bearer(await sign_in(client, w["slug"], "asha@example.com"))
+    caps = ("cap_email", "cap_chat", "cap_messaging")
+
+    def by_id(rows: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+        return {r["id"]: r for r in rows}
+
+    # The md defaults until an Admin changes them; everyone can read them.
+    assert ok(await client.get("/api/v1/routing-defaults", headers=agent)) == {
+        "cap_email": 5,
+        "cap_chat": 2,
+        "cap_messaging": 3,
+    }
+    r = await client.patch("/api/v1/routing-defaults", headers=agent, json={"cap_email": 1})
+    assert r.status_code == 403
+    for bad in ({"cap_email": -1}, {"cap_chat": 101}, {"cap_email": 1, "other": 2}):
+        r = await client.patch("/api/v1/routing-defaults", headers=h, json=bad)
+        assert r.status_code == 422, bad
+
+    # Bilal keeps his own Email limit; Asha follows the workspace.
+    ok(await client.patch(f"/api/v1/agents/{bilal}/routing", headers=h, json={"cap_email": 4}))
+    new = ok(await client.patch("/api/v1/routing-defaults", headers=h, json={"cap_email": 1}))
+    assert new == {"cap_email": 1, "cap_chat": 2, "cap_messaging": 3}
+    agents = by_id(ok(await client.get("/api/v1/agents", headers=h)))
+    assert [agents[asha][c] for c in caps] == [1, 2, 3]
+    assert agents[asha]["cap_overrides"] == []
+    assert (agents[bilal]["cap_email"], agents[bilal]["cap_overrides"]) == (4, ["email"])
+
+    # Routing uses the workspace default: Asha is full after one Email ticket.
+    ok(
+        await client.put(
+            "/api/v1/me/status",
+            headers=bearer(await sign_in(client, w["slug"], "bilal@example.com")),
+            json={"status": "offline"},
+        )
+    )
+    first = await new_ticket(client, w, channel="email")
+    second = await new_ticket(client, w, channel="email")
+    assert first["assignee_name"] == "Asha"
+    assert second["assignee_id"] is None
+    assert "Asha is full on Email (1)" in last_line(second)
+
+    # null puts Bilal back on the workspace default.
+    reset = ok(
+        await client.patch(f"/api/v1/agents/{bilal}/routing", headers=h, json={"cap_email": None})
+    )
+    assert (reset["cap_email"], reset["cap_overrides"]) == (1, [])
+    assert reset["status"] == "offline"
+
+    # Another workspace keeps the md defaults.
+    other = await desk(client, app_sessionmaker, names=("Zed",))
+    assert (
+        ok(await client.get("/api/v1/routing-defaults", headers=other["admin"]))["cap_email"] == 5
+    )
+
+
+async def test_team_limit_is_1_to_50(client: AsyncClient, app_sessionmaker: Sm) -> None:
+    w = await desk(client, app_sessionmaker, names=("Asha",))
+    url = f"/api/v1/teams/{w['team']['id']}"
+    for bad in (0, 51, 500):
+        r = await client.patch(url, headers=w["admin"], json={"max_open_per_agent": bad})
+        assert r.status_code == 422, bad
+        r = await client.post(
+            "/api/v1/teams", headers=w["admin"], json={"name": f"T{bad}", "max_open_per_agent": bad}
+        )
+        assert r.status_code == 422, bad
+    assert (
+        ok(await client.patch(url, headers=w["admin"], json={"max_open_per_agent": 50}))[
+            "max_open_per_agent"
+        ]
+        == 50
+    )

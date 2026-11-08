@@ -308,23 +308,44 @@ async def change_ticket(
             )
 
         if type_changed or "fields" in changes:
-            _, defs = await _type_defs(s, new["type_id"])
-            keys = {d.key for d in defs}
-            merged = {k: v for k, v in new["fields"].items() if k in keys}
-            merged |= dict(changes.get("fields") or {})
+            new_type, defs = await _type_defs(s, new["type_id"])
+            values: dict[str, Any] = dict(current["fields"])
+            dropped: dict[str, str] = {}
             try:
-                cleaned = rules.clean_values(defs, merged)
+                if type_changed:
+                    # Values that don't fit the new type are dropped, each with a line.
+                    values, dropped = rules.carry_over(defs, values)
+                # Only the values sent are checked, so old values never block an edit.
+                for key, value in rules.clean_changes(defs, changes.get("fields") or {}).items():
+                    if value is None:
+                        values.pop(key, None)
+                    else:
+                        values[key] = value
             except FieldError as exc:
                 raise _invalid(exc) from exc
+            if type_changed:
+                missing = rules.first_missing_required(defs, values)
+                if missing:
+                    raise Invalid(f"{missing.label} is required.")
+                _, old_defs = await _type_defs(s, current["type_id"])
+                old_labels = {d.key: d.label for d in old_defs}
+                why = {
+                    "missing": f"not in {new_type}" if new_type else "type cleared",
+                    "invalid": f"not valid for {new_type}",
+                }
+                order = [d.key for d in old_defs] + sorted(set(dropped) - set(old_labels))
+                for key in (k for k in order if k in dropped):
+                    label = old_labels.get(key, key)
+                    lines.append(f"{label} cleared by {who} ({why[dropped[key]]})")
             for d in defs:
-                before, after = current["fields"].get(d.key), cleaned.get(d.key)
-                if before != after:
+                before, after = current["fields"].get(d.key), values.get(d.key)
+                if d.key not in dropped and before != after:
                     lines.append(
                         f"{d.label} set to {after} by {who}"
                         if after is not None
                         else f"{d.label} cleared by {who}"
                     )
-            new["fields"] = cleaned
+            new["fields"] = values
 
         if "team_id" in changes and changes["team_id"] != current["team_id"]:
             new["team_id"] = changes["team_id"]
@@ -339,6 +360,11 @@ async def change_ticket(
         routed_to: UUID | None = None
         moved_team = "team_id" in changes and changes["team_id"] != current["team_id"]
         if moved_team and new["team_id"] is not None and "assignee_id" not in changes:
+            # Re-routing replaces the assignee, so taking a ticket away from someone else
+            # needs the same right as reassigning it directly (B1). Routing an unassigned
+            # ticket, or the caller's own, is the system's choice, as on create.
+            if current["assignee_id"] not in (None, caller.member_id):
+                require(caller, Action.assign_others)
             pick = await routing.route(
                 s,
                 ticket_id=ticket_id,
