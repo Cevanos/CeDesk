@@ -66,11 +66,22 @@ def _template(path: str, params: Mapping[str, Any]) -> str:
     return "/".join("{" + names[p] + "}" if p in names else p for p in parts)
 
 
+def _uuid_or_none(value: object) -> str | None:
+    """Only a real id is logged; `/tickets/jane@example.com` logs no ticket_id."""
+    try:
+        return str(uuid.UUID(str(value))) if value is not None else None
+    except ValueError:
+        return None
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        # Here, not only in `cedesk serve`: with --reload the app runs in a child process
+        # that never sees the parent's logging setup.
+        logs.configure(settings.log_level)
         engine = make_engine(settings.database_url)
         app.state.engine = engine
         app.state.sessionmaker = make_sessionmaker(engine)
@@ -105,12 +116,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return response
         finally:
             params = request.scope.get("path_params") or {}
-            logs.bind(ticket_id=params.get("ticket_id"))
+            logs.bind(ticket_id=_uuid_or_none(params.get("ticket_id")))
             logger.info(
                 "request",
                 extra={
                     "method": request.method,
-                    "route": _template(request.url.path, params),
+                    "route": _template(request.url.path, params)
+                    if request.scope.get("route") is not None
+                    else "(unmatched)",  # an unknown URL can hold anything, even an email
                     "status": status,
                     "ms": round((time.perf_counter() - started) * 1000, 1),
                 },
