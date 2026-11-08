@@ -66,7 +66,9 @@ async def route(
 ) -> Pick:
     """Picks an agent in `team_id` for the ticket and moves the team's pointer to them.
 
-    Runs inside the caller's transaction; the team row stays locked until it commits."""
+    Runs inside the caller's transaction. The workspace's routing lock, then the team
+    row, stay held until it commits, so load is read and assigned with no one in between."""
+    await repo.lock_routing(s)
     team_row = await repo.lock_team(s, team_id)
     if team_row is None:
         raise Invalid("That team does not exist.")
@@ -117,7 +119,9 @@ async def set_my_status(sm: Sessionmaker, caller: Caller, status: AgentStatus) -
 async def set_routing(
     sm: Sessionmaker, caller: Caller, member_id: UUID, values: Mapping[str, Any]
 ) -> Row:
-    """Admin: any of status, channels, cap_email, cap_chat, cap_messaging, skills."""
+    """Admin: any of status, channels, cap_email, cap_chat, cap_messaging, skills.
+
+    A cap of None means the agent follows the workspace default again."""
     require(caller, Action.settings)
     changes = dict(values)
     if "status" in changes:
@@ -136,3 +140,20 @@ async def set_routing(
         row = await repo.agent(s, member_id)
     assert row is not None
     return row
+
+
+# Workspace defaults (md W5)
+
+
+async def get_defaults(sm: Sessionmaker, caller: Caller) -> Row:
+    require(caller, Action.list_members)
+    async with workspace_session(sm, caller.workspace_id) as s:
+        return await repo.defaults(s)
+
+
+async def set_defaults(sm: Sessionmaker, caller: Caller, values: Mapping[str, int]) -> Row:
+    """Admin: the default capacity per channel for every agent without their own limit."""
+    require(caller, Action.settings)
+    async with workspace_session(sm, caller.workspace_id) as s:
+        await repo.save_defaults(s, caller.workspace_id, dict(values))
+        return await repo.defaults(s)

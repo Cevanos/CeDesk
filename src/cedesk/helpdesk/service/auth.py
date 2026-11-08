@@ -66,6 +66,8 @@ async def sign_in(sm: Sessionmaker, *, workspace: str, email: str, password: str
         else:
             failed_sign_in = False
             await repo.record_login_success(s, member["id"], new_hash)
+            # Each sign-in tidies this member's long-ended sessions.
+            await repo.prune_sessions(s, now - rules.ENDED_SESSION_KEPT, member["id"])
             token = rules.new_token(workspace_id)
             expires_at = now + rules.SESSION_LIFETIME
             session_id = await repo.insert_session(
@@ -96,6 +98,21 @@ async def resolve(sm: Sessionmaker, token: str) -> Caller:
 async def sign_out(sm: Sessionmaker, caller: Caller) -> None:
     async with workspace_session(sm, caller.workspace_id) as s:
         await repo.revoke_session(s, caller.session_id)
+
+
+async def prune_ended_sessions(sm: Sessionmaker) -> int:
+    """Deletes, in every workspace, sessions that ended over `ENDED_SESSION_KEPT` ago.
+
+    For a scheduled job (`cedesk prune-sessions`). Each workspace is its own short
+    transaction under RLS. Returns how many sessions were deleted."""
+    async with sm() as s, s.begin():
+        workspace_ids = await repo.all_workspace_ids(s)
+    ended_before = _now() - rules.ENDED_SESSION_KEPT
+    deleted = 0
+    for workspace_id in workspace_ids:
+        async with workspace_session(sm, workspace_id) as s:
+            deleted += await repo.prune_sessions(s, ended_before)
+    return deleted
 
 
 async def create_workspace(

@@ -5,9 +5,9 @@ from uuid import uuid4
 import pytest
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
-from cedesk.db import workspace_session
+from cedesk.db import make_sessionmaker, workspace_session
 
 pytestmark = pytest.mark.db
 
@@ -58,7 +58,7 @@ async def test_app_role_cannot_change_the_migration_marker(
 
 
 async def test_a_workspace_sees_only_itself(
-    app_sessionmaker: async_sessionmaker[AsyncSession],
+    app_sessionmaker: async_sessionmaker[AsyncSession], owner_engine: AsyncEngine
 ) -> None:
     a, b = uuid4(), uuid4()
     for ws in (a, b):
@@ -76,9 +76,31 @@ async def test_a_workspace_sees_only_itself(
     async with app_sessionmaker() as s:
         assert (await s.execute(text("SELECT count(*) FROM workspace"))).scalar_one() == 0
 
+    # Only the owner may delete a workspace (migration 0008).
     for ws in (a, b):
+        async with workspace_session(make_sessionmaker(owner_engine), ws) as s:
+            await s.execute(text("DELETE FROM workspace WHERE id = :id"), {"id": ws})
+
+
+async def test_app_role_cannot_delete_a_workspace(
+    app_sessionmaker: async_sessionmaker[AsyncSession], owner_engine: AsyncEngine
+) -> None:
+    ws = uuid4()
+    async with workspace_session(app_sessionmaker, ws) as s:
+        await s.execute(text("INSERT INTO workspace (id, name) VALUES (:id, 'x')"), {"id": ws})
+    async with app_sessionmaker() as s:
+        can = await s.execute(
+            text(
+                "SELECT has_table_privilege('workspace', 'DELETE') "
+                "OR has_table_privilege('workspace', 'TRUNCATE')"
+            )
+        )
+        assert can.scalar_one() is False
+    with pytest.raises(DBAPIError, match="permission denied"):
         async with workspace_session(app_sessionmaker, ws) as s:
             await s.execute(text("DELETE FROM workspace WHERE id = :id"), {"id": ws})
+    async with workspace_session(make_sessionmaker(owner_engine), ws) as s:
+        await s.execute(text("DELETE FROM workspace WHERE id = :id"), {"id": ws})
 
 
 async def test_writing_into_another_workspace_is_refused(
