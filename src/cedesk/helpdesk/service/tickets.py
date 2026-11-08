@@ -13,10 +13,19 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cedesk.db import workspace_session
+from cedesk.helpdesk.domain import paging
 from cedesk.helpdesk.domain import tickets as rules
 from cedesk.helpdesk.domain.auth import Caller, normalise_email
+from cedesk.helpdesk.domain.paging import CursorError
 from cedesk.helpdesk.domain.permissions import Action, Role
-from cedesk.helpdesk.domain.tickets import Channel, FieldDef, FieldError, Priority, Status
+from cedesk.helpdesk.domain.tickets import (
+    Channel,
+    FieldDef,
+    FieldError,
+    Priority,
+    Sort,
+    Status,
+)
 from cedesk.helpdesk.repo import catalog
 from cedesk.helpdesk.repo import messages as message_repo
 from cedesk.helpdesk.repo import tickets as repo
@@ -24,7 +33,7 @@ from cedesk.helpdesk.repo.tickets import Row
 from cedesk.helpdesk.service import routing
 from cedesk.helpdesk.service.auth import Sessionmaker
 from cedesk.helpdesk.service.catalog import field_defs
-from cedesk.helpdesk.service.errors import Invalid, NotFound
+from cedesk.helpdesk.service.errors import Conflict, Invalid, NotFound
 from cedesk.helpdesk.service.members import require
 
 SCOPES = ("everyone", "mine", "unassigned")
@@ -48,15 +57,26 @@ class NewTicket:
 @dataclass(frozen=True)
 class TicketView:
     ticket: Row
-    messages: Sequence[Row]
+    messages: Sequence[Row]  # the latest page, oldest to newest
     other_tickets: int
+    older_messages_cursor: str | None = None
 
 
 @dataclass(frozen=True)
 class TicketPage:
     tickets: Sequence[Row]
     counts: dict[str, int]
-    next_offset: int | None
+    next_cursor: str | None
+
+
+@dataclass(frozen=True)
+class ContactTickets:
+    contact: Row
+    tickets: Sequence[Row]
+    next_cursor: str | None
+
+
+CHANGED_BY_SOMEONE_ELSE = "This ticket was changed by someone else. Reload it and try again."
 
 
 def _invalid(exc: FieldError) -> Invalid:
@@ -136,10 +156,13 @@ async def _view(s: AsyncSession, ticket_id: UUID) -> TicketView:
     ticket = await repo.ticket_detail(s, ticket_id)
     if ticket is None:
         raise NotFound("Ticket not found.")
+    newest = await repo.messages(s, ticket_id, limit=paging.DEFAULT_LIMIT + 1)
+    page, older = paging.time_page(newest, paging.DEFAULT_LIMIT, "message")
     return TicketView(
         ticket=ticket,
-        messages=await repo.messages(s, ticket_id),
+        messages=list(reversed(page)),
         other_tickets=await repo.other_ticket_count(s, ticket["contact_id"], ticket_id),
+        older_messages_cursor=older,
     )
 
 
@@ -222,6 +245,47 @@ def _like(q: str) -> str:
     return f"%{escaped}%"
 
 
+async def _page(
+    s: AsyncSession,
+    caller: Caller,
+    *,
+    status: Status | None,
+    scope: str,
+    priority: Priority | None,
+    team_id: UUID | None,
+    contact_id: UUID | None,
+    q: str | None,
+    sort: Sort,
+    cursor: str | None,
+    limit: int,
+) -> tuple[Sequence[Row], str | None]:
+    try:
+        after = rules.decode_cursor(cursor, sort) if cursor else None
+    except CursorError as exc:
+        raise Invalid(str(exc)) from exc
+    rows = await repo.list_tickets(
+        s,
+        me=caller.member_id,
+        status=status.value if status else None,
+        priority=priority.value if priority else None,
+        team=team_id,
+        contact=contact_id,
+        scope=scope,
+        q_like=_like(q) if q else None,
+        q_number=rules.number_in_query(q) if q else None,
+        sort=sort.value,
+        after=after,
+        limit=limit + 1,
+    )
+    page = rows[:limit]
+    next_cursor = None
+    if len(rows) > limit:
+        last = page[-1]
+        keys = (int(last["k1"]), int(last["k2"]), str(last["k3"]), int(last["k4"]))
+        next_cursor = rules.encode_cursor(sort, keys)
+    return page, next_cursor
+
+
 async def list_tickets(
     sm: Sessionmaker,
     caller: Caller,
@@ -231,10 +295,12 @@ async def list_tickets(
     priority: Priority | None,
     team_id: UUID | None,
     q: str | None,
-    limit: int,
-    offset: int,
+    sort: Sort = Sort.priority,
+    cursor: str | None = None,
+    limit: int = 50,
 ) -> TicketPage:
-    """Open and Pending: most urgent first, then oldest. Resolved: newest first.
+    """A page of tickets in `sort` order; pass `next_cursor` back as `cursor` for the
+    next page (the same filters and sort must be sent again).
 
     `counts` is per status and ignores the other filters, for the tabs.
     """
@@ -243,37 +309,115 @@ async def list_tickets(
         raise Invalid("scope is everyone, mine or unassigned.")
     q = (q or "").strip() or None
     async with workspace_session(sm, caller.workspace_id) as s:
-        rows = await repo.list_tickets(
+        rows, next_cursor = await _page(
             s,
-            me=caller.member_id,
-            status=status.value if status else None,
-            priority=priority.value if priority else None,
-            team=team_id,
+            caller,
+            status=status,
             scope=scope,
-            q_like=_like(q) if q else None,
-            q_number=rules.number_in_query(q) if q else None,
-            limit=limit + 1,
-            offset=offset,
+            priority=priority,
+            team_id=team_id,
+            contact_id=None,
+            q=q,
+            sort=sort,
+            cursor=cursor,
+            limit=limit,
         )
         counts = await repo.counts_by_status(s)
     return TicketPage(
-        tickets=rows[:limit],
+        tickets=rows,
         counts={st.value: counts.get(st.value, 0) for st in Status},
-        next_offset=offset + limit if len(rows) > limit else None,
+        next_cursor=next_cursor,
+    )
+
+
+async def contact_tickets(
+    sm: Sessionmaker,
+    caller: Caller,
+    contact_id: UUID,
+    *,
+    cursor: str | None = None,
+    limit: int = 50,
+) -> ContactTickets:
+    """The customer card and every ticket of that customer, newest first (T19)."""
+    require(caller, Action.read_ticket)
+    async with workspace_session(sm, caller.workspace_id) as s:
+        contact = await repo.get_contact(s, contact_id)
+        if contact is None:
+            raise NotFound("Customer not found.")
+        rows, next_cursor = await _page(
+            s,
+            caller,
+            status=None,
+            scope="everyone",
+            priority=None,
+            team_id=None,
+            contact_id=contact_id,
+            q=None,
+            sort=Sort.newest,
+            cursor=cursor,
+            limit=limit,
+        )
+    return ContactTickets(contact=contact, tickets=rows, next_cursor=next_cursor)
+
+
+async def change_contact(
+    sm: Sessionmaker,
+    caller: Caller,
+    contact_id: UUID,
+    *,
+    name: str | None = None,
+    vip: bool | None = None,
+) -> Row:
+    """Edits the customer card: name and the VIP flag (T19)."""
+    require(caller, Action.change_fields)
+    async with workspace_session(sm, caller.workspace_id) as s:
+        if not await repo.update_contact(s, contact_id, name=name, vip=vip):
+            raise NotFound("Customer not found.")
+        contact = await repo.get_contact(s, contact_id)
+    if contact is None:
+        raise NotFound("Customer not found.")
+    return contact
+
+
+async def resolve_ticket(
+    sm: Sessionmaker, caller: Caller, ticket_id: UUID, *, if_match: str | None = None
+) -> TicketView:
+    """Resolves the ticket (T15), the same flow as setting the status to Resolved (T16).
+    Resolving a ticket that is already resolved changes nothing.
+
+    CSAT (Phase 2) and the `ticket.resolved` event (outbox) hook in here."""
+    require(caller, Action.reply)
+    return await change_ticket(
+        sm, caller, ticket_id, {"status": Status.resolved.value}, if_match=if_match
     )
 
 
 async def change_ticket(
-    sm: Sessionmaker, caller: Caller, ticket_id: UUID, changes: Mapping[str, Any]
+    sm: Sessionmaker,
+    caller: Caller,
+    ticket_id: UUID,
+    changes: Mapping[str, Any],
+    *,
+    if_match: str | None = None,
 ) -> TicketView:
     """Applies only the keys present in `changes`:
     subject, status, priority, type_id, team_id, assignee_id,
-    fields (a value of None clears that field), add_tags, remove_tags."""
+    fields (a value of None clears that field), add_tags, remove_tags.
+
+    With `if_match` (the ETag from reading the ticket), the change is refused with
+    Conflict if anyone changed the ticket since (md 2B)."""
     require(caller, Action.read_ticket)
+    try:
+        expected = rules.parse_if_match(if_match) if if_match is not None else None
+    except FieldError as exc:
+        raise _invalid(exc) from exc
     async with workspace_session(sm, caller.workspace_id) as s:
         current = await repo.lock_ticket(s, ticket_id)
         if current is None:
             raise NotFound("Ticket not found.")
+        # Checked under the row lock, so two agents saving at once can't both pass.
+        if expected is not None and current["updated_at"] != expected:
+            raise Conflict(CHANGED_BY_SOMEONE_ELSE)
         new = {k: current[k] for k in ("subject", "status", "priority", "type_id", "team_id")}
         new |= {"assignee_id": current["assignee_id"], "reopen_count": current["reopen_count"]}
         new["fields"] = dict(current["fields"])

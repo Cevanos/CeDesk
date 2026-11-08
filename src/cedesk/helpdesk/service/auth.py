@@ -14,7 +14,7 @@ from cedesk.helpdesk.domain import auth as rules
 from cedesk.helpdesk.domain.auth import Caller
 from cedesk.helpdesk.domain.permissions import Role
 from cedesk.helpdesk.repo import auth as repo
-from cedesk.helpdesk.service import passwords
+from cedesk.helpdesk.service import passwords, seeds
 from cedesk.helpdesk.service.errors import Conflict, Invalid, NotSignedIn
 
 logger = logging.getLogger("cedesk.auth")
@@ -123,8 +123,10 @@ async def create_workspace(
     admin_email: str,
     admin_name: str,
     admin_password: str,
+    seed: bool = True,
 ) -> UUID:
-    """A new workspace with its first Admin. Used by the CLI and tests."""
+    """A new workspace with its first Admin and, unless `seed` is False, the default
+    teams and ticket types from the mock. Used by the CLI and tests."""
     slug = slug.strip().lower()
     if not SLUG.match(slug):
         raise Invalid("The workspace address uses 3-40 lowercase letters, digits or dashes.")
@@ -144,6 +146,8 @@ async def create_workspace(
                 role=Role.admin.value,
                 password_hash=passwords.hash_password(admin_password),
             )
+            if seed:
+                await seeds.apply(s, workspace_id)
     except IntegrityError as exc:
         raise Conflict("That workspace address is taken.") from exc
     return workspace_id

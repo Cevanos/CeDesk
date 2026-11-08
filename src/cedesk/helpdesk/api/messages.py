@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 from cedesk.helpdesk.api.deps import CallerDep, SessionmakerDep
 from cedesk.helpdesk.api.schemas import Body
 from cedesk.helpdesk.api.ticket_schemas import MessageOut, Text
+from cedesk.helpdesk.domain.paging import DEFAULT_LIMIT, MAX_LIMIT
 from cedesk.helpdesk.domain.tickets import label
 from cedesk.helpdesk.service import messages
 from cedesk.helpdesk.service.messages import MessageKind
@@ -41,6 +42,18 @@ class NotificationOut(BaseModel):
 class InboxOut(BaseModel):
     notifications: list[NotificationOut]
     unread: int
+    next_cursor: str | None = Field(description="Send as `cursor` for the next page.")
+
+
+class MessagePageOut(BaseModel):
+    messages: list[MessageOut] = Field(description="Newest first.")
+    next_cursor: str | None = Field(description="Send as `cursor` for older messages.")
+
+
+Cursor = Annotated[
+    str | None, Query(max_length=200, description="`next_cursor` from the previous page.")
+]
+Limit = Annotated[int, Query(ge=1, le=MAX_LIMIT)]
 
 
 @router.post(
@@ -60,6 +73,26 @@ async def post_message(
 
 
 @router.get(
+    "/tickets/{ticket_id}/messages",
+    response_model=MessagePageOut,
+    tags=["tickets"],
+    summary="A ticket's messages, newest first (to load older ones)",
+)
+async def list_messages(
+    ticket_id: UUID,
+    caller: CallerDep,
+    sm: SessionmakerDep,
+    cursor: Cursor = None,
+    limit: Limit = DEFAULT_LIMIT,
+) -> MessagePageOut:
+    page = await messages.ticket_messages(sm, caller, ticket_id, cursor=cursor, limit=limit)
+    return MessagePageOut(
+        messages=[MessageOut.model_validate(dict(m)) for m in page.messages],
+        next_cursor=page.next_cursor,
+    )
+
+
+@router.get(
     "/notifications",
     response_model=InboxOut,
     tags=["notifications"],
@@ -69,9 +102,10 @@ async def list_notifications(
     caller: CallerDep,
     sm: SessionmakerDep,
     unread: bool = False,
-    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    cursor: Cursor = None,
+    limit: Limit = DEFAULT_LIMIT,
 ) -> InboxOut:
-    box = await messages.inbox(sm, caller, unread_only=unread, limit=limit)
+    box = await messages.inbox(sm, caller, unread_only=unread, cursor=cursor, limit=limit)
     return InboxOut(
         notifications=[
             NotificationOut.model_validate(
@@ -83,6 +117,7 @@ async def list_notifications(
             for n in box.notifications
         ],
         unread=box.unread,
+        next_cursor=box.next_cursor,
     )
 
 

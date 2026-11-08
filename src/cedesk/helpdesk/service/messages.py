@@ -6,10 +6,12 @@ work); a note is for the team only. Neither changes the ticket's status (T17).
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+from datetime import datetime
 from enum import StrEnum
 from uuid import UUID
 
 from cedesk.db import workspace_session
+from cedesk.helpdesk.domain import paging
 from cedesk.helpdesk.domain.auth import Caller
 from cedesk.helpdesk.domain.permissions import Action
 from cedesk.helpdesk.domain.placeholders import render
@@ -37,6 +39,22 @@ _STORED_KIND = {MessageKind.reply: "agent", MessageKind.note: "note"}
 class Inbox:
     notifications: Sequence[Row]
     unread: int
+    next_cursor: str | None = None
+
+
+@dataclass(frozen=True)
+class MessagePage:
+    messages: Sequence[Row]  # newest first
+    next_cursor: str | None
+
+
+def _after(cursor: str | None, kind: str) -> tuple[datetime, UUID] | None:
+    if not cursor:
+        return None
+    try:
+        return paging.decode_time(cursor, kind)
+    except paging.CursorError as exc:
+        raise Invalid(str(exc)) from exc
 
 
 async def post_message(
@@ -110,11 +128,43 @@ async def post_message(
     return row
 
 
-async def inbox(sm: Sessionmaker, caller: Caller, *, unread_only: bool, limit: int) -> Inbox:
+async def inbox(
+    sm: Sessionmaker,
+    caller: Caller,
+    *,
+    unread_only: bool,
+    cursor: str | None = None,
+    limit: int = paging.DEFAULT_LIMIT,
+) -> Inbox:
+    """The caller's notifications, newest first, a page at a time."""
+    before = _after(cursor, "notification")
     async with workspace_session(sm, caller.workspace_id) as s:
-        rows = await repo.notifications(s, caller.member_id, unread_only=unread_only, limit=limit)
+        rows = await repo.notifications(
+            s, caller.member_id, unread_only=unread_only, before=before, limit=limit + 1
+        )
         unread = await repo.unread_count(s, caller.member_id)
-    return Inbox(notifications=rows, unread=unread)
+    page, next_cursor = paging.time_page(rows, limit, "notification")
+    return Inbox(notifications=page, unread=unread, next_cursor=next_cursor)
+
+
+async def ticket_messages(
+    sm: Sessionmaker,
+    caller: Caller,
+    ticket_id: UUID,
+    *,
+    cursor: str | None = None,
+    limit: int = paging.DEFAULT_LIMIT,
+) -> MessagePage:
+    """A ticket's messages, newest first, a page at a time (the ticket itself shows the
+    latest page; this loads older ones)."""
+    require(caller, Action.read_ticket)
+    before = _after(cursor, "message")
+    async with workspace_session(sm, caller.workspace_id) as s:
+        if await tickets.ticket_detail(s, ticket_id) is None:
+            raise NotFound("Ticket not found.")
+        rows = await tickets.messages(s, ticket_id, before=before, limit=limit + 1)
+    page, next_cursor = paging.time_page(rows, limit, "message")
+    return MessagePage(messages=page, next_cursor=next_cursor)
 
 
 async def mark_read(sm: Sessionmaker, caller: Caller, notification_id: UUID) -> None:

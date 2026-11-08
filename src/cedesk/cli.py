@@ -45,6 +45,7 @@ def _create_workspace(args: argparse.Namespace) -> int:
                 admin_email=args.admin_email,
                 admin_name=args.admin_name,
                 admin_password=password,
+                seed=not args.no_seed,
             )
         finally:
             await engine.dispose()
@@ -89,6 +90,11 @@ def main(argv: list[str] | None = None) -> int:
     create.add_argument("--slug", required=True, help="Sign-in address, e.g. 'acme'")
     create.add_argument("--admin-email", required=True)
     create.add_argument("--admin-name", required=True)
+    create.add_argument(
+        "--no-seed",
+        action="store_true",
+        help="Start empty, without the default teams and ticket types",
+    )
     args = parser.parse_args(argv)
 
     if args.command == "serve":

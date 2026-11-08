@@ -133,6 +133,7 @@ async def test_note_mentions_notify_the_mentioned_member(
     assert ok(await client.get("/api/v1/notifications?unread=true", headers=w["neha"])) == {
         "notifications": [],
         "unread": 0,
+        "next_cursor": None,
     }
 
     ok(
