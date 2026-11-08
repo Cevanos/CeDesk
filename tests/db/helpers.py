@@ -12,7 +12,8 @@ PASSWORD = "correct-horse-battery"
 Sm = async_sessionmaker[AsyncSession]
 
 
-async def new_workspace(sm: Sm) -> str:
+async def new_workspace(sm: Sm, *, seed: bool = False) -> str:
+    """An empty workspace by default, so each test sets up exactly what it needs."""
     slug = f"ws-{uuid4().hex[:10]}"
     await create_workspace(
         sm,
@@ -21,6 +22,7 @@ async def new_workspace(sm: Sm) -> str:
         admin_email="Admin@Example.com",
         admin_name="Admin",
         admin_password=PASSWORD,
+        seed=seed,
     )
     return slug
 

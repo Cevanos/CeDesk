@@ -1,6 +1,7 @@
 """SQL for mentions, notifications and a ticket's reply clock. Run inside a `workspace_session`."""
 
 from collections.abc import Sequence
+from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import RowMapping, text
@@ -76,17 +77,26 @@ async def get_message(session: AsyncSession, message_id: UUID) -> Row | None:
 
 
 async def notifications(
-    session: AsyncSession, member_id: UUID, *, unread_only: bool, limit: int
+    session: AsyncSession,
+    member_id: UUID,
+    *,
+    unread_only: bool,
+    before: tuple[datetime, UUID] | None = None,
+    limit: int,
 ) -> Sequence[Row]:
+    """Newest first, starting after `before` (the last row of the previous page)."""
+    at, row_id = before if before else (None, None)
     result = await session.execute(
         text(
             "SELECT n.id, n.kind, n.text, n.ticket_id, t.number AS ticket_number, "
             "n.read_at, n.created_at "
             "FROM hd_notification n LEFT JOIN hd_ticket t ON t.id = n.ticket_id "
             "WHERE n.member_id = :me AND (NOT :unread OR n.read_at IS NULL) "
-            "ORDER BY n.created_at DESC, n.id LIMIT :limit"
+            "AND (CAST(:at AS timestamptz) IS NULL "
+            "     OR (n.created_at, n.id) < (CAST(:at AS timestamptz), CAST(:row AS uuid))) "
+            "ORDER BY n.created_at DESC, n.id DESC LIMIT :limit"
         ),
-        {"me": member_id, "unread": unread_only, "limit": limit},
+        {"me": member_id, "unread": unread_only, "at": at, "row": row_id, "limit": limit},
     )
     return result.mappings().all()
 

@@ -190,7 +190,11 @@ class TicketOut(TicketRowOut):
     first_reply_at: datetime | None
     reopen_count: int
     contact: ContactCard
-    messages: list[MessageOut]
+    messages: list[MessageOut] = Field(description="The latest 50 messages, oldest to newest.")
+    older_messages_cursor: str | None = Field(
+        description="Send as `cursor` to GET /tickets/{id}/messages for older messages; "
+        "null when every message is shown."
+    )
 
 
 class Counts(BaseModel):
@@ -202,4 +206,32 @@ class Counts(BaseModel):
 class TicketListOut(BaseModel):
     tickets: list[TicketRowOut]
     counts: Counts = Field(description="Per status, ignoring the other filters (for the tabs).")
-    next_offset: int | None
+    next_cursor: str | None = Field(
+        description="Send as `cursor`, with the same filters and sort, for the next page. "
+        "null on the last page."
+    )
+
+
+class ContactPatch(Body):
+    """Send only what changes."""
+
+    name: Name | None = None
+    vip: bool | None = None
+
+    @model_validator(mode="after")
+    def no_nulls(self) -> Self:
+        for name in self.model_fields_set:
+            if getattr(self, name) is None:
+                raise ValueError(f"{name} can't be null")
+        return self
+
+
+class ContactProfileOut(ContactOut):
+    customer_since: datetime
+    ticket_count: int
+
+
+class ContactTicketsOut(BaseModel):
+    contact: ContactProfileOut
+    tickets: list[TicketRowOut] = Field(description="Newest first.")
+    next_cursor: str | None
