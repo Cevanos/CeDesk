@@ -15,7 +15,8 @@ cp .env.example .env
 uv run cedesk migrate        # apply migrations as cedesk_owner
 uv run cedesk prune-sessions # delete sign-in sessions that ended over 7 days ago (run daily)
 uv run cedesk create-workspace --name "Acme Support" --slug acme \
-    --admin-email you@example.com --admin-name "Your Name"   # asks for the password
+    --admin-email you@example.com --admin-name "Your Name"   # asks for the password;
+    # starts with the mock's teams (Billing, Shipping, Tech) and 5 ticket types; --no-seed for none
 uv run cedesk serve --reload # API on http://127.0.0.1:8100, docs at /docs
 ```
 
@@ -67,6 +68,22 @@ Every error, whatever its status, has one shape:
 | 500 | `Internal` | Unexpected; details are logged, not returned |
 
 `details` appears only on request validation errors.
+
+## Lists and concurrent edits
+
+- **Cursor pages.** Tickets, a ticket's messages, notifications and members return
+  `next_cursor`; send it back as `cursor`, with the same filters and `sort`, for the next
+  page (`null` on the last page). `limit` is 1–200, default 50. A row added while paging
+  never makes a row repeat.
+- **Long tickets.** `GET /tickets/{id}` shows the latest 50 messages, oldest to newest,
+  with `older_messages_cursor`; `GET /tickets/{id}/messages?cursor=…` loads older ones
+  (newest first).
+- **Ticket sort.** `sort=priority` (default: Open and Pending most urgent first, then
+  oldest; Resolved last, newest first), `newest`, `oldest`, or `updated`.
+- **If-Match.** Ticket responses carry an `ETag` (the ticket's `updated_at`). Send it as
+  `If-Match` on `PATCH /tickets/{id}` or `POST /tickets/{id}/resolve`; if anyone changed
+  the ticket since, the request gets 409 and nothing is saved. Without the header the
+  last save wins.
 
 ## Standalone, and how Cevanos connects
 

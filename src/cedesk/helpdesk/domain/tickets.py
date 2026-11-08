@@ -4,7 +4,11 @@ import math
 import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from datetime import datetime
 from enum import StrEnum
+
+from cedesk.helpdesk.domain import paging
+from cedesk.helpdesk.domain.paging import CursorError
 
 
 class Status(StrEnum):
@@ -27,6 +31,16 @@ class Channel(StrEnum):
     api = "api"
     chat = "chat"
     phone = "phone"
+
+
+class Sort(StrEnum):
+    """Ticket list orders. `priority`: Open and Pending most urgent first, then oldest;
+    Resolved after them, newest resolved first (T9; SLA time left joins when SLA lands)."""
+
+    priority = "priority"
+    newest = "newest"
+    oldest = "oldest"
+    updated = "updated"  # most recently changed first
 
 
 class FieldKind(StrEnum):
@@ -194,3 +208,55 @@ def number_in_query(q: str) -> int | None:
 
 def title(value: str) -> str:
     return value.replace("_", " ").capitalize()
+
+
+# Cursor pagination (md 2B). The list query turns every sort into four ascending keys
+# (see repo.tickets), so "the rows after this one" is a single row comparison. The cursor
+# is those keys for the last row returned, plus the sort they belong to.
+
+CursorKeys = tuple[int, int, str, int]
+_DECIMAL = re.compile(r"^-?\d{1,20}(?:\.\d{1,12})?$")
+
+
+def encode_cursor(sort: Sort, keys: CursorKeys) -> str:
+    return paging.encode([sort.value, *keys])
+
+
+def decode_cursor(cursor: str, sort: Sort) -> CursorKeys:
+    value = paging.decode(cursor)
+    if len(value) != 5:
+        raise CursorError("This cursor is not valid.")
+    name, k1, k2, k3, k4 = value
+    if name != sort.value:
+        raise CursorError("This cursor belongs to another sort order.")
+    if type(k1) is not int or type(k2) is not int or type(k4) is not int:
+        raise CursorError("This cursor is not valid.")
+    if not isinstance(k3, str) or not _DECIMAL.match(k3):
+        raise CursorError("This cursor is not valid.")
+    return k1, k2, k3, k4
+
+
+# If-Match (md 2B): the client sends back the ticket's `updated_at` (the ETag) and the
+# change is refused with 409 if the ticket changed since it was read.
+
+
+def etag(updated_at: datetime) -> str:
+    return f'"{updated_at.isoformat()}"'
+
+
+def parse_if_match(header: str) -> datetime | None:
+    """The version a client expects, or None for `*` (any version). Accepts the ETag with
+    or without quotes, weak or not."""
+    value = header.strip()
+    if value == "*":
+        return None
+    if value.startswith("W/"):
+        value = value[2:]
+    value = value.strip().strip('"')
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError as exc:
+        raise FieldError("If-Match must be the ticket's ETag (its updated_at).") from exc
+    if parsed.tzinfo is None:
+        raise FieldError("If-Match must include the time zone, as the ETag does.")
+    return parsed
