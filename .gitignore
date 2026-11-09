@@ -11,4 +11,5 @@ dist/
 build/
 .coverage
 htmlcov/
-storage/
+# Uploaded files with CEDESK_STORAGE_DRIVER=local; the leading / keeps src/cedesk/storage/ tracked.
+/storage/
