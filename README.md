@@ -94,6 +94,12 @@ Every error, whatever its status, has one shape:
   (target p95 under 300 ms; measured about 10–60 ms for lists, 120 ms at most for search).
   It leaves the `bench-…` workspace behind.
 
+## Agents
+
+- A new agent starts **Offline** and gets no tickets until they set themselves Available
+  (`PUT /api/v1/me/status`) or an Admin does (`PATCH /api/v1/agents/{id}/routing`).
+  Light agents have no status and are never routed.
+
 ## Events, logs and the API file
 
 - **Outbox.** Every ticket change writes its events to `hd_outbox` in the same

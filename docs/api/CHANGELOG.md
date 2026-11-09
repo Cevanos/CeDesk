@@ -3,6 +3,15 @@
 `openapi.json` next to this file is the API as served (`uv run cedesk openapi`). Every
 route is under `/api/v1`. Breaking changes only come in v2 (md 2B). Newest first.
 
+## 2026-11-09: new agents start Offline
+
+- A member added from now on starts with agent status `offline` and gets no tickets
+  until they set `available` (`PUT /me/status`) or an Admin does
+  (`PATCH /agents/{id}/routing`). Members who existed before keep `available`.
+- Moving a resolved ticket to another team keeps its assignee; it is no longer routed.
+- Confirmed as final: routes under `/api/v1`; errors as
+  `{"error": {code, message, details?}}`.
+
 ## 2026-11-09: ticket attachments
 
 - New: `POST /tickets/{id}/attachments?name=...` with the file itself as the body and its

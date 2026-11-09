@@ -272,3 +272,28 @@ async def test_team_limit_is_1_to_50(client: AsyncClient, app_sessionmaker: Sm) 
         ]
         == 50
     )
+
+
+async def test_new_agents_start_offline(client: AsyncClient, app_sessionmaker: Sm) -> None:
+    """Decision 14.5 #4: a new agent gets no tickets until they switch themselves on."""
+    slug = await new_workspace(app_sessionmaker)
+    token = await sign_in(client, slug, "admin@example.com")
+    admin = bearer(token)
+    dev = await add(client, token, "dev@example.com", "agent", "Dev", available=False)
+    team = ok(
+        await client.post(
+            "/api/v1/teams", headers=admin, json={"name": "Billing", "member_ids": [dev]}
+        ),
+        201,
+    )
+    agents = {a["name"]: a for a in ok(await client.get("/api/v1/agents", headers=admin))}
+    assert agents["Dev"]["status"] == "offline"
+
+    w = {"admin": admin, "team": team}
+    t = await new_ticket(client, w)
+    assert t["assignee_id"] is None
+    assert "Dev is Offline" in last_line(t)
+
+    me = bearer(await sign_in(client, slug, "dev@example.com"))
+    ok(await client.put("/api/v1/me/status", headers=me, json={"status": "available"}))
+    assert (await new_ticket(client, w))["assignee_name"] == "Dev"
