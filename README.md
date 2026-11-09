@@ -110,6 +110,22 @@ Every error, whatever its status, has one shape:
   lists what changed. After changing a route or schema run `uv run cedesk openapi` and
   add a changelog line; a test fails while the file is out of date.
 
+## Files
+
+One setting picks where uploaded files live, `CEDESK_STORAGE_DRIVER`:
+
+- `local` (default): a folder, `CEDESK_STORAGE_LOCAL_PATH` (`storage/`, ignored by git).
+  Back it up with the database.
+- `s3`: AWS S3 or any S3-compatible service (MinIO, Cloudflare R2, Spaces, Wasabi, B2):
+  `CEDESK_STORAGE_S3_BUCKET`, plus `..._ENDPOINT_URL` and `..._PATH_STYLE=true` for MinIO.
+  Without keys it uses the server's AWS role. See `.env.example`.
+
+A file is stored under `<workspace>/<ticket>/<file id>`, never under its own name. Downloads
+use a link that works without signing in for 5 minutes (`CEDESK_DOWNLOAD_LINK_SECONDS`):
+S3 presigns it, local disk signs it with `CEDESK_SECRET_KEY`. Files are capped at 25 MB
+(`CEDESK_ATTACHMENT_MAX_BYTES`). `scan_status` is where a virus scanner plugs in; an
+`infected` file is never handed out.
+
 ## Standalone, and how Cevanos connects
 
 CeDesk is its own service with its own database, sign-in and deployment. It never imports
@@ -140,6 +156,7 @@ src/cedesk/
   settings.py    CEDESK_* environment settings
   db.py          engine and workspace_session (sets the RLS workspace)
   tenancy.py     RLS statements for tenant tables
+  storage/       where uploaded files live: local disk or S3 (one setting)
   helpdesk/
     api/         routers
     service/     use cases
