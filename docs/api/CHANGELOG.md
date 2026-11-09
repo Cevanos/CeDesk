@@ -3,7 +3,7 @@
 `openapi.json` next to this file is the API as served (`uv run cedesk openapi`). Every
 route is under `/api/v1`. Breaking changes only come in v2 (md 2B). Newest first.
 
-## 2026-11-08: new agents start Offline
+## 2026-11-09: new agents start Offline
 
 - A member added from now on starts with agent status `offline` and gets no tickets
   until they set `available` (`PUT /me/status`) or an Admin does
@@ -11,6 +11,19 @@ route is under `/api/v1`. Breaking changes only come in v2 (md 2B). Newest first
 - Moving a resolved ticket to another team keeps its assignee; it is no longer routed.
 - Confirmed as final: routes under `/api/v1`; errors as
   `{"error": {code, message, details?}}`.
+
+## 2026-11-09: ticket attachments
+
+- New: `POST /tickets/{id}/attachments?name=...` with the file itself as the body and its
+  type in `Content-Type` (not a form). 413 above the limit (25 MB by default), 422 for an
+  empty file or a form upload.
+- New: `GET /tickets/{id}/attachments` (cursor pages, newest first).
+- New: `GET /attachments/{id}` returns `{url, expires_at, attachment}`: a link that opens
+  the file without signing in for 5 minutes (configurable). 409 if the virus scan marked
+  the file infected.
+- New: `GET /files/{token}`, the download behind that link when files are on local disk.
+  404 for a changed link, 410 for an expired one. Always downloads (`attachment`), never
+  opens in the browser.
 
 ## 2026-11-08: search, list speed, ticket columns, outbox, logs
 

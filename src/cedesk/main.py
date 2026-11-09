@@ -18,6 +18,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from cedesk import logs
 from cedesk.db import make_engine, make_sessionmaker
+from cedesk.helpdesk.api import attachments as attachments_api
 from cedesk.helpdesk.api import auth as auth_api
 from cedesk.helpdesk.api import catalog as catalog_api
 from cedesk.helpdesk.api import members as members_api
@@ -26,6 +27,7 @@ from cedesk.helpdesk.api import routing as routing_api
 from cedesk.helpdesk.api import tickets as tickets_api
 from cedesk.helpdesk.service.errors import ServiceError
 from cedesk.settings import Settings, get_settings
+from cedesk.storage import make_store
 
 logger = logging.getLogger("cedesk")
 READY_TIMEOUT_SECONDS = 2.0
@@ -97,6 +99,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         lifespan=lifespan,
     )
     app.state.settings = settings
+    # Built now, so a storage setting that is missing stops the app at start-up.
+    app.state.store = make_store(settings)
 
     @app.middleware("http")
     async def request_log(request: Request, call_next: Any) -> Response:
@@ -176,6 +180,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(catalog_api.router, prefix="/api/v1")
     app.include_router(messages_api.router, prefix="/api/v1")
     app.include_router(routing_api.router, prefix="/api/v1")
+    app.include_router(attachments_api.router, prefix="/api/v1")
 
     @app.get("/healthz", tags=["health"], summary="The process is up")
     async def healthz() -> dict[str, str]:

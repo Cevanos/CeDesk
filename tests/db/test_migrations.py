@@ -22,10 +22,10 @@ def test_downgrade_to_base_and_back_up(migrated_db: None) -> None:
     command.upgrade(cfg, "head")
 
 
-async def test_members_from_before_0011_stay_available(
+async def test_members_from_before_0012_stay_available(
     app_sessionmaker: Any, owner_engine: Any
 ) -> None:
-    """0011 makes new agents start Offline; members who existed before keep routing as
+    """0012 makes new agents start Offline; members who existed before keep routing as
     Available (a forced-RLS table once hid them from this copy)."""
     import asyncio
 
@@ -35,7 +35,7 @@ async def test_members_from_before_0011_stay_available(
 
     cfg = alembic_config()
     try:
-        await asyncio.to_thread(command.downgrade, cfg, "0010")
+        await asyncio.to_thread(command.downgrade, cfg, "0011")
         await new_workspace(app_sessionmaker)  # its Admin has no routing row yet
         await asyncio.to_thread(command.upgrade, cfg, "head")
     finally:
