@@ -69,9 +69,7 @@ class S3Store:
     async def delete(self, key: str) -> None:
         await asyncio.to_thread(self._client.delete_object, Bucket=self.bucket, Key=check_key(key))
 
-    async def download_url(
-        self, key: str, *, name: str, content_type: str, expires_in: int
-    ) -> str:
+    async def download_url(self, key: str, *, name: str, content_type: str, expires_in: int) -> str:
         # A thread too: the first signing may fetch credentials from the instance role.
         url: str = await asyncio.to_thread(
             self._client.generate_presigned_url,
