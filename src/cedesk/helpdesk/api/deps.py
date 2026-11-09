@@ -10,6 +10,7 @@ from cedesk.helpdesk.domain.auth import Caller
 from cedesk.helpdesk.service import auth
 from cedesk.helpdesk.service.auth import Sessionmaker
 from cedesk.helpdesk.service.errors import NotSignedIn
+from cedesk.storage import ObjectStore
 
 _bearer = HTTPBearer(auto_error=False, description="The token from POST /api/v1/auth/sign-in.")
 
@@ -20,6 +21,14 @@ def get_sessionmaker(request: Request) -> Sessionmaker:
 
 
 SessionmakerDep = Annotated[Sessionmaker, Depends(get_sessionmaker)]
+
+
+def get_store(request: Request) -> ObjectStore:
+    store: ObjectStore = request.app.state.store
+    return store
+
+
+StoreDep = Annotated[ObjectStore, Depends(get_store)]
 
 
 async def get_caller(
