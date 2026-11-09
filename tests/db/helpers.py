@@ -40,7 +40,17 @@ def bearer(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
-async def add(c: AsyncClient, admin: str, email: str, role: str, name: str | None = None) -> str:
+async def add(
+    c: AsyncClient,
+    admin: str,
+    email: str,
+    role: str,
+    name: str | None = None,
+    *,
+    available: bool = True,
+) -> str:
+    """Adds a member. New agents start Offline; by default this switches them to
+    Available, as an agent does when they start work, so routing can pick them."""
     r = await c.post(
         "/api/v1/members",
         headers=bearer(admin),
@@ -48,6 +58,13 @@ async def add(c: AsyncClient, admin: str, email: str, role: str, name: str | Non
     )
     assert r.status_code == 201, r.text
     member_id: str = r.json()["id"]
+    if available and role != "light_agent":
+        r = await c.patch(
+            f"/api/v1/agents/{member_id}/routing",
+            headers=bearer(admin),
+            json={"status": "available"},
+        )
+        assert r.status_code == 200, r.text
     return member_id
 
 

@@ -14,9 +14,9 @@ CAP_COLUMNS = ("cap_email", "cap_chat", "cap_messaging")
 
 # Each cap is the agent's own limit, else the workspace default, else the md default
 # (`:d_email` and friends, from `DEFAULT_CAPS`). A member with no hd_agent_state row
-# is available on every channel.
+# is Offline (decision 14.5 #4: new agents start Offline) with every channel on.
 _STATE = """
-    coalesce(s.status, 'available') AS status,
+    coalesce(s.status, 'offline') AS status,
     coalesce(s.channels, '{email,chat,messaging}') AS channels,
     coalesce(s.cap_email, d.cap_email, CAST(:d_email AS integer)) AS cap_email,
     coalesce(s.cap_chat, d.cap_chat, CAST(:d_chat AS integer)) AS cap_chat,

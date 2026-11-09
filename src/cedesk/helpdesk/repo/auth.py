@@ -66,13 +66,26 @@ async def insert_member(
     return result.mappings().one()
 
 
+_LOGIN = (
+    "SELECT id, role, password_hash, is_active, failed_logins, locked_until "
+    "FROM member WHERE email = :email"
+)
+
+
 async def member_for_login(session: AsyncSession, email: str) -> Row | None:
+    """Read without a lock: the slow password check runs before any row is locked."""
+    result = await session.execute(text(_LOGIN), {"email": email})
+    return result.mappings().first()
+
+
+async def lock_member_for_login(session: AsyncSession, member_id: UUID) -> Row | None:
+    """The same row, locked, only to save the result of a sign-in."""
     result = await session.execute(
         text(
             "SELECT id, role, password_hash, is_active, failed_logins, locked_until "
-            "FROM member WHERE email = :email FOR UPDATE"
+            "FROM member WHERE id = :id FOR UPDATE"
         ),
-        {"email": email},
+        {"id": member_id},
     )
     return result.mappings().first()
 

@@ -260,8 +260,9 @@ async def _create(sm: Sessionmaker, caller: Caller, new: NewTicket, tags: list[s
                 "source_id": new.source_id,
             },
         )
+        first_message: UUID | None = None
         if new.description:
-            await repo.insert_message(
+            first_message = await repo.insert_message(
                 s,
                 workspace_id=caller.workspace_id,
                 ticket_id=ticket_id,
@@ -292,6 +293,9 @@ async def _create(sm: Sessionmaker, caller: Caller, new: NewTicket, tags: list[s
                 )
         view = await _view(s, ticket_id)
         await _emit(s, caller, view.ticket, events.Event.ticket_created)
+        if first_message is not None:
+            await _emit(s, caller, view.ticket, events.Event.message_created,
+                        events.message(first_message, "customer", None))  # fmt: skip
         if view.ticket["assignee_id"] is not None:
             by = caller.member_id if new.assignee_id is not None else None  # None: routing
             await _emit(s, caller, view.ticket, events.Event.assignment_changed,
@@ -571,8 +575,17 @@ async def change_ticket(
             lines.append(f"Assigned to {name} by {who}" if name else f"Unassigned by {who}")
 
         routed_to: UUID | None = None
+        rerouted = False  # routing chose the assignee (an event's `by` is then null)
         moved_team = "team_id" in changes and changes["team_id"] != current["team_id"]
-        if moved_team and new["team_id"] is not None and "assignee_id" not in changes:
+        # A resolved ticket keeps the person who resolved it: routing it again would hand a
+        # closed ticket to someone else and spend their round-robin turn.
+        resolved = new["status"] == Status.resolved.value
+        if (
+            moved_team
+            and new["team_id"] is not None
+            and "assignee_id" not in changes
+            and not resolved
+        ):
             # Re-routing replaces the assignee, so taking a ticket away from someone else
             # needs the same right as reassigning it directly (B1). Routing an unassigned
             # ticket, or the caller's own, is the system's choice, as on create.
@@ -586,6 +599,7 @@ async def change_ticket(
                 type_id=new["type_id"],
             )
             routed_to = pick.agent.member_id if pick.agent else None
+            rerouted = True
             new["assignee_id"] = routed_to
             lines.append(pick.line)
 
@@ -608,8 +622,7 @@ async def change_ticket(
             await _tell_assignee(s, caller, ticket_id, routed_to, current["number"], new["subject"])
         view = await _view(s, ticket_id)
         if lines:
-            routed = moved_team and new["team_id"] is not None and "assignee_id" not in changes
-            actor = None if routed else caller.member_id
+            actor = None if rerouted else caller.member_id
             for event, extra in events.after_change(current, new, actor):
                 await _emit(s, caller, view.ticket, event, extra)
         return view

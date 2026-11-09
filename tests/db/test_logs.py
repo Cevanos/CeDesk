@@ -73,3 +73,14 @@ def test_only_known_keys_reach_a_line() -> None:
     record.ticket_id = "t-1"
     line = json.loads(logs.JsonFormatter().format(record))
     assert "body" not in line and line["ticket_id"] == "t-1"
+
+
+async def test_values_from_bad_urls_stay_out_of_logs(client: AsyncClient, lines: Any) -> None:
+    assert (await client.get("/api/v1/customers/jane.doe@example.com")).status_code == 404
+    r = await client.get("/api/v1/tickets/jane.doe@example.com")
+    assert r.status_code in (401, 422)
+    requests = [x for x in lines() if x["msg"] == "request"][-2:]
+    assert requests[0]["route"] == "(unmatched)"
+    assert requests[1]["route"] == "/api/v1/tickets/{ticket_id}"
+    assert "ticket_id" not in requests[1]
+    assert "jane" not in "\n".join(map(str, lines()))
