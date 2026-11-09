@@ -25,5 +25,13 @@ class Conflict(ServiceError):
     status = 409
 
 
+class Gone(ServiceError):
+    status = 410
+
+
+class TooLarge(ServiceError):
+    status = 413
+
+
 class Invalid(ServiceError):
     status = 422
