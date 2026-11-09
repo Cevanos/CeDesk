@@ -25,9 +25,7 @@ class ObjectStore(Protocol):
         """Deleting a missing key is not an error."""
         ...
 
-    async def download_url(
-        self, key: str, *, name: str, content_type: str, expires_in: int
-    ) -> str:
+    async def download_url(self, key: str, *, name: str, content_type: str, expires_in: int) -> str:
         """A link that downloads the object as `name` without signing in, for `expires_in`
         seconds. Absolute for S3; a path under this API for local disk."""
         ...

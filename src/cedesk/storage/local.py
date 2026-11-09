@@ -58,9 +58,7 @@ class LocalStore:
     async def delete(self, key: str) -> None:
         await asyncio.to_thread(self.path(key).unlink, missing_ok=True)
 
-    async def download_url(
-        self, key: str, *, name: str, content_type: str, expires_in: int
-    ) -> str:
+    async def download_url(self, key: str, *, name: str, content_type: str, expires_in: int) -> str:
         link = links.FileLink(
             key=check_key(key),
             name=name,
