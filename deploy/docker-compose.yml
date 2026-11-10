@@ -1,0 +1,79 @@
+# CeDesk on one server: Postgres, a one-off migration, the API, and Caddy for HTTPS.
+# Only Caddy is reachable from outside (80, 443); the database and the API are not.
+# Usage (from this folder): cp env.example .env, fill it in, then `docker compose up -d --build`.
+name: cedesk
+
+services:
+  db:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in deploy/.env}
+      POSTGRES_DB: cedesk
+      CEDESK_OWNER_PASSWORD: ${CEDESK_OWNER_PASSWORD:?set CEDESK_OWNER_PASSWORD in deploy/.env}
+      CEDESK_APP_PASSWORD: ${CEDESK_APP_PASSWORD:?set CEDESK_APP_PASSWORD in deploy/.env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ../infra/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d cedesk"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  migrate:
+    build: ..
+    command: ["uv", "run", "--no-sync", "cedesk", "migrate"]
+    restart: "no"
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      CEDESK_ENV: ${CEDESK_ENV:-staging}
+      CEDESK_MIGRATION_DATABASE_URL: postgresql+asyncpg://cedesk_owner:${CEDESK_OWNER_PASSWORD}@db:5432/cedesk
+
+  api:
+    build: ..
+    restart: unless-stopped
+    # Behind Caddy: take the client's address from X-Forwarded-For (Caddy replaces any
+    # value the client sent), so the sign-in limit counts real addresses.
+    command: ["uv", "run", "--no-sync", "uvicorn", "cedesk.main:app", "--host", "0.0.0.0",
+              "--port", "8100", "--proxy-headers", "--forwarded-allow-ips", "*"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      CEDESK_ENV: ${CEDESK_ENV:-staging}
+      CEDESK_DATABASE_URL: postgresql+asyncpg://cedesk_app:${CEDESK_APP_PASSWORD}@db:5432/cedesk
+      CEDESK_SECRET_KEY: ${CEDESK_SECRET_KEY:?set CEDESK_SECRET_KEY in deploy/.env}
+      CEDESK_CORS_ORIGINS: ${CEDESK_CORS_ORIGINS:-}
+      CEDESK_STORAGE_LOCAL_PATH: /data/storage
+    volumes:
+      - files:/data/storage
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8100/readyz')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  caddy:
+    image: caddy:2.8.4
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      CEDESK_SITE: ${CEDESK_SITE:-:80}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  pgdata:
+  files:
+  caddy_data:
+  caddy_config:

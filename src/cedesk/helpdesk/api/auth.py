@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, status
 
-from cedesk.helpdesk.api.deps import CallerDep, SessionmakerDep
+from cedesk.helpdesk.api.deps import AttemptLimit, CallerDep, SessionmakerDep
 from cedesk.helpdesk.api.schemas import (
     ChangePasswordBody,
     MemberOut,
@@ -20,7 +20,11 @@ router = APIRouter(tags=["sign-in"])
     "/auth/sign-in",
     response_model=SignedInOut,
     summary="Sign in with workspace address, email and password",
-    responses={401: {"description": "The details did not match (same answer for every reason)"}},
+    responses={
+        401: {"description": "The details did not match (same answer for every reason)"},
+        429: {"description": "Too many attempts from this address; see Retry-After"},
+    },
+    dependencies=[AttemptLimit],
 )
 async def sign_in(body: SignInBody, sm: SessionmakerDep) -> SignedInOut:
     signed = await auth.sign_in(
@@ -56,7 +60,9 @@ async def me(caller: CallerDep, sm: SessionmakerDep) -> MeOut:
         403: {"description": "Locked after too many wrong passwords"},
         409: {"description": "The password was changed elsewhere meanwhile"},
         422: {"description": "Current password not right, or the new one is not allowed"},
+        429: {"description": "Too many attempts from this address; see Retry-After"},
     },
+    dependencies=[AttemptLimit],
 )
 async def change_my_password(
     body: ChangePasswordBody, caller: CallerDep, sm: SessionmakerDep

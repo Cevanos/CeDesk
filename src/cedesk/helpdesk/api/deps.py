@@ -9,7 +9,7 @@ from cedesk import logs
 from cedesk.helpdesk.domain.auth import Caller
 from cedesk.helpdesk.service import auth
 from cedesk.helpdesk.service.auth import Sessionmaker
-from cedesk.helpdesk.service.errors import NotSignedIn
+from cedesk.helpdesk.service.errors import NotSignedIn, TooManyAttempts
 from cedesk.storage import ObjectStore
 
 _bearer = HTTPBearer(auto_error=False, description="The token from POST /api/v1/auth/sign-in.")
@@ -43,3 +43,16 @@ async def get_caller(
 
 
 CallerDep = Annotated[Caller, Depends(get_caller)]
+
+
+def limit_attempts(request: Request) -> None:
+    """Sign-in and password-change attempts per client IP (429 with Retry-After)."""
+    ip = request.client.host if request.client else "unknown"
+    wait = request.app.state.attempts.hit(ip)
+    if wait is not None:
+        raise TooManyAttempts(
+            f"Too many attempts from this address. Try again in {wait} seconds.", wait
+        )
+
+
+AttemptLimit = Depends(limit_attempts)
