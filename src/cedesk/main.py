@@ -18,10 +18,12 @@ from sqlalchemy.exc import DBAPIError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from cedesk import logs
+from cedesk.cevanos_client import make_cevanos
 from cedesk.db import make_engine, make_sessionmaker
 from cedesk.helpdesk.api import attachments as attachments_api
 from cedesk.helpdesk.api import auth as auth_api
 from cedesk.helpdesk.api import catalog as catalog_api
+from cedesk.helpdesk.api import cevanos as cevanos_api
 from cedesk.helpdesk.api import email as email_api
 from cedesk.helpdesk.api import email_in as email_in_api
 from cedesk.helpdesk.api import macros as macros_api
@@ -49,6 +51,7 @@ HTTP_CODES = {
     409: "Conflict",
     422: "Invalid",
     429: "TooManyAttempts",
+    503: "Unavailable",
 }
 # A caller's X-Request-ID is reused only when it looks like an id, never free text.
 REQUEST_ID = re.compile(r"^[A-Za-z0-9._-]{8,64}$")
@@ -116,6 +119,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.settings = settings
     # Built now, so a storage setting that is missing stops the app at start-up.
     app.state.store = make_store(settings)
+    app.state.cevanos = make_cevanos(settings)  # the connector; each workspace's key is in the db
     app.state.attempts = SlidingWindowLimiter(
         settings.sign_in_limit, settings.sign_in_window_seconds
     )
@@ -209,6 +213,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.include_router(auth_api.router, prefix="/api/v1")
     app.include_router(members_api.router, prefix="/api/v1")
+    # Before tickets: `/tickets/from-conversation/{id}` must not be read as a ticket id.
+    app.include_router(cevanos_api.router, prefix="/api/v1")
     app.include_router(tickets_api.router, prefix="/api/v1")
     app.include_router(catalog_api.router, prefix="/api/v1")
     app.include_router(messages_api.router, prefix="/api/v1")

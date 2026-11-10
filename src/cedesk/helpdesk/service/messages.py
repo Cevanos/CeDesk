@@ -1,7 +1,8 @@
 """Agent replies, private notes with @mentions, and each member's notifications.
 
-A reply goes to the customer (on an email ticket it is queued to be emailed; chat comes
-with the Cevanos connector); a note is for the team only. Neither changes the ticket's status (T17).
+A reply goes to the customer (on an email ticket it is queued to be emailed; on a Cevanos
+chat the worker sends it with the connector, after Accept); a note is for the team only.
+Neither changes the ticket's status (T17).
 """
 
 from collections.abc import Mapping, Sequence
@@ -24,12 +25,14 @@ from cedesk.helpdesk.repo import messages as repo
 from cedesk.helpdesk.repo.messages import Row
 from cedesk.helpdesk.service import attachments, email, idempotency, sla
 from cedesk.helpdesk.service.auth import Sessionmaker
-from cedesk.helpdesk.service.errors import Invalid, NotFound
+from cedesk.helpdesk.service.errors import Conflict, Invalid, NotFound
 from cedesk.helpdesk.service.idempotency import Idempotency
 from cedesk.helpdesk.service.members import require
 
 BODY_MAX = 50_000
 MAX_MENTIONS = 20
+NOT_ACCEPTED = "Accept the chat first. Notes are allowed before that."
+NO_FILES_ON_CHAT = "Files can't be sent into a Cevanos chat. Add them to a note instead."
 
 
 class MessageKind(StrEnum):
@@ -69,6 +72,10 @@ async def add_message(
     @mentioned and writes `message.created`. Permissions and the mention list are the
     caller's job (`post_message`, macros)."""
     ticket_id = detail["id"]
+    if kind is MessageKind.reply and not detail["accepted"]:
+        raise Conflict(NOT_ACCEPTED)  # md 7.1 point 3: a handover waits for Accept
+    if kind is MessageKind.reply and attachment_ids and detail["source"] == "cevanos":
+        raise Invalid(NO_FILES_ON_CHAT)  # Cevanos's reply takes text only
     if kind is MessageKind.reply:
         body = render(
             body,

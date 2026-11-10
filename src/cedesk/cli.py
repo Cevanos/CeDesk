@@ -156,14 +156,17 @@ def _prune_sessions() -> int:
 
 
 def _worker(once: bool) -> int:
-    """Every few seconds: reads new emails from the IMAP mailbox (when one is set), sends
-    queued emails, delivers outbox events, and drops expired idempotency keys. Run one
+    """Every few seconds: reads new emails from the IMAP mailbox (when one is set), reads
+    connected Cevanos chats for new customer messages, sends queued emails, delivers
+    outbox events (Cevanos take-overs and replies), and drops expired idempotency keys. Run one
     next to the API (sending and delivering are safe with several; reading a mailbox is
     meant for one)."""
     import logging
 
     from cedesk import logs
+    from cedesk.cevanos_client import make_cevanos
     from cedesk.db import make_engine, make_sessionmaker
+    from cedesk.helpdesk.service.cevanos import CevanosHandler, ChatPoller
     from cedesk.helpdesk.service.delivery import Handler, deliver_due
     from cedesk.helpdesk.service.email import send_due
     from cedesk.helpdesk.service.email_in import poll
@@ -190,9 +193,11 @@ def _worker(once: bool) -> int:
         mailbox = make_mailbox(settings)
         store = make_store(settings)  # files on replies out, files in customer emails
         scanner = make_scanner(settings)
-        # Outbox handlers: the Cevanos connector joins here; webhooks in Phase 3. With none,
-        # events are just marked delivered.
-        handlers: list[Handler] = []
+        # Outbox handlers (webhooks join in Phase 3). The Cevanos one does nothing for a
+        # workspace that has not connected Cevanos.
+        cevanos = make_cevanos(settings)
+        handlers: list[Handler] = [CevanosHandler(sm, cevanos)]
+        chats = ChatPoller(sm, cevanos, batch=settings.cevanos_poll_batch)
         swept_at = 0.0
         logger.info("worker started", extra={"event": settings.mail_backend.value})
         # Tickets made before SLA was wired (or while the SLA code had a bug) get their
@@ -220,6 +225,13 @@ def _worker(once: bool) -> int:
                             "could not be checked",
                             extra={"event": "scan"},
                         )
+                polled = await chats.poll()
+                if polled.added or polled.failed:
+                    logger.info(
+                        f"cevanos chats: {polled.read} read, {polled.added} new customer "
+                        f"messages, {polled.failed} not read",
+                        extra={"event": "cevanos"},
+                    )
                 result = await send_due(sm, mailer, store=store, scanning=scanner is not None)
                 if result.sent or result.retrying or result.failed:
                     logger.info(

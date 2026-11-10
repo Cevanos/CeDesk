@@ -122,6 +122,15 @@ class Settings(BaseSettings):
     # scan_failed without sending it: clamd would cut the connection mid-file, which looks
     # like "scanner down" and would be retried forever.
     clamd_max_bytes: int = Field(default=100 * 1024 * 1024, ge=1024)
+    # Cevanos connector (md 7.1). One Cevanos per deployment; each workspace enters its own
+    # API key and webhook secret (Settings, stored encrypted). Without a key it is off.
+    cevanos_url: str = Field(
+        default="https://api.cevanos.ai",
+        description="Cevanos's API address. https, except on a developer's machine.",
+    )
+    cevanos_poll_batch: int = Field(
+        default=20, ge=1, le=60, description="Chats read per worker pass, per workspace."
+    )
     worker_interval_seconds: float = Field(
         default=10, gt=0, le=3600, description="How often `cedesk worker` looks for work."
     )
@@ -141,6 +150,8 @@ class Settings(BaseSettings):
             problems.append("CEDESK_DATABASE_URL: uses the dev password")
         if "*" in self.allowed_origins():
             problems.append("CEDESK_CORS_ORIGINS: list the sites, not *")
+        if not self.cevanos_url.startswith("https://"):
+            problems.append("CEDESK_CEVANOS_URL: use https")
         token = self.inbound_email_token
         if token is not None and len(token.get_secret_value()) < 32:
             problems.append("CEDESK_INBOUND_EMAIL_TOKEN: use a random value of 32+ characters")
