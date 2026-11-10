@@ -11,6 +11,7 @@ from typing import Any
 
 from fastapi import FastAPI, Request, Response
 from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
@@ -25,7 +26,8 @@ from cedesk.helpdesk.api import members as members_api
 from cedesk.helpdesk.api import messages as messages_api
 from cedesk.helpdesk.api import routing as routing_api
 from cedesk.helpdesk.api import tickets as tickets_api
-from cedesk.helpdesk.service.errors import ServiceError
+from cedesk.helpdesk.service.errors import ServiceError, TooManyAttempts
+from cedesk.ratelimit import SlidingWindowLimiter
 from cedesk.settings import Settings, get_settings
 from cedesk.storage import make_store
 
@@ -39,6 +41,7 @@ HTTP_CODES = {
     405: "MethodNotAllowed",
     409: "Conflict",
     422: "Invalid",
+    429: "TooManyAttempts",
 }
 # A caller's X-Request-ID is reused only when it looks like an id, never free text.
 REQUEST_ID = re.compile(r"^[A-Za-z0-9._-]{8,64}$")
@@ -78,6 +81,11 @@ def _uuid_or_none(value: object) -> str | None:
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
+    problems = settings.unsafe()
+    if problems:
+        raise RuntimeError(
+            f"Refusing to start with CEDESK_ENV={settings.env.value}: " + "; ".join(problems)
+        )
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -101,6 +109,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.settings = settings
     # Built now, so a storage setting that is missing stops the app at start-up.
     app.state.store = make_store(settings)
+    app.state.attempts = SlidingWindowLimiter(
+        settings.sign_in_limit, settings.sign_in_window_seconds
+    )
 
     @app.middleware("http")
     async def request_log(request: Request, call_next: Any) -> Response:
@@ -140,6 +151,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.exception_handler(ServiceError)
     async def service_error(request: Request, exc: ServiceError) -> JSONResponse:
         headers = {"WWW-Authenticate": "Bearer"} if exc.status == 401 else None
+        if isinstance(exc, TooManyAttempts):
+            headers = {"Retry-After": str(exc.retry_after)}
         return _error(exc.status, type(exc).__name__, exc.message, headers=headers)
 
     @app.exception_handler(RequestValidationError)
@@ -173,6 +186,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def unexpected_error(request: Request, exc: Exception) -> JSONResponse:
         logger.error("unhandled error: %s", type(exc).__name__)
         return _error(500, "Internal", "Something went wrong.")
+
+    origins = settings.allowed_origins()
+    if origins:
+        # Added last, so it is the outermost layer and error answers carry the headers too.
+        # Bearer tokens, not cookies: no credentials mode needed.
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=origins,
+            allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+            allow_headers=["Authorization", "Content-Type", "If-Match", "X-Request-ID"],
+            expose_headers=["ETag", "X-Request-ID", "Retry-After"],
+            max_age=600,
+        )
 
     app.include_router(auth_api.router, prefix="/api/v1")
     app.include_router(members_api.router, prefix="/api/v1")

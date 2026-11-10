@@ -16,15 +16,24 @@ services:
       timeout: 3s
       retries: 30
 
-  api:
+  migrate:
     build: .
     profiles: ["api"]
+    command: ["uv", "run", "--no-sync", "cedesk", "migrate"]
     depends_on:
       db:
         condition: service_healthy
     environment:
-      CEDESK_DATABASE_URL: postgresql+asyncpg://cedesk_app:cedesk_app_dev@db:5432/cedesk
       CEDESK_MIGRATION_DATABASE_URL: postgresql+asyncpg://cedesk_owner:cedesk_owner_dev@db:5432/cedesk
+
+  api:
+    build: .
+    profiles: ["api"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      CEDESK_DATABASE_URL: postgresql+asyncpg://cedesk_app:cedesk_app_dev@db:5432/cedesk
     ports:
       - "8100:8100"
 

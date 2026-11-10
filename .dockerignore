@@ -1,0 +1,16 @@
+# Keep secrets, local state and build caches out of the image.
+.env
+.env.*
+!.env.example
+deploy/.env
+.git
+.github
+.venv
+**/__pycache__
+*.py[cod]
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.import_linter_cache
+storage
+tests

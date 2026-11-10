@@ -9,7 +9,10 @@ RUN uv sync --frozen --no-dev --no-install-project
 COPY . .
 RUN uv sync --frozen --no-dev
 
-RUN useradd --create-home cedesk
+RUN useradd --create-home cedesk && mkdir -p /data/storage && chown cedesk /data/storage
 USER cedesk
+ENV CEDESK_STORAGE_LOCAL_PATH=/data/storage
 EXPOSE 8100
-CMD ["sh", "-c", "uv run --no-sync cedesk migrate && uv run --no-sync uvicorn cedesk.main:app --host 0.0.0.0 --port 8100"]
+# Migrations run separately (`cedesk migrate`, as the owner role), so the API container
+# never holds the owner password (md 14.6).
+CMD ["uv", "run", "--no-sync", "uvicorn", "cedesk.main:app", "--host", "0.0.0.0", "--port", "8100"]
