@@ -44,7 +44,10 @@ class SmtpSecurity(StrEnum):
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="CEDESK_", env_file=".env", extra="ignore")
+    # An empty variable counts as not set: docker-compose passes `${CEDESK_X:-}` as "".
+    model_config = SettingsConfigDict(
+        env_prefix="CEDESK_", env_file=".env", extra="ignore", env_ignore_empty=True
+    )
 
     # The app connects as `cedesk_app`: it owns nothing and cannot bypass row-level security.
     database_url: str = "postgresql+asyncpg://cedesk_app:cedesk_app_dev@localhost:5447/cedesk"
