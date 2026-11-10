@@ -371,3 +371,10 @@ async def member_brief(session: AsyncSession, member_id: UUID) -> Row | None:
         text("SELECT id, name, role, is_active FROM member WHERE id = :id"), {"id": member_id}
     )
     return result.mappings().first()
+
+
+async def set_accepted(session: AsyncSession, ticket_id: UUID) -> None:
+    await session.execute(
+        text("UPDATE hd_ticket SET accepted = true, updated_at = now() WHERE id = :id"),
+        {"id": ticket_id},
+    )
