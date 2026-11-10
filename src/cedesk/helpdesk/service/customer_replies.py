@@ -31,8 +31,9 @@ from cedesk.helpdesk.domain.tickets import Status, label
 from cedesk.helpdesk.repo import messages as message_repo
 from cedesk.helpdesk.repo import outbox
 from cedesk.helpdesk.repo import tickets as repo
-from cedesk.helpdesk.service import routing
+from cedesk.helpdesk.service import routing, sla
 from cedesk.helpdesk.service import rules as automation
+from cedesk.helpdesk.service.attachments import IncomingFiles, save_incoming
 from cedesk.helpdesk.service.auth import Sessionmaker
 from cedesk.helpdesk.service.errors import Invalid, NotFound
 from cedesk.helpdesk.service.members import require
@@ -89,8 +90,12 @@ async def customer_reply(
     *,
     email: Mapping[str, Any] | None = None,
     channel_message_id: str | None = None,
+    author_name: str | None = None,
+    files: IncomingFiles | None = None,
 ) -> CustomerReply:
-    """Adds the customer's message and does what md 6.4 says, in one transaction."""
+    """Adds the customer's message and does what md 6.4 says, in one transaction.
+    `author_name`: who wrote it when that is not the ticket's contact (someone in CC).
+    `files`: the ones that came with it (an email's attachments)."""
     body = body.strip()
     if not body:
         raise Invalid("The message is empty.")
@@ -117,9 +122,12 @@ async def customer_reply(
             kind="customer",
             body=body,
             author_member_id=None,
-            author_name=str(detail["contact_name"]),
+            author_name=(author_name or str(detail["contact_name"]))[:120],
             email=email,
             channel_message_id=channel_message_id,
+        )
+        await save_incoming(
+            s, files, workspace_id=workspace_id, ticket_id=ticket_id, message_id=message_id
         )
         await message_repo.ticket_touched(s, ticket_id)
         await _emit(
@@ -188,6 +196,7 @@ async def customer_reply(
                 tell = (after or before)["assignee_id"]
 
         if after is not None:
+            await sla.refresh(s, ticket_ids=[ticket_id])  # reopened, or a rule changed it
             for event, extra in events.after_change(before, after, None):
                 await _emit(s, workspace_id, ticket_id, event, extra)
         if tell is not None:

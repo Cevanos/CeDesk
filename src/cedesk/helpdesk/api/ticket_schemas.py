@@ -1,7 +1,7 @@
 """Request and response bodies for tickets, ticket types and teams."""
 
 from datetime import datetime
-from typing import Annotated, Any, Self
+from typing import Annotated, Any, Literal, Self
 from uuid import UUID
 
 from pydantic import (
@@ -154,6 +154,35 @@ class ContactCard(ContactOut):
     other_tickets: int
 
 
+class SlaClockOut(BaseModel):
+    target_minutes: int
+    due_at: datetime
+    stopped_at: datetime | None = Field(description="The reply or resolution; null while running.")
+    state: Literal["on_track", "close", "breached", "met"] = Field(
+        description="close: under 25% of the target left. breached stays after the reply. "
+        "met: done in time."
+    )
+    minutes_left: float = Field(description="Business minutes; negative once overdue.")
+
+
+class SlaOut(BaseModel):
+    """The ticket's SLA, worked out when it is read (W13)."""
+
+    policy: str | None = Field(description="The SLA policy that matched; null: priority targets.")
+    current: Literal["first_reply", "resolve"] = Field(
+        description="The clock the pill shows: first reply until it is replied, then resolve."
+    )
+    state: Literal["on_track", "close", "breached", "met"] = Field(
+        description="The current clock's state, for the pill."
+    )
+    paused: bool = Field(
+        description="Outside business hours (or a holiday) and still running. Pending does "
+        "not pause."
+    )
+    first_reply: SlaClockOut
+    resolve: SlaClockOut
+
+
 class TicketRowOut(BaseModel):
     id: UUID
     number: int
@@ -182,6 +211,17 @@ class TicketRowOut(BaseModel):
     parent_id: UUID | None
     merged_into_id: UUID | None
     child_count: int
+    sla: SlaOut | None = None
+
+
+class MessageFileOut(BaseModel):
+    id: UUID = Field(description="GET /attachments/{id} gives a download link.")
+    name: str
+    size: int = Field(description="Bytes.")
+    mime: str
+    scan_status: str = Field(
+        description="not_scanned, clean, infected, or scan_failed (could not be checked)."
+    )
 
 
 class MessageOut(BaseModel):
@@ -196,6 +236,14 @@ class MessageOut(BaseModel):
         default=None, description="Email messages: from, to, cc, message_id."
     )
     channel_message_id: str | None = None
+    attachments: list[MessageFileOut] = Field(
+        default=[], description="Files sent with it (by the agent, or in the customer's email)."
+    )
+    delivery: Literal["pending", "sent", "failed"] | None = Field(
+        default=None,
+        description="Replies on email tickets: whether the email went out. "
+        "pending: queued or retrying; sent; failed: gave up (see the ticket's system line).",
+    )
 
 
 class TicketOut(TicketRowOut):

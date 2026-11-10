@@ -4,12 +4,19 @@ from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Query, status
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, Query, Response, status
+from pydantic import BaseModel, Field, StringConstraints
 
-from cedesk.helpdesk.api.deps import CallerDep, SessionmakerDep
+from cedesk.helpdesk.api.deps import (
+    CallerDep,
+    IdempotencyKey,
+    SessionmakerDep,
+    idempotency,
+    mark_replayed,
+)
 from cedesk.helpdesk.api.schemas import Body
-from cedesk.helpdesk.api.ticket_schemas import MessageOut, Text
+from cedesk.helpdesk.api.ticket_schemas import MessageOut
+from cedesk.helpdesk.domain.attachments import PER_MESSAGE_MAX
 from cedesk.helpdesk.domain.paging import DEFAULT_LIMIT, MAX_LIMIT
 from cedesk.helpdesk.domain.tickets import label
 from cedesk.helpdesk.service import messages
@@ -17,15 +24,25 @@ from cedesk.helpdesk.service.messages import MessageKind
 
 router = APIRouter()
 
+MessageText = Annotated[str, StringConstraints(strip_whitespace=True, max_length=50000)]
+
 
 class MessageIn(Body):
     kind: MessageKind = Field(description="reply: to the customer. note: team only.")
-    body: Text = Field(
+    body: MessageText = Field(
+        default="",
         description="Replies fill {{customer.first_name}}, {{customer.name}}, {{agent.name}} "
-        'and {{fields.<key>}} ("—" when empty).'
+        'and {{fields.<key>}} ("—" when empty). May be empty only when sending files.',
     )
     mention_ids: list[UUID] = Field(
         default=[], max_length=20, description="Notes only: members to notify."
+    )
+    attachment_ids: list[UUID] = Field(
+        default=[],
+        max_length=PER_MESSAGE_MAX,
+        description="Files to send with it: upload each to the ticket first "
+        "(POST /tickets/{id}/attachments), then list their ids here. Only your own files "
+        "not sent yet. With files, `body` may be empty.",
     )
 
 
@@ -64,11 +81,26 @@ Limit = Annotated[int, Query(ge=1, le=MAX_LIMIT)]
     summary="Reply to the customer or add a private note (with @mentions)",
 )
 async def post_message(
-    ticket_id: UUID, body: MessageIn, caller: CallerDep, sm: SessionmakerDep
+    ticket_id: UUID,
+    body: MessageIn,
+    caller: CallerDep,
+    sm: SessionmakerDep,
+    response: Response,
+    idempotency_key: IdempotencyKey = None,
 ) -> MessageOut:
+    scope = f"POST /tickets/{ticket_id}/messages"
+    idem = idempotency(idempotency_key, scope, body.model_dump_json().encode())
     row = await messages.post_message(
-        sm, caller, ticket_id, kind=body.kind, body=body.body, mention_ids=body.mention_ids
+        sm,
+        caller,
+        ticket_id,
+        kind=body.kind,
+        body=body.body,
+        mention_ids=body.mention_ids,
+        attachment_ids=body.attachment_ids,
+        idem=idem,
     )
+    mark_replayed(idem, response)
     return MessageOut.model_validate(dict(row))
 
 

@@ -3,6 +3,142 @@
 `openapi.json` next to this file is the API as served (`uv run cedesk openapi`). Every
 route is under `/api/v1`. Breaking changes only come in v2 (md 2B). Newest first.
 
+## 2026-11-10: Phase 1 review fixes
+
+- `POST /tickets/{id}/macros/{macro_id}` accepts `Idempotency-Key` (a macro can send a
+  reply): a repeat runs nothing again and returns the ticket, with `Idempotent-Replayed: true`.
+- New (Admin): `GET /email/failed` lists emails that failed every retry (newest first,
+  cursor paging); `POST /email/{id}/retry` → 204 puts one back in the queue, and its ticket
+  gets a line. Account emails (password reset) can't be resent: `can_retry: false`, 404.
+- The worker fills the SLA of tickets with none stored (e.g. from before 0019) when it
+  starts, so `sort=sla` is right without running `cedesk sla-refresh` by hand.
+
+## 2026-11-10: virus scan (Phase 1, T18)
+
+- With `CEDESK_SCAN_BACKEND=clamd` the worker checks every stored file with ClamAV.
+  `scan_status` becomes `clean`, `infected`, or the new `scan_failed` (ClamAV could not
+  check it, e.g. too big for it). Infected files' bytes are deleted and a system line on
+  the ticket names the virus.
+- With scanning on, `GET /attachments/{id}` is 409 until the file is `clean` (and always
+  for `infected` / `scan_failed`); emails wait for their files to be checked.
+  Sending a blocked file in a message is 422.
+- Scanning off (the default): no change, files stay `not_scanned` and download at once.
+- `CEDESK_CLAMD_MAX_BYTES` (default 100 MB, clamd's own default limit): a bigger file is
+  `scan_failed` at once instead of being sent (checked against a real ClamAV 1.4).
+
+## 2026-11-10: Idempotency-Key and outbox delivery (Phase 1)
+
+- `Idempotency-Key` header (optional) on `POST /tickets`, `POST /tickets/{id}/messages` and
+  `POST /tickets/{id}/attachments`: 1–255 printable characters, per member, kept 24 hours.
+  A repeat returns what the first request made (same status, header
+  `Idempotent-Replayed: true`), also when the repeats arrive at the same moment. The same
+  key with a different request is 422. A request that failed doesn't use up its key.
+- The worker now delivers outbox events after each change commits (one ticket's events in
+  order; retries at 1 min, 5 min, 30 min, 2 h, 12 h). Handlers: none yet (the Cevanos
+  connector is next; webhooks in Phase 3), so events are marked delivered.
+- New (Admin): `GET /outbox/failed` lists events that failed every retry, with the error;
+  `POST /outbox/{id}/retry` → 204 tries one again now (404 if it isn't failed).
+
+## 2026-11-10: files on replies, notes and customer emails (Phase 1, T18)
+
+- `POST /tickets/{id}/messages` takes `attachment_ids` (up to 10): files uploaded to the
+  ticket first with `POST /tickets/{id}/attachments`. Only your own files, not sent before
+  and not infected (422 otherwise). With files, `body` may be empty.
+- Every message (ticket page, `GET /tickets/{id}/messages`, the answer to a new message)
+  has `attachments: [{id, name, size, mime, scan_status}]`. `GET /attachments/{id}` gives
+  the download link as before.
+- On email tickets: a reply's files are sent as email attachments (at most 18 MB together,
+  422 above). Files in a customer's email are kept on their message (each up to the upload
+  limit, at most 20); the rest are named in a system line.
+- `hd_message.body` may now be empty (migration 0020), for a message that is only files.
+
+## 2026-11-10: SLA on tickets (Phase 1, W9, W13, T9)
+
+- Every ticket (list, detail, customer's tickets) has `sla`: `policy`, `current`
+  (`first_reply` until the first agent reply, then `resolve`), `state` (`on_track`,
+  `close` under 25% left, `breached`, `met`), `paused` (outside business hours or a
+  holiday; Pending does not pause), and both clocks with `target_minutes`, `due_at`,
+  `stopped_at`, `state`, `minutes_left` (business minutes, negative once overdue).
+- New sort: `GET /tickets?sort=sla`: open and pending by due time, soonest (or most
+  overdue) first; resolved after, newest first.
+- New: `GET /sla` (anyone signed in): targets per priority with a `reads_as` sentence,
+  policies in order, calendar and holidays. Until an Admin changes them these are the
+  defaults: Urgent 15 min / 4 h, High 1 h / 8 h, Medium 4 h / 24 h, Low 8 h / 72 h;
+  policies VIP customers (30 min / 4 h), Live chat & messaging (10 min first reply),
+  Default; Mon–Sat 9:00–19:00 Asia/Kolkata.
+- New: `PUT /sla/targets` (Admin) `{targets: [{priority, first_reply_minutes,
+  resolve_minutes}]}`: only the priorities sent change; 1 to 43200 minutes; 422 if the
+  first reply is due after the resolution or a priority is repeated. Open tickets follow
+  the new targets at once.
+- New outbox event `contact.updated` `{contact: {id, name, email, vip}, changes}` when a
+  customer's name or VIP flag changes (no ticket in it). A VIP change moves the SLA of
+  the customer's open tickets.
+- Server: `cedesk sla-refresh` once after the upgrade, so tickets from before it sort by
+  their real due time.
+
+## 2026-11-10: forgot password (Phase 1, A3)
+
+- New: `POST /auth/forgot-password` `{workspace, email}` → always 202 (unknown workspace or
+  email, inactive member and the hourly cap all look the same). An active member gets an
+  email with a link `<CEDESK_APP_URL>/reset-password#token=...` valid for 30 minutes; at
+  most 3 per hour per member. Sent from the workspace's default support address, else the
+  server's `CEDESK_MAIL_FROM_ADDRESS`; with neither, nothing is sent.
+- New: `POST /auth/reset-password` `{token, new_password}` → 204: new password, account
+  unlocked, every session ended, all the member's links removed. Link invalid, used or
+  expired → 410; password not allowed → 422 (the link still works).
+- Both share the sign-in limit (429 with `Retry-After`).
+- The reset email's text is wiped from the email queue once it is sent.
+
+## 2026-11-10: email in (Phase 1, C8)
+
+- Customers' emails to a support address now create tickets by themselves (`channel:
+  "email"`, `source: "email"`, `source_id` = the email's Message-ID), with the contact made
+  from the sender. The address they wrote to is recorded, so the default "billing@" rule
+  works; rules and auto-assignment run as for any new ticket. The first system line is
+  "Ticket created by <name> (email)".
+- An email that answers a ticket (In-Reply-To / References match one of its messages, or
+  the subject has its `[T-1001]` label and the sender is its customer) is added to that
+  ticket as a customer message, with reopen, thank-you and reply rules as before. Quoted
+  earlier messages ("On ... wrote:", "> ...") are cut off. Someone in CC who replies is
+  shown by their own name (`author_name`). A merged ticket passes it to the ticket it was
+  merged into.
+- Customer messages from email carry `email`: `{message_id, from, to, cc, subject,
+  in_reply_to, references}`; an agent reply then threads to the customer's latest email
+  and comes from the address they wrote to.
+- Ignored: a second delivery of the same email, auto-replies / bounces / mailing lists,
+  emails from our own support addresses, and emails to no support address.
+- New (for mail services, not the frontend): `POST /inbound/email` with a token; 404 when
+  the server has no token set. See `deploy/README.md`.
+
+## 2026-11-10: email out (Phase 1, C9)
+
+Support email addresses (Admin):
+- New: `GET /email-addresses` (default first), `POST /email-addresses` `{address, name,
+  signature?, is_default?}` → 201, `PATCH /email-addresses/{id}` `{name?, signature?,
+  is_default: true?}`, `DELETE /email-addresses/{id}` → 204,
+  `POST /email-addresses/{id}/test` → 202 `{sent_to}` (emails the Admin). Others 403.
+- The first address is the default; making another the default moves it; deleting the
+  default hands it to the oldest remaining one. `is_default: false` → 422.
+- An address is stored lower-case and belongs to one workspace only: in use anywhere → 409.
+  Not an address → 422. The address itself can't be changed: add a new one, delete the old.
+- `signature` (max 2,000) is added under every reply from that address, after "-- ".
+  Placeholders such as `{{agent.name}}` are filled.
+
+Replies on email tickets (`channel: "email"`), including a macro's reply step:
+- Queued in the same transaction as the reply, then sent by the new `cedesk worker`.
+- From: the address the customer wrote to (if it is one of ours), else the default.
+  To: the customer. CC: from the customer's first email with a CC, without our addresses
+  or the customer. Subject: `Re: <subject> [T-1001]`. `Message-ID`, `In-Reply-To` and
+  `References` keep it in the customer's thread.
+- Messages have a new field `delivery`: `pending` (queued or retrying), `sent`, `failed`,
+  or `null` (not an emailed reply). A reply's `email` now holds the headers we sent.
+- No support address yet: the reply is saved, not emailed, and the ticket gets the line
+  "Not emailed: add a support email address in Settings first."
+- The worker retries after 1, 5, 15, 60 and 240 minutes, then gives up; a refused address
+  or a bad mail-server sign-in gives up at once. Giving up writes the line "Email to
+  <address> could not be sent: <reason>" and `delivery` becomes `failed`.
+- Notes and replies on other channels are never emailed.
+
 ## 2026-11-10: rules, customer replies and macros (Phase 2)
 
 Rules (md W15, W16):

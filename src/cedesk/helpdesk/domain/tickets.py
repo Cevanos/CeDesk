@@ -47,9 +47,11 @@ SOURCE = re.compile(r"^[a-z][a-z0-9_-]{0,39}$")  # "cevanos", "intercom", "email
 
 class Sort(StrEnum):
     """Ticket list orders. `priority`: Open and Pending most urgent first, then oldest;
-    Resolved after them, newest resolved first (T9; SLA time left joins when SLA lands)."""
+    Resolved after them, newest resolved first. `sla`: Open and Pending by SLA time left,
+    soonest due (or most overdue) first; Resolved after them, newest resolved first (T9)."""
 
     priority = "priority"
+    sla = "sla"
     newest = "newest"
     oldest = "oldest"
     updated = "updated"  # most recently changed first
@@ -233,6 +235,7 @@ _DECIMAL = re.compile(r"^-?\d{1,20}(?:\.\d{1,12})?$")
 # with repo.tickets.SORT_KEYS (a unit test checks).
 CURSOR_SHAPE: dict[Sort, tuple[str, ...]] = {
     Sort.priority: ("int", "int", "decimal", "int"),
+    Sort.sla: ("int", "decimal", "int"),
     Sort.newest: ("decimal", "int"),
     Sort.oldest: ("decimal", "int"),
     Sort.updated: ("decimal", "int"),
