@@ -71,10 +71,23 @@ async def _check_targets(s: AsyncSession, rule: engine.Rule) -> None:
         raise Invalid("A rule can only set a ticket type and team that exist.")
 
 
-async def _view(s: AsyncSession, row: Row) -> RuleView:
+async def _views(s: AsyncSession, rows: Sequence[Row]) -> list[RuleView]:
+    """With what to fix. A stored rule that no longer reads is listed, not a 500, so an
+    Admin can still open the page and fix or delete it."""
     types = await repo.names(s, "hd_ticket_type")
     teams = await repo.names(s, "hd_team")
-    return RuleView(row, engine.problems(_from_row(row), types, teams))
+    found = []
+    for row in rows:
+        try:
+            problems = engine.problems(_from_row(row), types, teams)
+        except engine.RuleError:
+            problems = ["Its conditions or actions no longer read; save it again."]
+        found.append(RuleView(row, problems))
+    return found
+
+
+async def _view(s: AsyncSession, row: Row) -> RuleView:
+    return (await _views(s, [row]))[0]
 
 
 # Settings (Admin)
@@ -83,12 +96,7 @@ async def _view(s: AsyncSession, row: Row) -> RuleView:
 async def list_rules(sm: Sessionmaker, caller: Caller) -> list[RuleView]:
     require(caller, Action.settings)
     async with workspace_session(sm, caller.workspace_id) as s:
-        types = await repo.names(s, "hd_ticket_type")
-        teams = await repo.names(s, "hd_team")
-        return [
-            RuleView(r, engine.problems(_from_row(r), types, teams))
-            for r in await repo.list_rules(s)
-        ]
+        return await _views(s, await repo.list_rules(s))
 
 
 async def create_rule(
@@ -185,12 +193,7 @@ async def reorder_rules(
         if set(rule_ids) != current or len(rule_ids) != len(current):
             raise Invalid("Send every rule id exactly once, in the new order.")
         await repo.reorder_rules(s, rule_ids)
-        types = await repo.names(s, "hd_ticket_type")
-        teams = await repo.names(s, "hd_team")
-        return [
-            RuleView(r, engine.problems(_from_row(r), types, teams))
-            for r in await repo.list_rules(s)
-        ]
+        return await _views(s, await repo.list_rules(s))
 
 
 # Running on a ticket
@@ -214,10 +217,15 @@ async def apply(
     event: engine.Event,
     *,
     to_address: str | None = None,
+    new_message: str | None = None,
 ) -> RuleRun | None:
     """Runs the enabled rules for `event` on a ticket, inside the caller's transaction,
     with the ticket row locked. Saves the result and writes the lines. None: no rule
-    matched. Routing and events are the caller's job."""
+    matched. Routing and events are the caller's job.
+
+    Text conditions read the subject and the customer's first message on a new ticket,
+    and only `new_message` on a customer reply, so a word said once does not match every
+    later reply."""
     rules = await _enabled(s, event)
     if not rules:
         return None
@@ -228,7 +236,12 @@ async def apply(
     types = await repo.names(s, "hd_ticket_type")
     teams = await repo.names(s, "hd_team")
     facts = engine.Facts(
-        text=f"{detail['subject']} {await repo.customer_text(s, ticket_id)}",
+        text=(
+            new_message
+            if event is engine.Event.customer_replied
+            else f"{detail['subject']} {await repo.customer_text(s, ticket_id)}"
+        )
+        or "",
         channel=Channel(detail["channel"]),
         to_address=to_address or await repo.to_address(s, ticket_id),
         sentiment=Sentiment(detail["sentiment"]) if detail["sentiment"] else None,

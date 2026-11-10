@@ -316,3 +316,16 @@ async def test_one_workspace_never_sees_or_runs_anothers_macros(
         "subject": "Hi", "contact": {"email": "a@b.co", "name": "A"},
     }), 201)  # fmt: skip
     assert (await run(client, other, t["id"], theirs)).status_code == 404
+
+
+async def test_the_macro_line_lists_only_real_changes(
+    client: AsyncClient, app_sessionmaker: Sm
+) -> None:
+    w = await desk(client, app_sessionmaker)
+    body = {"subject": "App problem", "description": "white screen error",
+            "contact": {"email": "a@b.co", "name": "A"}}  # fmt: skip
+    t = ok(await client.post(T, headers=w["h"], json=body), 201)
+    assert t["team_name"] == "Tech"  # the errors rule put it there
+    t = ok(await run(client, w["h"], t["id"], w["macros"]["Escalate to Tech"]))
+    assert lines(t)[-1] == "Macro “Escalate to Tech” run by Admin: Priority High · Note added"
+    assert t["assignee_id"] == w["chetan"]  # not routed again: the team did not change

@@ -12,7 +12,7 @@ from cedesk.helpdesk.domain import rules as engine
 from cedesk.helpdesk.domain import seeds
 from cedesk.helpdesk.domain.saved_replies import normalise_shortcut
 from cedesk.helpdesk.domain.tickets import check_definitions
-from cedesk.helpdesk.repo import catalog
+from cedesk.helpdesk.repo import catalog, defaults
 from cedesk.helpdesk.repo import macros as macro_repo
 from cedesk.helpdesk.repo import rules as rule_repo
 from cedesk.helpdesk.repo import saved_replies as replies
@@ -44,32 +44,40 @@ async def apply(s: AsyncSession, workspace_id: UUID) -> None:
 
 
 async def apply_workflow(s: AsyncSession, workspace_id: UUID) -> int:
-    """The Phase 2 defaults: saved replies, rules and macros. Safe to run
-    again: anything already there, or an Admin's own reply, rule or macro with the same
-    shortcut or name, is kept. A default whose team or type no longer exists is left out.
-    Returns how many were added."""
+    """The Phase 2 defaults: saved replies, rules and macros. Safe to run again: each
+    default is given once, so one an Admin deleted or renamed never comes back, and an
+    Admin's own reply, rule or macro with the same shortcut or name is kept. A default
+    whose team or type does not exist yet is left out, and added on a later run once it
+    does. Returns how many were added."""
+    given = await defaults.given(s)
     added = 0
     for reply in seeds.SAVED_REPLIES:
+        shortcut = normalise_shortcut(reply.shortcut)
+        if ("saved_reply", shortcut) in given:
+            continue
         new_id = await replies.insert_reply(
             s,
             workspace_id,
-            shortcut=normalise_shortcut(reply.shortcut),
+            shortcut=shortcut,
             body=reply.body,
             source="default",
             created_by=None,
             skip_existing=True,
         )
+        await defaults.mark_given(s, workspace_id, "saved_reply", shortcut)
         added += new_id is not None
-    added += await _rules(s, workspace_id)
-    added += await _macros(s, workspace_id)
+    added += await _rules(s, workspace_id, given)
+    added += await _macros(s, workspace_id, given)
     return added
 
 
-async def _rules(s: AsyncSession, workspace_id: UUID) -> int:
+async def _rules(s: AsyncSession, workspace_id: UUID, given: set[tuple[str, str]]) -> int:
     types = await rule_repo.name_ids(s, "hd_ticket_type")
     teams = await rule_repo.name_ids(s, "hd_team")
     added = 0
     for seed in seeds.RULES:
+        if ("rule", seed.name) in given:
+            continue
         actions: list[dict[str, Any]] = []
         for raw in seed.actions:
             action = dict(raw)
@@ -92,6 +100,7 @@ async def _rules(s: AsyncSession, workspace_id: UUID) -> int:
             created_by=None,
             skip_existing=True,
         )
+        await defaults.mark_given(s, workspace_id, "rule", seed.name)
         added += new_id is not None
     return added
 
@@ -106,10 +115,12 @@ async def add_workflow_defaults(sm: async_sessionmaker[AsyncSession], slug: str)
         return await apply_workflow(s, workspace_id)
 
 
-async def _macros(s: AsyncSession, workspace_id: UUID) -> int:
+async def _macros(s: AsyncSession, workspace_id: UUID, given: set[tuple[str, str]]) -> int:
     teams = await rule_repo.name_ids(s, "hd_team")
     added = 0
     for seed in seeds.MACROS:
+        if ("macro", seed.name) in given:
+            continue
         steps: list[dict[str, Any]] = []
         for raw in seed.steps:
             step = dict(raw)
@@ -127,5 +138,6 @@ async def _macros(s: AsyncSession, workspace_id: UUID) -> int:
             created_by=None,
             skip_existing=True,
         )
+        await defaults.mark_given(s, workspace_id, "macro", seed.name)
         added += new_id is not None
     return added

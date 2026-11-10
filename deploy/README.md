@@ -38,8 +38,9 @@ Migrations run before the new API starts. Uploaded files (`files` volume), the d
 (`pgdata`) and the HTTPS certificates (`caddy_data`) survive updates.
 
 When an update brings new defaults (saved replies, rules and macros), add them to a
-workspace made before it. Safe to run again; anything already there is kept, and a default
-rule or macro whose team or ticket type is missing is left out:
+workspace made before it. Safe to run again: anything already there is kept, a default an
+Admin deleted never comes back, and a default rule or macro whose team or ticket type is
+missing is left out until it exists:
 
 ```sh
 docker compose exec api uv run --no-sync cedesk seed-workflow --workspace acme-store

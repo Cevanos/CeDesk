@@ -349,9 +349,12 @@ async def test_simulate_is_off_in_production(app_sessionmaker: Sm) -> None:
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as c:
         w = await desk(c, app_sessionmaker)
         t = await new(c, w["h"], "Refund")
-        r = await c.post(f"{T}/{t['id']}/simulate-customer-reply", headers=w["h"],
-                         json={"body": "x"})  # fmt: skip
+        url = f"{T}/{t['id']}/simulate-customer-reply"
+        r = await c.post(url, headers=w["h"], json={"body": "x"})
         assert r.status_code == 404
+        # A non-Admin gets the same 404, so the route does not show it exists.
+        neha = bearer(await sign_in(c, w["slug"], "neha@example.com"))
+        assert (await c.post(url, headers=neha, json={"body": "x"})).status_code == 404
 
 
 # Rule settings
@@ -507,3 +510,144 @@ async def test_one_workspace_never_sees_or_runs_anothers_rules(
     assert (await client.delete(f"{RULES}/{theirs}", headers=other)).status_code == 404
     t = await new(client, other, "Refund")
     assert rule_lines(t) == [] and t["team_name"] is None
+
+
+async def test_a_reply_rule_reads_only_the_new_message(
+    client: AsyncClient, app_sessionmaker: Sm
+) -> None:
+    w = await desk(client, app_sessionmaker)
+    ok(await client.post(RULES, headers=w["h"], json={
+        "name": "Legal words", "event": "customer_replied",
+        "conditions": [{"kind": "text_contains_any", "words": ["lawyer"]}],
+        "actions": [{"kind": "add_tag", "tag": "legal"}],
+    }), 201)  # fmt: skip
+    t = await new(client, w["h"], "Late parcel")
+    t = await reply(client, w["h"], t["id"], "I will call my lawyer")
+    assert t["tags"] == ["legal"]
+    ok(await client.patch(f"{T}/{t['id']}", headers=w["h"], json={"remove_tags": ["legal"]}))
+    # The word is in the history, but not in this reply: the rule does not run again.
+    t = await reply(client, w["h"], t["id"], "ok, waiting")
+    assert t["tags"] == []
+    assert sum(b.startswith("Rule applied: Legal words") for b in lines(t)) == 1
+
+
+async def test_the_same_channel_message_is_saved_once(
+    client: AsyncClient, app_sessionmaker: Sm
+) -> None:
+    from cedesk.helpdesk.service.customer_replies import Outcome, customer_reply
+
+    w = await desk(client, app_sessionmaker)
+    t = await new(client, w["h"], "Refund")
+    ok(await client.post(f"{T}/{t['id']}/resolve", headers=w["h"]))
+    ticket_id = UUID(t["id"])
+    first = await customer_reply(app_sessionmaker, w["ws"], ticket_id, "Still no money",
+                                 channel_message_id="wamid.1")  # fmt: skip
+    again = await customer_reply(app_sessionmaker, w["ws"], ticket_id, "Still no money",
+                                 channel_message_id="wamid.1")  # fmt: skip
+    assert first.outcome is Outcome.reopened
+    assert (again.outcome, again.message_id) == (Outcome.duplicate, first.message_id)
+    t = ok(await client.get(f"{T}/{t['id']}", headers=w["h"]))
+    assert t["reopen_count"] == 1
+    assert sum(m["kind"] == "customer" for m in t["messages"]) == 1
+    notes = await notes_for(client, w, "neha@example.com")
+    assert sum(n["kind"] == "customer_reply" for n in notes) == 1
+    # Another message id is a new message.
+    other = await customer_reply(app_sessionmaker, w["ws"], ticket_id, "Hello?",
+                                 channel_message_id="wamid.2")  # fmt: skip
+    assert other.outcome is Outcome.added
+
+
+async def test_a_thank_you_in_hindi_keeps_it_resolved(
+    client: AsyncClient, app_sessionmaker: Sm
+) -> None:
+    w = await desk(client, app_sessionmaker)
+    t = await new(client, w["h"], "Refund")
+    ok(await client.post(f"{T}/{t['id']}/resolve", headers=w["h"]))
+    for body in ["Thank you so much!", "Dhanyavaad 🙏"]:
+        t = await reply(client, w["h"], t["id"], body)
+        assert (t["status"], t["reopen_count"]) == ("resolved", 0), body
+
+
+async def test_a_reply_rule_that_reroutes_sends_one_notification(
+    client: AsyncClient, app_sessionmaker: Sm
+) -> None:
+    w = await desk(client, app_sessionmaker)
+    ok(await client.post(RULES, headers=w["h"], json={
+        "name": "Bugs go to Tech", "event": "customer_replied",
+        "conditions": [{"kind": "text_contains_any", "words": ["bug"]}],
+        "actions": [{"kind": "set_team", "team_id": w["teams"]["Tech"]}],
+    }), 201)  # fmt: skip
+    t = await new(client, w["h"], "Refund")  # Billing, Neha
+    t = await reply(client, w["h"], t["id"], "Also the app has a bug")
+    assert t["assignee_id"] == w["chetan"]
+    chetan = await notes_for(client, w, "chetan@example.com")
+    assert len(chetan) == 1
+    assert chetan[0]["kind"] == "assigned"
+    assert chetan[0]["text"] == (
+        f"Priya Sharma replied on {t['label']}, and it was auto-assigned to you: Refund"
+    )
+    neha = await notes_for(client, w, "neha@example.com")
+    assert not any(n["kind"] == "customer_reply" for n in neha)
+
+
+async def test_when_nobody_can_take_it_the_old_assignee_hears_the_reply(
+    client: AsyncClient, app_sessionmaker: Sm
+) -> None:
+    w = await desk(client, app_sessionmaker)
+    ok(await client.post(RULES, headers=w["h"], json={
+        "name": "Parcels go to Shipping", "event": "customer_replied",
+        "conditions": [{"kind": "text_contains_any", "words": ["parcel"]}],
+        "actions": [{"kind": "set_team", "team_id": w["teams"]["Shipping"]}],
+    }), 201)  # fmt: skip
+    t = await new(client, w["h"], "Refund")  # Billing, Neha; Shipping has nobody
+    t = await reply(client, w["h"], t["id"], "Where is the parcel?")
+    assert (t["team_name"], t["assignee_id"]) == ("Shipping", None)
+    neha = await notes_for(client, w, "neha@example.com")
+    assert neha[0]["kind"] == "customer_reply"
+
+
+@pytest.mark.parametrize("channel_id", ["", "x" * 201])
+async def test_a_bad_channel_message_id_is_refused(
+    client: AsyncClient, app_sessionmaker: Sm, channel_id: str
+) -> None:
+    from cedesk.helpdesk.service.customer_replies import customer_reply
+    from cedesk.helpdesk.service.errors import Invalid
+
+    w = await desk(client, app_sessionmaker)
+    t = await new(client, w["h"], "Refund")
+    with pytest.raises(Invalid):
+        await customer_reply(app_sessionmaker, w["ws"], UUID(t["id"]), "hi",
+                             channel_message_id=channel_id)  # fmt: skip
+
+
+async def test_a_rule_that_no_longer_reads_still_lists(
+    client: AsyncClient, app_sessionmaker: Sm
+) -> None:
+    from sqlalchemy import text
+
+    w = await desk(client, app_sessionmaker)
+    rule_id = ok(await client.get(RULES, headers=w["h"]))[0]["id"]
+    async with workspace_session(app_sessionmaker, w["ws"]) as s:
+        await s.execute(
+            text('UPDATE hd_rule SET conditions = \'[{"kind": "gone"}]\' WHERE id = :id'),
+            {"id": rule_id},
+        )
+    rules = ok(await client.get(RULES, headers=w["h"]))
+    broken = next(r for r in rules if r["id"] == rule_id)
+    assert broken["problems"] == ["Its conditions or actions no longer read; save it again."]
+    # New tickets still work: the broken rule is skipped.
+    assert (await new(client, w["h"], "Where is my order?"))["team_name"] == "Shipping"
+    # And the Admin can fix it.
+    fixed = ok(await client.patch(f"{RULES}/{rule_id}", headers=w["h"],
+                                  json={"conditions": [{"kind": "text_contains_any",
+                                                        "words": ["refund"]}]}))  # fmt: skip
+    assert fixed["problems"] == []
+
+
+async def test_a_rule_with_nothing_to_change_writes_no_line(
+    client: AsyncClient, app_sessionmaker: Sm
+) -> None:
+    w = await desk(client, app_sessionmaker)
+    t = await new(client, w["h"], "Refund please", type_id=w["types"]["Refund"],
+                  team_id=w["teams"]["Billing"], priority="high")  # fmt: skip
+    assert rule_lines(t) == []
