@@ -72,6 +72,18 @@ class ChangePasswordBody(Body):
     new_password: Password = Field(description="10 to 128 characters, not the current one.")
 
 
+class ForgotPasswordBody(Body):
+    workspace: Annotated[str, StringConstraints(strip_whitespace=True, max_length=40)]
+    email: Email
+
+
+class ResetWithLinkBody(Body):
+    token: Annotated[str, StringConstraints(min_length=1, max_length=200)] = Field(
+        description="From the link in the email: the part after `#token=`."
+    )
+    new_password: Password = Field(description="10 to 128 characters.")
+
+
 class ResetPasswordBody(Body):
     new_password: Password = Field(
         description="10 to 128 characters. Give it to the member; they can change it later."

@@ -1,17 +1,21 @@
 """Sign-in, sign-out and the signed-in member."""
 
-from fastapi import APIRouter, status
+from fastapi import APIRouter, Request, status
 
 from cedesk.helpdesk.api.deps import AttemptLimit, CallerDep, SessionmakerDep
 from cedesk.helpdesk.api.schemas import (
     ChangePasswordBody,
+    ForgotPasswordBody,
     MemberOut,
     MeOut,
+    ResetWithLinkBody,
     SignedInOut,
     SignInBody,
     WorkspaceOut,
 )
-from cedesk.helpdesk.service import auth, members
+from cedesk.helpdesk.service import auth, members, password_reset
+from cedesk.helpdesk.service.password_reset import Sender
+from cedesk.settings import Settings
 
 router = APIRouter(tags=["sign-in"])
 
@@ -36,6 +40,46 @@ async def sign_in(body: SignInBody, sm: SessionmakerDep) -> SignedInOut:
         member_id=signed.caller.member_id,
         role=signed.caller.role,
     )
+
+
+@router.post(
+    "/auth/forgot-password",
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Email me a link to choose a new password",
+    description="Always 202, whether or not the workspace and email exist, so it can't "
+    "be used to find accounts. The link lasts 30 minutes; at most 3 are sent per hour.",
+    responses={429: {"description": "Too many attempts from this address; see Retry-After"}},
+    dependencies=[AttemptLimit],
+)
+async def forgot_password(body: ForgotPasswordBody, request: Request, sm: SessionmakerDep) -> None:
+    settings: Settings = request.app.state.settings
+    fallback = (
+        Sender(settings.mail_from_address, settings.mail_from_name)
+        if settings.mail_from_address
+        else None
+    )
+    await password_reset.forgot_password(
+        sm,
+        workspace=body.workspace,
+        email=body.email,
+        app_url=settings.app_url,
+        fallback=fallback,
+    )
+
+
+@router.post(
+    "/auth/reset-password",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Choose a new password with the emailed link (signs out everywhere)",
+    responses={
+        410: {"description": "The link is invalid, used or expired"},
+        422: {"description": "The new password is not allowed"},
+        429: {"description": "Too many attempts from this address; see Retry-After"},
+    },
+    dependencies=[AttemptLimit],
+)
+async def reset_password(body: ResetWithLinkBody, sm: SessionmakerDep) -> None:
+    await password_reset.reset_with_link(sm, token=body.token, new_password=body.new_password)
 
 
 @router.post("/auth/sign-out", status_code=status.HTTP_204_NO_CONTENT, summary="End this session")

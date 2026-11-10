@@ -6,14 +6,22 @@ from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Path, Query, Request, status
+from fastapi import APIRouter, Path, Query, Request, Response, status
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
-from cedesk.helpdesk.api.deps import CallerDep, SessionmakerDep, StoreDep
+from cedesk.helpdesk.api.deps import (
+    CallerDep,
+    IdempotencyKey,
+    SessionmakerDep,
+    StoreDep,
+    idempotency,
+    mark_replayed,
+)
 from cedesk.helpdesk.domain.paging import DEFAULT_LIMIT, MAX_LIMIT
 from cedesk.helpdesk.service import attachments
 from cedesk.helpdesk.service.errors import Gone, Invalid, NotFound
+from cedesk.settings import ScanBackend
 from cedesk.storage import LocalStore, content_disposition
 from cedesk.storage import links as file_links
 
@@ -30,7 +38,10 @@ class AttachmentOut(BaseModel):
     name: str
     size: int = Field(description="Bytes.")
     mime: str
-    scan_status: str = Field(description="not_scanned, clean or infected.")
+    scan_status: str = Field(
+        description="not_scanned, clean, infected, or scan_failed (could not be checked). "
+        "With virus scanning on, only clean files can be downloaded."
+    )
     uploaded_by: UUID | None
     created_at: datetime
 
@@ -89,12 +100,16 @@ async def upload(
     name: Annotated[
         str, Query(min_length=1, max_length=1000, description="The file's name, e.g. photo.jpg.")
     ],
+    response: Response,
+    idempotency_key: IdempotencyKey = None,
 ) -> AttachmentOut:
     content_type = request.headers.get("content-type")
     if content_type and content_type.lower().startswith(_FORM_TYPES):
         raise Invalid("Send the file itself as the request body, not a form.")
     max_bytes: int = request.app.state.settings.attachment_max_bytes
     data = await _read_file(request, max_bytes)
+    scope = f"POST /tickets/{ticket_id}/attachments"
+    idem = idempotency(idempotency_key, scope, name.encode(), (content_type or "").encode(), data)
     row = await attachments.upload(
         sm,
         store,
@@ -104,7 +119,9 @@ async def upload(
         mime=content_type,
         data=data,
         max_bytes=max_bytes,
+        idem=idem,
     )
+    mark_replayed(idem, response)
     return AttachmentOut.model_validate(dict(row))
 
 
@@ -131,7 +148,8 @@ async def list_attachments(
     "/attachments/{attachment_id}",
     response_model=DownloadOut,
     summary="A short-lived link to download a file",
-    description="Ask again for a new link once it expires (5 minutes by default).",
+    description="Ask again for a new link once it expires (5 minutes by default). 409 when "
+    "the file failed the virus scan, or (with scanning on) is still being checked.",
 )
 async def download_link(
     attachment_id: UUID,
@@ -141,7 +159,10 @@ async def download_link(
     store: StoreDep,
 ) -> DownloadOut:
     seconds: int = request.app.state.settings.download_link_seconds
-    found = await attachments.download_link(sm, store, caller, attachment_id, seconds=seconds)
+    scanning = request.app.state.settings.scan_backend is not ScanBackend.none
+    found = await attachments.download_link(
+        sm, store, caller, attachment_id, seconds=seconds, scanning=scanning
+    )
     url = found.url
     if url.startswith("/"):  # local disk: a path on this API
         url = str(request.base_url).rstrip("/") + url

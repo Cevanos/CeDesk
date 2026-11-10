@@ -17,6 +17,7 @@ class Event(StrEnum):
     ticket_resolved = "ticket.resolved"
     message_created = "message.created"
     assignment_changed = "assignment.changed"
+    contact_updated = "contact.updated"
 
 
 # Changes that make a `ticket.updated` (PL4): status (other than resolving), priority,
@@ -74,6 +75,24 @@ def message(message_id: UUID, kind: str, author: UUID | None) -> dict[str, Any]:
     """No body: receivers read the message through the API with their own rights."""
     author_id = str(author) if author else None
     return {"message": {"id": str(message_id), "kind": kind, "author_member_id": author_id}}
+
+
+def contact(before: Mapping[Any, Any], after: Mapping[Any, Any]) -> dict[str, Any] | None:
+    """`contact.updated` when the name or VIP flag changed; None when nothing did. No
+    ticket in it: a VIP change can move the SLA of all the customer's open tickets."""
+    changes = [k for k in ("name", "vip") if before[k] != after[k]]
+    if not changes:
+        return None
+    return {
+        "event": Event.contact_updated.value,
+        "contact": {
+            "id": str(after["id"]),
+            "name": after["name"],
+            "email": after["email"],
+            "vip": after["vip"],
+        },
+        "changes": changes,
+    }
 
 
 def payload(event: Event, ticket: Mapping[Any, Any], extra: Mapping[Any, Any]) -> dict[str, Any]:

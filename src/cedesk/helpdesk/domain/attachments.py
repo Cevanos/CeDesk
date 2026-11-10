@@ -2,12 +2,20 @@
 
 import re
 import unicodedata
+from dataclasses import dataclass
 from enum import StrEnum
 from uuid import UUID
 
 NAME_MAX = 255
 EXTENSION_MAX = 20
 DEFAULT_MIME = "application/octet-stream"
+PER_MESSAGE_MAX = 10
+"""Files an agent sends with one reply or note."""
+RECEIVED_MAX = 20
+"""Files kept from one customer email; the rest are named in a system line."""
+EMAIL_TOTAL_MAX = 18 * 1024 * 1024
+"""Files on one emailed reply, together. Encoding adds a third, so this stays under the
+25 MB most mail services accept."""
 # type/subtype as RFC 6838 allows them, lower-case, no parameters.
 _MIME = re.compile(r"^[a-z0-9][a-z0-9!#$&^_.+-]{0,126}/[a-z0-9][a-z0-9!#$&^_.+-]{0,126}$")
 
@@ -16,6 +24,28 @@ class ScanStatus(StrEnum):
     not_scanned = "not_scanned"
     clean = "clean"
     infected = "infected"
+    scan_failed = "scan_failed"  # the scanner could not check it
+
+
+BLOCKED = frozenset({ScanStatus.infected, ScanStatus.scan_failed})
+"""Never downloaded, sent or emailed."""
+
+
+def ready(status: str, *, scanning: bool) -> bool:
+    """Whether a file may be handed out: never when blocked, and with scanning on only
+    once it was found clean."""
+    if status in BLOCKED:
+        return False
+    return status == ScanStatus.clean or not scanning
+
+
+@dataclass(frozen=True)
+class ReceivedFile:
+    """A file that came with a customer's message (an email attachment)."""
+
+    name: str
+    mime: str
+    data: bytes
 
 
 def clean_name(raw: str) -> str:

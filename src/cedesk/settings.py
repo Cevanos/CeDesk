@@ -26,6 +26,23 @@ class StorageDriver(StrEnum):
     s3 = "s3"  # AWS S3, or any S3-compatible service (MinIO, R2, ...) through an endpoint URL
 
 
+class ScanBackend(StrEnum):
+    none = "none"  # files are not checked (downloads work at once)
+    clamd = "clamd"  # ClamAV's daemon over TCP; the worker checks every new file
+
+
+class MailBackend(StrEnum):
+    log = "log"  # write emails to the log, send nothing (dev and test servers only)
+    smtp = "smtp"  # any SMTP server: Amazon SES, Gmail, Zoho, Mailgun, ...
+    none = "none"  # drop every email
+
+
+class SmtpSecurity(StrEnum):
+    starttls = "starttls"  # usually port 587
+    ssl = "ssl"  # usually port 465
+    none = "none"  # only for a local test server
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="CEDESK_", env_file=".env", extra="ignore")
 
@@ -70,6 +87,45 @@ class Settings(BaseSettings):
     # S3 caps a presigned link at 7 days.
     download_link_seconds: int = Field(default=300, ge=10, le=7 * 24 * 3600)
 
+    app_url: str = Field(
+        default="http://localhost:3000",
+        description="The agent app's address, for links in emails (password reset).",
+    )
+    # Sender of account emails (password reset) when the workspace has no support
+    # address yet, e.g. no-reply@cedesk.in. Empty: such emails can't be sent.
+    mail_from_address: str = ""
+    mail_from_name: str = "CeDesk"
+    mail_backend: MailBackend = MailBackend.log
+    smtp_host: str = ""
+    smtp_port: int = Field(default=587, ge=1, le=65535)
+    smtp_security: SmtpSecurity = SmtpSecurity.starttls
+    smtp_username: str | None = None
+    smtp_password: SecretStr | None = None
+    smtp_timeout_seconds: float = Field(default=30, gt=0, le=300)
+    # Email in. Webhook: mail services (Mailgun, SendGrid, ...) post raw emails to
+    # POST /api/v1/inbound/email with this token; unset, the route answers 404.
+    inbound_email_token: SecretStr | None = None
+    inbound_email_max_bytes: int = Field(default=30 * 1024 * 1024, ge=1024)
+    # Or a mailbox the worker reads (Gmail / Zoho with an app password, any IMAP server).
+    imap_host: str = ""
+    imap_port: int = Field(default=993, ge=1, le=65535)
+    imap_username: str | None = None
+    imap_password: SecretStr | None = None
+    imap_folder: str = "INBOX"
+    # Virus scan (md T18): with clamd, a file can be downloaded or emailed only after the
+    # worker found it clean.
+    scan_backend: ScanBackend = ScanBackend.none
+    clamd_host: str = ""
+    clamd_port: int = Field(default=3310, ge=1, le=65535)
+    clamd_timeout_seconds: float = Field(default=60, gt=0, le=600)
+    # clamd's StreamMaxLength (100 MB unless changed in clamd.conf). A bigger file is marked
+    # scan_failed without sending it: clamd would cut the connection mid-file, which looks
+    # like "scanner down" and would be retried forever.
+    clamd_max_bytes: int = Field(default=100 * 1024 * 1024, ge=1024)
+    worker_interval_seconds: float = Field(
+        default=10, gt=0, le=3600, description="How often `cedesk worker` looks for work."
+    )
+
     def allowed_origins(self) -> list[str]:
         return [o.strip().rstrip("/") for o in self.cors_origins.split(",") if o.strip()]
 
@@ -85,6 +141,25 @@ class Settings(BaseSettings):
             problems.append("CEDESK_DATABASE_URL: uses the dev password")
         if "*" in self.allowed_origins():
             problems.append("CEDESK_CORS_ORIGINS: list the sites, not *")
+        token = self.inbound_email_token
+        if token is not None and len(token.get_secret_value()) < 32:
+            problems.append("CEDESK_INBOUND_EMAIL_TOKEN: use a random value of 32+ characters")
+        return problems
+
+    def mail_problems(self) -> list[str]:
+        """What stops the worker sending email (the API itself sends none) or scanning."""
+        problems = []
+        if self.scan_backend is ScanBackend.clamd and not self.clamd_host:
+            problems.append("CEDESK_CLAMD_HOST: set it, or CEDESK_SCAN_BACKEND=none")
+        if self.mail_backend is MailBackend.smtp and not self.smtp_host:
+            problems.append("CEDESK_SMTP_HOST: set it, or choose another CEDESK_MAIL_BACKEND")
+        if self.imap_host and not (self.imap_username and self.imap_password):
+            problems.append("CEDESK_IMAP_USERNAME and CEDESK_IMAP_PASSWORD: set both")
+        if self.env is Env.production and self.mail_backend is MailBackend.log:
+            problems.append(
+                "CEDESK_MAIL_BACKEND: `log` writes emails (with sign-in codes) to the log; "
+                "use smtp, or none until a mail server is set up"
+            )
         return problems
 
 

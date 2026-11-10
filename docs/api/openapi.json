@@ -53,6 +53,82 @@
         }
       }
     },
+    "/api/v1/auth/forgot-password": {
+      "post": {
+        "tags": [
+          "sign-in"
+        ],
+        "summary": "Email me a link to choose a new password",
+        "description": "Always 202, whether or not the workspace and email exist, so it can't be used to find accounts. The link lasts 30 minutes; at most 3 are sent per hour.",
+        "operationId": "forgot_password_api_v1_auth_forgot_password_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ForgotPasswordBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "429": {
+            "description": "Too many attempts from this address; see Retry-After"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/reset-password": {
+      "post": {
+        "tags": [
+          "sign-in"
+        ],
+        "summary": "Choose a new password with the emailed link (signs out everywhere)",
+        "operationId": "reset_password_api_v1_auth_reset_password_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResetWithLinkBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "410": {
+            "description": "The link is invalid, used or expired"
+          },
+          "422": {
+            "description": "The new password is not allowed"
+          },
+          "429": {
+            "description": "Too many attempts from this address; see Retry-After"
+          }
+        }
+      }
+    },
     "/api/v1/auth/sign-out": {
       "post": {
         "tags": [
@@ -371,6 +447,26 @@
             "HTTPBearer": []
           }
         ],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional, any unique string (a UUID is good), up to 255 characters. Send the same key when you retry: a repeat returns what the first request made (header `Idempotent-Replayed: true`) instead of making it twice. The same key with a different request is 422. Keys last 24 hours, per member.",
+              "title": "Idempotency-Key"
+            },
+            "description": "Optional, any unique string (a UUID is good), up to 255 characters. Send the same key when you retry: a repeat returns what the first request made (header `Idempotent-Replayed: true`) instead of making it twice. The same key with a different request is 422. Keys last 24 hours, per member."
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -505,10 +601,10 @@
             "required": false,
             "schema": {
               "$ref": "#/components/schemas/Sort",
-              "description": "priority (default): Open and Pending most urgent first, then oldest; Resolved last, newest first. newest, oldest, or updated (most recently changed first).",
+              "description": "priority (default): Open and Pending most urgent first, then oldest; Resolved last, newest first. sla: Open and Pending by SLA time left, soonest due first; Resolved last, newest first. newest, oldest, or updated (most recently changed first).",
               "default": "priority"
             },
-            "description": "priority (default): Open and Pending most urgent first, then oldest; Resolved last, newest first. newest, oldest, or updated (most recently changed first)."
+            "description": "priority (default): Open and Pending most urgent first, then oldest; Resolved last, newest first. sla: Open and Pending by SLA time left, soonest due first; Resolved last, newest first. newest, oldest, or updated (most recently changed first)."
           },
           {
             "name": "cursor",
@@ -1368,6 +1464,24 @@
               "format": "uuid",
               "title": "Ticket Id"
             }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional, any unique string (a UUID is good), up to 255 characters. Send the same key when you retry: a repeat returns what the first request made (header `Idempotent-Replayed: true`) instead of making it twice. The same key with a different request is 422. Keys last 24 hours, per member.",
+              "title": "Idempotency-Key"
+            },
+            "description": "Optional, any unique string (a UUID is good), up to 255 characters. Send the same key when you retry: a repeat returns what the first request made (header `Idempotent-Replayed: true`) instead of making it twice. The same key with a different request is 422. Keys last 24 hours, per member."
           }
         ],
         "requestBody": {
@@ -1860,6 +1974,24 @@
               "title": "Name"
             },
             "description": "The file's name, e.g. photo.jpg."
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional, any unique string (a UUID is good), up to 255 characters. Send the same key when you retry: a repeat returns what the first request made (header `Idempotent-Replayed: true`) instead of making it twice. The same key with a different request is 422. Keys last 24 hours, per member.",
+              "title": "Idempotency-Key"
+            },
+            "description": "Optional, any unique string (a UUID is good), up to 255 characters. Send the same key when you retry: a repeat returns what the first request made (header `Idempotent-Replayed: true`) instead of making it twice. The same key with a different request is 422. Keys last 24 hours, per member."
           }
         ],
         "responses": {
@@ -1981,7 +2113,7 @@
           "attachments"
         ],
         "summary": "A short-lived link to download a file",
-        "description": "Ask again for a new link once it expires (5 minutes by default).",
+        "description": "Ask again for a new link once it expires (5 minutes by default). 409 when the file failed the virus scan, or (with scanning on) is still being checked.",
         "operationId": "download_link_api_v1_attachments__attachment_id__get",
         "security": [
           {
@@ -2763,6 +2895,24 @@
               "title": "If-Match"
             },
             "description": "The ETag from reading the ticket. 409 if the ticket changed since."
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional, any unique string (a UUID is good), up to 255 characters. Send the same key when you retry: a repeat returns what the first request made (header `Idempotent-Replayed: true`) instead of making it twice. The same key with a different request is 422. Keys last 24 hours, per member.",
+              "title": "Idempotency-Key"
+            },
+            "description": "Optional, any unique string (a UUID is good), up to 255 characters. Send the same key when you retry: a repeat returns what the first request made (header `Idempotent-Replayed: true`) instead of making it twice. The same key with a different request is 422. Keys last 24 hours, per member."
           }
         ],
         "responses": {
@@ -2775,6 +2925,537 @@
                 }
               }
             }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/email-addresses": {
+      "get": {
+        "tags": [
+          "email"
+        ],
+        "summary": "Support email addresses, the default first (Admin)",
+        "operationId": "list_addresses_api_v1_email_addresses_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/EmailAddressOut"
+                  },
+                  "type": "array",
+                  "title": "Response List Addresses Api V1 Email Addresses Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "email"
+        ],
+        "summary": "Add a support email address (Admin)",
+        "operationId": "create_address_api_v1_email_addresses_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmailAddressIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmailAddressOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/email-addresses/{address_id}": {
+      "patch": {
+        "tags": [
+          "email"
+        ],
+        "summary": "Change an address's name or signature, or make it the default (Admin)",
+        "operationId": "change_address_api_v1_email_addresses__address_id__patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "address_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Address Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmailAddressPatch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmailAddressOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "email"
+        ],
+        "summary": "Delete a support email address (Admin)",
+        "operationId": "delete_address_api_v1_email_addresses__address_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "address_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Address Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/email-addresses/{address_id}/test": {
+      "post": {
+        "tags": [
+          "email"
+        ],
+        "summary": "Email yourself a test from this address (Admin)",
+        "operationId": "send_test_api_v1_email_addresses__address_id__test_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "address_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Address Id"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TestEmailOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/email/failed": {
+      "get": {
+        "tags": [
+          "email"
+        ],
+        "summary": "Admin: emails that could not be sent after every retry",
+        "operationId": "failed_emails_api_v1_email_failed_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FailedEmailPageOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/email/{email_id}/retry": {
+      "post": {
+        "tags": [
+          "email"
+        ],
+        "summary": "Admin: send a failed email again",
+        "description": "It goes back in the queue (tries from zero) and the worker sends it within seconds; its ticket gets a line saying who did it. 404 if it isn't failed or can't be retried (account emails).",
+        "operationId": "retry_email_api_v1_email__email_id__retry_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "email_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Email Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/inbound/email": {
+      "post": {
+        "tags": [
+          "email in"
+        ],
+        "summary": "A mail service delivers one incoming email (token required)",
+        "operationId": "receive_email_api_v1_inbound_email_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReceivedOut"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sla": {
+      "get": {
+        "tags": [
+          "sla"
+        ],
+        "summary": "SLA targets, policies and hours",
+        "operationId": "read_sla_api_v1_sla_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SlaSettingsOut"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/sla/targets": {
+      "put": {
+        "tags": [
+          "sla"
+        ],
+        "summary": "Admin: change the first-reply and resolve targets per priority",
+        "description": "Only the priorities sent change. The first reply can't be due after the resolution (422). Every open ticket's SLA is worked out again.",
+        "operationId": "set_targets_api_v1_sla_targets_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TargetsIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SlaSettingsOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/outbox/failed": {
+      "get": {
+        "tags": [
+          "outbox"
+        ],
+        "summary": "Admin: events that could not be delivered after every retry",
+        "operationId": "failed_api_v1_outbox_failed_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FailedPageOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/outbox/{event_id}/retry": {
+      "post": {
+        "tags": [
+          "outbox"
+        ],
+        "summary": "Admin: try a failed event again now",
+        "description": "Its tries start from zero. Steps that already worked are not repeated.",
+        "operationId": "retry_api_v1_outbox__event_id__retry_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "event_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Event Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
           },
           "422": {
             "description": "Validation Error",
@@ -3019,7 +3700,7 @@
           "scan_status": {
             "type": "string",
             "title": "Scan Status",
-            "description": "not_scanned, clean or infected."
+            "description": "not_scanned, clean, infected, or scan_failed (could not be checked). With virus scanning on, only clean files can be downloaded."
           },
           "uploaded_by": {
             "anyOf": [
@@ -3082,6 +3763,59 @@
           "next_cursor"
         ],
         "title": "AttachmentPageOut"
+      },
+      "CalendarOut": {
+        "properties": {
+          "timezone": {
+            "type": "string",
+            "title": "Timezone"
+          },
+          "days": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Days",
+            "description": "ISO weekdays: 1 Monday ... 7 Sunday."
+          },
+          "opens": {
+            "type": "string",
+            "format": "time",
+            "title": "Opens"
+          },
+          "closes": {
+            "type": "string",
+            "format": "time",
+            "title": "Closes"
+          },
+          "always_open": {
+            "type": "boolean",
+            "title": "Always Open",
+            "description": "24/7: every minute counts, holidays too."
+          },
+          "holidays": {
+            "items": {
+              "$ref": "#/components/schemas/HolidayOut"
+            },
+            "type": "array",
+            "title": "Holidays"
+          },
+          "is_default": {
+            "type": "boolean",
+            "title": "Is Default"
+          }
+        },
+        "type": "object",
+        "required": [
+          "timezone",
+          "days",
+          "opens",
+          "closes",
+          "always_open",
+          "holidays",
+          "is_default"
+        ],
+        "title": "CalendarOut"
       },
       "ChangeMemberBody": {
         "properties": {
@@ -3499,6 +4233,353 @@
         ],
         "title": "DownloadOut"
       },
+      "EmailAddressIn": {
+        "properties": {
+          "address": {
+            "type": "string",
+            "maxLength": 254,
+            "title": "Address",
+            "description": "e.g. support@acme.in. Stored lower-case; unique across all workspaces."
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Name",
+            "description": "Shown as the sender, e.g. 'Acme Support'."
+          },
+          "signature": {
+            "type": "string",
+            "maxLength": 2000,
+            "title": "Signature",
+            "description": "Added under every reply from this address. Placeholders such as {{agent.name}} are filled when the reply is sent.",
+            "default": ""
+          },
+          "is_default": {
+            "type": "boolean",
+            "title": "Is Default",
+            "description": "Replies come from it when the customer wrote elsewhere. The first address is always the default.",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "address",
+          "name"
+        ],
+        "title": "EmailAddressIn"
+      },
+      "EmailAddressOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "address": {
+            "type": "string",
+            "title": "Address"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "signature": {
+            "type": "string",
+            "title": "Signature"
+          },
+          "is_default": {
+            "type": "boolean",
+            "title": "Is Default"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "address",
+          "name",
+          "signature",
+          "is_default",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "EmailAddressOut"
+      },
+      "EmailAddressPatch": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80,
+                "minLength": 1,
+                "description": "Shown as the sender, e.g. 'Acme Support'."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "signature": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000,
+                "description": "Added under every reply from this address. Placeholders such as {{agent.name}} are filled when the reply is sent."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Signature"
+          },
+          "is_default": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Default",
+            "description": "Only `true`: make another address the default to move it."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "EmailAddressPatch"
+      },
+      "FailedEmailOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "ticket_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ticket Id",
+            "description": "null for account emails (password reset)."
+          },
+          "ticket_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ticket Label",
+            "description": "T-1005, or null."
+          },
+          "message_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message Id",
+            "description": "The reply this email carried."
+          },
+          "to": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "To"
+          },
+          "subject": {
+            "type": "string",
+            "title": "Subject"
+          },
+          "attempts": {
+            "type": "integer",
+            "title": "Attempts"
+          },
+          "last_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error"
+          },
+          "can_retry": {
+            "type": "boolean",
+            "title": "Can Retry",
+            "description": "false for account emails: their text is removed when they fail. The person asks for a new link instead."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "ticket_id",
+          "ticket_label",
+          "message_id",
+          "to",
+          "subject",
+          "attempts",
+          "last_error",
+          "can_retry",
+          "created_at"
+        ],
+        "title": "FailedEmailOut"
+      },
+      "FailedEmailPageOut": {
+        "properties": {
+          "emails": {
+            "items": {
+              "$ref": "#/components/schemas/FailedEmailOut"
+            },
+            "type": "array",
+            "title": "Emails",
+            "description": "Newest first."
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "emails",
+          "next_cursor"
+        ],
+        "title": "FailedEmailPageOut"
+      },
+      "FailedEventOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "event": {
+            "type": "string",
+            "title": "Event",
+            "description": "ticket.created, message.created, ..."
+          },
+          "ticket_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ticket Id"
+          },
+          "occurred_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Occurred At"
+          },
+          "failed_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Failed At"
+          },
+          "attempts": {
+            "type": "integer",
+            "title": "Attempts"
+          },
+          "last_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error",
+            "description": "Which handler failed, and why."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "event",
+          "ticket_id",
+          "occurred_at",
+          "failed_at",
+          "attempts",
+          "last_error"
+        ],
+        "title": "FailedEventOut"
+      },
+      "FailedPageOut": {
+        "properties": {
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/FailedEventOut"
+            },
+            "type": "array",
+            "title": "Events",
+            "description": "Newest failure first."
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "events",
+          "next_cursor"
+        ],
+        "title": "FailedPageOut"
+      },
       "FieldDefIn": {
         "properties": {
           "key": {
@@ -3581,6 +4662,29 @@
         ],
         "title": "FieldKind"
       },
+      "ForgotPasswordBody": {
+        "properties": {
+          "workspace": {
+            "type": "string",
+            "maxLength": 40,
+            "title": "Workspace"
+          },
+          "email": {
+            "type": "string",
+            "maxLength": 254,
+            "minLength": 3,
+            "pattern": "^[^@\\s]+@[^@\\s]+$",
+            "title": "Email"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "workspace",
+          "email"
+        ],
+        "title": "ForgotPasswordBody"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -3593,6 +4697,25 @@
         },
         "type": "object",
         "title": "HTTPValidationError"
+      },
+      "HolidayOut": {
+        "properties": {
+          "day": {
+            "type": "string",
+            "format": "date",
+            "title": "Day"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "day",
+          "name"
+        ],
+        "title": "HolidayOut"
       },
       "InboxOut": {
         "properties": {
@@ -3854,6 +4977,43 @@
         ],
         "title": "MemberPage"
       },
+      "MessageFileOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id",
+            "description": "GET /attachments/{id} gives a download link."
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "size": {
+            "type": "integer",
+            "title": "Size",
+            "description": "Bytes."
+          },
+          "mime": {
+            "type": "string",
+            "title": "Mime"
+          },
+          "scan_status": {
+            "type": "string",
+            "title": "Scan Status",
+            "description": "not_scanned, clean, infected, or scan_failed (could not be checked)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "size",
+          "mime",
+          "scan_status"
+        ],
+        "title": "MessageFileOut"
+      },
       "MessageIn": {
         "properties": {
           "kind": {
@@ -3863,9 +5023,9 @@
           "body": {
             "type": "string",
             "maxLength": 50000,
-            "minLength": 1,
             "title": "Body",
-            "description": "Replies fill {{customer.first_name}}, {{customer.name}}, {{agent.name}} and {{fields.<key>}} (\"—\" when empty)."
+            "description": "Replies fill {{customer.first_name}}, {{customer.name}}, {{agent.name}} and {{fields.<key>}} (\"—\" when empty). May be empty only when sending files.",
+            "default": ""
           },
           "mention_ids": {
             "items": {
@@ -3877,13 +5037,23 @@
             "title": "Mention Ids",
             "description": "Notes only: members to notify.",
             "default": []
+          },
+          "attachment_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "maxItems": 10,
+            "title": "Attachment Ids",
+            "description": "Files to send with it: upload each to the ticket first (POST /tickets/{id}/attachments), then list their ids here. Only your own files not sent yet. With files, `body` may be empty.",
+            "default": []
           }
         },
         "additionalProperties": false,
         "type": "object",
         "required": [
-          "kind",
-          "body"
+          "kind"
         ],
         "title": "MessageIn"
       },
@@ -3970,6 +5140,32 @@
               }
             ],
             "title": "Channel Message Id"
+          },
+          "attachments": {
+            "items": {
+              "$ref": "#/components/schemas/MessageFileOut"
+            },
+            "type": "array",
+            "title": "Attachments",
+            "description": "Files sent with it (by the agent, or in the customer's email).",
+            "default": []
+          },
+          "delivery": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "pending",
+                  "sent",
+                  "failed"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delivery",
+            "description": "Replies on email tickets: whether the email went out. pending: queued or retrying; sent; failed: gave up (see the ticket's system line)."
           }
         },
         "type": "object",
@@ -4081,6 +5277,79 @@
         ],
         "title": "NotificationOut"
       },
+      "PolicyOut": {
+        "properties": {
+          "position": {
+            "type": "integer",
+            "title": "Position",
+            "description": "First enabled match wins, from 1."
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled"
+          },
+          "vip_only": {
+            "type": "boolean",
+            "title": "Vip Only"
+          },
+          "channels": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Channels",
+            "description": "Empty: every channel."
+          },
+          "priorities": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Priorities",
+            "description": "Empty: every priority."
+          },
+          "first_reply_minutes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Reply Minutes",
+            "description": "null: the priority target."
+          },
+          "resolve_minutes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolve Minutes",
+            "description": "null: the priority target."
+          }
+        },
+        "type": "object",
+        "required": [
+          "position",
+          "name",
+          "enabled",
+          "vip_only",
+          "channels",
+          "priorities",
+          "first_reply_minutes",
+          "resolve_minutes"
+        ],
+        "title": "PolicyOut"
+      },
       "Priority": {
         "type": "string",
         "enum": [
@@ -4090,6 +5359,45 @@
           "low"
         ],
         "title": "Priority"
+      },
+      "ReceivedOut": {
+        "properties": {
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "created",
+              "added",
+              "rules_ran",
+              "reopened",
+              "thanked",
+              "duplicate",
+              "automatic",
+              "from_us",
+              "no_workspace",
+              "unreadable"
+            ],
+            "title": "Outcome",
+            "description": "created: a new ticket; added / rules_ran / reopened / thanked: on an existing ticket; the rest: ignored on purpose."
+          },
+          "ticket_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ticket Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "outcome",
+          "ticket_id"
+        ],
+        "title": "ReceivedOut"
       },
       "ReorderBody": {
         "properties": {
@@ -4127,6 +5435,31 @@
           "new_password"
         ],
         "title": "ResetPasswordBody"
+      },
+      "ResetWithLinkBody": {
+        "properties": {
+          "token": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Token",
+            "description": "From the link in the email: the part after `#token=`."
+          },
+          "new_password": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "New Password",
+            "description": "10 to 128 characters."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "token",
+          "new_password"
+        ],
+        "title": "ResetWithLinkBody"
       },
       "Role": {
         "type": "string",
@@ -4634,16 +5967,159 @@
         ],
         "title": "SignedInOut"
       },
+      "SlaClockOut": {
+        "properties": {
+          "target_minutes": {
+            "type": "integer",
+            "title": "Target Minutes"
+          },
+          "due_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Due At"
+          },
+          "stopped_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stopped At",
+            "description": "The reply or resolution; null while running."
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "on_track",
+              "close",
+              "breached",
+              "met"
+            ],
+            "title": "State",
+            "description": "close: under 25% of the target left. breached stays after the reply. met: done in time."
+          },
+          "minutes_left": {
+            "type": "number",
+            "title": "Minutes Left",
+            "description": "Business minutes; negative once overdue."
+          }
+        },
+        "type": "object",
+        "required": [
+          "target_minutes",
+          "due_at",
+          "stopped_at",
+          "state",
+          "minutes_left"
+        ],
+        "title": "SlaClockOut"
+      },
+      "SlaOut": {
+        "properties": {
+          "policy": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Policy",
+            "description": "The SLA policy that matched; null: priority targets."
+          },
+          "current": {
+            "type": "string",
+            "enum": [
+              "first_reply",
+              "resolve"
+            ],
+            "title": "Current",
+            "description": "The clock the pill shows: first reply until it is replied, then resolve."
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "on_track",
+              "close",
+              "breached",
+              "met"
+            ],
+            "title": "State",
+            "description": "The current clock's state, for the pill."
+          },
+          "paused": {
+            "type": "boolean",
+            "title": "Paused",
+            "description": "Outside business hours (or a holiday) and still running. Pending does not pause."
+          },
+          "first_reply": {
+            "$ref": "#/components/schemas/SlaClockOut"
+          },
+          "resolve": {
+            "$ref": "#/components/schemas/SlaClockOut"
+          }
+        },
+        "type": "object",
+        "required": [
+          "policy",
+          "current",
+          "state",
+          "paused",
+          "first_reply",
+          "resolve"
+        ],
+        "title": "SlaOut",
+        "description": "The ticket's SLA, worked out when it is read (W13)."
+      },
+      "SlaSettingsOut": {
+        "properties": {
+          "targets": {
+            "items": {
+              "$ref": "#/components/schemas/TargetOut"
+            },
+            "type": "array",
+            "title": "Targets"
+          },
+          "policies": {
+            "items": {
+              "$ref": "#/components/schemas/PolicyOut"
+            },
+            "type": "array",
+            "title": "Policies"
+          },
+          "policies_are_default": {
+            "type": "boolean",
+            "title": "Policies Are Default"
+          },
+          "calendar": {
+            "$ref": "#/components/schemas/CalendarOut"
+          }
+        },
+        "type": "object",
+        "required": [
+          "targets",
+          "policies",
+          "policies_are_default",
+          "calendar"
+        ],
+        "title": "SlaSettingsOut"
+      },
       "Sort": {
         "type": "string",
         "enum": [
           "priority",
+          "sla",
           "newest",
           "oldest",
           "updated"
         ],
         "title": "Sort",
-        "description": "Ticket list orders. `priority`: Open and Pending most urgent first, then oldest;\nResolved after them, newest resolved first (T9; SLA time left joins when SLA lands)."
+        "description": "Ticket list orders. `priority`: Open and Pending most urgent first, then oldest;\nResolved after them, newest resolved first. `sla`: Open and Pending by SLA time left,\nsoonest due (or most overdue) first; Resolved after them, newest resolved first (T9)."
       },
       "Status": {
         "type": "string",
@@ -4666,6 +6142,100 @@
           "status"
         ],
         "title": "StatusIn"
+      },
+      "TargetIn": {
+        "properties": {
+          "priority": {
+            "type": "string",
+            "enum": [
+              "urgent",
+              "high",
+              "medium",
+              "low"
+            ],
+            "title": "Priority"
+          },
+          "first_reply_minutes": {
+            "type": "integer",
+            "maximum": 43200.0,
+            "minimum": 1.0,
+            "title": "First Reply Minutes"
+          },
+          "resolve_minutes": {
+            "type": "integer",
+            "maximum": 43200.0,
+            "minimum": 1.0,
+            "title": "Resolve Minutes"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "priority",
+          "first_reply_minutes",
+          "resolve_minutes"
+        ],
+        "title": "TargetIn"
+      },
+      "TargetOut": {
+        "properties": {
+          "priority": {
+            "type": "string",
+            "enum": [
+              "urgent",
+              "high",
+              "medium",
+              "low"
+            ],
+            "title": "Priority"
+          },
+          "first_reply_minutes": {
+            "type": "integer",
+            "title": "First Reply Minutes"
+          },
+          "resolve_minutes": {
+            "type": "integer",
+            "title": "Resolve Minutes"
+          },
+          "reads_as": {
+            "type": "string",
+            "title": "Reads As",
+            "description": "The sentence under the row, e.g. 'Urgent tickets get ...'"
+          },
+          "is_default": {
+            "type": "boolean",
+            "title": "Is Default",
+            "description": "true: never changed by an Admin."
+          }
+        },
+        "type": "object",
+        "required": [
+          "priority",
+          "first_reply_minutes",
+          "resolve_minutes",
+          "reads_as",
+          "is_default"
+        ],
+        "title": "TargetOut"
+      },
+      "TargetsIn": {
+        "properties": {
+          "targets": {
+            "items": {
+              "$ref": "#/components/schemas/TargetIn"
+            },
+            "type": "array",
+            "maxItems": 4,
+            "minItems": 1,
+            "title": "Targets"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "targets"
+        ],
+        "title": "TargetsIn"
       },
       "TeamIn": {
         "properties": {
@@ -4802,6 +6372,20 @@
         "additionalProperties": false,
         "type": "object",
         "title": "TeamPatch"
+      },
+      "TestEmailOut": {
+        "properties": {
+          "sent_to": {
+            "type": "string",
+            "title": "Sent To",
+            "description": "Your own address; the email is queued, not yet sent."
+          }
+        },
+        "type": "object",
+        "required": [
+          "sent_to"
+        ],
+        "title": "TestEmailOut"
       },
       "TicketIn": {
         "properties": {
@@ -5153,6 +6737,16 @@
           "child_count": {
             "type": "integer",
             "title": "Child Count"
+          },
+          "sla": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SlaOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "fields": {
             "additionalProperties": true,
@@ -5602,6 +7196,16 @@
           "child_count": {
             "type": "integer",
             "title": "Child Count"
+          },
+          "sla": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SlaOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",

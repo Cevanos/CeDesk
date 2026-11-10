@@ -12,6 +12,9 @@ GLOBAL_TABLES = {
     # slug -> workspace id, read at sign-in before any workspace is known.
     # No names, members or tickets; the app can add rows but not change or remove them.
     "workspace_directory",
+    # support email address -> workspace id, read when an email arrives (migration 0017).
+    # Only addresses; the app can only read it (triggers keep it in step).
+    "email_address_directory",
 }
 
 TABLES = text(
