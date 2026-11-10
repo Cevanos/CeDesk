@@ -95,6 +95,44 @@
         ]
       }
     },
+    "/api/v1/me/password": {
+      "post": {
+        "tags": [
+          "sign-in"
+        ],
+        "summary": "Change my password (ends my other sessions)",
+        "operationId": "change_my_password_api_v1_me_password_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangePasswordBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Locked after too many wrong passwords"
+          },
+          "409": {
+            "description": "The password was changed elsewhere meanwhile"
+          },
+          "422": {
+            "description": "Current password not right, or the new one is not allowed"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/members": {
       "get": {
         "tags": [
@@ -250,6 +288,57 @@
                 }
               }
             }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/members/{member_id}/password": {
+      "post": {
+        "tags": [
+          "members"
+        ],
+        "summary": "Give a member a new password (Admin; signs them out everywhere)",
+        "operationId": "reset_password_api_v1_members__member_id__password_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "member_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Member Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResetPasswordBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
           },
           "422": {
             "description": "Validation Error",
@@ -2248,6 +2337,30 @@
         "type": "object",
         "title": "ChangeMemberBody"
       },
+      "ChangePasswordBody": {
+        "properties": {
+          "current_password": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Current Password"
+          },
+          "new_password": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "New Password",
+            "description": "10 to 128 characters, not the current one."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "current_password",
+          "new_password"
+        ],
+        "title": "ChangePasswordBody"
+      },
       "Channel": {
         "type": "string",
         "enum": [
@@ -3053,6 +3166,23 @@
           "ids"
         ],
         "title": "ReorderBody"
+      },
+      "ResetPasswordBody": {
+        "properties": {
+          "new_password": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "New Password",
+            "description": "10 to 128 characters. Give it to the member; they can change it later."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "new_password"
+        ],
+        "title": "ResetPasswordBody"
       },
       "Role": {
         "type": "string",
