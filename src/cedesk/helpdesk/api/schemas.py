@@ -67,6 +67,17 @@ class AddMemberBody(Body):
     password: Password = Field(description="A first password the member changes later.")
 
 
+class ChangePasswordBody(Body):
+    current_password: Password
+    new_password: Password = Field(description="10 to 128 characters, not the current one.")
+
+
+class ResetPasswordBody(Body):
+    new_password: Password = Field(
+        description="10 to 128 characters. Give it to the member; they can change it later."
+    )
+
+
 class ChangeMemberBody(Body):
     name: Name | None = None
     role: Role | None = None
