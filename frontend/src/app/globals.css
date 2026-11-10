@@ -1,0 +1,245 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:is(.dark *));
+
+/* ------------------------------------------------------------------ *
+ * CDesk design tokens.
+ * Brand family is shared with Cevanos / CXOps: violet primary on a cool
+ * blue-slate neutral ramp. Light is the default; `.dark` swaps the ramp.
+ * ------------------------------------------------------------------ */
+:root {
+  --background: #f6f8fb;
+  --surface: #ffffff;
+  --surface-2: #f1f4f8;
+  --surface-3: #e9eef4;
+  --foreground: #0b1b36;
+  --foreground-2: #1e3450;
+  --muted-foreground: #5d6b7c;
+  --subtle-foreground: #64708a; /* >= 4.5:1 on every surface */
+  --border: #e1e7ee;
+  --border-strong: #cfd8e3;
+  --input: #d5dde7;
+
+  --primary: #6c55f6;
+  --primary-hover: #5f48ee;
+  --primary-ink: #5b45e8; /* brand as TEXT on light: clears 4.5:1 */
+  --primary-soft: #efecff;
+  --primary-foreground: #ffffff;
+  --ring: #7762fb;
+
+  --success: #0f7a52;
+  --success-soft: #e8f6f0;
+  --warning: #9a5b00;
+  --warning-soft: #fdf3e2;
+  --danger: #b4321c;
+  --danger-soft: #fdeceb;
+  --info: #2b6cf5;
+  --info-soft: #eef3ff;
+
+  --note: #fff7d6;
+  --note-border: #ecd98a;
+
+  --nav: #1a1240;
+  --nav-foreground: #cfc8ee;
+  --nav-active: #2a1f5e;
+
+  --shadow-sm: 0 1px 2px rgb(11 27 54 / 0.06);
+  --shadow-md: 0 8px 24px -10px rgb(11 27 54 / 0.18);
+  --shadow-lg: 0 24px 60px -20px rgb(60 40 160 / 0.35);
+  --radius: 0.625rem;
+}
+
+.dark {
+  --background: #0d1220;
+  --surface: #141b2e;
+  --surface-2: #19223a;
+  --surface-3: #212b47;
+  --foreground: #eef2f8;
+  --foreground-2: #cfd8e6;
+  --muted-foreground: #9aa8bd;
+  --subtle-foreground: #8a99ae;
+  --border: #ffffff1a;
+  --border-strong: #ffffff2b;
+  --input: #ffffff2b;
+
+  --primary: #8a78ff;
+  --primary-hover: #9c8cff;
+  --primary-ink: #b3a6ff;
+  --primary-soft: #231f4d;
+  --primary-foreground: #0d1220;
+  --ring: #8a78ff;
+
+  --success: #4fd6a0;
+  --success-soft: #11301f;
+  --warning: #f0b45a;
+  --warning-soft: #33260f;
+  --danger: #ff8a73;
+  --danger-soft: #3a1a14;
+  --info: #7fb0ff;
+  --info-soft: #14254a;
+
+  --note: #2f2a12;
+  --note-border: #5a4f1f;
+
+  --nav: #120c2e;
+  --nav-foreground: #b6aedc;
+  --nav-active: #231a52;
+
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4);
+  --shadow-md: 0 8px 24px -10px rgb(0 0 0 / 0.6);
+  --shadow-lg: 0 24px 60px -20px rgb(0 0 0 / 0.7);
+}
+
+@theme inline {
+  --font-sans: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-foreground: var(--foreground);
+  --color-foreground-2: var(--foreground-2);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-subtle-foreground: var(--subtle-foreground);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-input: var(--input);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-ink: var(--primary-ink);
+  --color-primary-soft: var(--primary-soft);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-ring: var(--ring);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
+  --color-note: var(--note);
+  --color-note-border: var(--note-border);
+  --color-nav: var(--nav);
+  --color-nav-foreground: var(--nav-foreground);
+  --color-nav-active: var(--nav-active);
+
+  --shadow-card: var(--shadow-sm);
+  --shadow-pop: var(--shadow-md);
+  --shadow-hero: var(--shadow-lg);
+  --radius-lg: var(--radius);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+
+  --animate-drift: drift 18s ease-in-out infinite;
+  --animate-float: float 7s ease-in-out infinite;
+  --animate-rise: rise 0.5s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+
+  @keyframes drift {
+    0%,
+    100% {
+      transform: translate3d(0, 0, 0) scale(1);
+    }
+    50% {
+      transform: translate3d(24px, -18px, 0) scale(1.06);
+    }
+  }
+  @keyframes float {
+    0%,
+    100% {
+      transform: translateY(0);
+    }
+    50% {
+      transform: translateY(-8px);
+    }
+  }
+  @keyframes slide-in {
+    from {
+      opacity: 0.6;
+      transform: translateX(32px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  @keyframes rise {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+  html {
+    color-scheme: light;
+    -webkit-text-size-adjust: 100%;
+  }
+  html.dark {
+    color-scheme: dark;
+  }
+  body {
+    background: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+  ::selection {
+    background: color-mix(in srgb, var(--primary) 30%, transparent);
+  }
+  body {
+    overflow-x: clip;
+  }
+  img,
+  svg,
+  video {
+    max-width: 100%;
+  }
+  /* iOS Safari zooms the page when a focused field is under 16px. */
+  @media (pointer: coarse) {
+    input,
+    textarea,
+    select {
+      font-size: 16px !important;
+    }
+  }
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]) {
+    cursor: pointer;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* thin themed scrollbars */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
