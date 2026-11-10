@@ -1,5 +1,5 @@
-"""`uv run cedesk <command>`: serve the API, run migrations, create a workspace, prune
-sessions, or write the OpenAPI file."""
+"""`uv run cedesk <command>`: serve the API, run migrations, create a workspace or a demo
+workspace, prune sessions, or write the OpenAPI file."""
 
 import argparse
 import asyncio
@@ -16,7 +16,11 @@ def _migrate() -> int:
 
     from cedesk.settings import get_settings
 
-    url = get_settings().migration_database_url
+    settings = get_settings()
+    url = settings.migration_database_url
+    if settings.env.value != "dev" and "_dev@" in url:
+        print("CEDESK_MIGRATION_DATABASE_URL uses the dev password.", file=sys.stderr)
+        return 1
     print(f"Migrating {url.rsplit('@', 1)[-1]}", file=sys.stderr)
     cfg = Config(str(ROOT / "alembic.ini"))
     cfg.set_main_option("sqlalchemy.url", url)
@@ -57,6 +61,38 @@ def _create_workspace(args: argparse.Namespace) -> int:
     except ServiceError as exc:
         print(exc.message, file=sys.stderr)
         return 1
+    return 0
+
+
+def _seed_demo(args: argparse.Namespace) -> int:
+    from cedesk.db import make_engine, make_sessionmaker
+    from cedesk.demo import seed_demo
+    from cedesk.helpdesk.service.errors import ServiceError
+    from cedesk.settings import get_settings
+
+    # One password for every demo account, asked at a prompt (never in the code or argv).
+    password = getpass.getpass("Password for all demo accounts (10+ characters): ")
+    if password != getpass.getpass("Again: "):
+        print("The passwords differ.", file=sys.stderr)
+        return 1
+
+    async def run() -> list[tuple[str, str, str]]:
+        engine = make_engine(get_settings().database_url)
+        try:
+            return await seed_demo(
+                make_sessionmaker(engine), slug=args.slug, name=args.name, password=password
+            )
+        finally:
+            await engine.dispose()
+
+    try:
+        accounts = asyncio.run(run())
+    except ServiceError as exc:
+        print(exc.message, file=sys.stderr)
+        return 1
+    print(f"Created workspace {args.slug} with 6 tickets. Sign in with workspace '{args.slug}':")
+    for name, email, role in accounts:
+        print(f"  {role:<12} {name:<14} {email}")
     return 0
 
 
@@ -115,6 +151,11 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Start empty, without the default teams and ticket types",
     )
+    demo = sub.add_parser(
+        "seed-demo", help="A demo workspace like the mock: Ritesh (Admin), agents, tickets"
+    )
+    demo.add_argument("--slug", default="acme-store")
+    demo.add_argument("--name", default="Acme Store")
     spec = sub.add_parser("openapi", help="Write the API description to docs/api/openapi.json")
     spec.add_argument("--out", type=Path, default=ROOT / "docs" / "api" / "openapi.json")
     spec.add_argument("--check", action="store_true", help="Fail if the file is out of date")
@@ -139,6 +180,8 @@ def main(argv: list[str] | None = None) -> int:
         return _migrate()
     if args.command == "prune-sessions":
         return _prune_sessions()
+    if args.command == "seed-demo":
+        return _seed_demo(args)
     if args.command == "openapi":
         return _openapi(args.out, args.check)
     return _create_workspace(args)
