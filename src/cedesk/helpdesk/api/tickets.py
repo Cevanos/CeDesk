@@ -8,7 +8,7 @@ from collections.abc import Mapping
 from typing import Annotated, Any, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Header, Query, Response, status
+from fastapi import APIRouter, Header, Query, Request, Response, status
 
 from cedesk.helpdesk.api.deps import CallerDep, SessionmakerDep
 from cedesk.helpdesk.api.ticket_schemas import (
@@ -25,8 +25,9 @@ from cedesk.helpdesk.api.ticket_schemas import (
     TicketPatch,
     TicketRowOut,
 )
+from cedesk.helpdesk.api.workflow_schemas import CustomerReplyBody
 from cedesk.helpdesk.domain.tickets import Priority, Sort, Status, etag, label
-from cedesk.helpdesk.service import tickets
+from cedesk.helpdesk.service import customer_replies, tickets
 from cedesk.helpdesk.service.tickets import NewTicket, TicketView
 
 router = APIRouter(tags=["tickets"])
@@ -58,7 +59,7 @@ def _row(r: Mapping[Any, Any]) -> dict[str, Any]:
     }
 
 
-def _detail(view: TicketView, response: Response) -> TicketOut:
+def detail_response(view: TicketView, response: Response) -> TicketOut:
     response.headers["ETag"] = etag(view.ticket["updated_at"])
     return _ticket_out(view)
 
@@ -109,7 +110,7 @@ async def create_ticket(
             tags=body.tags,
         ),
     )
-    return _detail(view, response)
+    return detail_response(view, response)
 
 
 @router.get(
@@ -166,7 +167,7 @@ async def list_tickets(
 async def get_ticket(
     ticket_id: UUID, caller: CallerDep, sm: SessionmakerDep, response: Response
 ) -> TicketOut:
-    return _detail(await tickets.get_ticket(sm, caller, ticket_id), response)
+    return detail_response(await tickets.get_ticket(sm, caller, ticket_id), response)
 
 
 @router.patch(
@@ -183,7 +184,7 @@ async def change_ticket(
     if_match: IfMatch = None,
 ) -> TicketOut:
     view = await tickets.change_ticket(sm, caller, ticket_id, body.changes(), if_match=if_match)
-    return _detail(view, response)
+    return detail_response(view, response)
 
 
 @router.post(
@@ -199,7 +200,7 @@ async def resolve_ticket(
     if_match: IfMatch = None,
 ) -> TicketOut:
     view = await tickets.resolve_ticket(sm, caller, ticket_id, if_match=if_match)
-    return _detail(view, response)
+    return detail_response(view, response)
 
 
 @router.get(
@@ -234,3 +235,24 @@ async def change_contact(
 ) -> ContactProfileOut:
     row = await tickets.change_contact(sm, caller, contact_id, name=body.name, vip=body.vip)
     return ContactProfileOut.model_validate(dict(row))
+
+
+@router.post(
+    "/tickets/{ticket_id}/simulate-customer-reply",
+    response_model=TicketOut,
+    summary="Test only (Admin, not in production): add a message as the customer",
+    description="Does what a real customer reply does: reopens a resolved ticket, keeps it "
+    "resolved for a thank-you, runs the customer_replied rules and tells the assignee. "
+    "Real replies come from the Cevanos connector, email and the portal.",
+)
+async def simulate_customer_reply(
+    ticket_id: UUID,
+    body: CustomerReplyBody,
+    caller: CallerDep,
+    sm: SessionmakerDep,
+    request: Request,
+    response: Response,
+) -> TicketOut:
+    allowed = request.app.state.settings.env.value != "production"
+    await customer_replies.simulate(sm, caller, ticket_id, body.body, allowed=allowed)
+    return detail_response(await tickets.get_ticket(sm, caller, ticket_id), response)

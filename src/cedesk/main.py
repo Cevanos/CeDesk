@@ -22,9 +22,12 @@ from cedesk.db import make_engine, make_sessionmaker
 from cedesk.helpdesk.api import attachments as attachments_api
 from cedesk.helpdesk.api import auth as auth_api
 from cedesk.helpdesk.api import catalog as catalog_api
+from cedesk.helpdesk.api import macros as macros_api
 from cedesk.helpdesk.api import members as members_api
 from cedesk.helpdesk.api import messages as messages_api
 from cedesk.helpdesk.api import routing as routing_api
+from cedesk.helpdesk.api import rules as rules_api
+from cedesk.helpdesk.api import saved_replies as saved_replies_api
 from cedesk.helpdesk.api import tickets as tickets_api
 from cedesk.helpdesk.service.errors import ServiceError, TooManyAttempts
 from cedesk.ratelimit import SlidingWindowLimiter
@@ -207,6 +210,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(messages_api.router, prefix="/api/v1")
     app.include_router(routing_api.router, prefix="/api/v1")
     app.include_router(attachments_api.router, prefix="/api/v1")
+    app.include_router(saved_replies_api.router, prefix="/api/v1")
+    app.include_router(rules_api.router, prefix="/api/v1")
+    app.include_router(macros_api.router, prefix="/api/v1")
 
     @app.get("/healthz", tags=["health"], summary="The process is up")
     async def healthz() -> dict[str, str]:
