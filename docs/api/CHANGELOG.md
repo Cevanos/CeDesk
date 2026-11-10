@@ -3,6 +3,30 @@
 `openapi.json` next to this file is the API as served (`uv run cedesk openapi`). Every
 route is under `/api/v1`. Breaking changes only come in v2 (md 2B). Newest first.
 
+## 2026-11-10: Cevanos connector (Phase 1, C4-C7, W8 on handover)
+
+- New (Admin): `GET / PUT / DELETE /cevanos/connection` and `POST /cevanos/connection/check`.
+  The API key and webhook secret are write-only (encrypted at rest; only `api_key_hint`,
+  the last 4 characters, comes back). `team_id`: the team handovers go to;
+  `close_on_resolve`: resolving a ticket closes the chat. `connected: false` means the
+  Cevanos features are hidden.
+- New: `POST /cevanos/events/{workspace_id}` for Cevanos's signed webhooks (not for the
+  frontend). A `conversation.escalated` becomes a `chat` ticket with the chat copied in
+  (message kinds `customer`, `ai`, and `agent` for a person in Cevanos), `source:
+  "cevanos"`, `handover` (reason, channel, `order_id` when the customer wrote `#1234`) and
+  `accepted: false`. Rules run and routing assigns it (W8).
+- New: `POST /tickets/{id}/accept` (agents and up; `Idempotency-Key`). Assigns it to the
+  caller, `accepted: true`, a line "Chat accepted by …", and the chat is taken over in
+  Cevanos. 409 if the ticket isn't waiting.
+- Changed: a `reply` on a ticket with `accepted: false` is now **409** (notes are allowed).
+  Before, only macros checked it. A reply with files on a Cevanos chat is 422.
+- New: `POST /tickets/from-conversation/{conversation_id}` → 201 turns a Cevanos chat into
+  a ticket (409 if it has one, 404 if Cevanos has no such chat for the key).
+- Replies on a Cevanos chat reach the customer through the worker; new customer messages
+  come in every few seconds. The chat's end and reopening are lines on the ticket.
+- New error code `Unavailable` (503): Cevanos could not be reached; try again.
+- New outbox event `handover.accepted` (`{"by": member id}`).
+
 ## 2026-11-10: Phase 1 review fixes
 
 - `POST /tickets/{id}/macros/{macro_id}` accepts `Idempotency-Key` (a macro can send a

@@ -137,8 +137,8 @@ S3 presigns it, local disk signs it with `CEDESK_SECRET_KEY`. Files are capped a
 CeDesk is its own service with its own database, sign-in and deployment. It never imports
 Cevanos code, and it runs fully without Cevanos.
 
-When a workspace connects Cevanos (not built yet), the link is one interface,
-`helpdesk/service/cevanos.py` (`CevanosConnector`), over Cevanos's public API only:
+When a workspace connects Cevanos, the link is one module,
+`helpdesk/service/cevanos.py`, over Cevanos's public API only (setup: `deploy/README.md`):
 
 - **In:** Cevanos's signed webhooks (for example `conversation.escalated` for an AI handover)
   arrive at a CeDesk endpoint; the signature is checked before anything acts.

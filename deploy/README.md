@@ -77,6 +77,16 @@ ClamAV needs about 1.5 GB of memory, and its first start downloads the virus def
 (a few minutes; until then files wait as "being checked"). The worker checks each new
 file; infected ones are removed. Files uploaded before scanning was on are checked too.
 
+Cevanos: `CEDESK_CEVANOS_URL` is Cevanos's API address (default
+`https://api.cevanos.ai`). Each workspace connects itself: an Admin saves the Cevanos API
+key (scopes `conversations:read` and `conversations:write`) and the webhook signing
+secret at `PUT /api/v1/cevanos/connection`, and in Cevanos adds a webhook to
+`https://<server>/api/v1/cevanos/events/<workspace id>` (the exact path is in the
+connection's `webhook_path`) for `conversation.escalated`, `conversation.classified`,
+`conversation.reopened` and `conversation.closed`. The worker then reads open chats every
+few seconds (within the key's 60-a-minute limit) and sends take-overs and replies. The
+secrets are encrypted with `CEDESK_SECRET_KEY`: if that key changes, enter them again.
+
 The worker reads the files sent with replies, and keeps the files that come in customer
 emails, so it uses the same file storage as the api (the `files` volume, already set in
 `docker-compose.yml`). With S3, give the worker the same `CEDESK_STORAGE_*` settings.
