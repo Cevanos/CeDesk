@@ -48,6 +48,20 @@ SCOPES = ("everyone", "mine", "unassigned")
 
 
 @dataclass(frozen=True)
+class ChatLine:
+    """A message from the chat before the handover, copied in as it was (md 7.1 point 2).
+    `kind`: customer, ai (Cevanos's AI agent) or agent (a person in Cevanos)."""
+
+    kind: str
+    body: str
+    author_name: str | None
+    channel_message_id: str | None
+
+
+HISTORY_KINDS = frozenset({"customer", "ai", "agent"})
+
+
+@dataclass(frozen=True)
 class NewTicket:
     subject: str
     contact_email: str
@@ -73,9 +87,14 @@ class NewTicket:
     # Email in: the first message's headers (`hd_message.email`) and its Message-ID.
     first_email: Mapping[str, Any] | None = None
     first_channel_message_id: str | None = None
+    # The chat so far, oldest first, saved after `description` and before rules run (so
+    # text conditions read every customer line). No events: it is history, not new.
+    history: Sequence[ChatLine] = ()
 
 
 def _check_origin(new: NewTicket) -> None:
+    if any(line.kind not in HISTORY_KINDS for line in new.history):
+        raise Invalid("A chat line is from the customer, the AI or an agent.")
     if new.language is not None and not rules.LANGUAGE.match(new.language):
         raise Invalid("language is a code such as hi, en or en-IN.")
     if new.source is not None and not rules.SOURCE.match(new.source):
@@ -351,6 +370,19 @@ async def _create(
                 s, files, workspace_id=origin.workspace_id, ticket_id=ticket_id,
                 message_id=first_message,
             )  # fmt: skip
+        for line in new.history:
+            await repo.insert_message(
+                s,
+                workspace_id=origin.workspace_id,
+                ticket_id=ticket_id,
+                kind=line.kind,
+                body=line.body,
+                author_member_id=None,
+                author_name=line.author_name,
+                channel_message_id=line.channel_message_id,
+            )
+        if any(line.kind == "agent" for line in new.history):
+            await message_repo.ticket_replied(s, ticket_id)  # a person already answered
         await _line(s, origin, ticket_id, f"Ticket created by {who}")
         if team:
             await _line(s, origin, ticket_id, f"Team set to {team} by {who}")
@@ -730,4 +762,42 @@ async def change_ticket(
             actor = None if rerouted else caller.member_id
             for event, extra in events.after_change(current, new, actor):
                 await _emit(s, caller, view.ticket, event, extra)
+        return view
+
+
+NOT_WAITING = "This ticket isn't waiting to be accepted."
+
+
+async def accept_ticket(
+    sm: Sessionmaker, caller: Caller, ticket_id: UUID, *, idem: Idempotency | None = None
+) -> TicketView:
+    """Accept chat (md 7.1 point 3): the caller takes a handover. It is assigned to them
+    (taking it from someone else needs `assign_others`), replies are allowed from now on,
+    and `handover.accepted` tells the connector to take the chat over in Cevanos, so the
+    customer sees that a person joined."""
+    require(caller, Action.reply)
+    async with workspace_session(sm, caller.workspace_id) as s:
+        made = await idempotency.begin(s, caller, idem)
+        if made is not None:
+            return await _view(s, made)
+        current = await repo.lock_ticket(s, ticket_id)
+        detail = await repo.ticket_detail(s, ticket_id)
+        if current is None or detail is None:
+            raise NotFound("Ticket not found.")
+        if detail["accepted"]:
+            raise Conflict(NOT_WAITING)
+        who = await _who(s, caller)
+        new = {"assignee_id": caller.member_id}
+        if current["assignee_id"] != caller.member_id:
+            await _check_assignee(s, caller, caller.member_id, current["assignee_id"])
+            await repo.set_assignee(s, ticket_id, caller.member_id)
+            await _line(s, caller, ticket_id, f"Assigned to {who} by {who}")
+        await repo.set_accepted(s, ticket_id)
+        await _line(s, caller, ticket_id, f"Chat accepted by {who}")
+        view = await _view(s, ticket_id)
+        for event, extra in events.after_change(current, dict(current) | new, caller.member_id):
+            await _emit(s, caller, view.ticket, event, extra)
+        await _emit(s, caller, view.ticket, events.Event.handover_accepted,
+                    {"by": str(caller.member_id)})  # fmt: skip
+        await idempotency.remember(s, caller, idem, ticket_id)
         return view

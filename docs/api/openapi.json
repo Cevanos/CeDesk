@@ -435,6 +435,279 @@
         }
       }
     },
+    "/api/v1/cevanos/connection": {
+      "get": {
+        "tags": [
+          "cevanos"
+        ],
+        "summary": "The Cevanos connection (Admin)",
+        "operationId": "get_connection_api_v1_cevanos_connection_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionOut"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "cevanos"
+        ],
+        "summary": "Connect Cevanos, or change the connection (Admin)",
+        "description": "The key and secret are stored encrypted and never returned.",
+        "operationId": "save_connection_api_v1_cevanos_connection_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConnectionIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "cevanos"
+        ],
+        "summary": "Disconnect Cevanos (Admin). Tickets stay; their chats stop syncing.",
+        "operationId": "remove_connection_api_v1_cevanos_connection_delete",
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/cevanos/connection/check": {
+      "post": {
+        "tags": [
+          "cevanos"
+        ],
+        "summary": "Check the saved key with Cevanos (Admin)",
+        "operationId": "check_key_api_v1_cevanos_connection_check_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KeyCheckOut"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/cevanos/events/{workspace_id}": {
+      "post": {
+        "tags": [
+          "cevanos"
+        ],
+        "summary": "Cevanos delivers a signed webhook (no sign-in; CXOps-Signature required)",
+        "description": "401 for a missing, wrong or old signature; 503 when Cevanos's own API can't be reached to read the chat (Cevanos sends the event again).",
+        "operationId": "receive_event_api_v1_cevanos_events__workspace_id__post",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tickets/from-conversation/{conversation_id}": {
+      "post": {
+        "tags": [
+          "cevanos"
+        ],
+        "summary": "Turn a Cevanos chat into a ticket (then Accept it)",
+        "description": "409 if the chat already has a ticket; 404 if Cevanos has no such chat for the workspace's key.",
+        "operationId": "from_conversation_api_v1_tickets_from_conversation__conversation_id__post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Conversation Id"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TicketOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tickets/{ticket_id}/accept": {
+      "post": {
+        "tags": [
+          "cevanos"
+        ],
+        "summary": "Accept a handed-over chat: it is yours, and replies are allowed",
+        "description": "Assigns it to you (taking it from someone else needs the right to reassign). The customer sees in Cevanos that you joined. 409 if it isn't waiting.",
+        "operationId": "accept_api_v1_tickets__ticket_id__accept_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "ticket_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Ticket Id"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional, any unique string (a UUID is good), up to 255 characters. Send the same key when you retry: a repeat returns what the first request made (header `Idempotent-Replayed: true`) instead of making it twice. The same key with a different request is 422. Keys last 24 hours, per member.",
+              "title": "Idempotency-Key"
+            },
+            "description": "Optional, any unique string (a UUID is good), up to 255 characters. Send the same key when you retry: a repeat returns what the first request made (header `Idempotent-Replayed: true`) instead of making it twice. The same key with a different request is 422. Keys last 24 hours, per member."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TicketOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/tickets": {
       "post": {
         "tags": [
@@ -3903,6 +4176,139 @@
         ],
         "title": "ChannelGroup"
       },
+      "ConnectionIn": {
+        "properties": {
+          "api_key": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "password",
+                "writeOnly": true
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Api Key",
+            "description": "cvn_sk_... with scopes conversations:read and conversations:write. Leave out to keep the saved one (required the first time)."
+          },
+          "webhook_secret": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "password",
+                "writeOnly": true
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Webhook Secret",
+            "description": "The signing secret Cevanos showed for the webhook. Leave out to keep the saved one (required the first time)."
+          },
+          "close_on_resolve": {
+            "type": "boolean",
+            "title": "Close On Resolve",
+            "default": false
+          },
+          "team_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Team Id",
+            "description": "The team handovers go to; routing picks the agent."
+          }
+        },
+        "type": "object",
+        "title": "ConnectionIn"
+      },
+      "ConnectionOut": {
+        "properties": {
+          "connected": {
+            "type": "boolean",
+            "title": "Connected",
+            "description": "false: Cevanos features are hidden."
+          },
+          "readable": {
+            "type": "boolean",
+            "title": "Readable",
+            "description": "false: the server's secret key changed since the secrets were saved; enter both again."
+          },
+          "api_key_hint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Api Key Hint",
+            "description": "The key's last 4 characters."
+          },
+          "close_on_resolve": {
+            "type": "boolean",
+            "title": "Close On Resolve"
+          },
+          "team_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Team Id"
+          },
+          "team_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Team Name"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "webhook_path": {
+            "type": "string",
+            "title": "Webhook Path",
+            "description": "Add this path, on the API's address, in Cevanos."
+          }
+        },
+        "type": "object",
+        "required": [
+          "connected",
+          "readable",
+          "api_key_hint",
+          "close_on_resolve",
+          "team_id",
+          "team_name",
+          "updated_at",
+          "webhook_path"
+        ],
+        "title": "ConnectionOut"
+      },
       "ContactCard": {
         "properties": {
           "id": {
@@ -4362,6 +4768,39 @@
         "type": "object",
         "title": "EmailAddressPatch"
       },
+      "EventOut": {
+        "properties": {
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "created",
+              "handed_over_again",
+              "updated",
+              "duplicate",
+              "ignored"
+            ],
+            "title": "Outcome"
+          },
+          "ticket_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ticket Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "outcome",
+          "ticket_id"
+        ],
+        "title": "EventOut"
+      },
       "FailedEmailOut": {
         "properties": {
           "id": {
@@ -4750,6 +5189,32 @@
           "next_cursor"
         ],
         "title": "InboxOut"
+      },
+      "KeyCheckOut": {
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "title": "Ok"
+          },
+          "missing_scopes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Missing Scopes"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ok",
+          "missing_scopes",
+          "message"
+        ],
+        "title": "KeyCheckOut"
       },
       "MacroIn": {
         "properties": {

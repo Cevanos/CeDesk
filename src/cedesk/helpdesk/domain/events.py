@@ -18,6 +18,7 @@ class Event(StrEnum):
     message_created = "message.created"
     assignment_changed = "assignment.changed"
     contact_updated = "contact.updated"
+    handover_accepted = "handover.accepted"  # Accept on a Cevanos chat: take it over there
 
 
 # Changes that make a `ticket.updated` (PL4): status (other than resolving), priority,

@@ -53,6 +53,7 @@ services:
       CEDESK_INBOUND_EMAIL_TOKEN: ${CEDESK_INBOUND_EMAIL_TOKEN:-}
       # clamd: downloads wait until the worker found the file clean.
       CEDESK_SCAN_BACKEND: ${CEDESK_SCAN_BACKEND:-none}
+      CEDESK_CEVANOS_URL: ${CEDESK_CEVANOS_URL:-https://api.cevanos.ai}
       CEDESK_STORAGE_LOCAL_PATH: /data/storage
     volumes:
       - files:/data/storage
@@ -65,8 +66,8 @@ services:
   worker:
     build: ..
     restart: unless-stopped
-    # Reads the support mailbox (IMAP) and sends queued emails (with their files). It
-    # has no port.
+    # Reads the support mailbox (IMAP), sends queued emails (with their files) and syncs
+    # Cevanos chats. It has no port.
     command: ["uv", "run", "--no-sync", "cedesk", "worker"]
     depends_on:
       migrate:
@@ -88,6 +89,8 @@ services:
       CEDESK_IMAP_FOLDER: ${CEDESK_IMAP_FOLDER:-INBOX}
       CEDESK_SCAN_BACKEND: ${CEDESK_SCAN_BACKEND:-none}
       CEDESK_CLAMD_HOST: ${CEDESK_CLAMD_HOST:-clamav}
+      # Cevanos: take-overs and replies out, customers' chat messages in.
+      CEDESK_CEVANOS_URL: ${CEDESK_CEVANOS_URL:-https://api.cevanos.ai}
       # The same files as the api: replies send them, customer emails bring them.
       CEDESK_STORAGE_LOCAL_PATH: /data/storage
     volumes:
