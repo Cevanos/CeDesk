@@ -48,6 +48,11 @@ services:
       CEDESK_DATABASE_URL: postgresql+asyncpg://cedesk_app:${CEDESK_APP_PASSWORD}@db:5432/cedesk
       CEDESK_SECRET_KEY: ${CEDESK_SECRET_KEY:?set CEDESK_SECRET_KEY in deploy/.env}
       CEDESK_CORS_ORIGINS: ${CEDESK_CORS_ORIGINS:-}
+      CEDESK_APP_URL: ${CEDESK_APP_URL:-http://localhost:3000}
+      CEDESK_MAIL_FROM_ADDRESS: ${CEDESK_MAIL_FROM_ADDRESS:-}
+      CEDESK_INBOUND_EMAIL_TOKEN: ${CEDESK_INBOUND_EMAIL_TOKEN:-}
+      # clamd: downloads wait until the worker found the file clean.
+      CEDESK_SCAN_BACKEND: ${CEDESK_SCAN_BACKEND:-none}
       CEDESK_STORAGE_LOCAL_PATH: /data/storage
     volumes:
       - files:/data/storage
@@ -56,6 +61,47 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
+  worker:
+    build: ..
+    restart: unless-stopped
+    # Reads the support mailbox (IMAP) and sends queued emails (with their files). It
+    # has no port.
+    command: ["uv", "run", "--no-sync", "cedesk", "worker"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      CEDESK_ENV: ${CEDESK_ENV:-staging}
+      CEDESK_DATABASE_URL: postgresql+asyncpg://cedesk_app:${CEDESK_APP_PASSWORD}@db:5432/cedesk
+      CEDESK_SECRET_KEY: ${CEDESK_SECRET_KEY:?set CEDESK_SECRET_KEY in deploy/.env}
+      CEDESK_MAIL_BACKEND: ${CEDESK_MAIL_BACKEND:-log}
+      CEDESK_SMTP_HOST: ${CEDESK_SMTP_HOST:-}
+      CEDESK_SMTP_PORT: ${CEDESK_SMTP_PORT:-587}
+      CEDESK_SMTP_SECURITY: ${CEDESK_SMTP_SECURITY:-starttls}
+      CEDESK_SMTP_USERNAME: ${CEDESK_SMTP_USERNAME:-}
+      CEDESK_SMTP_PASSWORD: ${CEDESK_SMTP_PASSWORD:-}
+      CEDESK_IMAP_HOST: ${CEDESK_IMAP_HOST:-}
+      CEDESK_IMAP_PORT: ${CEDESK_IMAP_PORT:-993}
+      CEDESK_IMAP_USERNAME: ${CEDESK_IMAP_USERNAME:-}
+      CEDESK_IMAP_PASSWORD: ${CEDESK_IMAP_PASSWORD:-}
+      CEDESK_IMAP_FOLDER: ${CEDESK_IMAP_FOLDER:-INBOX}
+      CEDESK_SCAN_BACKEND: ${CEDESK_SCAN_BACKEND:-none}
+      CEDESK_CLAMD_HOST: ${CEDESK_CLAMD_HOST:-clamav}
+      # The same files as the api: replies send them, customer emails bring them.
+      CEDESK_STORAGE_LOCAL_PATH: /data/storage
+    volumes:
+      - files:/data/storage
+
+  # Virus scan, off by default (it needs about 1.5 GB of memory). To use it:
+  # `docker compose --profile scan up -d` and CEDESK_SCAN_BACKEND=clamd in deploy/.env.
+  # The first start downloads the virus definitions (a few minutes); it updates them itself.
+  clamav:
+    image: clamav/clamav:1.4
+    restart: unless-stopped
+    profiles: ["scan"]
+    volumes:
+      - clamav:/var/lib/clamav
 
   caddy:
     image: caddy:2.8.4
@@ -75,5 +121,6 @@ services:
 volumes:
   pgdata:
   files:
+  clamav:
   caddy_data:
   caddy_config:

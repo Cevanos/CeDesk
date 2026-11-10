@@ -5,7 +5,13 @@ from uuid import UUID
 
 from fastapi import APIRouter, Response, status
 
-from cedesk.helpdesk.api.deps import CallerDep, SessionmakerDep
+from cedesk.helpdesk.api.deps import (
+    CallerDep,
+    IdempotencyKey,
+    SessionmakerDep,
+    idempotency,
+    mark_replayed,
+)
 from cedesk.helpdesk.api.ticket_schemas import TicketOut
 from cedesk.helpdesk.api.tickets import IfMatch, detail_response
 from cedesk.helpdesk.api.workflow_schemas import MacroIn, MacroOrderBody, MacroOut, MacroPatch
@@ -76,6 +82,9 @@ async def run_macro(
     sm: SessionmakerDep,
     response: Response,
     if_match: IfMatch = None,
+    idempotency_key: IdempotencyKey = None,
 ) -> TicketOut:
-    view = await macros.run_macro(sm, caller, ticket_id, macro_id, if_match=if_match)
+    idem = idempotency(idempotency_key, f"POST /tickets/{ticket_id}/macros/{macro_id}")
+    view = await macros.run_macro(sm, caller, ticket_id, macro_id, if_match=if_match, idem=idem)
+    mark_replayed(idem, response)
     return detail_response(view, response)

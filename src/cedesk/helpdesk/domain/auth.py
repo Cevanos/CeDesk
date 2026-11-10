@@ -26,6 +26,26 @@ class Caller:
     session_id: UUID
 
 
+# Forgot password (md A3): a link lasts 30 minutes; at most 3 are sent per hour per member.
+RESET_LIFETIME = timedelta(minutes=30)
+RESETS_PER_HOUR = 3
+
+
+def reset_link(app_url: str, token: str) -> str:
+    """The token goes after `#`, so browsers never send it to a server or in a Referer;
+    the reset page reads it and posts it to POST /auth/reset-password."""
+    return f"{app_url.rstrip('/')}/reset-password#token={token}"
+
+
+def reset_email(name: str, workspace_name: str, link: str) -> str:
+    return (
+        f"Hi {name},\n\n"
+        f"Someone asked to reset your CeDesk password for {workspace_name}. "
+        f"To choose a new one, open this link within 30 minutes:\n\n{link}\n\n"
+        "If it wasn't you, ignore this email: your password stays the same.\n"
+    )
+
+
 def new_token(workspace_id: UUID) -> str:
     # The workspace id in the token only says where to look; the random part must
     # still match a stored hash in that workspace, so editing it gains nothing.

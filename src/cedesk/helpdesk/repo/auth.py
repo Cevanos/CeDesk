@@ -272,3 +272,69 @@ async def update_member(
         {"id": member_id, "name": name, "role": role, "active": is_active},
     )
     return result.mappings().one()
+
+
+async def member_email(session: AsyncSession, member_id: UUID) -> str | None:
+    result = await session.execute(
+        text("SELECT email FROM member WHERE id = :id"), {"id": member_id}
+    )
+    value = result.scalar_one_or_none()
+    return None if value is None else str(value)
+
+
+# Password reset links
+
+
+async def active_member_for_email(session: AsyncSession, email: str) -> Row | None:
+    result = await session.execute(
+        text("SELECT id, name, email FROM member WHERE email = :e AND is_active"),
+        {"e": email},
+    )
+    return result.mappings().first()
+
+
+async def recent_resets(session: AsyncSession, member_id: UUID, since: datetime) -> int:
+    result = await session.execute(
+        text("SELECT count(*) FROM password_reset WHERE member_id = :m AND created_at >= :since"),
+        {"m": member_id, "since": since},
+    )
+    return int(result.scalar_one())
+
+
+async def insert_reset(
+    session: AsyncSession,
+    *,
+    workspace_id: UUID,
+    member_id: UUID,
+    token_hash: bytes,
+    expires_at: datetime,
+) -> None:
+    # Expired links of this member are tidied away at the same time.
+    await session.execute(
+        text("DELETE FROM password_reset WHERE member_id = :m AND expires_at < now()"),
+        {"m": member_id},
+    )
+    await session.execute(
+        text(
+            "INSERT INTO password_reset (workspace_id, member_id, token_hash, expires_at) "
+            "VALUES (:ws, :m, :h, :exp)"
+        ),
+        {"ws": workspace_id, "m": member_id, "h": token_hash, "exp": expires_at},
+    )
+
+
+async def take_reset(session: AsyncSession, token_hash: bytes) -> Row | None:
+    """The live reset link with this hash and its member (locked), or None."""
+    result = await session.execute(
+        text(
+            "SELECT r.member_id, m.is_active FROM password_reset r "
+            "JOIN member m ON m.id = r.member_id "
+            "WHERE r.token_hash = :h AND r.expires_at > now() FOR UPDATE OF r, m"
+        ),
+        {"h": token_hash},
+    )
+    return result.mappings().first()
+
+
+async def drop_resets(session: AsyncSession, member_id: UUID) -> None:
+    await session.execute(text("DELETE FROM password_reset WHERE member_id = :m"), {"m": member_id})

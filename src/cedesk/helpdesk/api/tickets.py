@@ -10,7 +10,13 @@ from uuid import UUID
 
 from fastapi import APIRouter, Header, Query, Request, Response, status
 
-from cedesk.helpdesk.api.deps import CallerDep, SessionmakerDep
+from cedesk.helpdesk.api.deps import (
+    CallerDep,
+    IdempotencyKey,
+    SessionmakerDep,
+    idempotency,
+    mark_replayed,
+)
 from cedesk.helpdesk.api.ticket_schemas import (
     ContactCard,
     ContactOut,
@@ -19,6 +25,8 @@ from cedesk.helpdesk.api.ticket_schemas import (
     ContactTicketsOut,
     Counts,
     MessageOut,
+    SlaClockOut,
+    SlaOut,
     TicketIn,
     TicketListOut,
     TicketOut,
@@ -26,6 +34,7 @@ from cedesk.helpdesk.api.ticket_schemas import (
     TicketRowOut,
 )
 from cedesk.helpdesk.api.workflow_schemas import CustomerReplyBody
+from cedesk.helpdesk.domain.sla import Clock, TicketSla
 from cedesk.helpdesk.domain.tickets import Priority, Sort, Status, etag, label
 from cedesk.helpdesk.service import customer_replies, tickets
 from cedesk.helpdesk.service.tickets import NewTicket, TicketView
@@ -46,9 +55,33 @@ Cursor = Annotated[
 Limit = Annotated[int, Query(ge=1, le=200)]
 
 
-def _row(r: Mapping[Any, Any]) -> dict[str, Any]:
+def _clock(c: Clock) -> SlaClockOut:
+    return SlaClockOut(
+        target_minutes=c.target_minutes,
+        due_at=c.due_at,
+        stopped_at=c.stopped_at,
+        state=c.state.value,
+        minutes_left=round(c.minutes_left, 1),
+    )
+
+
+def sla_out(t: TicketSla | None) -> SlaOut | None:
+    if t is None:
+        return None
+    return SlaOut(
+        policy=t.policy,
+        current=t.current.kind.value,
+        state=t.current.state.value,
+        paused=t.paused,
+        first_reply=_clock(t.first_reply),
+        resolve=_clock(t.resolve),
+    )
+
+
+def _row(r: Mapping[Any, Any], sla: TicketSla | None = None) -> dict[str, Any]:
     return {
         **dict(r),
+        "sla": sla_out(sla),
         "label": label(r["number"]),
         "contact": ContactOut(
             id=r["contact_id"],
@@ -76,7 +109,7 @@ def _ticket_out(view: TicketView) -> TicketOut:
     )
     return TicketOut.model_validate(
         {
-            **_row(t),
+            **_row(t, view.sla),
             "contact": card,
             "messages": [MessageOut.model_validate(dict(m)) for m in view.messages],
             "older_messages_cursor": view.older_messages_cursor,
@@ -91,8 +124,13 @@ def _ticket_out(view: TicketView) -> TicketOut:
     summary="Create a ticket (gets the next T-number)",
 )
 async def create_ticket(
-    body: TicketIn, caller: CallerDep, sm: SessionmakerDep, response: Response
+    body: TicketIn,
+    caller: CallerDep,
+    sm: SessionmakerDep,
+    response: Response,
+    idempotency_key: IdempotencyKey = None,
 ) -> TicketOut:
+    idem = idempotency(idempotency_key, "POST /tickets", body.model_dump_json().encode())
     view = await tickets.create_ticket(
         sm,
         caller,
@@ -109,7 +147,9 @@ async def create_ticket(
             fields=body.fields,
             tags=body.tags,
         ),
+        idem=idem,
     )
+    mark_replayed(idem, response)
     return detail_response(view, response)
 
 
@@ -137,8 +177,9 @@ async def list_tickets(
         Sort,
         Query(
             description="priority (default): Open and Pending most urgent first, then "
-            "oldest; Resolved last, newest first. newest, oldest, or updated (most "
-            "recently changed first)."
+            "oldest; Resolved last, newest first. sla: Open and Pending by SLA time left, "
+            "soonest due first; Resolved last, newest first. newest, oldest, or updated "
+            "(most recently changed first)."
         ),
     ] = Sort.priority,
     cursor: Cursor = None,
@@ -157,7 +198,7 @@ async def list_tickets(
         limit=limit,
     )
     return TicketListOut(
-        tickets=[TicketRowOut.model_validate(_row(r)) for r in page.tickets],
+        tickets=[TicketRowOut.model_validate(_row(r, page.sla.get(r["id"]))) for r in page.tickets],
         counts=Counts.model_validate(page.counts),
         next_cursor=page.next_cursor,
     )
@@ -219,7 +260,7 @@ async def contact_tickets(
     page = await tickets.contact_tickets(sm, caller, contact_id, cursor=cursor, limit=limit)
     return ContactTicketsOut(
         contact=ContactProfileOut.model_validate(dict(page.contact)),
-        tickets=[TicketRowOut.model_validate(_row(r)) for r in page.tickets],
+        tickets=[TicketRowOut.model_validate(_row(r, page.sla.get(r["id"]))) for r in page.tickets],
         next_cursor=page.next_cursor,
     )
 

@@ -1,8 +1,9 @@
 """Files on a ticket: upload, list, and a short-lived link to download one.
 
 Anyone who can write on a ticket can attach a file (light agents attach to their notes);
-anyone who can read the ticket can download it. Sending a file with a reply or note, which
-fills `message_id`, comes with the next change to messages.
+anyone who can read the ticket can download it. A file is uploaded first, then sent with a
+reply or note (`attach_to_message`, which fills `message_id`). Files in a customer's email
+are saved with their message (`save_received`).
 """
 
 from collections.abc import Sequence
@@ -10,15 +11,31 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from cedesk.db import workspace_session
 from cedesk.helpdesk.domain import paging
-from cedesk.helpdesk.domain.attachments import ScanStatus, clean_mime, clean_name, object_key
+from cedesk.helpdesk.domain.attachments import (
+    BLOCKED,
+    EMAIL_TOTAL_MAX,
+    PER_MESSAGE_MAX,
+    RECEIVED_MAX,
+    ReceivedFile,
+    ScanStatus,
+    clean_mime,
+    clean_name,
+    object_key,
+    ready,
+)
 from cedesk.helpdesk.domain.auth import Caller
 from cedesk.helpdesk.domain.permissions import Action
 from cedesk.helpdesk.repo import attachments as repo
+from cedesk.helpdesk.repo import tickets as ticket_repo
 from cedesk.helpdesk.repo.attachments import Row
+from cedesk.helpdesk.service import idempotency
 from cedesk.helpdesk.service.auth import Sessionmaker
 from cedesk.helpdesk.service.errors import Conflict, Invalid, NotFound, TooLarge
+from cedesk.helpdesk.service.idempotency import Idempotency
 from cedesk.helpdesk.service.members import require
 from cedesk.storage import ObjectStore
 
@@ -52,7 +69,9 @@ async def upload(
     mime: str | None,
     data: bytes,
     max_bytes: int,
+    idem: Idempotency | None = None,
 ) -> Row:
+    """`idem`: with an Idempotency-Key, a repeat returns the file the first one stored."""
     require(caller, Action.private_note)
     if not data:
         raise Invalid("The file is empty.")
@@ -61,6 +80,12 @@ async def upload(
     attachment_id = uuid4()
     key = object_key(caller.workspace_id, ticket_id, attachment_id)
     async with workspace_session(sm, caller.workspace_id) as s:
+        made = await idempotency.begin(s, caller, idem)
+        if made is not None:
+            earlier = await repo.get(s, made)
+            if earlier is None:
+                raise NotFound("File not found.")
+            return earlier
         if not await repo.ticket_exists(s, ticket_id):
             raise NotFound("Ticket not found.")
         row = await repo.insert(
@@ -78,7 +103,101 @@ async def upload(
         # The reverse (stored, then the commit fails) leaves an unreferenced object, which
         # is harmless and is what a retention sweep removes.
         await store.put(key, data, content_type=row["mime"])
+        await idempotency.remember(s, caller, idem, attachment_id)
     return row
+
+
+async def attach_to_message(
+    s: AsyncSession,
+    caller: Caller,
+    ticket_id: UUID,
+    message_id: UUID,
+    attachment_ids: Sequence[UUID],
+    *,
+    emailed: bool,
+) -> None:
+    """Sends the caller's uploaded files with their new reply or note, in its transaction.
+    Each file must be on this ticket, uploaded by the caller, not sent before, and not
+    infected. `emailed`: the reply goes out by email, so the files' total size is capped."""
+    ids = list(dict.fromkeys(attachment_ids))
+    if not ids:
+        return
+    if len(ids) > PER_MESSAGE_MAX:
+        raise Invalid(f"Send at most {PER_MESSAGE_MAX} files with one message.")
+    rows = {r["id"]: r for r in await repo.lock_many(s, ids)}
+    for attachment_id in ids:
+        row = rows.get(attachment_id)
+        if row is None or row["ticket_id"] != ticket_id:
+            raise Invalid("A file isn't on this ticket. Upload it to this ticket first.")
+        if row["uploaded_by"] != caller.member_id:
+            raise Invalid("You can only send files you uploaded.")
+        if row["message_id"] is not None:
+            raise Invalid(f"{row['name']} was already sent. Upload it again to send it again.")
+        if row["scan_status"] in BLOCKED:
+            raise Invalid(f"{row['name']} failed the virus scan and can't be sent.")
+    if emailed and sum(int(r["size"]) for r in rows.values()) > EMAIL_TOTAL_MAX:
+        mb = EMAIL_TOTAL_MAX // (1024 * 1024)
+        raise Invalid(f"Files on an emailed reply can be at most {mb} MB together.")
+    await repo.link_to_message(s, ids, message_id)
+
+
+@dataclass(frozen=True)
+class IncomingFiles:
+    """Files that came with a customer's message, and where to keep them."""
+
+    store: ObjectStore
+    files: Sequence[ReceivedFile]
+    max_bytes: int
+
+
+async def save_incoming(
+    s: AsyncSession,
+    incoming: IncomingFiles | None,
+    *,
+    workspace_id: UUID,
+    ticket_id: UUID,
+    message_id: UUID,
+) -> None:
+    """Keeps a customer message's files, in its transaction. Files not kept (empty, too
+    large, or past the first 20) are named in a system line on the ticket."""
+    if incoming is None or not incoming.files:
+        return
+    skipped: list[str] = []
+    for i, file in enumerate(incoming.files):
+        name = clean_name(file.name)
+        if i >= RECEIVED_MAX or not file.data or len(file.data) > incoming.max_bytes:
+            skipped.append(name)
+            continue
+        attachment_id = uuid4()
+        key = object_key(workspace_id, ticket_id, attachment_id)
+        row = await repo.insert(
+            s,
+            attachment_id=attachment_id,
+            workspace_id=workspace_id,
+            ticket_id=ticket_id,
+            object_key=key,
+            name=name,
+            size=len(file.data),
+            mime=clean_mime(file.mime),
+            uploaded_by=None,
+            message_id=message_id,
+        )
+        await incoming.store.put(key, file.data, content_type=row["mime"])  # as in `upload`
+    if skipped:
+        shown = ", ".join(skipped[:5]) + (
+            f" and {len(skipped) - 5} more" if len(skipped) > 5 else ""
+        )
+        await ticket_repo.insert_message(
+            s,
+            workspace_id=workspace_id,
+            ticket_id=ticket_id,
+            kind="system",
+            body=f"Not saved from the customer's email (empty, too large, or too many): {shown}"[
+                :500
+            ],
+            author_member_id=None,
+            author_name=None,
+        )
 
 
 async def ticket_attachments(
@@ -111,6 +230,7 @@ async def download_link(
     attachment_id: UUID,
     *,
     seconds: int,
+    scanning: bool = False,
 ) -> Download:
     """A link anyone holding it can use until it expires, so it is handed out only after
     the signed-in member's own read of the row (RLS, role)."""
@@ -121,6 +241,10 @@ async def download_link(
         raise NotFound("File not found.")
     if row["scan_status"] == ScanStatus.infected:
         raise Conflict("This file failed the virus scan, so it can't be downloaded.")
+    if row["scan_status"] == ScanStatus.scan_failed:
+        raise Conflict("This file could not be checked for viruses, so it can't be downloaded.")
+    if not ready(row["scan_status"], scanning=scanning):
+        raise Conflict("This file is still being checked for viruses. Try again in a moment.")
     expires_at = datetime.now(UTC) + timedelta(seconds=seconds)
     url = await store.download_url(
         row["object_key"], name=row["name"], content_type=row["mime"], expires_in=seconds

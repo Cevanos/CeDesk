@@ -156,23 +156,24 @@ async def test_search_follows_every_edit(client: AsyncClient, app_sessionmaker: 
         ("newest", "hd_ticket_sort_created"),
         ("oldest", "hd_ticket_sort_created"),
         ("updated", "hd_ticket_sort_updated"),
+        ("sla", "hd_ticket_sort_sla"),
     ],
 )
 async def test_each_sort_is_served_by_its_index(
     client: AsyncClient, app_sessionmaker: Sm, sort: str, index: str
 ) -> None:
     """The list orders by the indexed expressions themselves, so Postgres walks the index
-    and stops after one page. If a query's keys stop matching migration 0009, the plan
-    gets a Sort over every ticket instead and this test fails."""
+    and stops after one page. If a query's keys stop matching migration 0009 (0019 for
+    sla), the plan gets a Sort over every ticket instead and this test fails."""
     caller, _ = await admin_caller(client, app_sessionmaker)
     params: dict[str, Any] = {
         "me": caller.member_id, "status": None, "priority": None, "team": None,
         "contact": None, "scope": "everyone", "q_like": None, "q_number": None, "limit": 51,
     }  # fmt: skip
-    keys = 4 if sort == "priority" else 2
+    after = {"priority": [0, 1, "1700000000.5", 7], "sla": [0, "1700000000.5", 7]}
     for first_page in (True, False):
-        cursor = [None] * keys if first_page else ([0, 1, "1700000000.5", 7] if keys == 4
-                                                   else ["1700000000.5", 7])  # fmt: skip
+        cursor = after.get(sort, ["1700000000.5", 7])
+        cursor = [None] * len(cursor) if first_page else cursor
         async with workspace_session(app_sessionmaker, caller.workspace_id) as s:
             await s.execute(text("SET LOCAL enable_seqscan = off"))
             await s.execute(text("SET LOCAL enable_sort = off"))

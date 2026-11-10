@@ -8,7 +8,7 @@ auto-assigned (W8): on create, and when it moves to another team without a chose
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Protocol
 from uuid import UUID
 
 from sqlalchemy.exc import IntegrityError
@@ -21,6 +21,7 @@ from cedesk.helpdesk.domain.auth import Caller, normalise_email
 from cedesk.helpdesk.domain.paging import CursorError
 from cedesk.helpdesk.domain.permissions import Action, Role
 from cedesk.helpdesk.domain.rules import Event as RuleEvent
+from cedesk.helpdesk.domain.sla import TicketSla
 from cedesk.helpdesk.domain.tickets import (
     Channel,
     FieldDef,
@@ -34,11 +35,13 @@ from cedesk.helpdesk.repo import catalog, outbox
 from cedesk.helpdesk.repo import messages as message_repo
 from cedesk.helpdesk.repo import tickets as repo
 from cedesk.helpdesk.repo.tickets import Row
-from cedesk.helpdesk.service import routing
+from cedesk.helpdesk.service import idempotency, routing, sla
 from cedesk.helpdesk.service import rules as automation
+from cedesk.helpdesk.service.attachments import IncomingFiles, save_incoming
 from cedesk.helpdesk.service.auth import Sessionmaker
 from cedesk.helpdesk.service.catalog import field_defs
 from cedesk.helpdesk.service.errors import Conflict, Invalid, NotFound
+from cedesk.helpdesk.service.idempotency import Idempotency
 from cedesk.helpdesk.service.members import require
 
 SCOPES = ("everyone", "mine", "unassigned")
@@ -67,6 +70,9 @@ class NewTicket:
     source: str | None = None  # where it came from: "cevanos", "intercom", "email", ...
     source_id: str | None = None  # that source's id; one ticket per (source, source_id)
     to_address: str | None = None  # email: the address the customer wrote to (for rules)
+    # Email in: the first message's headers (`hd_message.email`) and its Message-ID.
+    first_email: Mapping[str, Any] | None = None
+    first_channel_message_id: str | None = None
 
 
 def _check_origin(new: NewTicket) -> None:
@@ -90,6 +96,7 @@ class TicketView:
     messages: Sequence[Row]  # the latest page, oldest to newest
     other_tickets: int
     older_messages_cursor: str | None = None
+    sla: TicketSla | None = None
 
 
 @dataclass(frozen=True)
@@ -97,6 +104,7 @@ class TicketPage:
     tickets: Sequence[Row]
     counts: dict[str, int]
     next_cursor: str | None
+    sla: Mapping[UUID, TicketSla] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -104,9 +112,26 @@ class ContactTickets:
     contact: Row
     tickets: Sequence[Row]
     next_cursor: str | None
+    sla: Mapping[UUID, TicketSla] = field(default_factory=dict)
 
 
 CHANGED_BY_SOMEONE_ELSE = "This ticket was changed by someone else. Reload it and try again."
+
+
+class Origin(Protocol):
+    """Who a change comes from: a signed-in member (`Caller`) or a channel (no member)."""
+
+    @property
+    def workspace_id(self) -> UUID: ...
+
+    @property
+    def member_id(self) -> UUID | None: ...
+
+
+@dataclass(frozen=True)
+class ChannelOrigin:
+    workspace_id: UUID
+    member_id: None = None
 
 
 def _invalid(exc: FieldError) -> Invalid:
@@ -155,7 +180,7 @@ async def _check_assignee(
     return str(member["name"])
 
 
-async def _line(s: AsyncSession, caller: Caller, ticket_id: UUID, body: str) -> None:
+async def _line(s: AsyncSession, caller: Origin, ticket_id: UUID, body: str) -> None:
     await repo.insert_message(
         s,
         workspace_id=caller.workspace_id,
@@ -168,7 +193,7 @@ async def _line(s: AsyncSession, caller: Caller, ticket_id: UUID, body: str) -> 
 
 
 async def _tell_assignee(
-    s: AsyncSession, caller: Caller, ticket_id: UUID, member_id: UUID, number: int, subject: str
+    s: AsyncSession, caller: Origin, ticket_id: UUID, member_id: UUID, number: int, subject: str
 ) -> None:
     if member_id == caller.member_id:
         return
@@ -184,7 +209,7 @@ async def _tell_assignee(
 
 async def _emit(
     s: AsyncSession,
-    caller: Caller,
+    caller: Origin,
     ticket: Mapping[Any, Any],
     event: events.Event,
     extra: Mapping[str, Any] | None = None,
@@ -210,10 +235,14 @@ async def _view(s: AsyncSession, ticket_id: UUID) -> TicketView:
         messages=list(reversed(page)),
         other_tickets=await repo.other_ticket_count(s, ticket["contact_id"], ticket_id),
         older_messages_cursor=older,
+        sla=sla.state(ticket, await sla.config(s)),
     )
 
 
-async def create_ticket(sm: Sessionmaker, caller: Caller, new: NewTicket) -> TicketView:
+async def create_ticket(
+    sm: Sessionmaker, caller: Caller, new: NewTicket, *, idem: Idempotency | None = None
+) -> TicketView:
+    """`idem`: with an Idempotency-Key, a repeat returns the ticket the first one made."""
     require(caller, Action.create_ticket)
     try:
         tags = rules.clean_tags(new.tags)
@@ -221,31 +250,70 @@ async def create_ticket(sm: Sessionmaker, caller: Caller, new: NewTicket) -> Tic
         raise _invalid(exc) from exc
     _check_origin(new)
     try:
-        return await _create(sm, caller, new, tags)
+        return await _create(sm, caller, caller, new, tags, idem=idem)
     except IntegrityError as exc:
         if "hd_ticket_source" in str(exc.orig):
             raise Conflict(f"A ticket already exists for {new.source} {new.source_id}.") from exc
         raise
 
 
-async def _create(sm: Sessionmaker, caller: Caller, new: NewTicket, tags: list[str]) -> TicketView:
-    async with workspace_session(sm, caller.workspace_id) as s:
+async def create_from_channel(
+    sm: Sessionmaker, workspace_id: UUID, new: NewTicket, *, files: IncomingFiles | None = None
+) -> TicketView:
+    """A ticket that arrived by itself (email in; later chat): no member, no permission
+    check, no assignee given. Rules and auto-assignment run as for any new ticket.
+    `files`: the ones that came with the first message (an email's attachments)."""
+    if new.assignee_id is not None:
+        raise Invalid("A channel can't choose the assignee.")
+    try:
+        tags = rules.clean_tags(new.tags)
+    except FieldError as exc:
+        raise _invalid(exc) from exc
+    _check_origin(new)
+    try:
+        return await _create(sm, ChannelOrigin(workspace_id), None, new, tags, files)
+    except IntegrityError as exc:
+        if "hd_ticket_source" in str(exc.orig):
+            raise Conflict(f"A ticket already exists for {new.source} {new.source_id}.") from exc
+        raise
+
+
+async def _create(
+    sm: Sessionmaker,
+    origin: Origin,
+    caller: Caller | None,
+    new: NewTicket,
+    tags: list[str],
+    files: IncomingFiles | None = None,
+    *,
+    idem: Idempotency | None = None,
+) -> TicketView:
+    """`caller` is the signed-in member, or None when a channel creates the ticket."""
+    async with workspace_session(sm, origin.workspace_id) as s:
+        if caller is not None:
+            made = await idempotency.begin(s, caller, idem)
+            if made is not None:
+                return await _view(s, made)
         _, defs = await _type_defs(s, new.type_id)
         try:
             values = rules.clean_values(defs, new.fields)
         except FieldError as exc:
             raise _invalid(exc) from exc
         team = await _team_name(s, new.team_id)
-        assignee = await _check_assignee(s, caller, new.assignee_id, None)
-        who = await _who(s, caller)
+        assignee = None
+        if caller is not None:
+            assignee = await _check_assignee(s, caller, new.assignee_id, None)
+            who = await _who(s, caller)
+        else:
+            who = f"{new.contact_name} ({new.channel.value})"
         contact_id = await repo.upsert_contact(
-            s, caller.workspace_id, normalise_email(new.contact_email), new.contact_name
+            s, origin.workspace_id, normalise_email(new.contact_email), new.contact_name
         )
         ticket_id = await repo.insert_ticket(
             s,
             {
-                "workspace_id": caller.workspace_id,
-                "number": await repo.next_number(s, caller.workspace_id),
+                "workspace_id": origin.workspace_id,
+                "number": await repo.next_number(s, origin.workspace_id),
                 "subject": new.subject,
                 "priority": new.priority.value,
                 "type_id": new.type_id,
@@ -255,7 +323,7 @@ async def _create(sm: Sessionmaker, caller: Caller, new: NewTicket, tags: list[s
                 "channel": new.channel.value,
                 "fields": values,
                 "tags": tags,
-                "created_by_id": caller.member_id,
+                "created_by_id": origin.member_id,
                 "conversation_id": new.conversation_id,
                 "accepted": new.accepted,
                 "handover": dict(new.handover) if new.handover is not None else None,
@@ -270,20 +338,26 @@ async def _create(sm: Sessionmaker, caller: Caller, new: NewTicket, tags: list[s
         if new.description:
             first_message = await repo.insert_message(
                 s,
-                workspace_id=caller.workspace_id,
+                workspace_id=origin.workspace_id,
                 ticket_id=ticket_id,
                 kind="customer",
                 body=new.description,
                 author_member_id=None,
                 author_name=new.contact_name,
+                email=dict(new.first_email) if new.first_email is not None else None,
+                channel_message_id=new.first_channel_message_id,
             )
-        await _line(s, caller, ticket_id, f"Ticket created by {who}")
+            await save_incoming(
+                s, files, workspace_id=origin.workspace_id, ticket_id=ticket_id,
+                message_id=first_message,
+            )  # fmt: skip
+        await _line(s, origin, ticket_id, f"Ticket created by {who}")
         if team:
-            await _line(s, caller, ticket_id, f"Team set to {team} by {who}")
+            await _line(s, origin, ticket_id, f"Team set to {team} by {who}")
         if assignee:
-            await _line(s, caller, ticket_id, f"Assigned to {assignee} by {who}")
+            await _line(s, origin, ticket_id, f"Assigned to {assignee} by {who}")
         run = await automation.apply(
-            s, caller.workspace_id, ticket_id, RuleEvent.created, to_address=new.to_address
+            s, origin.workspace_id, ticket_id, RuleEvent.created, to_address=new.to_address
         )
         team_id = run.after["team_id"] if run else new.team_id
         type_id = run.after["type_id"] if run else new.type_id
@@ -296,22 +370,25 @@ async def _create(sm: Sessionmaker, caller: Caller, new: NewTicket, tags: list[s
                 channel=new.channel.value,
                 type_id=type_id,
             )
-            await _line(s, caller, ticket_id, pick.line)
+            await _line(s, origin, ticket_id, pick.line)
             if pick.agent:
                 await repo.set_assignee(s, ticket_id, pick.agent.member_id)
                 view = await _view(s, ticket_id)
                 await _tell_assignee(
-                    s, caller, ticket_id, pick.agent.member_id, view.ticket["number"], new.subject
+                    s, origin, ticket_id, pick.agent.member_id, view.ticket["number"], new.subject
                 )
+        await sla.refresh(s, ticket_ids=[ticket_id])
         view = await _view(s, ticket_id)
-        await _emit(s, caller, view.ticket, events.Event.ticket_created)
+        await _emit(s, origin, view.ticket, events.Event.ticket_created)
         if first_message is not None:
-            await _emit(s, caller, view.ticket, events.Event.message_created,
+            await _emit(s, origin, view.ticket, events.Event.message_created,
                         events.message(first_message, "customer", None))  # fmt: skip
         if view.ticket["assignee_id"] is not None:
-            by = caller.member_id if new.assignee_id is not None else None  # None: routing
-            await _emit(s, caller, view.ticket, events.Event.assignment_changed,
+            by = origin.member_id if new.assignee_id is not None else None  # None: routing
+            await _emit(s, origin, view.ticket, events.Event.assignment_changed,
                         events.assignment(None, view.ticket["assignee_id"], by))  # fmt: skip
+        if caller is not None:
+            await idempotency.remember(s, caller, idem, ticket_id)
         return view
 
 
@@ -408,10 +485,12 @@ async def list_tickets(
             limit=limit,
         )
         counts = await repo.counts_by_status(s)
+        cfg = await sla.config(s)
     return TicketPage(
         tickets=rows,
         counts={st.value: counts.get(st.value, 0) for st in Status},
         next_cursor=next_cursor,
+        sla={r["id"]: sla.state(r, cfg) for r in rows},
     )
 
 
@@ -442,7 +521,13 @@ async def contact_tickets(
             cursor=cursor,
             limit=limit,
         )
-    return ContactTickets(contact=contact, tickets=rows, next_cursor=next_cursor)
+        cfg = await sla.config(s)
+    return ContactTickets(
+        contact=contact,
+        tickets=rows,
+        next_cursor=next_cursor,
+        sla={r["id"]: sla.state(r, cfg) for r in rows},
+    )
 
 
 async def change_contact(
@@ -456,9 +541,16 @@ async def change_contact(
     """Edits the customer card: name and the VIP flag (T19)."""
     require(caller, Action.change_fields)
     async with workspace_session(sm, caller.workspace_id) as s:
-        if not await repo.update_contact(s, contact_id, name=name, vip=vip):
+        before = await repo.get_contact(s, contact_id)
+        if before is None or not await repo.update_contact(s, contact_id, name=name, vip=vip):
             raise NotFound("Customer not found.")
         contact = await repo.get_contact(s, contact_id)
+        if contact is not None:
+            if before["vip"] != contact["vip"]:  # VIP customers may have another SLA policy
+                await sla.refresh(s, contact_id=contact_id)
+            changed = events.contact(before, contact)
+            if changed is not None:
+                await outbox.add(s, caller.workspace_id, changed["event"], None, changed)
     if contact is None:
         raise NotFound("Customer not found.")
     return contact
@@ -628,6 +720,7 @@ async def change_ticket(
 
         if lines:
             await repo.update_ticket(s, ticket_id, new)
+            await sla.refresh(s, ticket_ids=[ticket_id])
             for body in lines:
                 await _line(s, caller, ticket_id, body)
         if routed_to is not None:
