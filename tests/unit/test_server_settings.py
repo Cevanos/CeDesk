@@ -61,3 +61,25 @@ def test_cors_origins_parsing() -> None:
     s = Settings(cors_origins=" https://app.example.com/ , http://localhost:3000,, ")
     assert s.allowed_origins() == ["https://app.example.com", "http://localhost:3000"]
     assert Settings(cors_origins="").allowed_origins() == []
+
+
+def test_empty_variables_count_as_not_set(monkeypatch: pytest.MonkeyPatch) -> None:
+    """docker-compose passes `${CEDESK_X:-}`, so an unset value arrives as "". The api must
+    start with it (10 Nov: an empty inbound email token stopped the staging server)."""
+    empty = [
+        "INBOUND_EMAIL_TOKEN", "SMTP_HOST", "SMTP_USERNAME", "SMTP_PASSWORD", "IMAP_HOST",
+        "IMAP_USERNAME", "IMAP_PASSWORD", "MAIL_FROM_ADDRESS", "CORS_ORIGINS", "CEVANOS_URL",
+    ]  # fmt: skip
+    for name in empty:
+        monkeypatch.setenv(f"CEDESK_{name}", "")
+    monkeypatch.setenv("CEDESK_ENV", "staging")
+    monkeypatch.setenv("CEDESK_SECRET_KEY", GOOD_KEY.get_secret_value())
+    monkeypatch.setenv("CEDESK_DATABASE_URL", GOOD_DB)
+    settings = Settings(_env_file=None)  # type: ignore[call-arg]
+    assert settings.inbound_email_token is None and settings.smtp_password is None
+    assert settings.cevanos_url == "https://api.cevanos.ai"
+    assert settings.unsafe() == [] and settings.mail_problems() == []
+    create_app(settings)
+    # An empty secret key still falls back to the dev one, which is refused.
+    monkeypatch.setenv("CEDESK_SECRET_KEY", "")
+    assert Settings(_env_file=None).unsafe()  # type: ignore[call-arg]
