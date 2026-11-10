@@ -37,6 +37,9 @@
           "401": {
             "description": "The details did not match (same answer for every reason)"
           },
+          "429": {
+            "description": "Too many attempts from this address; see Retry-After"
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -124,6 +127,9 @@
           },
           "422": {
             "description": "Current password not right, or the new one is not allowed"
+          },
+          "429": {
+            "description": "Too many attempts from this address; see Retry-After"
           }
         },
         "security": [

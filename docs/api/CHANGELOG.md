@@ -3,6 +3,16 @@
 `openapi.json` next to this file is the API as served (`uv run cedesk openapi`). Every
 route is under `/api/v1`. Breaking changes only come in v2 (md 2B). Newest first.
 
+## 2026-11-10: ready for a shared server
+
+- Sign-in and `POST /me/password` allow 20 attempts per 5 minutes per client address
+  (settings `CEDESK_SIGN_IN_LIMIT`, `CEDESK_SIGN_IN_WINDOW_SECONDS`). Above that: 429,
+  code `TooManyAttempts`, with a `Retry-After` header in seconds. This is on top of the
+  per-account lockout.
+- Browsers: pages from the sites in `CEDESK_CORS_ORIGINS` may call the API. Allowed
+  request headers: `Authorization`, `Content-Type`, `If-Match`, `X-Request-ID`; readable
+  response headers: `ETag`, `X-Request-ID`, `Retry-After`.
+
 ## 2026-11-10: change my password, Admin password reset
 
 - New: `POST /me/password` with `{current_password, new_password}` → 204. Ends the
