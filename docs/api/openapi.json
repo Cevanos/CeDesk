@@ -895,6 +895,65 @@
         }
       }
     },
+    "/api/v1/tickets/{ticket_id}/simulate-customer-reply": {
+      "post": {
+        "tags": [
+          "tickets"
+        ],
+        "summary": "Test only (Admin, not in production): add a message as the customer",
+        "description": "Does what a real customer reply does: reopens a resolved ticket, keeps it resolved for a thank-you, runs the customer_replied rules and tells the assignee. Real replies come from the Cevanos connector, email and the portal.",
+        "operationId": "simulate_customer_reply_api_v1_tickets__ticket_id__simulate_customer_reply_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "ticket_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Ticket Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CustomerReplyBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TicketOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/ticket-types": {
       "get": {
         "tags": [
@@ -2008,6 +2067,728 @@
         }
       }
     },
+    "/api/v1/saved-replies": {
+      "get": {
+        "tags": [
+          "saved replies"
+        ],
+        "summary": "Saved replies by shortcut; `q` narrows to shortcuts starting with it",
+        "operationId": "list_replies_api_v1_saved_replies_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 33
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "What was typed after `/`, e.g. `ref`.",
+              "title": "Q"
+            },
+            "description": "What was typed after `/`, e.g. `ref`."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SavedReplyOut"
+                  },
+                  "title": "Response List Replies Api V1 Saved Replies Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "saved replies"
+        ],
+        "summary": "Add a saved reply (Admin)",
+        "operationId": "create_reply_api_v1_saved_replies_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SavedReplyIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedReplyOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/saved-replies/{reply_id}": {
+      "patch": {
+        "tags": [
+          "saved replies"
+        ],
+        "summary": "Change a saved reply's shortcut or text (Admin)",
+        "operationId": "change_reply_api_v1_saved_replies__reply_id__patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "reply_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Reply Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SavedReplyPatch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedReplyOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "saved replies"
+        ],
+        "summary": "Delete a saved reply (Admin)",
+        "operationId": "delete_reply_api_v1_saved_replies__reply_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "reply_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Reply Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/rules": {
+      "get": {
+        "tags": [
+          "rules"
+        ],
+        "summary": "All rules in run order (Admin)",
+        "operationId": "list_rules_api_v1_rules_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RuleOut"
+                  },
+                  "type": "array",
+                  "title": "Response List Rules Api V1 Rules Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "rules"
+        ],
+        "summary": "Add a rule; it runs after the others (Admin)",
+        "operationId": "create_rule_api_v1_rules_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuleIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuleOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/rules/order": {
+      "put": {
+        "tags": [
+          "rules"
+        ],
+        "summary": "Set the run order: every rule id once (Admin)",
+        "operationId": "reorder_rules_api_v1_rules_order_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuleOrderBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RuleOut"
+                  },
+                  "type": "array",
+                  "title": "Response Reorder Rules Api V1 Rules Order Put"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/rules/{rule_id}": {
+      "patch": {
+        "tags": [
+          "rules"
+        ],
+        "summary": "Rename, switch on or off, or change what it checks and does (Admin)",
+        "operationId": "change_rule_api_v1_rules__rule_id__patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "rule_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Rule Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RulePatch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuleOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "rules"
+        ],
+        "summary": "Delete a rule (Admin)",
+        "operationId": "delete_rule_api_v1_rules__rule_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "rule_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Rule Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/macros": {
+      "get": {
+        "tags": [
+          "macros"
+        ],
+        "summary": "All macros in menu order",
+        "operationId": "list_macros_api_v1_macros_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/MacroOut"
+                  },
+                  "type": "array",
+                  "title": "Response List Macros Api V1 Macros Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "macros"
+        ],
+        "summary": "Add a macro; it goes last in the menu (Admin)",
+        "operationId": "create_macro_api_v1_macros_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MacroIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MacroOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/macros/order": {
+      "put": {
+        "tags": [
+          "macros"
+        ],
+        "summary": "Set the menu order: every macro id once (Admin)",
+        "operationId": "reorder_macros_api_v1_macros_order_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MacroOrderBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/MacroOut"
+                  },
+                  "type": "array",
+                  "title": "Response Reorder Macros Api V1 Macros Order Put"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/macros/{macro_id}": {
+      "patch": {
+        "tags": [
+          "macros"
+        ],
+        "summary": "Rename or change the steps (Admin)",
+        "operationId": "change_macro_api_v1_macros__macro_id__patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "macro_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Macro Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MacroPatch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MacroOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "macros"
+        ],
+        "summary": "Delete a macro (Admin)",
+        "operationId": "delete_macro_api_v1_macros__macro_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "macro_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Macro Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tickets/{ticket_id}/macros/{macro_id}": {
+      "post": {
+        "tags": [
+          "macros"
+        ],
+        "summary": "Run a macro on a ticket: all its steps in one go",
+        "description": "Steps run in order in one transaction; if one is refused, nothing is saved. Light agents get 403; an unaccepted handover gets 409.",
+        "operationId": "run_macro_api_v1_tickets__ticket_id__macros__macro_id__post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "ticket_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Ticket Id"
+            }
+          },
+          {
+            "name": "macro_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Macro Id"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 100
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The ETag from reading the ticket. 409 if the ticket changed since.",
+              "title": "If-Match"
+            },
+            "description": "The ETag from reading the ticket. 409 if the ticket changed since."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TicketOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/healthz": {
       "get": {
         "tags": [
@@ -2609,6 +3390,22 @@
         ],
         "title": "Counts"
       },
+      "CustomerReplyBody": {
+        "properties": {
+          "body": {
+            "type": "string",
+            "maxLength": 50000,
+            "minLength": 1,
+            "title": "Body"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "body"
+        ],
+        "title": "CustomerReplyBody"
+      },
       "DefaultsOut": {
         "properties": {
           "cap_email": {
@@ -2830,6 +3627,147 @@
           "next_cursor"
         ],
         "title": "InboxOut"
+      },
+      "MacroIn": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "steps": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "Steps",
+            "description": "Run in order. Each is one of: {\"kind\": \"reply\", \"text\": \"Hi {{customer.first_name}}, ...\"} (placeholders are filled when it runs); {\"kind\": \"note\", \"text\": \"...\"}; {\"kind\": \"set_status\", \"status\": \"resolved\"}; {\"kind\": \"set_priority\", \"priority\": \"low\"}; {\"kind\": \"set_team\", \"team_id\": \"...\"} (re-routes the ticket); {\"kind\": \"add_tag\", \"tag\": \"refund\"}. At most one reply and one note."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "steps"
+        ],
+        "title": "MacroIn"
+      },
+      "MacroOrderBody": {
+        "properties": {
+          "ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "maxItems": 100,
+            "title": "Ids",
+            "description": "Every macro id, in the new order."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "ids"
+        ],
+        "title": "MacroOrderBody"
+      },
+      "MacroOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "position": {
+            "type": "integer",
+            "title": "Position",
+            "description": "The order in the Macros menu, lowest first."
+          },
+          "steps": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Steps"
+          },
+          "problems": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Problems",
+            "description": "What to fix, e.g. the team it sets was deleted. Empty when fine."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "position",
+          "steps",
+          "problems",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "MacroOut"
+      },
+      "MacroPatch": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "steps": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array",
+                "maxItems": 20,
+                "minItems": 1,
+                "description": "Run in order. Each is one of: {\"kind\": \"reply\", \"text\": \"Hi {{customer.first_name}}, ...\"} (placeholders are filled when it runs); {\"kind\": \"note\", \"text\": \"...\"}; {\"kind\": \"set_status\", \"status\": \"resolved\"}; {\"kind\": \"set_priority\", \"priority\": \"low\"}; {\"kind\": \"set_team\", \"team_id\": \"...\"} (re-routes the ticket); {\"kind\": \"add_tag\", \"tag\": \"refund\"}. At most one reply and one note."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Steps"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "MacroPatch"
       },
       "MeOut": {
         "properties": {
@@ -3290,6 +4228,341 @@
         "additionalProperties": false,
         "type": "object",
         "title": "RoutingPatch"
+      },
+      "RuleIn": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "default": true
+          },
+          "event": {
+            "type": "string",
+            "enum": [
+              "created",
+              "customer_replied"
+            ],
+            "title": "Event",
+            "description": "created: a new ticket. customer_replied: the customer wrote on an Open or Pending ticket. Agent edits never run rules."
+          },
+          "conditions": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "maxItems": 10,
+            "minItems": 1,
+            "title": "Conditions",
+            "description": "All must match. Each is one of: {\"kind\": \"text_contains_any\", \"words\": [\"refund\"]} (subject and customer messages, any case); {\"kind\": \"channel_in\", \"channels\": [\"email\"]}; {\"kind\": \"to_address_contains\", \"text\": \"billing@\"}; {\"kind\": \"status_in\", \"statuses\": [\"pending\"]}; {\"kind\": \"sentiment_in\", \"sentiments\": [\"negative\"]}."
+          },
+          "actions": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "maxItems": 10,
+            "minItems": 1,
+            "title": "Actions",
+            "description": "Run in order. Each is one of: {\"kind\": \"set_type\", \"type_id\": \"...\", \"only_if_empty\": false}; {\"kind\": \"set_team\", \"team_id\": \"...\"}; {\"kind\": \"set_priority\", \"priority\": \"high\", \"keep_urgent\": true}; {\"kind\": \"set_status\", \"status\": \"open\"}; {\"kind\": \"add_tag\", \"tag\": \"upset\"}."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "event",
+          "conditions",
+          "actions"
+        ],
+        "title": "RuleIn"
+      },
+      "RuleOrderBody": {
+        "properties": {
+          "ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "maxItems": 100,
+            "title": "Ids",
+            "description": "Every rule id, in the new order."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "ids"
+        ],
+        "title": "RuleOrderBody"
+      },
+      "RuleOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled"
+          },
+          "position": {
+            "type": "integer",
+            "title": "Position",
+            "description": "Rules run in this order, lowest first."
+          },
+          "event": {
+            "type": "string",
+            "title": "Event"
+          },
+          "conditions": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Conditions"
+          },
+          "actions": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Actions"
+          },
+          "problems": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Problems",
+            "description": "What to fix, e.g. the team it sets was deleted. Empty when fine."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "enabled",
+          "position",
+          "event",
+          "conditions",
+          "actions",
+          "problems",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "RuleOut"
+      },
+      "RulePatch": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enabled"
+          },
+          "event": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "created",
+                  "customer_replied"
+                ],
+                "description": "created: a new ticket. customer_replied: the customer wrote on an Open or Pending ticket. Agent edits never run rules."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Event"
+          },
+          "conditions": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array",
+                "maxItems": 10,
+                "minItems": 1,
+                "description": "All must match. Each is one of: {\"kind\": \"text_contains_any\", \"words\": [\"refund\"]} (subject and customer messages, any case); {\"kind\": \"channel_in\", \"channels\": [\"email\"]}; {\"kind\": \"to_address_contains\", \"text\": \"billing@\"}; {\"kind\": \"status_in\", \"statuses\": [\"pending\"]}; {\"kind\": \"sentiment_in\", \"sentiments\": [\"negative\"]}."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conditions"
+          },
+          "actions": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array",
+                "maxItems": 10,
+                "minItems": 1,
+                "description": "Run in order. Each is one of: {\"kind\": \"set_type\", \"type_id\": \"...\", \"only_if_empty\": false}; {\"kind\": \"set_team\", \"team_id\": \"...\"}; {\"kind\": \"set_priority\", \"priority\": \"high\", \"keep_urgent\": true}; {\"kind\": \"set_status\", \"status\": \"open\"}; {\"kind\": \"add_tag\", \"tag\": \"upset\"}."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actions"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "RulePatch"
+      },
+      "SavedReplyIn": {
+        "properties": {
+          "shortcut": {
+            "type": "string",
+            "maxLength": 33,
+            "minLength": 1,
+            "title": "Shortcut",
+            "description": "What the agent types after `/`, e.g. `refund`. Stored lower-case."
+          },
+          "body": {
+            "type": "string",
+            "maxLength": 10000,
+            "minLength": 1,
+            "title": "Body",
+            "description": "The text. Placeholders such as {{customer.first_name}} are filled when the reply is sent."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "shortcut",
+          "body"
+        ],
+        "title": "SavedReplyIn"
+      },
+      "SavedReplyOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "shortcut": {
+            "type": "string",
+            "title": "Shortcut",
+            "description": "Without the slash: `refund` is typed as `/refund`."
+          },
+          "body": {
+            "type": "string",
+            "title": "Body"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source",
+            "description": "default (came with the workspace), manual, calendly, or an import source such as intercom."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "shortcut",
+          "body",
+          "source",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "SavedReplyOut"
+      },
+      "SavedReplyPatch": {
+        "properties": {
+          "shortcut": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 33,
+                "minLength": 1,
+                "description": "What the agent types after `/`, e.g. `refund`. Stored lower-case."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shortcut"
+          },
+          "body": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 10000,
+                "minLength": 1,
+                "description": "The text. Placeholders such as {{customer.first_name}} are filled when the reply is sent."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Body"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "SavedReplyPatch"
       },
       "Sentiment": {
         "type": "string",

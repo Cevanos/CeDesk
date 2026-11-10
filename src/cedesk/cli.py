@@ -64,6 +64,29 @@ def _create_workspace(args: argparse.Namespace) -> int:
     return 0
 
 
+def _seed_workflow(slug: str) -> int:
+    """Safe to run again: defaults already there, and an Admin's own changes, are kept."""
+    from cedesk.db import make_engine, make_sessionmaker
+    from cedesk.helpdesk.service.errors import ServiceError
+    from cedesk.helpdesk.service.seeds import add_workflow_defaults
+    from cedesk.settings import get_settings
+
+    async def run() -> int:
+        engine = make_engine(get_settings().database_url)
+        try:
+            return await add_workflow_defaults(make_sessionmaker(engine), slug)
+        finally:
+            await engine.dispose()
+
+    try:
+        added = asyncio.run(run())
+    except ServiceError as exc:
+        print(exc.message, file=sys.stderr)
+        return 1
+    print(f"Added {added} default(s) to {slug}; anything already there was kept.")
+    return 0
+
+
 def _seed_demo(args: argparse.Namespace) -> int:
     from cedesk.db import make_engine, make_sessionmaker
     from cedesk.demo import seed_demo
@@ -156,6 +179,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     demo.add_argument("--slug", default="acme-store")
     demo.add_argument("--name", default="Acme Store")
+    workflow = sub.add_parser(
+        "seed-workflow",
+        help="Add the default saved replies, rules and macros to an existing workspace",
+    )
+    workflow.add_argument("--workspace", required=True, help="Sign-in address, e.g. 'acme-store'")
     spec = sub.add_parser("openapi", help="Write the API description to docs/api/openapi.json")
     spec.add_argument("--out", type=Path, default=ROOT / "docs" / "api" / "openapi.json")
     spec.add_argument("--check", action="store_true", help="Fail if the file is out of date")
@@ -182,6 +210,8 @@ def main(argv: list[str] | None = None) -> int:
         return _prune_sessions()
     if args.command == "seed-demo":
         return _seed_demo(args)
+    if args.command == "seed-workflow":
+        return _seed_workflow(args.workspace)
     if args.command == "openapi":
         return _openapi(args.out, args.check)
     return _create_workspace(args)

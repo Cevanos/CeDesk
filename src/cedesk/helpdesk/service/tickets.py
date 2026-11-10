@@ -1,8 +1,9 @@
 """Creating, listing, opening and changing tickets.
 
 Every change writes a system line on the ticket ("Priority set to High by Neha").
-A ticket that lands in a team with nobody assigned is auto-assigned (W8): on create,
-and when it moves to another team without a chosen assignee.
+A new ticket first runs the automation rules (W15), which may set its type, team,
+priority, status and tags. A ticket that lands in a team with nobody assigned is then
+auto-assigned (W8): on create, and when it moves to another team without a chosen assignee.
 """
 
 from collections.abc import Mapping, Sequence
@@ -19,6 +20,7 @@ from cedesk.helpdesk.domain import tickets as rules
 from cedesk.helpdesk.domain.auth import Caller, normalise_email
 from cedesk.helpdesk.domain.paging import CursorError
 from cedesk.helpdesk.domain.permissions import Action, Role
+from cedesk.helpdesk.domain.rules import Event as RuleEvent
 from cedesk.helpdesk.domain.tickets import (
     Channel,
     FieldDef,
@@ -33,6 +35,7 @@ from cedesk.helpdesk.repo import messages as message_repo
 from cedesk.helpdesk.repo import tickets as repo
 from cedesk.helpdesk.repo.tickets import Row
 from cedesk.helpdesk.service import routing
+from cedesk.helpdesk.service import rules as automation
 from cedesk.helpdesk.service.auth import Sessionmaker
 from cedesk.helpdesk.service.catalog import field_defs
 from cedesk.helpdesk.service.errors import Conflict, Invalid, NotFound
@@ -63,6 +66,7 @@ class NewTicket:
     language: str | None = None
     source: str | None = None  # where it came from: "cevanos", "intercom", "email", ...
     source_id: str | None = None  # that source's id; one ticket per (source, source_id)
+    to_address: str | None = None  # email: the address the customer wrote to (for rules)
 
 
 def _check_origin(new: NewTicket) -> None:
@@ -76,6 +80,8 @@ def _check_origin(new: NewTicket) -> None:
         raise Invalid("topic is 1-60 characters.")
     if new.conversation_id is not None and not 1 <= len(new.conversation_id) <= 100:
         raise Invalid("conversation_id is 1-100 characters.")
+    if new.to_address is not None and not 3 <= len(new.to_address) <= 254:
+        raise Invalid("to_address is 3-254 characters.")
 
 
 @dataclass(frozen=True)
@@ -276,13 +282,19 @@ async def _create(sm: Sessionmaker, caller: Caller, new: NewTicket, tags: list[s
             await _line(s, caller, ticket_id, f"Team set to {team} by {who}")
         if assignee:
             await _line(s, caller, ticket_id, f"Assigned to {assignee} by {who}")
-        if new.team_id and new.assignee_id is None:
+        run = await automation.apply(
+            s, caller.workspace_id, ticket_id, RuleEvent.created, to_address=new.to_address
+        )
+        team_id = run.after["team_id"] if run else new.team_id
+        type_id = run.after["type_id"] if run else new.type_id
+        status = run.after["status"] if run else Status.open.value
+        if team_id and new.assignee_id is None and status != Status.resolved.value:
             pick = await routing.route(
                 s,
                 ticket_id=ticket_id,
-                team_id=new.team_id,
+                team_id=team_id,
                 channel=new.channel.value,
-                type_id=new.type_id,
+                type_id=type_id,
             )
             await _line(s, caller, ticket_id, pick.line)
             if pick.agent:

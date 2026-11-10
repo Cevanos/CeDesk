@@ -4,11 +4,14 @@ A reply goes to the customer (sending it by email or chat comes with the channel
 work); a note is for the team only. Neither changes the ticket's status (T17).
 """
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
+from typing import Any
 from uuid import UUID
+
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from cedesk.db import workspace_session
 from cedesk.helpdesk.domain import events, paging
@@ -46,6 +49,71 @@ class Inbox:
 class MessagePage:
     messages: Sequence[Row]  # newest first
     next_cursor: str | None
+
+
+async def add_message(
+    s: AsyncSession,
+    caller: Caller,
+    detail: Mapping[Any, Any],
+    *,
+    kind: MessageKind,
+    body: str,
+    who: str,
+    mentions: Sequence[UUID] = (),
+) -> UUID:
+    """Saves a reply or note inside the caller's transaction, with the ticket locked:
+    fills a reply's placeholders, notifies the @mentioned and writes `message.created`.
+    Permissions and the mention list are the caller's job (`post_message`, macros)."""
+    ticket_id = detail["id"]
+    if kind is MessageKind.reply:
+        body = render(
+            body,
+            customer_name=str(detail["contact_name"]),
+            agent_name=who,
+            fields=detail["fields"],
+        )
+    if len(body) > BODY_MAX:
+        raise Invalid(f"A message can be at most {BODY_MAX} characters.")
+
+    message_id = await tickets.insert_message(
+        s,
+        workspace_id=caller.workspace_id,
+        ticket_id=ticket_id,
+        kind=_STORED_KIND[kind],
+        body=body,
+        author_member_id=caller.member_id,
+        author_name=who,
+    )
+    if kind is MessageKind.reply:
+        await repo.ticket_replied(s, ticket_id)
+    else:
+        await repo.ticket_touched(s, ticket_id)
+
+    if mentions:
+        await repo.add_mentions(s, caller.workspace_id, message_id, mentions)
+        others = [m for m in mentions if m != caller.member_id]
+        if others:
+            text = f"{who} mentioned you on {label(detail['number'])}: {detail['subject']}"
+            await repo.notify(
+                s,
+                workspace_id=caller.workspace_id,
+                member_ids=others,
+                ticket_id=ticket_id,
+                kind="mention",
+                body=text[:500],
+            )
+    await outbox.add(
+        s,
+        caller.workspace_id,
+        events.Event.message_created.value,
+        ticket_id,
+        events.payload(
+            events.Event.message_created,
+            detail,
+            events.message(message_id, _STORED_KIND[kind], caller.member_id),
+        ),
+    )
+    return message_id
 
 
 def _after(cursor: str | None, kind: str) -> tuple[datetime, UUID] | None:
@@ -86,53 +154,8 @@ async def post_message(
         if mentions and set(mentions) - await catalog.active_members(s, mentions):
             raise Invalid("You can only mention active members of this workspace.")
 
-        if kind is MessageKind.reply:
-            body = render(
-                body,
-                customer_name=str(detail["contact_name"]),
-                agent_name=who,
-                fields=detail["fields"],
-            )
-        if len(body) > BODY_MAX:
-            raise Invalid(f"A message can be at most {BODY_MAX} characters.")
-
-        message_id = await tickets.insert_message(
-            s,
-            workspace_id=caller.workspace_id,
-            ticket_id=ticket_id,
-            kind=_STORED_KIND[kind],
-            body=body,
-            author_member_id=caller.member_id,
-            author_name=who,
-        )
-        if kind is MessageKind.reply:
-            await repo.ticket_replied(s, ticket_id)
-        else:
-            await repo.ticket_touched(s, ticket_id)
-
-        if mentions:
-            await repo.add_mentions(s, caller.workspace_id, message_id, mentions)
-            others = [m for m in mentions if m != caller.member_id]
-            if others:
-                text = f"{who} mentioned you on {label(detail['number'])}: {detail['subject']}"
-                await repo.notify(
-                    s,
-                    workspace_id=caller.workspace_id,
-                    member_ids=others,
-                    ticket_id=ticket_id,
-                    kind="mention",
-                    body=text[:500],
-                )
-        await outbox.add(
-            s,
-            caller.workspace_id,
-            events.Event.message_created.value,
-            ticket_id,
-            events.payload(
-                events.Event.message_created,
-                detail,
-                events.message(message_id, _STORED_KIND[kind], caller.member_id),
-            ),
+        message_id = await add_message(
+            s, caller, detail, kind=kind, body=body, who=who, mentions=mentions
         )
         row = await repo.get_message(s, message_id)
     assert row is not None
