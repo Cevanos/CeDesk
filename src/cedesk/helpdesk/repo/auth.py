@@ -153,13 +153,37 @@ async def revoke_session(session: AsyncSession, session_id: UUID) -> None:
     )
 
 
-async def revoke_member_sessions(session: AsyncSession, member_id: UUID) -> None:
+async def revoke_member_sessions(
+    session: AsyncSession, member_id: UUID, *, keep: UUID | None = None
+) -> None:
+    """Ends every live session of the member, except `keep` when given."""
     await session.execute(
         text(
             "UPDATE auth_session SET revoked_at = now() "
-            "WHERE member_id = :id AND revoked_at IS NULL"
+            "WHERE member_id = :id AND revoked_at IS NULL "
+            "AND (CAST(:keep AS uuid) IS NULL OR id <> CAST(:keep AS uuid))"
         ),
-        {"id": member_id},
+        {"id": member_id, "keep": keep},
+    )
+
+
+async def member_password_hash(
+    session: AsyncSession, member_id: UUID, *, lock: bool = False
+) -> str | None:
+    sql = "SELECT password_hash FROM member WHERE id = :id"
+    result = await session.execute(text(sql + " FOR UPDATE" if lock else sql), {"id": member_id})
+    value = result.scalar_one_or_none()
+    return None if value is None else str(value)
+
+
+async def set_password(session: AsyncSession, member_id: UUID, password_hash: str) -> None:
+    """A new password also clears failed sign-ins and any lockout."""
+    await session.execute(
+        text(
+            "UPDATE member SET password_hash = :hash, failed_logins = 0, locked_until = NULL, "
+            "updated_at = now() WHERE id = :id"
+        ),
+        {"id": member_id, "hash": password_hash},
     )
 
 

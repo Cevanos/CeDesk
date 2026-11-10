@@ -3,6 +3,18 @@
 `openapi.json` next to this file is the API as served (`uv run cedesk openapi`). Every
 route is under `/api/v1`. Breaking changes only come in v2 (md 2B). Newest first.
 
+## 2026-11-10: change my password, Admin password reset
+
+- New: `POST /me/password` with `{current_password, new_password}` → 204. Ends the
+  member's other sessions; the one that made the change stays signed in. 422 when the
+  current password is not right, the new one is not 10–128 characters or equals the
+  current one. A wrong current password counts as a failed sign-in: after 10 the account
+  is locked for 15 minutes (403 here, 401 on sign-in). 409 if the password was changed
+  elsewhere at the same moment.
+- New: `POST /members/{id}/password` with `{new_password}` → 204 (Admin). Signs the
+  member out everywhere and unlocks a locked account. 403 for your own account (use
+  `/me/password`), 404 for an unknown member.
+
 ## 2026-11-09: new agents start Offline
 
 - A member added from now on starts with agent status `offline` and gets no tickets
