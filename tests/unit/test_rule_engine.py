@@ -149,8 +149,7 @@ def test_a_tag_is_added_once_and_never_past_the_limit() -> None:
     full = tuple(f"t{i}" for i in range(20))
     final, applied = run([r], facts("x"), state(tags=full))
     assert final.tags == full
-    assert applied[0].done == ()
-    assert engine.line(applied[0]) == "Rule applied: Tag → nothing to change"
+    assert applied == []  # it matched but changed nothing, so it writes no line
 
 
 def test_a_deleted_team_is_skipped_and_reported() -> None:
@@ -233,15 +232,42 @@ def test_stored_json_reads_back_the_same() -> None:
 
 @pytest.mark.parametrize(
     "body",
-    ["thanks", "Thanks!", "  thank you. ", "THX", "ok thanks", "Great, thanks!!", "great thanks"],
-)
+    [
+        "thanks", "Thanks!", "  thank you. ", "THX", "ok thanks", "Great, thanks!!",
+        "great thanks", "Thank you so much!", "thanks a lot", "Thanks again 🙏", "ty", "TQ",
+        "thank u", "Thanku", "many thanks", "okay, thank you very much", "got it, thanks",
+        "Dhanyavaad", "shukriya ji", "धन्यवाद", "🙏", "👍👍", "thanks sir", "Noted, thanks.",
+        "Thanks 🙏🏻", "👍🏽", "Thank you, ma'am", "thanks, sir", "thanks :)", "thank you :-)",
+        "Thanks ❤️", "ok thanks :D",
+    ],
+)  # fmt: skip
 def test_a_thank_you_only_reply(body: str) -> None:
     assert engine.is_thanks_only(body)
 
 
 @pytest.mark.parametrize(
     "body",
-    ["thanks, but it is still broken", "no thanks", "thank you so much, one more thing", "ok", ""],
-)
+    [
+        "thanks, but it is still broken", "no thanks", "thank you so much, one more thing",
+        "ok", "", "thanks for nothing", "type", "thank you, where is my refund?",
+        "not received, thanks", "🙏 still waiting", "thanks :( still broken", "👎",
+        "thanks, but sir it is broken",
+    ],
+)  # fmt: skip
 def test_anything_more_than_thanks_is_a_real_reply(body: str) -> None:
     assert not engine.is_thanks_only(body)
+
+
+def test_only_real_changes_are_reported() -> None:
+    already = state(type_id=TECH_TYPE, team_id=TECH, priority=Priority.high)
+    _, applied = run([REFUND_RULE, ERROR_RULE], facts("refund, app crashed"), already)
+    # Refund changed type and team; errors moved them back. Priority was already High.
+    assert [a.done for a in applied] == [("Type Refund", "Team Billing"),
+                                         ("Type Technical problem", "Team Tech")]  # fmt: skip
+    same = rule(
+        "Same",
+        [{"kind": "text_contains_any", "words": ["x"]}],
+        [{"kind": "set_status", "status": "open"}, {"kind": "add_tag", "tag": "a"}],
+    )
+    _, applied = run([same], facts("x"), state(tags=("a",)))
+    assert applied == []

@@ -45,14 +45,25 @@ MAX_WORDS = 50
 MAX_WORD = 100
 NAME_MAX = 80
 
-# md 6.4: a reply that is only a thank-you keeps a resolved ticket resolved.
-THANKS_ONLY = re.compile(
-    r"^\s*(?:thanks|thank\s+you|thx|ok\s+thanks|great,?\s+thanks)[\s.!]*$", re.IGNORECASE
+# md 6.4: a reply that is only a thank-you keeps a resolved ticket resolved. The whole
+# message must be the thank-you: "thanks, but it is still broken" reopens the ticket.
+_THANKS_LEAD = r"(?:(?:ok(?:ay)?|great|cool|perfect|got\s+it|done|noted|sure)[\s,.!]+)?"
+_THANKS_CORE = (
+    r"(?:thanks|thank\s*(?:you|u)|thanku|thx|tnx|tq|ty|many\s+thanks|"
+    r"dhanyavaa?d|dhanyawaa?d|shukriya|shukria|धन्यवाद|शुक्रिया)"
 )
+_THANKS_TAIL = r"(?:[\s,]+(?:so\s+much|very\s+much|a\s+lot|again|sir|ma'?am|bro|ji))*"
+# Emoji, also with a skin tone (U+1F3FB-1F3FF) or the emoji style mark (U+FE0F).
+_EMOJI = "[🙏👍😊🙂☺❤\ufe0f\U0001f3fb-\U0001f3ff]"
+_THANKS_END = rf"(?:[\s.,!]|:-?\)|:-?D|{_EMOJI})*"
+THANKS_ONLY = re.compile(
+    rf"^\s*{_THANKS_LEAD}{_THANKS_CORE}{_THANKS_TAIL}{_THANKS_END}$", re.IGNORECASE
+)
+_EMOJI_ONLY = re.compile(rf"^\s*{_EMOJI}(?:\s|{_EMOJI})*$")
 
 
 def is_thanks_only(body: str) -> bool:
-    return bool(THANKS_ONLY.match(body))
+    return bool(THANKS_ONLY.match(body) or _EMOJI_ONLY.match(body))
 
 
 class RuleError(ValueError):
@@ -328,26 +339,29 @@ def act(
     types: Mapping[UUID, str],
     teams: Mapping[UUID, str],
 ) -> tuple[State, str | None]:
-    """The new state and what to say about it; None when the action could not run."""
+    """The new state and what to say about it; None when the action could not run or
+    changed nothing (the ticket already had that value)."""
     if isinstance(action, SetType):
-        if action.type_id not in types:
+        if action.type_id not in types or action.type_id == state.type_id:
             return state, None
         if action.only_if_empty and state.type_id is not None:
             return state, None
         return replace(state, type_id=action.type_id), f"Type {types[action.type_id]}"
     if isinstance(action, SetTeam):
-        if action.team_id not in teams:
+        if action.team_id not in teams or action.team_id == state.team_id:
             return state, None
         return replace(state, team_id=action.team_id), f"Team {teams[action.team_id]}"
     if isinstance(action, SetPriority):
+        if action.priority is state.priority:
+            return state, None
         if action.keep_urgent and state.priority is Priority.urgent:
             return state, None
         return replace(state, priority=action.priority), f"Priority {title(action.priority)}"
     if isinstance(action, SetStatus):
+        if action.status is state.status:
+            return state, None
         return replace(state, status=action.status), f"Status {title(action.status)}"
-    if action.tag in state.tags:
-        return state, f"Tag {action.tag}"
-    if len(state.tags) >= MAX_TAGS:
+    if action.tag in state.tags or len(state.tags) >= MAX_TAGS:
         return state, None
     return replace(state, tags=(*state.tags, action.tag)), f"Tag {action.tag}"
 
@@ -363,7 +377,7 @@ def run(
 ) -> tuple[State, list[Applied]]:
     """Runs the enabled rules (pass them in order) for one event. A rule whose type or
     team was deleted still runs its other actions. Returns the final state and, per rule
-    that matched, what it did."""
+    that changed something, what it did."""
     applied: list[Applied] = []
     for rule in rules:
         if rule.event is not event:
@@ -375,7 +389,8 @@ def run(
             state, said = act(action, state, types, teams)
             if said:
                 done.append(said)
-        applied.append(Applied(rule, tuple(done)))
+        if done:  # a rule that matched but found nothing to change writes no line
+            applied.append(Applied(rule, tuple(done)))
     return state, applied
 
 

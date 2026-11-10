@@ -9,6 +9,8 @@ There is no signed-in member here, so this takes the workspace id directly.
 - Resolved, anything else: the ticket reopens (`reopen_count` + 1) and the assignee is told.
 - Open or Pending: the `customer_replied` rules run (the default "Reopen when the customer
   replies" rule turns Pending into Open), then the assignee is told.
+- Pass the channel's message id when there is one: a retried delivery of the same message
+  is then ignored (outcome `duplicate`), so nothing is saved or counted twice.
 """
 
 from collections.abc import Mapping
@@ -36,6 +38,7 @@ from cedesk.helpdesk.service.errors import Invalid, NotFound
 from cedesk.helpdesk.service.members import require
 
 BODY_MAX = 50_000
+CHANNEL_ID_MAX = 200  # as hd_message.channel_message_id allows
 THANKED = "Thank-you detected · ticket stays resolved"
 REOPENED = "Customer replied · ticket reopened"
 
@@ -45,6 +48,7 @@ class Outcome(StrEnum):
     rules_ran = "rules_ran"
     reopened = "reopened"
     thanked = "thanked"
+    duplicate = "duplicate"  # that channel message was already saved; nothing changed
 
 
 @dataclass(frozen=True)
@@ -92,12 +96,20 @@ async def customer_reply(
         raise Invalid("The message is empty.")
     if len(body) > BODY_MAX:
         raise Invalid(f"A message can be at most {BODY_MAX} characters.")
+    if channel_message_id is not None and not 1 <= len(channel_message_id) <= CHANNEL_ID_MAX:
+        raise Invalid(f"channel_message_id is 1-{CHANNEL_ID_MAX} characters.")
 
     async with workspace_session(sm, workspace_id) as s:
         before = await repo.lock_ticket(s, ticket_id)
         detail = await repo.ticket_detail(s, ticket_id)
         if before is None or detail is None:
             raise NotFound("Ticket not found.")
+        if channel_message_id is not None:
+            # Checked under the ticket lock, so two deliveries of one message take turns.
+            # The unique index (migration 0015) is the backstop.
+            seen = await repo.message_by_channel_id(s, ticket_id, channel_message_id)
+            if seen is not None:
+                return CustomerReply(seen, Outcome.duplicate)
         message_id = await repo.insert_message(
             s,
             workspace_id=workspace_id,
@@ -116,6 +128,8 @@ async def customer_reply(
         )  # fmt: skip
 
         after: dict[str, Any] | None = None
+        reply_note = f"{detail['contact_name']} replied on {label(before['number'])}"
+        tell = before["assignee_id"]  # who hears about the reply (not for a thank-you)
         if before["status"] == Status.resolved.value:
             if is_thanks_only(body):
                 await _line(s, workspace_id, ticket_id, THANKED)
@@ -132,7 +146,9 @@ async def customer_reply(
             await _line(s, workspace_id, ticket_id, REOPENED)
             outcome = Outcome.reopened
         else:
-            run = await automation.apply(s, workspace_id, ticket_id, RuleEvent.customer_replied)
+            run = await automation.apply(
+                s, workspace_id, ticket_id, RuleEvent.customer_replied, new_message=body
+            )
             outcome = Outcome.added
             if run is not None:
                 after = run.after
@@ -155,31 +171,34 @@ async def customer_reply(
                     await repo.set_assignee(s, ticket_id, after["assignee_id"])
                     await _line(s, workspace_id, ticket_id, pick.line)
                     if pick.agent is not None:
+                        # One notification for the new assignee, saying both things.
                         await message_repo.notify(
                             s,
                             workspace_id=workspace_id,
                             member_ids=[pick.agent.member_id],
                             ticket_id=ticket_id,
                             kind="assigned",
-                            body=f"You were auto-assigned {label(before['number'])}: "
+                            body=f"{reply_note}, and it was auto-assigned to you: "
                             f"{after['subject']}"[:500],
                         )
+                        tell = None
+                    # Nobody free in the new team: the previous assignee still hears
+                    # that the customer wrote (`tell` stays as it was).
+            if run is None or not run.team_changed:
+                tell = (after or before)["assignee_id"]
 
         if after is not None:
             for event, extra in events.after_change(before, after, None):
                 await _emit(s, workspace_id, ticket_id, event, extra)
-        assignee = (after or before)["assignee_id"]
-        if assignee is not None:
+        if tell is not None:
             subject = (after or before)["subject"]
             await message_repo.notify(
                 s,
                 workspace_id=workspace_id,
-                member_ids=[assignee],
+                member_ids=[tell],
                 ticket_id=ticket_id,
                 kind="customer_reply",
-                body=f"{detail['contact_name']} replied on {label(before['number'])}: {subject}"[
-                    :500
-                ],
+                body=f"{reply_note}: {subject}"[:500],
             )
     return CustomerReply(message_id, outcome)
 
@@ -189,7 +208,7 @@ async def simulate(
 ) -> CustomerReply:
     """Admin-only stand-in for a customer, so reopen, thank-you and the reply rules can be
     tried before the connector, email and portal exist. Off (404) in production."""
-    require(caller, Action.settings)
-    if not allowed:
+    if not allowed:  # first, so a production server never shows the route exists
         raise NotFound("Not available on this server.")
+    require(caller, Action.settings)
     return await customer_reply(sm, caller.workspace_id, ticket_id, body)

@@ -175,3 +175,38 @@ async def test_an_old_workspace_gets_the_defaults_once_and_keeps_its_own(
 
     with pytest.raises(NotFound):
         await add_workflow_defaults(app_sessionmaker, "no-such-workspace")
+
+
+async def test_defaults_an_admin_removed_never_come_back(
+    client: AsyncClient, app_sessionmaker: Sm
+) -> None:
+    slug, token = await admin(client, app_sessionmaker, seed=True)
+    h = bearer(token)
+    rules = {r["name"]: r["id"] for r in ok(await client.get("/api/v1/rules", headers=h))}
+    macros = {m["name"]: m["id"] for m in ok(await client.get("/api/v1/macros", headers=h))}
+    replies = {r["shortcut"]: r["id"] for r in ok(await client.get(R, headers=h))}
+    await client.delete(f"/api/v1/rules/{rules['Upset customer goes first']}", headers=h)
+    ok(await client.patch(f"/api/v1/macros/{macros['Escalate to Tech']}", headers=h,
+                          json={"name": "Escalate"}))  # fmt: skip
+    await client.delete(f"{R}/{replies['thanks']}", headers=h)
+
+    assert await add_workflow_defaults(app_sessionmaker, slug) == 0
+    rule_names = [r["name"] for r in ok(await client.get("/api/v1/rules", headers=h))]
+    assert "Upset customer goes first" not in rule_names and len(rule_names) == 5
+    macro_names = [m["name"] for m in ok(await client.get("/api/v1/macros", headers=h))]
+    assert sorted(macro_names) == ["Ask for a photo", "Escalate", "Refund approved"]
+    assert "thanks" not in [r["shortcut"] for r in ok(await client.get(R, headers=h))]
+
+
+async def test_a_default_waiting_for_its_team_is_added_once_the_team_exists(
+    client: AsyncClient, app_sessionmaker: Sm
+) -> None:
+    slug, token = await admin(client, app_sessionmaker)  # no teams or types
+    h = bearer(token)
+    await add_workflow_defaults(app_sessionmaker, slug)
+    names = [m["name"] for m in ok(await client.get("/api/v1/macros", headers=h))]
+    assert "Escalate to Tech" not in names
+    ok(await client.post("/api/v1/teams", headers=h, json={"name": "Tech"}), 201)
+    assert await add_workflow_defaults(app_sessionmaker, slug) == 1
+    names = [m["name"] for m in ok(await client.get("/api/v1/macros", headers=h))]
+    assert names[-1] == "Escalate to Tech"

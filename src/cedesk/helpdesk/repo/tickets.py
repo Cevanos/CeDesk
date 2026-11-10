@@ -332,6 +332,21 @@ async def messages(
     return result.mappings().all()
 
 
+async def message_by_channel_id(
+    session: AsyncSession, ticket_id: UUID, channel_message_id: str
+) -> UUID | None:
+    """A message already saved from that channel message (a retried delivery)."""
+    result = await session.execute(
+        text(
+            "SELECT id FROM hd_message WHERE ticket_id = :ticket "
+            "AND channel_message_id = :channel_id"
+        ),
+        {"ticket": ticket_id, "channel_id": channel_message_id},
+    )
+    value = result.scalar_one_or_none()
+    return None if value is None else UUID(str(value))
+
+
 async def member_brief(session: AsyncSession, member_id: UUID) -> Row | None:
     result = await session.execute(
         text("SELECT id, name, role, is_active FROM member WHERE id = :id"), {"id": member_id}
