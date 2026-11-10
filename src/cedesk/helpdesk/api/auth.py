@@ -3,7 +3,14 @@
 from fastapi import APIRouter, status
 
 from cedesk.helpdesk.api.deps import CallerDep, SessionmakerDep
-from cedesk.helpdesk.api.schemas import MemberOut, MeOut, SignedInOut, SignInBody, WorkspaceOut
+from cedesk.helpdesk.api.schemas import (
+    ChangePasswordBody,
+    MemberOut,
+    MeOut,
+    SignedInOut,
+    SignInBody,
+    WorkspaceOut,
+)
 from cedesk.helpdesk.service import auth, members
 
 router = APIRouter(tags=["sign-in"])
@@ -38,4 +45,22 @@ async def me(caller: CallerDep, sm: SessionmakerDep) -> MeOut:
     return MeOut(
         member=MemberOut.model_validate(dict(member)),
         workspace=WorkspaceOut.model_validate(dict(workspace)),
+    )
+
+
+@router.post(
+    "/me/password",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Change my password (ends my other sessions)",
+    responses={
+        403: {"description": "Locked after too many wrong passwords"},
+        409: {"description": "The password was changed elsewhere meanwhile"},
+        422: {"description": "Current password not right, or the new one is not allowed"},
+    },
+)
+async def change_my_password(
+    body: ChangePasswordBody, caller: CallerDep, sm: SessionmakerDep
+) -> None:
+    await members.change_own_password(
+        sm, caller, current_password=body.current_password, new_password=body.new_password
     )

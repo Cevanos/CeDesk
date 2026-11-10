@@ -6,7 +6,13 @@ from uuid import UUID
 from fastapi import APIRouter, Query, status
 
 from cedesk.helpdesk.api.deps import CallerDep, SessionmakerDep
-from cedesk.helpdesk.api.schemas import AddMemberBody, ChangeMemberBody, MemberOut, MemberPage
+from cedesk.helpdesk.api.schemas import (
+    AddMemberBody,
+    ChangeMemberBody,
+    MemberOut,
+    MemberPage,
+    ResetPasswordBody,
+)
 from cedesk.helpdesk.service import members
 
 router = APIRouter(tags=["members"])
@@ -49,3 +55,14 @@ async def change_member(
         sm, caller, member_id, name=body.name, role=body.role, is_active=body.is_active
     )
     return MemberOut.model_validate(dict(row))
+
+
+@router.post(
+    "/members/{member_id}/password",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Give a member a new password (Admin; signs them out everywhere)",
+)
+async def reset_password(
+    member_id: UUID, body: ResetPasswordBody, caller: CallerDep, sm: SessionmakerDep
+) -> None:
+    await members.reset_password(sm, caller, member_id, new_password=body.new_password)
