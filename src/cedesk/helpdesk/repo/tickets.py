@@ -9,6 +9,8 @@ from uuid import UUID
 from sqlalchemy import RowMapping, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from cedesk.helpdesk.repo.attachments import MESSAGE_FILES
+
 Row = RowMapping
 
 _COLUMNS = """
@@ -56,12 +58,24 @@ _PRIORITY_KEYS = (
     ),
     ("(CASE WHEN t.status = 'resolved' THEN -t.number ELSE t.number END)", _INT),
 )
+# Must match migration 0019's index exactly. `sla_due_at` is kept by service.sla; a
+# ticket from before 0019 that nobody touched yet falls back to its creation time.
+_SLA_KEYS = (
+    ("(CASE WHEN t.status = 'resolved' THEN 1 ELSE 0 END)", _INT),
+    (
+        "(CASE WHEN t.status = 'resolved' THEN -" + _EPOCH.format("t.resolved_at") + " "
+        "ELSE " + _EPOCH.format("coalesce(t.sla_due_at, t.created_at)") + " END)",
+        _NUM,
+    ),
+    ("(CASE WHEN t.status = 'resolved' THEN -t.number ELSE t.number END)", _INT),
+)
 _CREATED_KEYS = (("(" + _EPOCH.format("t.created_at") + ")", _NUM), ("t.number", _INT))
 _UPDATED_KEYS = (("(" + _EPOCH.format("t.updated_at") + ")", _NUM), ("t.number", _INT))
 
 # sort -> (keys, ascending)
 SORT_KEYS: dict[str, tuple[tuple[tuple[str, str], ...], bool]] = {
     "priority": (_PRIORITY_KEYS, True),
+    "sla": (_SLA_KEYS, True),
     "newest": (_CREATED_KEYS, False),
     "oldest": (_CREATED_KEYS, True),
     "updated": (_UPDATED_KEYS, False),
@@ -318,10 +332,15 @@ async def messages(
     at, row_id = before if before else (None, None)
     result = await session.execute(
         text(
-            "SELECT m.id, m.kind, m.body, m.author_member_id, m.author_name, m.created_at, "
+            # Fixed strings only: MESSAGE_FILES is a constant.
+            "SELECT m.id, m.kind, m.body, m.author_member_id, m.author_name, m.created_at, "  # noqa: S608
             "m.email, m.channel_message_id, "
+            "(SELECT o.status FROM hd_email_out o WHERE o.message_id = m.id "
+            " ORDER BY o.created_at DESC LIMIT 1) AS delivery, "
             "coalesce((SELECT array_agg(x.member_id ORDER BY x.created_at, x.member_id) "
-            "FROM hd_mention x WHERE x.message_id = m.id), '{}') AS mention_ids "
+            "FROM hd_mention x WHERE x.message_id = m.id), '{}') AS mention_ids, "
+            + MESSAGE_FILES
+            + " "
             "FROM hd_message m WHERE m.ticket_id = :id "
             "AND (CAST(:at AS timestamptz) IS NULL "
             "     OR (m.created_at, m.id) < (CAST(:at AS timestamptz), CAST(:row AS uuid))) "

@@ -1,7 +1,7 @@
 """Agent replies, private notes with @mentions, and each member's notifications.
 
-A reply goes to the customer (sending it by email or chat comes with the channels
-work); a note is for the team only. Neither changes the ticket's status (T17).
+A reply goes to the customer (on an email ticket it is queued to be emailed; chat comes
+with the Cevanos connector); a note is for the team only. Neither changes the ticket's status (T17).
 """
 
 from collections.abc import Mapping, Sequence
@@ -22,8 +22,10 @@ from cedesk.helpdesk.domain.tickets import label
 from cedesk.helpdesk.repo import catalog, outbox, tickets
 from cedesk.helpdesk.repo import messages as repo
 from cedesk.helpdesk.repo.messages import Row
+from cedesk.helpdesk.service import attachments, email, idempotency, sla
 from cedesk.helpdesk.service.auth import Sessionmaker
 from cedesk.helpdesk.service.errors import Invalid, NotFound
+from cedesk.helpdesk.service.idempotency import Idempotency
 from cedesk.helpdesk.service.members import require
 
 BODY_MAX = 50_000
@@ -60,10 +62,12 @@ async def add_message(
     body: str,
     who: str,
     mentions: Sequence[UUID] = (),
+    attachment_ids: Sequence[UUID] = (),
 ) -> UUID:
     """Saves a reply or note inside the caller's transaction, with the ticket locked:
-    fills a reply's placeholders, notifies the @mentioned and writes `message.created`.
-    Permissions and the mention list are the caller's job (`post_message`, macros)."""
+    fills a reply's placeholders, sends the uploaded files with it, notifies the
+    @mentioned and writes `message.created`. Permissions and the mention list are the
+    caller's job (`post_message`, macros)."""
     ticket_id = detail["id"]
     if kind is MessageKind.reply:
         body = render(
@@ -84,8 +88,16 @@ async def add_message(
         author_member_id=caller.member_id,
         author_name=who,
     )
+    emailed = kind is MessageKind.reply and detail["channel"] == "email"
+    # Before the email is queued: the worker reads the files from the message.
+    await attachments.attach_to_message(
+        s, caller, ticket_id, message_id, attachment_ids, emailed=emailed
+    )
     if kind is MessageKind.reply:
         await repo.ticket_replied(s, ticket_id)
+        await sla.refresh(s, ticket_ids=[ticket_id])  # the first-reply clock may stop
+        if emailed:
+            await email.queue_reply(s, caller.workspace_id, detail, message_id, body, who)
     else:
         await repo.ticket_touched(s, ticket_id)
 
@@ -133,11 +145,15 @@ async def post_message(
     kind: MessageKind,
     body: str,
     mention_ids: Sequence[UUID] = (),
+    attachment_ids: Sequence[UUID] = (),
+    idem: Idempotency | None = None,
 ) -> Row:
+    """`idem`: with an Idempotency-Key, a repeat returns the message the first one made
+    (and sends nothing again)."""
     require(caller, Action.reply if kind is MessageKind.reply else Action.private_note)
     body = body.strip()
-    if not body:
-        raise Invalid("Write something first.")
+    if not body and not attachment_ids:
+        raise Invalid("Write something or add a file first.")
     mentions = list(dict.fromkeys(mention_ids))
     if mentions and kind is not MessageKind.note:
         raise Invalid("@mentions go in private notes, so the customer never sees them.")
@@ -145,6 +161,12 @@ async def post_message(
         raise Invalid(f"Mention at most {MAX_MENTIONS} people.")
 
     async with workspace_session(sm, caller.workspace_id) as s:
+        made = await idempotency.begin(s, caller, idem)
+        if made is not None:
+            earlier = await repo.get_message(s, made)
+            if earlier is None:
+                raise NotFound("Message not found.")
+            return earlier
         ticket = await tickets.lock_ticket(s, ticket_id)
         detail = await tickets.ticket_detail(s, ticket_id)
         if ticket is None or detail is None:
@@ -155,8 +177,10 @@ async def post_message(
             raise Invalid("You can only mention active members of this workspace.")
 
         message_id = await add_message(
-            s, caller, detail, kind=kind, body=body, who=who, mentions=mentions
-        )
+            s, caller, detail, kind=kind, body=body, who=who, mentions=mentions,
+            attachment_ids=attachment_ids,
+        )  # fmt: skip
+        await idempotency.remember(s, caller, idem, message_id)
         row = await repo.get_message(s, message_id)
     assert row is not None
     return row

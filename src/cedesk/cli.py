@@ -1,10 +1,11 @@
-"""`uv run cedesk <command>`: serve the API, run migrations, create a workspace or a demo
-workspace, prune sessions, or write the OpenAPI file."""
+"""`uv run cedesk <command>`: serve the API, run migrations, run the background worker,
+create a workspace or a demo workspace, prune sessions, or write the OpenAPI file."""
 
 import argparse
 import asyncio
 import getpass
 import sys
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -64,6 +65,9 @@ def _create_workspace(args: argparse.Namespace) -> int:
     return 0
 
 
+SWEEP_EVERY_SECONDS = 600  # expired idempotency keys
+
+
 def _seed_workflow(slug: str) -> int:
     """Safe to run again: defaults already there, and an Admin's own changes, are kept."""
     from cedesk.db import make_engine, make_sessionmaker
@@ -84,6 +88,22 @@ def _seed_workflow(slug: str) -> int:
         print(exc.message, file=sys.stderr)
         return 1
     print(f"Added {added} default(s) to {slug}; anything already there was kept.")
+    return 0
+
+
+def _sla_refresh() -> int:
+    from cedesk.db import make_engine, make_sessionmaker
+    from cedesk.helpdesk.service.sla import refresh_everywhere
+    from cedesk.settings import get_settings
+
+    async def run() -> int:
+        engine = make_engine(get_settings().database_url)
+        try:
+            return await refresh_everywhere(make_sessionmaker(engine))
+        finally:
+            await engine.dispose()
+
+    print(f"SLA worked out again for the open tickets of {asyncio.run(run())} workspace(s).")
     return 0
 
 
@@ -135,6 +155,101 @@ def _prune_sessions() -> int:
     return 0
 
 
+def _worker(once: bool) -> int:
+    """Every few seconds: reads new emails from the IMAP mailbox (when one is set), sends
+    queued emails, delivers outbox events, and drops expired idempotency keys. Run one
+    next to the API (sending and delivering are safe with several; reading a mailbox is
+    meant for one)."""
+    import logging
+
+    from cedesk import logs
+    from cedesk.db import make_engine, make_sessionmaker
+    from cedesk.helpdesk.service.delivery import Handler, deliver_due
+    from cedesk.helpdesk.service.email import send_due
+    from cedesk.helpdesk.service.email_in import poll
+    from cedesk.helpdesk.service.idempotency import sweep_everywhere
+    from cedesk.helpdesk.service.scanning import scan_due
+    from cedesk.helpdesk.service.sla import refresh_everywhere
+    from cedesk.mail import MailboxError, make_mailbox, make_mailer
+    from cedesk.scanning import make_scanner
+    from cedesk.settings import get_settings
+    from cedesk.storage import make_store
+
+    settings = get_settings()
+    logs.configure(settings.log_level)
+    problems = settings.unsafe() + settings.mail_problems()
+    if problems:
+        print("Refusing to start:\n  " + "\n  ".join(problems), file=sys.stderr)
+        return 1
+    logger = logging.getLogger("cedesk.worker")
+
+    async def run() -> None:
+        engine = make_engine(settings.database_url)
+        sm = make_sessionmaker(engine)
+        mailer = make_mailer(settings)
+        mailbox = make_mailbox(settings)
+        store = make_store(settings)  # files on replies out, files in customer emails
+        scanner = make_scanner(settings)
+        # Outbox handlers: the Cevanos connector joins here; webhooks in Phase 3. With none,
+        # events are just marked delivered.
+        handlers: list[Handler] = []
+        swept_at = 0.0
+        logger.info("worker started", extra={"event": settings.mail_backend.value})
+        # Tickets made before SLA was wired (or while the SLA code had a bug) get their
+        # stored due time, so `sort=sla` is right after every deploy without a manual step.
+        try:
+            await refresh_everywhere(sm)
+        except Exception:
+            logger.exception("SLA refresh at start failed")
+        try:
+            while True:
+                if mailbox is not None:
+                    try:
+                        received = await poll(sm, mailbox, store, settings.attachment_max_bytes)
+                    except MailboxError as exc:
+                        received = []
+                        logger.warning("mailbox not read", extra={"error": str(exc)})
+                    if received:
+                        outcomes = ", ".join(sorted(r.outcome.value for r in received))
+                        logger.info(f"emails in: {outcomes}", extra={"event": "email_in"})
+                if scanner is not None:  # before sending: emailed files must be clean
+                    scanned = await scan_due(sm, store, scanner)
+                    if scanned.infected or scanned.failed:
+                        logger.warning(
+                            f"virus scan: {scanned.infected} infected, {scanned.failed} "
+                            "could not be checked",
+                            extra={"event": "scan"},
+                        )
+                result = await send_due(sm, mailer, store=store, scanning=scanner is not None)
+                if result.sent or result.retrying or result.failed:
+                    logger.info(
+                        f"emails: {result.sent} sent, {result.retrying} retrying, "
+                        f"{result.failed} failed",
+                        extra={"event": "email"},
+                    )
+                outbox = await deliver_due(sm, handlers)
+                if outbox.retrying or outbox.failed:
+                    logger.info(
+                        f"outbox: {outbox.delivered} delivered, {outbox.retrying} retrying, "
+                        f"{outbox.failed} failed",
+                        extra={"event": "outbox"},
+                    )
+                if time.monotonic() - swept_at > SWEEP_EVERY_SECONDS:
+                    await sweep_everywhere(sm)
+                    swept_at = time.monotonic()
+                if once:
+                    return
+                await asyncio.sleep(settings.worker_interval_seconds)
+        finally:
+            await engine.dispose()
+
+    try:
+        asyncio.run(run())
+    except KeyboardInterrupt:
+        pass
+    return 0
+
+
 def _openapi(out: Path, check: bool) -> int:
     """Writes the API description to docs/api/ for the frontend and integrators. With
     --check, fails when the file is out of date (CI and the test suite run that)."""
@@ -164,6 +279,10 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser(
         "prune-sessions", help="Delete sign-in sessions that ended over 7 days ago (run daily)"
     )
+    worker = sub.add_parser(
+        "worker", help="Read the support mailbox and send queued emails; runs until stopped"
+    )
+    worker.add_argument("--once", action="store_true", help="One pass, then stop")
     create = sub.add_parser("create-workspace", help="A new workspace and its first Admin")
     create.add_argument("--name", required=True, help="Shown name, e.g. 'Acme Support'")
     create.add_argument("--slug", required=True, help="Sign-in address, e.g. 'acme'")
@@ -184,6 +303,10 @@ def main(argv: list[str] | None = None) -> int:
         help="Add the default saved replies, rules and macros to an existing workspace",
     )
     workflow.add_argument("--workspace", required=True, help="Sign-in address, e.g. 'acme-store'")
+    sub.add_parser(
+        "sla-refresh",
+        help="Work out the SLA of every open ticket again (once, after migration 0019)",
+    )
     spec = sub.add_parser("openapi", help="Write the API description to docs/api/openapi.json")
     spec.add_argument("--out", type=Path, default=ROOT / "docs" / "api" / "openapi.json")
     spec.add_argument("--check", action="store_true", help="Fail if the file is out of date")
@@ -206,12 +329,16 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.command == "migrate":
         return _migrate()
+    if args.command == "worker":
+        return _worker(args.once)
     if args.command == "prune-sessions":
         return _prune_sessions()
     if args.command == "seed-demo":
         return _seed_demo(args)
     if args.command == "seed-workflow":
         return _seed_workflow(args.workspace)
+    if args.command == "sla-refresh":
+        return _sla_refresh()
     if args.command == "openapi":
         return _openapi(args.out, args.check)
     return _create_workspace(args)

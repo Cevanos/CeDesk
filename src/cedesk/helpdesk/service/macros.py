@@ -28,9 +28,10 @@ from cedesk.helpdesk.repo import outbox
 from cedesk.helpdesk.repo import rules as rule_repo
 from cedesk.helpdesk.repo import tickets as ticket_repo
 from cedesk.helpdesk.repo.macros import Row
-from cedesk.helpdesk.service import routing, tickets
+from cedesk.helpdesk.service import idempotency, routing, sla, tickets
 from cedesk.helpdesk.service.auth import Sessionmaker
 from cedesk.helpdesk.service.errors import Conflict, Invalid, NotFound
+from cedesk.helpdesk.service.idempotency import Idempotency
 from cedesk.helpdesk.service.members import require
 from cedesk.helpdesk.service.messages import MessageKind, add_message
 from cedesk.helpdesk.service.tickets import CHANGED_BY_SOMEONE_ELSE, TicketView
@@ -166,7 +167,10 @@ async def run_macro(
     macro_id: UUID,
     *,
     if_match: str | None = None,
+    idem: Idempotency | None = None,
 ) -> TicketView:
+    """`idem`: with an Idempotency-Key, a repeat runs nothing again (a macro can send a
+    reply) and returns the ticket as it is now."""
     require(caller, Action.reply)
     try:
         expected = ticket_rules.parse_if_match(if_match) if if_match is not None else None
@@ -174,6 +178,8 @@ async def run_macro(
         raise Invalid(str(exc)) from exc
 
     async with workspace_session(sm, caller.workspace_id) as s:
+        if await idempotency.begin(s, caller, idem) is not None:
+            return await tickets.get_ticket(sm, caller, ticket_id)
         macro = await repo.get_macro(s, macro_id)
         if macro is None:
             raise NotFound("Macro not found.")
@@ -246,6 +252,7 @@ async def run_macro(
             routed_line = pick.line
 
         await ticket_repo.update_ticket(s, ticket_id, after)
+        await sla.refresh(s, ticket_ids=[ticket_id])
         lines = [engine.line(str(macro["name"]), who, done)]
         lines += [routed_line] if routed_line else []
         for body in lines:
@@ -279,4 +286,5 @@ async def run_macro(
                 ticket_id,
                 events.payload(event, final, extra),
             )
+        await idempotency.remember(s, caller, idem, ticket_id)
     return await tickets.get_ticket(sm, caller, ticket_id)
