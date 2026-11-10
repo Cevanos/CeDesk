@@ -284,11 +284,14 @@ async def insert_message(
     body: str,
     author_member_id: UUID | None,
     author_name: str | None,
+    email: Mapping[str, Any] | None = None,
+    channel_message_id: str | None = None,
 ) -> UUID:
     result = await session.execute(
         text(
             "INSERT INTO hd_message (workspace_id, ticket_id, kind, body, author_member_id, "
-            "author_name) VALUES (:ws, :ticket, :kind, :body, :author, :name) RETURNING id"
+            "author_name, email, channel_message_id) VALUES (:ws, :ticket, :kind, :body, "
+            ":author, :name, CAST(:email AS jsonb), :channel_id) RETURNING id"
         ),
         {
             "ws": workspace_id,
@@ -297,6 +300,8 @@ async def insert_message(
             "body": body,
             "author": author_member_id,
             "name": author_name,
+            "email": None if email is None else json.dumps(dict(email)),
+            "channel_id": channel_message_id,
         },
     )
     return UUID(str(result.scalar_one()))
@@ -325,6 +330,21 @@ async def messages(
         {"id": ticket_id, "at": at, "row": row_id, "limit": limit},
     )
     return result.mappings().all()
+
+
+async def message_by_channel_id(
+    session: AsyncSession, ticket_id: UUID, channel_message_id: str
+) -> UUID | None:
+    """A message already saved from that channel message (a retried delivery)."""
+    result = await session.execute(
+        text(
+            "SELECT id FROM hd_message WHERE ticket_id = :ticket "
+            "AND channel_message_id = :channel_id"
+        ),
+        {"ticket": ticket_id, "channel_id": channel_message_id},
+    )
+    value = result.scalar_one_or_none()
+    return None if value is None else UUID(str(value))
 
 
 async def member_brief(session: AsyncSession, member_id: UUID) -> Row | None:
