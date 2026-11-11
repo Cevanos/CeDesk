@@ -16,7 +16,7 @@ export function formatBytes(n?: number): string {
   return `${(n / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-/** `infected` and `scan_failed` are blocked; everything else may be downloaded (guide 5.6). */
+/** `infected` and `scan_failed` are blocked; everything else may be downloaded. */
 export const isBlocked = (s?: ScanStatus) => s === "infected" || s === "scan_failed";
 
 /** One file: download link, or a red "Blocked" chip. A 409 on download means "still checking". */
