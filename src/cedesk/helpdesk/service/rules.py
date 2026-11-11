@@ -23,6 +23,7 @@ from cedesk.helpdesk.repo import catalog
 from cedesk.helpdesk.repo import rules as repo
 from cedesk.helpdesk.repo import tickets as ticket_repo
 from cedesk.helpdesk.repo.rules import Row
+from cedesk.helpdesk.service import sla
 from cedesk.helpdesk.service.auth import Sessionmaker
 from cedesk.helpdesk.service.catalog import field_defs
 from cedesk.helpdesk.service.errors import Conflict, Invalid, NotFound
@@ -210,6 +211,28 @@ async def _enabled(s: AsyncSession, event: engine.Event) -> list[engine.Rule]:
     return found
 
 
+async def any_enabled(s: AsyncSession, event: engine.Event) -> bool:
+    return bool(await _enabled(s, event))
+
+
+async def retyped(
+    s: AsyncSession, old: UUID | None, new: UUID | None, fields: dict[str, Any]
+) -> tuple[dict[str, Any], list[str]]:
+    """A rule or macro changed the type: values that don't fit the new type are dropped,
+    each with a line. Neither can fill fields, so a required field stays empty until an
+    agent fills it."""
+    if new is None or new == old:
+        return fields, []
+    type_row = await catalog.get_type(s, new)
+    assert type_row is not None
+    kept, dropped = carry_over(field_defs(type_row["fields"]), fields)
+    old_type = await catalog.get_type(s, old) if old else None
+    labels = {d.key: d.label for d in field_defs(old_type["fields"])} if old_type else {}
+    return kept, [
+        f"{labels.get(key, key)} cleared (not in {type_row['name']})" for key in sorted(dropped)
+    ]
+
+
 async def apply(
     s: AsyncSession,
     workspace_id: UUID,
@@ -245,6 +268,11 @@ async def apply(
         channel=Channel(detail["channel"]),
         to_address=to_address or await repo.to_address(s, ticket_id),
         sentiment=Sentiment(detail["sentiment"]) if detail["sentiment"] else None,
+        sla=(
+            sla.state(detail, await sla.config(s)).current.state
+            if engine.needs_sla(rules)
+            else None
+        ),
     )
     state = engine.State(
         type_id=before["type_id"],
@@ -266,18 +294,8 @@ async def apply(
         "fields": dict(before["fields"]),
     }
     lines = [engine.line(a) for a in applied]
-    if final.type_id != before["type_id"] and final.type_id is not None:
-        # Values that don't fit the new type are dropped, each with a line. A rule can't
-        # fill fields, so a required field stays empty until an agent fills it.
-        type_row = await catalog.get_type(s, final.type_id)
-        assert type_row is not None
-        defs = field_defs(type_row["fields"])
-        after["fields"], dropped = carry_over(defs, after["fields"])
-        old_type = await catalog.get_type(s, before["type_id"]) if before["type_id"] else None
-        labels = {d.key: d.label for d in field_defs(old_type["fields"])} if old_type else {}
-        lines += [
-            f"{labels.get(key, key)} cleared (not in {type_row['name']})" for key in sorted(dropped)
-        ]
+    after["fields"], cleared = await retyped(s, before["type_id"], final.type_id, after["fields"])
+    lines += cleared
     if before["status"] == Status.resolved.value and final.status is not Status.resolved:
         after["reopen_count"] += 1
 

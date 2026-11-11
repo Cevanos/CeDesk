@@ -3,6 +3,17 @@
 `openapi.json` next to this file is the API as served (`uv run cedesk openapi`). Every
 route is under `/api/v1`. Breaking changes only come in v2 (md 2B). Newest first.
 
+## 2026-11-12: Macros change the type; rules on the SLA (Phase 2, W14, W15, W18)
+
+- Macros: new step `{"kind": "set_type", "type_id": "...", "only_if_empty": false}`, as in
+  rules. Fields the new type lacks are cleared, each with a line. Needs the right to change
+  fields (not light agents). A deleted type shows in `problems`; saving one is a 422.
+- Rules: new event `sla_breached`: runs when an open ticket's SLA clock runs out (the
+  worker, once a minute, once per clock), before the breach alert, so the alert goes to
+  whoever has the ticket after the rules (a rule that moves the team re-routes it).
+- Rules: new condition `{"kind": "sla_in", "states": [...]}` (on_track, close, breached,
+  met): the clock the SLA pill shows. 422 on `created`.
+
 ## 2026-11-11: SLA editors, breach alerts, checking support addresses (Phase 2, W10-W12, W14, C10)
 
 - New (Admin): `PUT /sla/policies` `{policies: [{name, enabled, vip_only, channels,
