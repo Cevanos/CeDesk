@@ -252,6 +252,26 @@ def sla_state(
     )
 
 
+def first_reply_met(
+    ticket: SlaTicket,
+    *,
+    policies: Sequence[Policy],
+    targets: Mapping[str, Target],
+    calendar: Calendar,
+    now: datetime,
+) -> bool | None:
+    """The first-reply clock only, for reports: True met, False breached, None still
+    running in time. Same rule as `sla_state(...).first_reply`, without the rest."""
+    target = targets_for(ticket, pick_policy(ticket, policies), targets)
+    due = _add_business_time(
+        _utc(ticket.created_at), timedelta(minutes=target.first_reply_minutes), calendar
+    )
+    stopped = ticket.first_reply_at if ticket.first_reply_at is not None else ticket.resolved_at
+    if _utc(stopped if stopped is not None else now) > due:
+        return False
+    return True if stopped is not None else None
+
+
 def _clock(
     kind: ClockKind,
     started: datetime,

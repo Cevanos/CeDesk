@@ -3,8 +3,9 @@
 Dates in 2026: Fri 6 Nov, Sat 7 Nov, Sun 8 Nov (Diwali), Mon 9 Nov; Christmas is a Friday.
 """
 
+import random
 from dataclasses import replace
-from datetime import UTC, date, datetime, time
+from datetime import UTC, date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -21,6 +22,7 @@ from cedesk.helpdesk.domain.sla import (
     TicketSla,
     business_minutes_between,
     due_at,
+    first_reply_met,
     is_open,
     pick_policy,
     sla_state,
@@ -294,3 +296,26 @@ def test_a_24x7_workspace_never_pauses() -> None:
     assert not sla.paused
     assert sla.current.state is SlaState.breached
     assert sla.current.due_at == ist(11, 7, 19, 30)
+
+
+def test_first_reply_met_agrees_with_the_full_clock() -> None:
+    """The report's shortcut gives the same answer as the SLA pill for every case."""
+    rng = random.Random(7)  # noqa: S311 - fixed test data, not security
+    cal = Calendar("Asia/Kolkata", holidays=frozenset({date(2026, 11, 9)}))
+    now = datetime(2026, 11, 12, 15, 0, tzinfo=UTC)
+    for _ in range(2000):
+        created = now - timedelta(minutes=rng.randint(0, 60 * 24 * 10))
+        reply = created + timedelta(minutes=rng.randint(1, 60 * 24 * 3))
+        ticket = SlaTicket(
+            priority=rng.choice(["urgent", "high", "medium", "low"]),
+            channel=rng.choice(["email", "chat", "web"]),
+            created_at=created,
+            vip=rng.random() < 0.2,
+            first_reply_at=reply if reply < now and rng.random() < 0.6 else None,
+            resolved_at=reply if reply < now and rng.random() < 0.3 else None,
+        )
+        full = sla_state(ticket, policies=DEFAULT_POLICIES, targets=DEFAULT_TARGETS,
+                         calendar=cal, now=now).first_reply.state  # fmt: skip
+        expected = {SlaState.met: True, SlaState.breached: False}.get(full)
+        assert first_reply_met(ticket, policies=DEFAULT_POLICIES, targets=DEFAULT_TARGETS,
+                               calendar=cal, now=now) is expected  # fmt: skip

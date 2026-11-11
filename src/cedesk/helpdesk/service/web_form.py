@@ -97,7 +97,8 @@ async def submit(
         sm,
         workspace_id,
         tickets.NewTicket(
-            subject=rules.subject_from(body),
+            subject=rules.subject_from(body),  # remade after redaction
+            subject_from_description=True,
             contact_email=address,
             contact_name=rules.clean_name(name, address),
             description=body,

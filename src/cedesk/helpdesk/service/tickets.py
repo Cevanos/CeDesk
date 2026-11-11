@@ -20,12 +20,14 @@ from cedesk.helpdesk.domain import tickets as rules
 from cedesk.helpdesk.domain.auth import Caller, normalise_email
 from cedesk.helpdesk.domain.paging import CursorError
 from cedesk.helpdesk.domain.permissions import Action, Role
+from cedesk.helpdesk.domain.portal import subject_from
 from cedesk.helpdesk.domain.rules import Event as RuleEvent
 from cedesk.helpdesk.domain.sla import TicketSla
 from cedesk.helpdesk.domain.tickets import (
     Channel,
     FieldDef,
     FieldError,
+    FieldKind,
     Priority,
     Sentiment,
     Sort,
@@ -35,7 +37,7 @@ from cedesk.helpdesk.repo import catalog, outbox
 from cedesk.helpdesk.repo import messages as message_repo
 from cedesk.helpdesk.repo import tickets as repo
 from cedesk.helpdesk.repo.tickets import Row
-from cedesk.helpdesk.service import idempotency, routing, sla
+from cedesk.helpdesk.service import idempotency, routing, sla, triage
 from cedesk.helpdesk.service import rules as automation
 from cedesk.helpdesk.service.attachments import IncomingFiles, save_incoming
 from cedesk.helpdesk.service.auth import Sessionmaker
@@ -45,6 +47,7 @@ from cedesk.helpdesk.service.idempotency import Idempotency
 from cedesk.helpdesk.service.members import require
 
 SCOPES = ("everyone", "mine", "unassigned")
+REDACTED_KINDS = ("customer", "ai")  # card numbers are removed from these chat lines
 
 
 @dataclass(frozen=True)
@@ -90,6 +93,9 @@ class NewTicket:
     # The chat so far, oldest first, saved after `description` and before rules run (so
     # text conditions read every customer line). No events: it is history, not new.
     history: Sequence[ChatLine] = ()
+    # Portal and web form: the subject is the first 60 characters of `description`, made
+    # after card numbers are removed (a cut through a number would keep part of it).
+    subject_from_description: bool = False
 
 
 def _check_origin(new: NewTicket) -> None:
@@ -328,12 +334,54 @@ async def _create(
         contact_id = await repo.upsert_contact(
             s, origin.workspace_id, normalise_email(new.contact_email), new.contact_name
         )
+        # Card numbers out of the customer's words before anything is saved (I5), then
+        # triage (I1-I4) before the rules, so a rule on sentiment sees the mood.
+        cfg = await triage.config(s)
+        description = triage.clean(cfg, new.description) if new.description else None
+        if new.subject_from_description and description is not None:
+            subject = triage.Cleaned(subject_from(description.text))
+        else:
+            subject = triage.clean(cfg, new.subject, triage.SUBJECT_MAX)
+        # Cevanos's AI lines too: a bot that repeats the number back would keep it.
+        history = [
+            (line, triage.clean(cfg, line.body) if line.kind in REDACTED_KINDS else None)
+            for line in new.history
+        ]
+        first_email, email_numbers = triage.clean_email(cfg, new.first_email)
+        # Text fields the customer filled in (portal, web form) and the handover's reason.
+        field_texts = {
+            d.key: triage.clean(cfg, text, rules.TEXT_MAX)
+            for d in defs
+            if d.kind is FieldKind.text and isinstance(text := values.get(d.key), str)
+        }
+        values = {**values, **{k: c.text for k, c in field_texts.items()}}
+        handover = dict(new.handover) if new.handover is not None else None
+        handover_texts = {
+            k: triage.clean(cfg, v) for k, v in (handover or {}).items() if isinstance(v, str)
+        }
+        if handover is not None:
+            handover.update({k: c.text for k, c in handover_texts.items()})
+        # One number written in the subject and the message counts once.
+        removed = len(
+            subject.numbers.union(
+                description.numbers if description else (),
+                email_numbers,
+                *(c.numbers for _, c in history if c is not None),
+                *(c.numbers for c in field_texts.values()),
+                *(c.numbers for c in handover_texts.values()),
+            )
+        )
+        customer_words = " ".join(
+            [subject.text, description.text if description else ""]
+            + [c.text for line, c in history if c is not None and line.kind == "customer"]
+        )
+        found = triage.for_new_ticket(cfg, customer_words)
         ticket_id = await repo.insert_ticket(
             s,
             {
                 "workspace_id": origin.workspace_id,
                 "number": await repo.next_number(s, origin.workspace_id),
-                "subject": new.subject,
+                "subject": subject.text,
                 "priority": new.priority.value,
                 "type_id": new.type_id,
                 "team_id": new.team_id,
@@ -345,38 +393,38 @@ async def _create(
                 "created_by_id": origin.member_id,
                 "conversation_id": new.conversation_id,
                 "accepted": new.accepted,
-                "handover": dict(new.handover) if new.handover is not None else None,
-                "topic": new.topic,
-                "sentiment": new.sentiment.value if new.sentiment else None,
-                "language": new.language,
+                "handover": handover,
+                "topic": new.topic or found.topic,
+                "sentiment": (new.sentiment or found.sentiment).value,
+                "language": new.language or found.language,
                 "source": new.source,
                 "source_id": new.source_id,
             },
         )
         first_message: UUID | None = None
-        if new.description:
+        if description:
             first_message = await repo.insert_message(
                 s,
                 workspace_id=origin.workspace_id,
                 ticket_id=ticket_id,
                 kind="customer",
-                body=new.description,
+                body=description.text,
                 author_member_id=None,
                 author_name=new.contact_name,
-                email=dict(new.first_email) if new.first_email is not None else None,
+                email=first_email,
                 channel_message_id=new.first_channel_message_id,
             )
             await save_incoming(
                 s, files, workspace_id=origin.workspace_id, ticket_id=ticket_id,
                 message_id=first_message,
             )  # fmt: skip
-        for line in new.history:
+        for line, cleaned in history:
             await repo.insert_message(
                 s,
                 workspace_id=origin.workspace_id,
                 ticket_id=ticket_id,
                 kind=line.kind,
-                body=line.body,
+                body=cleaned.text if cleaned is not None else line.body,
                 author_member_id=None,
                 author_name=line.author_name,
                 channel_message_id=line.channel_message_id,
@@ -384,6 +432,8 @@ async def _create(
         if any(line.kind == "agent" for line in new.history):
             await message_repo.ticket_replied(s, ticket_id)  # a person already answered
         await _line(s, origin, ticket_id, f"Ticket created by {who}")
+        if removed:
+            await _line(s, origin, ticket_id, triage.removed_line(removed))
         if team:
             await _line(s, origin, ticket_id, f"Team set to {team} by {who}")
         if assignee:
@@ -407,7 +457,7 @@ async def _create(
                 await repo.set_assignee(s, ticket_id, pick.agent.member_id)
                 view = await _view(s, ticket_id)
                 await _tell_assignee(
-                    s, origin, ticket_id, pick.agent.member_id, view.ticket["number"], new.subject
+                    s, origin, ticket_id, pick.agent.member_id, view.ticket["number"], subject.text
                 )
         await sla.refresh(s, ticket_ids=[ticket_id])
         view = await _view(s, ticket_id)
