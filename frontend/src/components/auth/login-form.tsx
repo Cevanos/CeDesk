@@ -69,8 +69,8 @@ export function LoginForm() {
   });
 
   const err = signIn.error instanceof ApiError ? signIn.error : null;
-  // Guide §5.1: wrong password, unknown email, inactive and locked all get
-  // the same 401 on purpose, with one fixed message.
+  // Wrong password, unknown email, inactive and locked all get the same 401
+  // on purpose, with one fixed message.
   const banner = !err
     ? null
     : err.status === 401
