@@ -108,7 +108,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-svh lg:grid lg:grid-cols-[15rem_minmax(0,1fr)]">
-      {/* Desktop sidebar */}
       <aside className="sticky top-0 hidden h-svh flex-col gap-6 border-r border-border bg-surface px-3 py-5 lg:flex">
         <Link href="/tickets" className="px-2" aria-label="CDesk home">
           <Logo />
@@ -118,7 +117,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         {footer}
       </aside>
 
-      {/* Mobile drawer */}
       {open && (
         <div className="fixed inset-0 z-50 lg:hidden">
           <button
