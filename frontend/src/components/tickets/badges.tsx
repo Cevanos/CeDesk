@@ -1,0 +1,50 @@
+import { Sparkles, Star } from "lucide-react";
+
+import { Badge } from "@/components/ui/primitives";
+import type { Priority, TicketStatus } from "@/lib/api/types";
+
+export const PRIORITY_LABEL: Record<Priority, string> = {
+  urgent: "Urgent",
+  high: "High",
+  medium: "Medium",
+  low: "Low",
+};
+export const STATUS_LABEL: Record<TicketStatus, string> = {
+  open: "Open",
+  pending: "Pending",
+  resolved: "Resolved",
+};
+export const PRIORITIES: Priority[] = ["urgent", "high", "medium", "low"];
+export const STATUSES: TicketStatus[] = ["open", "pending", "resolved"];
+
+const P_TONE = {
+  urgent: "solidDanger",
+  high: "danger",
+  medium: "warning",
+  low: "neutral",
+} as const;
+const S_TONE = { open: "primary", pending: "warning", resolved: "success" } as const;
+
+export function PriorityBadge({ priority }: { priority: Priority }) {
+  return <Badge tone={P_TONE[priority]}>{PRIORITY_LABEL[priority]}</Badge>;
+}
+
+export function StatusBadge({ status }: { status: TicketStatus }) {
+  return <Badge tone={S_TONE[status]}>{STATUS_LABEL[status]}</Badge>;
+}
+
+export function VipBadge() {
+  return (
+    <Badge tone="warning">
+      <Star className="size-3 fill-current" /> VIP
+    </Badge>
+  );
+}
+
+export function AiBadge({ source }: { source?: string | null }) {
+  return (
+    <Badge tone="primary">
+      <Sparkles className="size-3" /> {source ? `AI · ${source}` : "AI"}
+    </Badge>
+  );
+}
