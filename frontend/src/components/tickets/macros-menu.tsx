@@ -34,7 +34,7 @@ export function describeSteps(m: Macro): string {
 }
 
 /**
- * Macros menu on the ticket (guide 5.12). The steps run in one go; if the
+ * Macros menu on the ticket. The steps run in one go; if the
  * server refuses one, nothing is saved. Render only for agents who can reply.
  */
 export function MacrosMenu({ ticketId, etag }: { ticketId: string; etag: string | null }) {
