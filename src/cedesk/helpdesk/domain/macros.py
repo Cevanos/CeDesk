@@ -5,6 +5,7 @@ Stored as JSON, a list of steps:
      {"kind": "note", "text": "Check the payment reached the customer in 7 days."},
      {"kind": "set_status", "status": "resolved"},
      {"kind": "set_priority", "priority": "low"},
+     {"kind": "set_type", "type_id": "...", "only_if_empty": false},
      {"kind": "set_team", "team_id": "..."},
      {"kind": "add_tag", "tag": "refund"}]
 
@@ -22,7 +23,7 @@ from typing import Any
 from uuid import UUID
 
 from cedesk.helpdesk.domain import rules
-from cedesk.helpdesk.domain.rules import AddTag, SetPriority, SetStatus, SetTeam
+from cedesk.helpdesk.domain.rules import AddTag, SetPriority, SetStatus, SetTeam, SetType
 
 MAX_MACROS = 100
 MAX_STEPS = 20
@@ -44,10 +45,10 @@ class Note:
     text: str
 
 
-Change = SetTeam | SetPriority | SetStatus | AddTag
+Change = SetType | SetTeam | SetPriority | SetStatus | AddTag
 Step = Reply | Note | Change
 
-_CHANGE_KINDS = ("set_team", "set_priority", "set_status", "add_tag")
+_CHANGE_KINDS = ("set_type", "set_team", "set_priority", "set_status", "add_tag")
 
 
 def parse_step(raw: Mapping[str, Any]) -> Step:
@@ -67,9 +68,10 @@ def parse_step(raw: Mapping[str, Any]) -> Step:
             action = rules.parse_action(raw)
         except rules.RuleError as exc:
             raise MacroError(str(exc)) from exc
-        assert isinstance(action, SetTeam | SetPriority | SetStatus | AddTag)
         return action
-    raise MacroError("A step kind is reply, note, set_status, set_priority, set_team or add_tag.")
+    raise MacroError(
+        "A step kind is reply, note, set_status, set_priority, set_type, set_team or add_tag."
+    )
 
 
 def parse_steps(raw: Sequence[Any]) -> tuple[Step, ...]:
@@ -102,8 +104,14 @@ def line(name: str, who: str, done: Sequence[str]) -> str:
     return f"Macro “{name}” run by {who}: {what}"
 
 
-def problems(steps: Sequence[Step], teams: Mapping[UUID, str]) -> list[str]:
-    """What an Admin should fix: a team step whose team was deleted."""
-    return [
-        "Its team was deleted." for s in steps if isinstance(s, SetTeam) and s.team_id not in teams
-    ]
+def problems(
+    steps: Sequence[Step], types: Mapping[UUID, str], teams: Mapping[UUID, str]
+) -> list[str]:
+    """What an Admin should fix: a type or team step whose type or team was deleted."""
+    found = []
+    for s in steps:
+        if isinstance(s, SetType) and s.type_id not in types:
+            found.append("Its ticket type was deleted.")
+        if isinstance(s, SetTeam) and s.team_id not in teams:
+            found.append("Its team was deleted.")
+    return found

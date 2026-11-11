@@ -8339,7 +8339,7 @@
             "maxItems": 20,
             "minItems": 1,
             "title": "Steps",
-            "description": "Run in order. Each is one of: {\"kind\": \"reply\", \"text\": \"Hi {{customer.first_name}}, ...\"} (placeholders are filled when it runs); {\"kind\": \"note\", \"text\": \"...\"}; {\"kind\": \"set_status\", \"status\": \"resolved\"}; {\"kind\": \"set_priority\", \"priority\": \"low\"}; {\"kind\": \"set_team\", \"team_id\": \"...\"} (re-routes the ticket); {\"kind\": \"add_tag\", \"tag\": \"refund\"}. At most one reply and one note."
+            "description": "Run in order. Each is one of: {\"kind\": \"reply\", \"text\": \"Hi {{customer.first_name}}, ...\"} (placeholders are filled when it runs); {\"kind\": \"note\", \"text\": \"...\"}; {\"kind\": \"set_status\", \"status\": \"resolved\"}; {\"kind\": \"set_priority\", \"priority\": \"low\"}; {\"kind\": \"set_type\", \"type_id\": \"...\", \"only_if_empty\": false} (fields the new type lacks are cleared); {\"kind\": \"set_team\", \"team_id\": \"...\"} (re-routes the ticket); {\"kind\": \"add_tag\", \"tag\": \"refund\"}. At most one reply and one note."
           }
         },
         "additionalProperties": false,
@@ -8450,7 +8450,7 @@
                 "type": "array",
                 "maxItems": 20,
                 "minItems": 1,
-                "description": "Run in order. Each is one of: {\"kind\": \"reply\", \"text\": \"Hi {{customer.first_name}}, ...\"} (placeholders are filled when it runs); {\"kind\": \"note\", \"text\": \"...\"}; {\"kind\": \"set_status\", \"status\": \"resolved\"}; {\"kind\": \"set_priority\", \"priority\": \"low\"}; {\"kind\": \"set_team\", \"team_id\": \"...\"} (re-routes the ticket); {\"kind\": \"add_tag\", \"tag\": \"refund\"}. At most one reply and one note."
+                "description": "Run in order. Each is one of: {\"kind\": \"reply\", \"text\": \"Hi {{customer.first_name}}, ...\"} (placeholders are filled when it runs); {\"kind\": \"note\", \"text\": \"...\"}; {\"kind\": \"set_status\", \"status\": \"resolved\"}; {\"kind\": \"set_priority\", \"priority\": \"low\"}; {\"kind\": \"set_type\", \"type_id\": \"...\", \"only_if_empty\": false} (fields the new type lacks are cleared); {\"kind\": \"set_team\", \"team_id\": \"...\"} (re-routes the ticket); {\"kind\": \"add_tag\", \"tag\": \"refund\"}. At most one reply and one note."
               },
               {
                 "type": "null"
@@ -9979,10 +9979,11 @@
             "type": "string",
             "enum": [
               "created",
-              "customer_replied"
+              "customer_replied",
+              "sla_breached"
             ],
             "title": "Event",
-            "description": "created: a new ticket. customer_replied: the customer wrote on an Open or Pending ticket. Agent edits never run rules."
+            "description": "created: a new ticket. customer_replied: the customer wrote on an Open or Pending ticket. sla_breached: an open ticket's SLA clock ran out (checked once a minute; once per clock). Agent edits never run rules."
           },
           "conditions": {
             "items": {
@@ -9993,7 +9994,7 @@
             "maxItems": 10,
             "minItems": 1,
             "title": "Conditions",
-            "description": "All must match. Each is one of: {\"kind\": \"text_contains_any\", \"words\": [\"refund\"]} (subject and customer messages, any case); {\"kind\": \"channel_in\", \"channels\": [\"email\"]}; {\"kind\": \"to_address_contains\", \"text\": \"billing@\"}; {\"kind\": \"status_in\", \"statuses\": [\"pending\"]}; {\"kind\": \"sentiment_in\", \"sentiments\": [\"negative\"]}."
+            "description": "All must match. Each is one of: {\"kind\": \"text_contains_any\", \"words\": [\"refund\"]} (subject and customer messages, any case); {\"kind\": \"channel_in\", \"channels\": [\"email\"]}; {\"kind\": \"to_address_contains\", \"text\": \"billing@\"}; {\"kind\": \"status_in\", \"statuses\": [\"pending\"]}; {\"kind\": \"sentiment_in\", \"sentiments\": [\"negative\"]}; {\"kind\": \"sla_in\", \"states\": [\"breached\"]} (the SLA pill's clock: on_track, close, breached, met; not on created)."
           },
           "actions": {
             "items": {
@@ -10143,9 +10144,10 @@
                 "type": "string",
                 "enum": [
                   "created",
-                  "customer_replied"
+                  "customer_replied",
+                  "sla_breached"
                 ],
-                "description": "created: a new ticket. customer_replied: the customer wrote on an Open or Pending ticket. Agent edits never run rules."
+                "description": "created: a new ticket. customer_replied: the customer wrote on an Open or Pending ticket. sla_breached: an open ticket's SLA clock ran out (checked once a minute; once per clock). Agent edits never run rules."
               },
               {
                 "type": "null"
@@ -10163,7 +10165,7 @@
                 "type": "array",
                 "maxItems": 10,
                 "minItems": 1,
-                "description": "All must match. Each is one of: {\"kind\": \"text_contains_any\", \"words\": [\"refund\"]} (subject and customer messages, any case); {\"kind\": \"channel_in\", \"channels\": [\"email\"]}; {\"kind\": \"to_address_contains\", \"text\": \"billing@\"}; {\"kind\": \"status_in\", \"statuses\": [\"pending\"]}; {\"kind\": \"sentiment_in\", \"sentiments\": [\"negative\"]}."
+                "description": "All must match. Each is one of: {\"kind\": \"text_contains_any\", \"words\": [\"refund\"]} (subject and customer messages, any case); {\"kind\": \"channel_in\", \"channels\": [\"email\"]}; {\"kind\": \"to_address_contains\", \"text\": \"billing@\"}; {\"kind\": \"status_in\", \"statuses\": [\"pending\"]}; {\"kind\": \"sentiment_in\", \"sentiments\": [\"negative\"]}; {\"kind\": \"sla_in\", \"states\": [\"breached\"]} (the SLA pill's clock: on_track, close, breached, met; not on created)."
               },
               {
                 "type": "null"
