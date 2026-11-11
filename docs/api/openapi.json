@@ -3291,7 +3291,7 @@
         "tags": [
           "email"
         ],
-        "summary": "Change an address's name or signature, or make it the default (Admin)",
+        "summary": "Change an address's name, signature or DKIM selector, or make it the default (Admin)",
         "operationId": "change_address_api_v1_email_addresses__address_id__patch",
         "security": [
           {
@@ -3414,6 +3414,104 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/TestEmailOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/email-addresses/{address_id}/forwarding-check": {
+      "post": {
+        "tags": [
+          "email"
+        ],
+        "summary": "Email the address a one-time code to check it forwards to CeDesk (Admin)",
+        "description": "The email comes from the address itself, to itself. When it comes back in (forwarding, or the mailbox CeDesk reads), `forwarding_verified` turns true; it never makes a ticket. 409 when the last check was sent under a minute ago.",
+        "operationId": "forwarding_check_api_v1_email_addresses__address_id__forwarding_check_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "address_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Address Id"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmailAddressOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/email-addresses/{address_id}/dns-check": {
+      "post": {
+        "tags": [
+          "email"
+        ],
+        "summary": "Check the address's domain for SPF, DKIM and DMARC now (Admin)",
+        "description": "Each part is ok, missing, wrong, not_checked (DKIM without a selector) or error (DNS didn't answer: try again), with a note saying what to do. Kept on the address (`dns`). Takes up to a few seconds.",
+        "operationId": "dns_check_api_v1_email_addresses__address_id__dns_check_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "address_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Address Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmailAddressOut"
                 }
               }
             }
@@ -3632,6 +3730,255 @@
             "HTTPBearer": []
           }
         ]
+      }
+    },
+    "/api/v1/sla/policies": {
+      "put": {
+        "tags": [
+          "sla"
+        ],
+        "summary": "Admin: save the ordered SLA policies (on/off, order, conditions, targets)",
+        "description": "Send the whole list. 422 when a name repeats, a target is out of range, the last policy has a condition or is off, or another policy matches every ticket.",
+        "operationId": "set_policies_api_v1_sla_policies_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PoliciesIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SlaSettingsOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/sla/calendar": {
+      "put": {
+        "tags": [
+          "sla"
+        ],
+        "summary": "Admin: business hours (days, hours, time zone) or 24/7",
+        "description": "Hours are the same each working day, closing after opening (no overnight shifts). 422 for an unknown time zone.",
+        "operationId": "set_calendar_api_v1_sla_calendar_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CalendarIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SlaSettingsOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/holidays": {
+      "post": {
+        "tags": [
+          "sla"
+        ],
+        "summary": "Admin: add a holiday (the SLA clock doesn't run that day)",
+        "operationId": "add_holiday_api_v1_holidays_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HolidayIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SlaSettingsOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Already a holiday on that day"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/holidays/{holiday_id}": {
+      "patch": {
+        "tags": [
+          "sla"
+        ],
+        "summary": "Admin: rename a holiday or move it to another day",
+        "operationId": "change_holiday_api_v1_holidays__holiday_id__patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "holiday_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Holiday Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HolidayPatch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SlaSettingsOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such holiday"
+          },
+          "409": {
+            "description": "Day taken"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "sla"
+        ],
+        "summary": "Admin: remove a holiday",
+        "operationId": "remove_holiday_api_v1_holidays__holiday_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "holiday_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Holiday Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "No such holiday"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/v1/outbox/failed": {
@@ -6082,6 +6429,51 @@
         ],
         "title": "AttachmentPageOut"
       },
+      "CalendarIn": {
+        "properties": {
+          "timezone": {
+            "type": "string",
+            "maxLength": 64,
+            "title": "Timezone",
+            "description": "IANA name, e.g. Asia/Kolkata."
+          },
+          "days": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "maxItems": 7,
+            "minItems": 1,
+            "title": "Days",
+            "description": "ISO: 1 Monday ... 7 Sunday."
+          },
+          "opens": {
+            "type": "string",
+            "format": "time",
+            "title": "Opens"
+          },
+          "closes": {
+            "type": "string",
+            "format": "time",
+            "title": "Closes"
+          },
+          "always_open": {
+            "type": "boolean",
+            "title": "Always Open",
+            "description": "24/7: days, hours and holidays ignored.",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "timezone",
+          "days",
+          "opens",
+          "closes"
+        ],
+        "title": "CalendarIn"
+      },
       "CalendarOut": {
         "properties": {
           "timezone": {
@@ -6907,6 +7299,76 @@
         "type": "object",
         "title": "DefaultsPatch"
       },
+      "DnsCheckOut": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "missing",
+              "wrong",
+              "not_checked",
+              "error"
+            ],
+            "title": "Status"
+          },
+          "record": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Record",
+            "description": "The record found, as published (cut to 500)."
+          },
+          "note": {
+            "type": "string",
+            "title": "Note",
+            "description": "What to do, for the page."
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "record",
+          "note"
+        ],
+        "title": "DnsCheckOut"
+      },
+      "DnsOut": {
+        "properties": {
+          "checked_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Checked At"
+          },
+          "domain": {
+            "type": "string",
+            "title": "Domain"
+          },
+          "spf": {
+            "$ref": "#/components/schemas/DnsCheckOut"
+          },
+          "dkim": {
+            "$ref": "#/components/schemas/DnsCheckOut"
+          },
+          "dmarc": {
+            "$ref": "#/components/schemas/DnsCheckOut"
+          }
+        },
+        "type": "object",
+        "required": [
+          "checked_at",
+          "domain",
+          "spf",
+          "dkim",
+          "dmarc"
+        ],
+        "title": "DnsOut"
+      },
       "DownloadOut": {
         "properties": {
           "url": {
@@ -7000,6 +7462,99 @@
             "type": "string",
             "format": "date-time",
             "title": "Updated At"
+          },
+          "forwarding_verified": {
+            "type": "boolean",
+            "title": "Forwarding Verified",
+            "description": "A forwarding-check email came back in: emails to it reach CeDesk."
+          },
+          "forwarding_verified_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Forwarding Verified At"
+          },
+          "forwarding_check_sent_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Forwarding Check Sent At",
+            "description": "The last check sent; still waiting while this is newer than `forwarding_verified_at` (a check works for 7 days)."
+          },
+          "forwarding_check_email": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "pending",
+                  "sent",
+                  "failed"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Forwarding Check Email",
+            "description": "The last check email: pending (queued or retrying), sent, or failed (the mail service refused it, e.g. the domain isn't verified there; see `forwarding_check_error`). null: none sent."
+          },
+          "forwarding_check_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Forwarding Check Error",
+            "description": "Why the last check email failed or is being retried."
+          },
+          "forward_to": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Forward To",
+            "description": "Where to forward this address to (set by the server); null: not needed or not set up (e.g. CeDesk reads the mailbox itself)."
+          },
+          "dkim_selector": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dkim Selector"
+          },
+          "dns": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DnsOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The last DNS check; null: never checked."
           }
         },
         "type": "object",
@@ -7010,7 +7565,15 @@
           "signature",
           "is_default",
           "created_at",
-          "updated_at"
+          "updated_at",
+          "forwarding_verified",
+          "forwarding_verified_at",
+          "forwarding_check_sent_at",
+          "forwarding_check_email",
+          "forwarding_check_error",
+          "forward_to",
+          "dkim_selector",
+          "dns"
         ],
         "title": "EmailAddressOut"
       },
@@ -7054,6 +7617,19 @@
             ],
             "title": "Is Default",
             "description": "Only `true`: make another address the default to move it."
+          },
+          "dkim_selector": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 63
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dkim Selector",
+            "description": "Where the mail service keeps the DKIM key (s1, google, ...). \"\" clears."
           }
         },
         "additionalProperties": false,
@@ -7607,8 +8183,35 @@
         ],
         "title": "HelpCenterOut"
       },
+      "HolidayIn": {
+        "properties": {
+          "day": {
+            "type": "string",
+            "format": "date",
+            "title": "Day"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Name"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "day",
+          "name"
+        ],
+        "title": "HolidayIn"
+      },
       "HolidayOut": {
         "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
           "day": {
             "type": "string",
             "format": "date",
@@ -7621,10 +8224,43 @@
         },
         "type": "object",
         "required": [
+          "id",
           "day",
           "name"
         ],
         "title": "HolidayOut"
+      },
+      "HolidayPatch": {
+        "properties": {
+          "day": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Day"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "HolidayPatch"
       },
       "InboxOut": {
         "properties": {
@@ -8264,6 +8900,113 @@
           "created_at"
         ],
         "title": "NotificationOut"
+      },
+      "PoliciesIn": {
+        "properties": {
+          "policies": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/PolicyIn"
+                },
+                "type": "array",
+                "maxItems": 20
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Policies",
+            "description": "The whole list in order: the first enabled match wins. The last one must be on and have no conditions (Default). null: back to the three built-in policies."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "policies"
+        ],
+        "title": "PoliciesIn"
+      },
+      "PolicyIn": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "default": true
+          },
+          "vip_only": {
+            "type": "boolean",
+            "title": "Vip Only",
+            "description": "Only tickets from VIP customers.",
+            "default": false
+          },
+          "channels": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 8,
+            "title": "Channels",
+            "description": "Empty: every channel. Any of: api, chat, email, phone, portal, slack, web, whatsapp.",
+            "default": []
+          },
+          "priorities": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "urgent",
+                "high",
+                "medium",
+                "low"
+              ]
+            },
+            "type": "array",
+            "maxItems": 4,
+            "title": "Priorities",
+            "description": "Empty: all.",
+            "default": []
+          },
+          "first_reply_minutes": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 43200.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Reply Minutes",
+            "description": "null: priority target."
+          },
+          "resolve_minutes": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 43200.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolve Minutes",
+            "description": "null: priority target."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "PolicyIn"
       },
       "PolicyOut": {
         "properties": {
@@ -9030,10 +9773,11 @@
               "automatic",
               "from_us",
               "no_workspace",
-              "unreadable"
+              "unreadable",
+              "verification"
             ],
             "title": "Outcome",
-            "description": "created: a new ticket; added / rules_ran / reopened / thanked: on an existing ticket; the rest: ignored on purpose."
+            "description": "created: a new ticket; added / rules_ran / reopened / thanked: on an existing ticket; verification: a support address's forwarding check came back (no ticket); the rest: ignored on purpose."
           },
           "ticket_id": {
             "anyOf": [

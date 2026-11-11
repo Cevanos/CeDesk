@@ -135,6 +135,12 @@ class Settings(BaseSettings):
     imap_username: str | None = None
     imap_password: SecretStr | None = None
     imap_folder: str = "INBOX"
+    # Checking support addresses (md C10), shown in Settings > Email. Where each support
+    # address should forward to (the mail service's inbound address, e.g. the Mailgun
+    # route's); and the mail service's SPF name (e.g. amazonses.com, mailgun.org,
+    # _spf.google.com), which the DNS check looks for. Empty: not shown / not checked.
+    mail_forward_to: str = ""
+    mail_spf_include: str = ""
     # Virus scan (md T18): with clamd, a file can be downloaded or emailed only after the
     # worker found it clean.
     scan_backend: ScanBackend = ScanBackend.none

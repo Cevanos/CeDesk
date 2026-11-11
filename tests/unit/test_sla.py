@@ -21,6 +21,7 @@ from cedesk.helpdesk.domain.sla import (
     Target,
     TicketSla,
     business_minutes_between,
+    current_due,
     due_at,
     first_reply_met,
     is_open,
@@ -319,3 +320,26 @@ def test_first_reply_met_agrees_with_the_full_clock() -> None:
         expected = {SlaState.met: True, SlaState.breached: False}.get(full)
         assert first_reply_met(ticket, policies=DEFAULT_POLICIES, targets=DEFAULT_TARGETS,
                                calendar=cal, now=now) is expected  # fmt: skip
+
+
+def test_current_due_agrees_with_the_full_clock() -> None:
+    """The stored `sla_due_at` shortcut gives the pill's deadline for every case."""
+    rng = random.Random(11)  # noqa: S311 - fixed test data, not security
+    cal = Calendar("Asia/Kolkata", holidays=frozenset({date(2026, 11, 9)}))
+    now = datetime(2026, 11, 12, 15, 0, tzinfo=UTC)
+    for _ in range(2000):
+        created = now - timedelta(minutes=rng.randint(0, 60 * 24 * 10))
+        later = created + timedelta(minutes=rng.randint(1, 60 * 24 * 3))
+        ticket = SlaTicket(
+            priority=rng.choice(["urgent", "high", "medium", "low"]),
+            channel=rng.choice(["email", "chat", "web"]),
+            created_at=created,
+            vip=rng.random() < 0.2,
+            first_reply_at=later if rng.random() < 0.5 else None,
+            resolved_at=later if rng.random() < 0.2 else None,
+        )
+        full = sla_state(ticket, policies=DEFAULT_POLICIES, targets=DEFAULT_TARGETS,
+                         calendar=cal, now=now)  # fmt: skip
+        expected = None if ticket.resolved_at is not None else full.current.due_at
+        assert current_due(ticket, policies=DEFAULT_POLICIES, targets=DEFAULT_TARGETS,
+                           calendar=cal) == expected  # fmt: skip

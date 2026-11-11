@@ -6,12 +6,14 @@ from fastapi import Depends, Header, Request, Response
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from cedesk import logs
+from cedesk.dnscheck import TxtLookup
 from cedesk.helpdesk.domain import idempotency as idempotency_rules
 from cedesk.helpdesk.domain.auth import Caller
 from cedesk.helpdesk.service import auth, portal
 from cedesk.helpdesk.service.auth import Sessionmaker
 from cedesk.helpdesk.service.errors import Invalid, NotSignedIn, TooManyAttempts
 from cedesk.helpdesk.service.idempotency import Idempotency
+from cedesk.settings import Settings
 from cedesk.storage import ObjectStore
 
 _bearer = HTTPBearer(auto_error=False, description="The token from POST /api/v1/auth/sign-in.")
@@ -31,6 +33,22 @@ def get_store(request: Request) -> ObjectStore:
 
 
 StoreDep = Annotated[ObjectStore, Depends(get_store)]
+
+
+def get_dns(request: Request) -> TxtLookup:
+    lookup: TxtLookup = request.app.state.dns
+    return lookup
+
+
+DnsDep = Annotated[TxtLookup, Depends(get_dns)]
+
+
+def get_settings(request: Request) -> Settings:
+    settings: Settings = request.app.state.settings
+    return settings
+
+
+SettingsDep = Annotated[Settings, Depends(get_settings)]
 
 
 async def get_caller(
