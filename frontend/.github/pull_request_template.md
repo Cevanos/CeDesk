@@ -1,10 +1,10 @@
-## What & why
+## What and why
 
 ## Checklist
 
-- [ ] `npm run validate` passes (typecheck, lint, format, tests, build)
-- [ ] Tests added/updated for the change
+- [ ] `npm run validate` passes
+- [ ] Tests added or updated
 - [ ] No secrets, tokens or real customer data in code, fixtures or logs
-- [ ] No new `NEXT_PUBLIC_` variable holding anything sensitive
-- [ ] Security-sensitive change (auth, proxy, CSP, headers, cookies)? Described below
-- [ ] New dependency reviewed (maintenance, license, install scripts)
+- [ ] No sensitive value in a `NEXT_PUBLIC_` variable
+- [ ] If this touches auth, the proxy, CSP, headers or cookies, it is described above
+- [ ] Any new dependency checked (maintenance, license, install scripts)
