@@ -24,7 +24,6 @@ export interface SelectChangeEvent {
   target: { name?: string; value: string };
 }
 
-/** Flatten `<option>` children into plain option objects. */
 function optionsFromChildren(children: React.ReactNode): SelectOption[] {
   const out: SelectOption[] = [];
   const text = (n: React.ReactNode): string =>
@@ -122,10 +121,8 @@ export interface SelectProps {
 }
 
 /**
- * Searchable select built on react-select. Drop-in for the old native
- * `<Select>`: pass `<option>` children (or `options`) plus value/onChange.
- * The menu renders in a body portal so dialogs, drawers and scroll
- * containers never clip it, and it flips above when there is no room below.
+ * Searchable select on react-select. Takes `<option>` children (or `options`).
+ * The menu renders in a portal so dialogs and drawers don't clip it.
  */
 export const Select = React.forwardRef<SelectInstance<SelectOption, false>, SelectProps>(
   function Select(
@@ -191,7 +188,6 @@ export const Select = React.forwardRef<SelectInstance<SelectOption, false>, Sele
   },
 );
 
-/** react-hook-form binding: `<FormSelect control={control} name="priority" id="priority">…</FormSelect>`. */
 export function FormSelect<T extends FieldValues>({
   control,
   name,

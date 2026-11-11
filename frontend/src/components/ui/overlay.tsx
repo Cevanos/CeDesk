@@ -7,7 +7,6 @@ import { createPortal } from "react-dom";
 import { useFocusTrap } from "@/hooks/use-focus-trap";
 import { cn } from "@/lib/utils";
 
-/** Close on outside click and Escape. */
 function useDismiss(open: boolean, onClose: () => void, ref: React.RefObject<HTMLElement | null>) {
   React.useEffect(() => {
     if (!open) return;
@@ -24,7 +23,6 @@ function useDismiss(open: boolean, onClose: () => void, ref: React.RefObject<HTM
   }, [open, onClose, ref]);
 }
 
-/** Anchored dropdown. `trigger` receives open state and toggle props. */
 export function Popover({
   trigger,
   children,
@@ -102,7 +100,6 @@ export function MenuItem({ className, ...props }: React.ButtonHTMLAttributes<HTM
   );
 }
 
-/** Modal dialog: focus trapped and restored, Escape to close, scroll lock. */
 export function Dialog({
   open,
   onClose,
