@@ -51,6 +51,10 @@ services:
       CEDESK_APP_URL: ${CEDESK_APP_URL:-http://localhost:3000}
       CEDESK_MAIL_FROM_ADDRESS: ${CEDESK_MAIL_FROM_ADDRESS:-}
       CEDESK_INBOUND_EMAIL_TOKEN: ${CEDESK_INBOUND_EMAIL_TOKEN:-}
+      # Settings > Email: where support addresses should forward to, and the mail
+      # service's SPF name the DNS check looks for.
+      CEDESK_MAIL_FORWARD_TO: ${CEDESK_MAIL_FORWARD_TO:-}
+      CEDESK_MAIL_SPF_INCLUDE: ${CEDESK_MAIL_SPF_INCLUDE:-}
       # clamd: downloads wait until the worker found the file clean.
       CEDESK_SCAN_BACKEND: ${CEDESK_SCAN_BACKEND:-none}
       CEDESK_CEVANOS_URL: ${CEDESK_CEVANOS_URL:-https://api.cevanos.ai}
@@ -94,6 +98,7 @@ services:
       CEDESK_IMAP_FOLDER: ${CEDESK_IMAP_FOLDER:-INBOX}
       CEDESK_SCAN_BACKEND: ${CEDESK_SCAN_BACKEND:-none}
       CEDESK_CLAMD_HOST: ${CEDESK_CLAMD_HOST:-clamav}
+      CEDESK_CLAMD_MAX_BYTES: ${CEDESK_CLAMD_MAX_BYTES:-104857600}
       # Cevanos: take-overs and replies out, customers' chat messages in.
       CEDESK_CEVANOS_URL: ${CEDESK_CEVANOS_URL:-https://api.cevanos.ai}
       # The same files as the api: replies send them, customer emails bring them.
