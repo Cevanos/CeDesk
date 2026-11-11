@@ -22,7 +22,9 @@ export function buildCsp(nonce: string, isDev: boolean): string {
     "base-uri 'self'",
     "form-action 'self'",
     "object-src 'none'",
-    ...(isDev ? [] : ["upgrade-insecure-requests"]),
+    // Skipped only for plain-HTTP test servers (ALLOW_INSECURE_HTTP=1); otherwise the
+    // browser rewrites asset URLs to https and CSS/JS fail to load without TLS.
+    ...(isDev || process.env.ALLOW_INSECURE_HTTP === "1" ? [] : ["upgrade-insecure-requests"]),
   ].join("; ");
 }
 
