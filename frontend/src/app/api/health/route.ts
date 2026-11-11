@@ -4,11 +4,7 @@ import { parseEnv } from "@/lib/server/env";
 
 export const dynamic = "force-dynamic";
 
-/**
- * Liveness/readiness probe for the container orchestrator. It reports whether
- * the server is configured; it does not call the backend, so a backend outage
- * never restarts the frontend.
- */
+/** Health probe. Doesn't call the backend, so a backend outage won't restart the frontend. */
 export function GET() {
   const env = parseEnv();
   return NextResponse.json(
