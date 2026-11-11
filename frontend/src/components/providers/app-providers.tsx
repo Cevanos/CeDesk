@@ -71,7 +71,7 @@ function makeClient() {
 export function AppProviders({ children, nonce }: { children: React.ReactNode; nonce?: string }) {
   const [client] = useState(makeClient);
 
-  // Guide §3.1: on 401 anywhere, the session is over. Go to sign-in.
+  // A 401 anywhere means the session is over, so go to sign-in.
   useEffect(() => {
     setUnauthorizedHandler(() => {
       client.clear();
