@@ -1,12 +1,12 @@
 # syntax=docker/dockerfile:1.7
 
-# ---- dependencies ----------------------------------------------------------
+# dependencies
 FROM node:22-alpine AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --ignore-scripts
 
-# ---- build -----------------------------------------------------------------
+# build
 FROM node:22-alpine AS build
 WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1 \
@@ -16,7 +16,7 @@ COPY . .
 # CDESK_API_URL is read at runtime (server-only), so it is NOT needed to build.
 RUN npm run build
 
-# ---- run -------------------------------------------------------------------
+# run
 FROM node:22-alpine AS run
 WORKDIR /app
 ENV NODE_ENV=production \
