@@ -3,6 +3,66 @@
 `openapi.json` next to this file is the API as served (`uv run cedesk openapi`). Every
 route is under `/api/v1`. Breaking changes only come in v2 (md 2B). Newest first.
 
+## 2026-11-11: Customer portal, CSAT, web form and help center (Phase 2, C2, P1-P6, S7)
+
+- New (customer, no agent login): `POST /portal/{workspace}/code` `{email}` → always 202
+  (unknown emails and workspaces too). Emails a 6-digit code that works 10 minutes; a
+  new code replaces the last; at most 5 per hour per email. 403 with a message when the
+  portal is limited to other email domains ("Only acme.com emails can open tickets here").
+- New: `POST /portal/{workspace}/session` `{email, code}` → `{token, expires_at, customer}`
+  (7 days). 401 for a wrong, used or expired code (5 wrong tries burn it). The customer's
+  contact is made on first sign-in. `GET /portal/me`, `POST /portal/sign-out`.
+- Portal tokens work only on `/portal/...` routes, and agent tokens never work there.
+- New: `GET /portal/ticket-types` (with their fields), `GET /portal/tickets` (mine, newest
+  first, cursor paging), `POST /portal/tickets` `{message, type_id?, fields?}` → 201 (channel
+  `portal`; subject = the first 60 characters; rules, routing and SLA run; 429 over 10 new
+  tickets an hour), `GET /portal/tickets/{id}`, `POST /portal/tickets/{id}/messages`
+  `{body}` → 201 (a reply on a resolved ticket reopens it, except a plain thank-you),
+  `GET /portal/attachments/{id}` (a download link, only for files on visible messages).
+- Customers see only customer, agent and AI messages (`author`: "You", "Acme assistant",
+  "Neha · Acme Support"), never notes or system lines, and `status_label` ("Waiting on you"
+  for pending). Another customer's ticket is 404.
+- New (Admin): `GET / PUT /portal-settings` `{allowed_domains, csat_survey}` (empty
+  domains = anyone; `csat_survey`, default true, emails the survey on resolve).
+- New CSAT (P5): when a ticket is resolved the worker emails a 1-5 survey (not for Cevanos
+  chats or merged tickets; once per resolve). The links open `<portal_url>/rate?score=N#token=…`
+  (new setting `CEDESK_PORTAL_URL`, empty = `CEDESK_APP_URL`); the page calls
+  `GET /public/csat/{token}` and `POST /public/csat/{token}` `{score, comment?}` (no
+  sign-in; 410 bad or expired link after 30 days; 409 if the ticket was reopened).
+  In the portal: `POST /portal/tickets/{id}/csat` (409 until resolved), and portal tickets
+  carry `csat`. Rating again replaces it. Agents get a line "Customer rated 4/5: …".
+- Changed: `GET /tickets/{id}` has `csat` (`{score, comment, source, rated_at}` or null),
+  and `contact` has `csat_average` and `csat_count`.
+- New web form (C2, no sign-in): `GET /public/{workspace}/form` (types and fields; 404
+  while it's off) and `POST /public/{workspace}/form` `{name, email, message, type_id?,
+  fields?, website}` → 202. Makes a `web` ticket with `source: "web_form"` (rules,
+  routing, SLA run); agent replies on it are emailed like email tickets. `website` is a
+  honeypot: send it empty (filled: 202, nothing made). 429 over 10 posts per IP per 10
+  minutes (`CEDESK_FORM_LIMIT`) or 5 an hour per email. The Admin turns it on:
+  `web_form` in `/portal-settings` (off by default).
+- New help center (P6). Agents: `GET /article-categories`, `GET /articles?q&status&category_id`,
+  `GET /articles/{id}` (drafts too, with `helpful_count`/`not_helpful_count`); Admin:
+  `POST/PATCH/DELETE /article-categories[/{id}]` (deleting keeps its articles, with no
+  category), `POST /articles`, `PATCH/DELETE /articles/{id}` (`status` draft/published; body
+  is Markdown). Public, no sign-in: `GET /public/{workspace}/articles?q&category_id` (published
+  only; search matches every word, the last as a prefix, best first, top 20),
+  `GET /public/{workspace}/articles/{id}`, `POST /public/{workspace}/articles/{id}/vote`
+  `{helpful, visitor}` → 204 (one vote per visitor id, changeable; 429 over 60 per IP per
+  10 minutes).
+- New: ticket types have `for_customers` (default true; `POST/PATCH /ticket-types`). false
+  hides a type from `GET /portal/ticket-types` and the web form, and they refuse it (422).
+- New: when an agent replies on a `portal` ticket, the worker emails the customer "New
+  reply on your request [T-1001] …" with a link to `<portal_url>/<workspace slug>/tickets/<id>`
+  and no message text. At most one per ticket in 15 minutes.
+- With no support address and no `CEDESK_MAIL_FROM_ADDRESS`, the survey and the portal
+  reply email are skipped with a warning in the worker log (not failed events).
+- CSAT: changing a rating adds "Customer changed the rating to n/5"; sending the same
+  rating again adds no line.
+- Limits: the CSAT link routes and the public help center reads have their own per-IP
+  limit (`CEDESK_PUBLIC_LIMIT`, 120 per 10 minutes; 429), apart from sign-in.
+- Fixed: CORS now allows the `Idempotency-Key` request header and exposes
+  `Idempotent-Replayed`. Before, a browser on another address could not send the key.
+
 ## 2026-11-10: Cevanos connector (Phase 1, C4-C7, W8 on handover)
 
 - New (Admin): `GET / PUT / DELETE /cevanos/connection` and `POST /cevanos/connection/check`.

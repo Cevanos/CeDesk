@@ -34,7 +34,16 @@ _FROM = """
     LEFT JOIN member a ON a.id = t.assignee_id
 """
 
-_DETAIL = "SELECT " + _COLUMNS + _FROM
+# The detail view also carries the ticket's CSAT and the customer's average (md T19).
+_CSAT = """,
+           (SELECT to_jsonb(r) FROM (SELECT score, comment, source, rated_at FROM hd_csat
+             WHERE ticket_id = t.id) r) AS csat,
+           (SELECT round(avg(score), 1) FROM hd_csat WHERE contact_id = t.contact_id)
+             AS contact_csat_average,
+           (SELECT count(*) FROM hd_csat WHERE contact_id = t.contact_id) AS contact_csat_count
+"""
+
+_DETAIL = "SELECT " + _COLUMNS + _CSAT + _FROM
 
 # The ticket list orders by plain key expressions so an index can serve each page:
 # migration 0009 creates one index per sort on exactly these expressions (an index is

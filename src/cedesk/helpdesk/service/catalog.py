@@ -149,12 +149,15 @@ async def create_type(
     name: str,
     fields: Sequence[Any],
     required_skill: str | None,
+    for_customers: bool = True,
 ) -> Row:
     require(caller, Action.settings)
     stored = _checked(fields)
     try:
         async with workspace_session(sm, caller.workspace_id) as s:
-            type_id = await repo.insert_type(s, caller.workspace_id, name, stored, required_skill)
+            type_id = await repo.insert_type(
+                s, caller.workspace_id, name, stored, required_skill, for_customers
+            )
             row = await repo.get_type(s, type_id)
     except IntegrityError as exc:
         raise Conflict("A ticket type with that name already exists.") from exc
@@ -171,8 +174,10 @@ async def change_type(
     fields: Sequence[Any] | None,
     required_skill: str | None,
     clear_skill: bool,
+    for_customers: bool | None = None,
 ) -> Row:
-    """Rename, replace the field list (add, remove, rename or reorder fields), or set the skill.
+    """Rename, replace the field list (add, remove, rename or reorder fields), set the skill,
+    or show or hide the type for customers (portal and web form).
 
     Values of a removed field stay on old tickets but are no longer shown or checked.
     """
@@ -187,6 +192,7 @@ async def change_type(
                 fields=stored,
                 required_skill=required_skill,
                 clear_skill=clear_skill,
+                for_customers=for_customers,
             ):
                 raise NotFound("Ticket type not found.")
             row = await repo.get_type(s, type_id)

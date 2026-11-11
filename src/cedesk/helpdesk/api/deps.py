@@ -8,7 +8,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from cedesk import logs
 from cedesk.helpdesk.domain import idempotency as idempotency_rules
 from cedesk.helpdesk.domain.auth import Caller
-from cedesk.helpdesk.service import auth
+from cedesk.helpdesk.service import auth, portal
 from cedesk.helpdesk.service.auth import Sessionmaker
 from cedesk.helpdesk.service.errors import Invalid, NotSignedIn, TooManyAttempts
 from cedesk.helpdesk.service.idempotency import Idempotency
@@ -46,6 +46,25 @@ async def get_caller(
 
 CallerDep = Annotated[Caller, Depends(get_caller)]
 
+_portal_bearer = HTTPBearer(
+    auto_error=False, description="The token from POST /api/v1/portal/{workspace}/session."
+)
+
+
+async def get_customer(
+    sm: SessionmakerDep,
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_portal_bearer)],
+) -> portal.Customer:
+    """The signed-in portal customer. Agent tokens are refused (separate sessions)."""
+    if credentials is None or not credentials.credentials:
+        raise NotSignedIn("Sign in first.")
+    customer = await portal.resolve(sm, credentials.credentials.strip())
+    logs.bind(workspace_id=customer.workspace_id)
+    return customer
+
+
+CustomerDep = Annotated[portal.Customer, Depends(get_customer)]
+
 
 def limit_attempts(request: Request) -> None:
     """Sign-in and password-change attempts per client IP (429 with Retry-After)."""
@@ -58,6 +77,46 @@ def limit_attempts(request: Request) -> None:
 
 
 AttemptLimit = Depends(limit_attempts)
+
+
+def limit_form_posts(request: Request) -> None:
+    """Public web form posts per client IP (429 with Retry-After)."""
+    ip = request.client.host if request.client else "unknown"
+    wait = request.app.state.form_attempts.hit(ip)
+    if wait is not None:
+        raise TooManyAttempts(
+            f"Too many messages from this address. Try again in {wait} seconds.", wait
+        )
+
+
+FormLimit = Depends(limit_form_posts)
+
+
+def limit_votes(request: Request) -> None:
+    """Help article votes per client IP (429 with Retry-After)."""
+    ip = request.client.host if request.client else "unknown"
+    wait = request.app.state.vote_attempts.hit(ip)
+    if wait is not None:
+        raise TooManyAttempts(
+            f"Too many votes from this address. Try again in {wait} seconds.", wait
+        )
+
+
+VoteLimit = Depends(limit_votes)
+
+
+def limit_public_reads(request: Request) -> None:
+    """Public pages (CSAT link, help center) per client IP: its own budget, so customers
+    behind one office address never use up that address's sign-ins."""
+    ip = request.client.host if request.client else "unknown"
+    wait = request.app.state.public_attempts.hit(ip)
+    if wait is not None:
+        raise TooManyAttempts(
+            f"Too many requests from this address. Try again in {wait} seconds.", wait
+        )
+
+
+PublicLimit = Depends(limit_public_reads)
 
 
 IdempotencyKey = Annotated[
