@@ -17,13 +17,9 @@ import { clientKey, isAllowedTarget, isSameOrigin } from "@/lib/server/proxy-gua
 import { createLimiter } from "@/lib/server/rate-limit";
 
 /**
- * Backend-for-frontend proxy.
- *
- *  - The browser calls  /api/<route>  on THIS origin.
- *  - This handler calls  ${CDESK_API_URL}/<route>  server to server.
- *  - The bearer token lives in an httpOnly cookie. It is attached here and is
- *    never returned to (or readable by) page JavaScript, so XSS cannot steal it.
- *  - The backend address is never sent to the browser, not even in errors.
+ * BFF proxy: the browser hits /api/<route> here, we call ${CDESK_API_URL}/<route>.
+ * The bearer token stays in an httpOnly cookie so page JS (and XSS) never sees
+ * it, and the backend address is never sent to the browser, even in errors.
  */
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -69,7 +65,6 @@ function clearSession(res: NextResponse) {
 async function handle(req: NextRequest, { params }: Ctx) {
   const { path: segments } = await params;
 
-  // ---- 1. validate the target ------------------------------------------
   if (!isAllowedTarget(segments, ALLOWED_AREAS)) {
     return errorBody("NotFound", "Not found.", 404);
   }
@@ -100,7 +95,6 @@ async function handle(req: NextRequest, { params }: Ctx) {
     return clearSession(errorBody("NotSignedIn", "Please sign in.", 401));
   }
 
-  // ---- 2. build the upstream request -----------------------------------
   const headers = new Headers();
   for (const h of FORWARD_REQUEST) {
     const v = req.headers.get(h);
@@ -142,7 +136,6 @@ async function handle(req: NextRequest, { params }: Ctx) {
     );
   }
 
-  // ---- 3. shape the response -------------------------------------------
   const out = new Headers();
   for (const h of FORWARD_RESPONSE) {
     const v = upstream.headers.get(h);
