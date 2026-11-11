@@ -252,6 +252,24 @@ def sla_state(
     )
 
 
+def current_due(
+    ticket: SlaTicket,
+    *,
+    policies: Sequence[Policy],
+    targets: Mapping[str, Target],
+    calendar: Calendar,
+) -> datetime | None:
+    """The deadline of the clock the pill shows (`sla_state(...).current.due_at`), or None
+    once resolved; without working out the rest. For storing `sla_due_at` in bulk."""
+    if ticket.resolved_at is not None:
+        return None
+    target = targets_for(ticket, pick_policy(ticket, policies), targets)
+    minutes = (
+        target.first_reply_minutes if ticket.first_reply_at is None else target.resolve_minutes
+    )
+    return _add_business_time(_utc(ticket.created_at), timedelta(minutes=minutes), calendar)
+
+
 def first_reply_met(
     ticket: SlaTicket,
     *,

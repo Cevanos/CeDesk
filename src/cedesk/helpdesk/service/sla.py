@@ -5,16 +5,18 @@
 - `refresh` stores each ticket's current due time (`sla_due_at`) for the `sla` list sort.
   Every change to an input (priority, status, first reply, VIP, targets) calls it, in the
   same transaction.
-- Admins change the priority targets (W9). Policies, calendar and holidays are read-only
-  for now (editing them is Phase 2, W10-W12).
+- Admins change the priority targets (W9), the ordered policies (W10), business hours
+  (W11) and holidays (W12). Each change works out every open ticket's due time again,
+  under the workspace's settings lock.
 """
 
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, time
 from typing import Any
 from uuid import UUID
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cedesk.db import workspace_session
@@ -25,7 +27,7 @@ from cedesk.helpdesk.domain.permissions import Action
 from cedesk.helpdesk.repo import auth as auth_repo
 from cedesk.helpdesk.repo import sla as repo
 from cedesk.helpdesk.service.auth import Sessionmaker
-from cedesk.helpdesk.service.errors import Invalid
+from cedesk.helpdesk.service.errors import Conflict, Invalid, NotFound
 from cedesk.helpdesk.service.members import require
 
 
@@ -38,11 +40,19 @@ class Config:
 
 
 @dataclass(frozen=True)
+class Holiday:
+    id: UUID
+    day: date
+    name: str
+
+
+@dataclass(frozen=True)
 class Settings:
     config: Config
     saved_targets: frozenset[str]  # priorities an Admin has set (the rest are defaults)
     custom_policies: bool
     custom_calendar: bool
+    holidays: tuple[Holiday, ...] = ()
 
 
 def _policy(row: Mapping[Any, Any]) -> clocks.Policy:
@@ -88,6 +98,7 @@ async def _settings(s: AsyncSession) -> Settings:
         saved_targets=frozenset(saved),
         custom_policies=bool(policy_rows),
         custom_calendar=calendar_row is not None,
+        holidays=tuple(Holiday(r["id"], r["day"], str(r["name"])) for r in holiday_rows),
     )
 
 
@@ -126,9 +137,9 @@ def first_reply_met(row: Mapping[Any, Any], cfg: Config, now: datetime) -> bool 
 
 def due(row: Mapping[Any, Any], cfg: Config) -> datetime | None:
     """The current clock's deadline, or None once resolved."""
-    if row["resolved_at"] is not None:
-        return None
-    return state(row, cfg).current.due_at
+    return clocks.current_due(
+        facts(row), policies=cfg.policies, targets=cfg.targets, calendar=cfg.calendar
+    )
 
 
 async def _store(s: AsyncSession, rows: Iterable[Mapping[Any, Any]], cfg: Config) -> None:
@@ -194,3 +205,111 @@ async def set_targets(
             await repo.set_target(s, caller.workspace_id, priority, first_reply, resolve)
         await refresh(s, all_open=True)
         return await _settings(s)
+
+
+async def _changed(
+    sm: Sessionmaker, caller: Caller, change: Callable[[AsyncSession], Awaitable[None]]
+) -> Settings:
+    """Runs `change(s)` under the settings lock, then works out every open ticket again."""
+    async with workspace_session(sm, caller.workspace_id) as s:
+        await repo.lock_settings(s, caller.workspace_id)
+        await change(s)
+        await refresh(s, all_open=True)
+        return await _settings(s)
+
+
+def _checked(check: Any, *args: Any) -> Any:
+    try:
+        return check(*args)
+    except defaults.SettingsError as exc:
+        raise Invalid(str(exc)) from exc
+
+
+async def set_policies(
+    sm: Sessionmaker, caller: Caller, policies: Sequence[clocks.Policy] | None
+) -> Settings:
+    """The whole ordered list (W10); None goes back to the mock's three."""
+    require(caller, Action.settings)
+    if policies is not None:
+        _checked(defaults.check_policies, policies)
+    rows = [
+        {
+            "name": p.name,
+            "enabled": p.enabled,
+            "vip_only": p.vip_only,
+            "channels": sorted(p.channels),
+            "priorities": sorted(p.priorities),
+            "first_reply": p.first_reply_minutes,
+            "resolve": p.resolve_minutes,
+        }
+        for p in policies or ()
+    ]
+
+    async def change(s: AsyncSession) -> None:
+        await repo.replace_policies(s, caller.workspace_id, rows)
+
+    return await _changed(sm, caller, change)
+
+
+async def set_calendar(
+    sm: Sessionmaker,
+    caller: Caller,
+    *,
+    timezone: str,
+    days: Sequence[int],
+    opens: time,
+    closes: time,
+    always_open: bool,
+) -> Settings:
+    """Business hours (W11): the days, the hours and the time zone, or 24/7."""
+    require(caller, Action.settings)
+    cal = _checked(defaults.check_calendar, timezone, days, opens, closes, always_open)
+    values = {"timezone": cal.timezone, "days": sorted(cal.days), "opens": cal.start,
+              "closes": cal.end, "always_open": cal.always_open}  # fmt: skip
+
+    async def change(s: AsyncSession) -> None:
+        await repo.set_calendar(s, caller.workspace_id, values)
+
+    return await _changed(sm, caller, change)
+
+
+HOLIDAY_TAKEN = "There is already a holiday on that day."
+
+
+async def add_holiday(sm: Sessionmaker, caller: Caller, day: date, name: str) -> Settings:
+    require(caller, Action.settings)
+    _checked(defaults.check_holiday, day, name)
+
+    async def change(s: AsyncSession) -> None:
+        await repo.add_holiday(s, caller.workspace_id, day, name)
+
+    try:
+        return await _changed(sm, caller, change)
+    except IntegrityError as exc:
+        raise Conflict(HOLIDAY_TAKEN) from exc
+
+
+async def change_holiday(
+    sm: Sessionmaker, caller: Caller, holiday_id: UUID, *, day: date | None, name: str | None
+) -> Settings:
+    require(caller, Action.settings)
+    _checked(defaults.check_holiday, day or date(2026, 1, 1), name if name is not None else "x")
+
+    async def change(s: AsyncSession) -> None:
+        if not await repo.change_holiday(s, holiday_id, day, name):
+            raise NotFound("Holiday not found.")
+
+    try:
+        return await _changed(sm, caller, change)
+    except IntegrityError as exc:
+        raise Conflict(HOLIDAY_TAKEN) from exc
+
+
+async def remove_holiday(sm: Sessionmaker, caller: Caller, holiday_id: UUID) -> Settings:
+    require(caller, Action.settings)
+
+    async def change(s: AsyncSession) -> None:
+        if not await repo.remove_holiday(s, holiday_id):
+            raise NotFound("Holiday not found.")
+
+    return await _changed(sm, caller, change)
