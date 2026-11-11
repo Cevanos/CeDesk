@@ -70,7 +70,10 @@ async function handle(req: NextRequest, { params }: Ctx) {
   }
   const path = segments.join("/");
 
-  if (MUTATING.has(req.method) && !isSameOrigin(req.headers, req.nextUrl.host)) {
+  // The browser's Origin is compared with the Host it actually requested. nextUrl.host can
+  // be the server's bind address (e.g. localhost:6543) rather than the public host.
+  const publicHost = req.headers.get("host") ?? req.nextUrl.host;
+  if (MUTATING.has(req.method) && !isSameOrigin(req.headers, publicHost)) {
     return errorBody("Forbidden", "Cross-site request blocked.", 403);
   }
 
