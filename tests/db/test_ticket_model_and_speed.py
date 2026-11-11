@@ -63,12 +63,14 @@ async def test_handover_and_triage_columns(client: AsyncClient, app_sessionmaker
     assert row["accepted"] is False and row["language"] == "hi" and row["source"] == "cevanos"
     assert "handover" not in row  # the summary is on the ticket, not in every list row
 
-    # An agent-made ticket: accepted, nothing from a handover or triage.
+    # An agent-made ticket: accepted, nothing from a handover; triage reads its subject.
     plain = ok(await client.post(T, headers=h, json={"subject": "Hi", "contact": {
         "email": "a@b.test", "name": "A"}}), 201)  # fmt: skip
     assert plain["accepted"] is True
-    assert [plain[k] for k in ("conversation_id", "handover", "topic", "sentiment", "language",
-                               "source", "source_id")] == [None] * 7  # fmt: skip
+    assert [plain[k] for k in ("conversation_id", "handover", "source", "source_id")] == [
+        None] * 4  # fmt: skip
+    assert (plain["topic"], plain["sentiment"], plain["language"]) == (
+        "General question", "neutral", "en")  # fmt: skip
     for message in plain["messages"]:
         assert message["email"] is None and message["channel_message_id"] is None
 

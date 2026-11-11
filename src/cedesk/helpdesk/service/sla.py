@@ -118,6 +118,12 @@ def state(row: Mapping[Any, Any], cfg: Config, now: datetime | None = None) -> c
     )
 
 
+def first_reply_met(row: Mapping[Any, Any], cfg: Config, now: datetime) -> bool | None:
+    return clocks.first_reply_met(
+        facts(row), policies=cfg.policies, targets=cfg.targets, calendar=cfg.calendar, now=now
+    )
+
+
 def due(row: Mapping[Any, Any], cfg: Config) -> datetime | None:
     """The current clock's deadline, or None once resolved."""
     if row["resolved_at"] is not None:

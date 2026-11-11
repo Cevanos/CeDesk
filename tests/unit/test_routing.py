@@ -95,6 +95,30 @@ def test_skilled_agents_go_first_then_anyone() -> None:
     assert "skill" not in pick.line.split(" · skipped")[0]
 
 
+def test_hindi_tickets_go_first_to_agents_with_the_hindi_skill() -> None:
+    plain = agent("Plain")
+    hindi = agent("Asha", skills=frozenset({"hindi"}))
+    refunds = agent("Ravi", skills=frozenset({"refunds"}))
+    both = agent("Neha", skills=frozenset({"refunds", "hindi"}))
+
+    def pick(agents: list[Agent], skill: str | None) -> str | None:
+        found = pick_agent(team(), agents, channel="email", required_skill=skill,
+                           language_skill="hindi")  # fmt: skip
+        return found.agent.name if found.agent else None
+
+    assert pick([plain, hindi], None) == "Asha"
+    assert pick([plain, refunds, hindi, both], "Refunds") == "Neha"  # both skills first
+    assert pick([plain, hindi, refunds], "Refunds") == "Ravi"  # then the type's skill
+    assert pick([plain, hindi], "Refunds") == "Asha"  # then the language
+    assert pick([plain], "Refunds") == "Plain"  # then anyone free
+    line = pick_agent(team(), [plain, both], channel="email", required_skill="Refunds",
+                      language_skill="hindi").line  # fmt: skip
+    assert line == "Auto-assigned to Neha (Billing · skill Refunds · skill hindi · Email 1 of 5)"
+    nobody = pick_agent(team(), [plain], channel="email", required_skill=None,
+                        language_skill="hindi")  # fmt: skip
+    assert nobody.skipped == ("nobody free has skill hindi",)
+
+
 def test_team_switch_and_empty_team() -> None:
     off = pick_agent(team(auto_assign=False), [agent("A")], channel="email", required_skill=None)
     assert (off.agent, off.line) == (None, "Left unassigned: auto-assign is off for Billing")

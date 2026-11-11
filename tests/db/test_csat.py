@@ -112,6 +112,13 @@ async def test_the_survey_link_rates_the_ticket(client: AsyncClient, app_session
     again = ok(await client.get(f"{T}/{t['id']}", headers=w["admin"]))
     assert [m["body"] for m in again["messages"]].count("Customer changed the rating to 2/5") == 1
     assert len(again["messages"]) == len(seen["messages"])
+    # A card number in the comment is removed before saving, as in any customer message.
+    card = {"score": 1, "comment": "Refund it to 4111 1111 1111 1111"}
+    assert ok(await client.post(f"{PUBLIC}/{token}", json=card))["comment"] == (
+        "Refund it to [card number removed]"
+    )
+    last = ok(await client.get(f"{T}/{t['id']}", headers=w["admin"]))["messages"][-1]["body"]
+    assert last == 'Customer changed the rating to 1/5: "Refund it to [card number removed]"'
 
     for bad in ({"score": 0}, {"score": 6}, {"score": 3, "comment": "x" * 2001}):
         assert (await client.post(f"{PUBLIC}/{token}", json=bad)).status_code == 422

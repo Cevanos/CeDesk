@@ -193,3 +193,11 @@ async def save_defaults(session: AsyncSession, workspace_id: UUID, values: dict[
         ),
         {"ws": workspace_id, **_MD_DEFAULTS, **{c: values.get(c) for c in CAP_COLUMNS}},
     )
+
+
+async def ticket_language(session: AsyncSession, ticket_id: UUID) -> str | None:
+    """The ticket's language from triage ("hi", "en"), for the Hindi skill (md W6)."""
+    result = await session.execute(
+        text("SELECT language FROM hd_ticket WHERE id = :id"), {"id": ticket_id}
+    )
+    return result.scalar_one_or_none()

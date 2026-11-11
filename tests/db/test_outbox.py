@@ -55,7 +55,7 @@ async def test_each_change_writes_its_events(client: AsyncClient, app_sessionmak
     assert created["event"] == "ticket.created"
     assert created["ticket"] == {
         "id": t["id"], "number": t["number"], "subject": "Refund", "status": "open",
-        "priority": "medium", "team": "Billing", "topic": None,
+        "priority": "medium", "team": "Billing", "topic": "Refund / return",
     }  # fmt: skip
     assert UUID(created["id"]) and created["occurred_at"]
     assert routed["event"] == "assignment.changed"

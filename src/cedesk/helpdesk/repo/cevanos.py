@@ -185,7 +185,10 @@ async def reopen_for_handover(session: AsyncSession, ticket_id: UUID, event_id: 
 
 async def set_sentiment(session: AsyncSession, ticket_id: UUID, sentiment: str) -> None:
     await session.execute(
-        text("UPDATE hd_ticket SET sentiment = :s, updated_at = now() WHERE id = :id"),
+        text(
+            "UPDATE hd_ticket SET sentiment = :s, sentiment_by_cevanos = true, "
+            "updated_at = now() WHERE id = :id"
+        ),
         {"s": sentiment, "id": ticket_id},
     )
 

@@ -169,3 +169,28 @@ async def test_types_hidden_from_customers_stay_off_the_form(
     assert [t["name"] for t in ok(await client.get(w["url"]))["types"]] == ["Refund"]
     assert (await client.post(w["url"], json=post(type_id=hidden["id"]))).status_code == 422
     assert await web_tickets(app_sessionmaker, w) == []
+
+
+async def test_a_card_number_cut_by_the_subject_is_still_removed(
+    client: AsyncClient, app_sessionmaker: Sm
+) -> None:
+    """The subject is the message's first 60 characters; it is made after redaction, so
+    a cut through the number can't keep part of it."""
+    w = await desk(client, app_sessionmaker)
+    message = "Please refund the double charge on my card 4111 1111 1111 1111 today"
+    assert len("Please refund the double charge on my card 4111 1111") < 60  # the cut
+    # The number typed into a text field too.
+    fields = {"order_id": "4111-1111-1111-1111"}
+    ok(await client.post(w["url"], json=post(message=message, type_id=w["refund"],
+                                             fields=fields)), 202)  # fmt: skip
+    [t] = await web_tickets(app_sessionmaker, w)
+    assert t["subject"] == "Please refund the double charge on my card [card number…"
+    seen = ok(await client.get(f"{T}/{t['id']}", headers=w["admin"]))
+    assert seen["messages"][0]["body"] == (
+        "Please refund the double charge on my card [card number removed] today"
+    )
+    assert seen["fields"] == {"order_id": "[card number removed]"}
+    # Once in the subject and once in the message: one number.
+    assert "1 card number removed from the customer's message" in [
+        m["body"] for m in seen["messages"]
+    ]
