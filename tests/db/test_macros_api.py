@@ -329,3 +329,30 @@ async def test_the_macro_line_lists_only_real_changes(
     t = ok(await run(client, w["h"], t["id"], w["macros"]["Escalate to Tech"]))
     assert lines(t)[-1] == "Macro “Escalate to Tech” run by Admin: Priority High · Note added"
     assert t["assignee_id"] == w["chetan"]  # not routed again: the team did not change
+
+
+async def test_a_macro_can_change_the_type(client: AsyncClient, app_sessionmaker: Sm) -> None:
+    """Fields the new type doesn't have are cleared, each with a line, as with rules."""
+    w = await desk(client, app_sessionmaker)
+    t = await refund_ticket(client, w)
+    body = {"name": "Not a refund", "steps": [
+        {"kind": "set_type", "type_id": w["types"]["General"]},
+        {"kind": "add_tag", "tag": "retyped"}]}  # fmt: skip
+    macro = ok(await client.post(M, headers=w["h"], json=body), 201)
+    assert macro["steps"][0] == {"kind": "set_type", "type_id": w["types"]["General"],
+                                 "only_if_empty": False}  # fmt: skip
+    after = ok(await run(client, w["h"], t["id"], macro["id"]))
+    assert (after["type_name"], after["fields"], after["tags"]) == ("General", {}, ["retyped"])
+    said = lines(after)
+    assert any(b.startswith("Macro “Not a refund” run by") and
+               b.endswith(": Type General · Tag retyped") for b in said)  # fmt: skip
+    assert len([b for b in said if b.endswith("cleared (not in General)")]) == 2
+    # Run again: already General, nothing to change.
+    again = ok(await run(client, w["h"], t["id"], macro["id"]))
+    assert lines(again)[-1].endswith(": nothing to change")
+
+    unknown = {
+        "name": "Gone",
+        "steps": [{"kind": "set_type", "type_id": "00000000-0000-0000-0000-000000000000"}],
+    }
+    assert (await client.post(M, headers=w["h"], json=unknown)).status_code == 422

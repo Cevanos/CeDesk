@@ -29,6 +29,7 @@ from cedesk.helpdesk.repo import rules as rule_repo
 from cedesk.helpdesk.repo import tickets as ticket_repo
 from cedesk.helpdesk.repo.macros import Row
 from cedesk.helpdesk.service import idempotency, routing, sla, tickets
+from cedesk.helpdesk.service import rules as automation
 from cedesk.helpdesk.service.auth import Sessionmaker
 from cedesk.helpdesk.service.errors import Conflict, Invalid, NotFound
 from cedesk.helpdesk.service.idempotency import Idempotency
@@ -57,11 +58,12 @@ def _parse(name: str, steps: Sequence[Any]) -> tuple[str, tuple[engine.Step, ...
 
 
 async def _views(s: AsyncSession, rows: Sequence[Row]) -> list[MacroView]:
+    types = await rule_repo.names(s, "hd_ticket_type")
     teams = await rule_repo.names(s, "hd_team")
     found = []
     for row in rows:
         try:
-            problems = engine.problems(engine.parse_steps(row["steps"]), teams)
+            problems = engine.problems(engine.parse_steps(row["steps"]), types, teams)
         except engine.MacroError:
             problems = ["Its steps no longer read; save it again."]
         found.append(MacroView(row, problems))
@@ -69,8 +71,9 @@ async def _views(s: AsyncSession, rows: Sequence[Row]) -> list[MacroView]:
 
 
 async def _check_team(s: AsyncSession, steps: Sequence[engine.Step]) -> None:
-    if engine.problems(steps, await rule_repo.names(s, "hd_team")):
-        raise Invalid("A macro can only set a team that exists.")
+    types = await rule_repo.names(s, "hd_ticket_type")
+    if engine.problems(steps, types, await rule_repo.names(s, "hd_team")):
+        raise Invalid("A macro can only set a ticket type and team that exist.")
 
 
 # Settings (Admin); the list is for everyone's Macros menu
@@ -201,6 +204,7 @@ async def run_macro(
 
         me = await ticket_repo.member_brief(s, caller.member_id)
         who = str(me["name"]) if me else "someone"
+        types = await rule_repo.names(s, "hd_ticket_type")
         teams = await rule_repo.names(s, "hd_team")
         state = rule_engine.State(
             type_id=before["type_id"],
@@ -216,19 +220,22 @@ async def run_macro(
                 await add_message(s, caller, detail, kind=kind, body=step.text, who=who)
                 done.append("Reply sent" if kind is MessageKind.reply else "Note added")
             else:
-                state, said = rule_engine.act(step, state, {}, teams)
+                state, said = rule_engine.act(step, state, types, teams)
                 if said:
                     done.append(said)
 
         after: dict[str, Any] = {
-            k: before[k] for k in ("subject", "type_id", "assignee_id", "reopen_count")
+            k: before[k] for k in ("subject", "assignee_id", "reopen_count")
         } | {
             "status": state.status.value,
             "priority": state.priority.value,
+            "type_id": state.type_id,
             "team_id": state.team_id,
             "tags": list(state.tags),
-            "fields": dict(before["fields"]),
         }
+        after["fields"], cleared = await automation.retyped(
+            s, before["type_id"], state.type_id, dict(before["fields"])
+        )
         if before["status"] == Status.resolved.value and state.status is not Status.resolved:
             after["reopen_count"] += 1
 
@@ -253,7 +260,7 @@ async def run_macro(
 
         await ticket_repo.update_ticket(s, ticket_id, after)
         await sla.refresh(s, ticket_ids=[ticket_id])
-        lines = [engine.line(str(macro["name"]), who, done)]
+        lines = [engine.line(str(macro["name"]), who, done), *cleared]
         lines += [routed_line] if routed_line else []
         for body in lines:
             await ticket_repo.insert_message(

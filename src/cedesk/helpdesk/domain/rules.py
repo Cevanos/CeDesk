@@ -4,6 +4,8 @@ A rule runs on one event:
 - `created`: a new ticket, before auto-assignment, so a rule can pick the team.
 - `customer_replied`: the customer wrote on an Open or Pending ticket. (Agent edits never
   run rules, so a rule can't undo what an agent just chose.)
+- `sla_breached`: an open ticket's SLA clock ran out (the worker, once a minute; once per
+  clock, with the breach alert), e.g. to raise the priority or move it to another team.
 
 Every condition must match (AND); inside one condition, any listed value matches (OR).
 Every enabled rule that matches runs, in order, and later rules see what earlier rules
@@ -14,7 +16,11 @@ Stored as JSON:
                  {"kind": "channel_in", "channels": ["email"]},
                  {"kind": "to_address_contains", "text": "billing@"},
                  {"kind": "status_in", "statuses": ["pending"]},
-                 {"kind": "sentiment_in", "sentiments": ["negative"]}]
+                 {"kind": "sentiment_in", "sentiments": ["negative"]},
+                 {"kind": "sla_in", "states": ["breached"]}]
+`sla_in` reads the clock the ticket's SLA pill shows (first reply, then resolution):
+on_track, close (under 25% left), breached or met. Not on `created` (the clock only just
+started).
     actions:    [{"kind": "set_type", "type_id": "...", "only_if_empty": false},
                  {"kind": "set_team", "team_id": "..."},
                  {"kind": "set_priority", "priority": "high", "keep_urgent": true},
@@ -29,6 +35,7 @@ from enum import StrEnum
 from typing import Any
 from uuid import UUID
 
+from cedesk.helpdesk.domain.sla import SlaState
 from cedesk.helpdesk.domain.tickets import (
     MAX_TAGS,
     TAG,
@@ -73,6 +80,7 @@ class RuleError(ValueError):
 class Event(StrEnum):
     created = "created"
     customer_replied = "customer_replied"
+    sla_breached = "sla_breached"
 
 
 # Conditions
@@ -103,7 +111,12 @@ class SentimentIn:
     sentiments: frozenset[Sentiment]
 
 
-Condition = TextContainsAny | ChannelIn | ToAddressContains | StatusIn | SentimentIn
+@dataclass(frozen=True)
+class SlaIn:
+    states: frozenset[SlaState]
+
+
+Condition = TextContainsAny | ChannelIn | ToAddressContains | StatusIn | SentimentIn | SlaIn
 
 
 # Actions
@@ -156,6 +169,7 @@ class Facts:
     channel: Channel
     to_address: str | None  # the address the customer wrote to (email tickets)
     sentiment: Sentiment | None
+    sla: SlaState | None = None  # the pill's clock; only worked out when a rule asks
 
 
 @dataclass(frozen=True)
@@ -232,9 +246,11 @@ def parse_condition(raw: Mapping[str, Any]) -> Condition:
         return StatusIn(_enums(raw, "statuses", Status))
     if kind == "sentiment_in":
         return SentimentIn(_enums(raw, "sentiments", Sentiment))
+    if kind == "sla_in":
+        return SlaIn(_enums(raw, "states", SlaState))
     raise RuleError(
         "A condition kind is text_contains_any, channel_in, to_address_contains, "
-        "status_in or sentiment_in."
+        "status_in, sentiment_in or sla_in."
     )
 
 
@@ -274,7 +290,7 @@ def parse_rule(
     try:
         when = Event(event)
     except ValueError as exc:
-        raise RuleError("event is created or customer_replied.") from exc
+        raise RuleError("event is created, customer_replied or sla_breached.") from exc
     if not 1 <= len(conditions) <= MAX_PARTS:
         raise RuleError(f"A rule has 1-{MAX_PARTS} conditions.")
     if not 1 <= len(actions) <= MAX_PARTS:
@@ -283,13 +299,16 @@ def parse_rule(
     kinds = [type(a) for a in parsed_actions if not isinstance(a, AddTag)]
     if len(kinds) != len(set(kinds)):
         raise RuleError("Each action kind appears once per rule (add_tag may repeat).")
-    return Rule(
-        rule_id,
-        name.strip(),
-        when,
-        tuple(parse_condition(c) for c in conditions),
-        parsed_actions,
-    )
+    parsed_conditions = tuple(parse_condition(c) for c in conditions)
+    if when is Event.created and any(isinstance(c, SlaIn) for c in parsed_conditions):
+        raise RuleError("A new ticket's SLA has only just started: use sla_in on a reply "
+                        "or on sla_breached.")  # fmt: skip
+    return Rule(rule_id, name.strip(), when, parsed_conditions, parsed_actions)
+
+
+def needs_sla(rules: Sequence[Rule]) -> bool:
+    """Whether any rule reads the SLA (worked out only then)."""
+    return any(isinstance(c, SlaIn) for r in rules for c in r.conditions)
 
 
 def stored_condition(c: Condition) -> dict[str, Any]:
@@ -302,6 +321,8 @@ def stored_condition(c: Condition) -> dict[str, Any]:
         return {"kind": "to_address_contains", "text": c.text}
     if isinstance(c, StatusIn):
         return {"kind": "status_in", "statuses": sorted(x.value for x in c.statuses)}
+    if isinstance(c, SlaIn):
+        return {"kind": "sla_in", "states": sorted(x.value for x in c.states)}
     return {"kind": "sentiment_in", "sentiments": sorted(x.value for x in c.sentiments)}
 
 
@@ -330,6 +351,8 @@ def matches(condition: Condition, facts: Facts, state: State) -> bool:
         return facts.to_address is not None and condition.text in facts.to_address.lower()
     if isinstance(condition, StatusIn):
         return state.status in condition.statuses
+    if isinstance(condition, SlaIn):
+        return facts.sla is not None and facts.sla in condition.states
     return facts.sentiment is not None and facts.sentiment in condition.sentiments
 
 

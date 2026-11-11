@@ -7,7 +7,7 @@ import pytest
 
 from cedesk.helpdesk.domain import macros
 from cedesk.helpdesk.domain.macros import MacroError, Note, Reply
-from cedesk.helpdesk.domain.rules import AddTag, SetPriority, SetStatus, SetTeam
+from cedesk.helpdesk.domain.rules import AddTag, SetPriority, SetStatus, SetTeam, SetType
 from cedesk.helpdesk.domain.tickets import Priority, Status
 
 
@@ -44,7 +44,7 @@ def test_steps_read_in_order_and_store_back_the_same() -> None:
         "reply",
         [{"kind": "reply"}],
         [{"kind": "note", "text": 5}],
-        [{"kind": "set_type", "type_id": str(uuid4())}],
+        [{"kind": "set_type", "type_id": "not-an-id"}],
         [{"kind": "note", "text": "a"}, {"kind": "note", "text": "b"}],
         [{"kind": "set_status", "status": "open"}, {"kind": "set_status", "status": "pending"}],
         [{"kind": "add_tag", "tag": "x"}] * 21,
@@ -63,5 +63,9 @@ def test_the_ticket_line_and_problems() -> None:
     )
     assert macros.line("X", "Neha", []) == "Macro “X” run by Neha: nothing to change"
     team, gone = uuid4(), uuid4()
-    assert macros.problems([SetTeam(team), Note("x")], {team: "Tech"}) == []
-    assert macros.problems([SetTeam(gone)], {team: "Tech"}) == ["Its team was deleted."]
+    assert macros.problems([SetTeam(team), Note("x")], {}, {team: "Tech"}) == []
+    assert macros.problems([SetTeam(gone)], {}, {team: "Tech"}) == ["Its team was deleted."]
+    assert macros.problems([SetType(gone)], {team: "Refund"}, {}) == [
+        "Its ticket type was deleted."
+    ]
+    assert macros.parse_steps([{"kind": "set_type", "type_id": str(team)}]) == (SetType(team),)

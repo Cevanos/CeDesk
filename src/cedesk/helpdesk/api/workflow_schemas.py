@@ -50,10 +50,11 @@ class SavedReplyOut(BaseModel):
 
 RuleName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=80)]
 RuleEvent = Annotated[
-    Literal["created", "customer_replied"],
+    Literal["created", "customer_replied", "sla_breached"],
     Field(
         description="created: a new ticket. customer_replied: the customer wrote on an "
-        "Open or Pending ticket. Agent edits never run rules."
+        "Open or Pending ticket. sla_breached: an open ticket's SLA clock ran out (checked "
+        "once a minute; once per clock). Agent edits never run rules."
     ),
 ]
 Conditions = Annotated[
@@ -66,7 +67,9 @@ Conditions = Annotated[
         'any case); {"kind": "channel_in", "channels": ["email"]}; '
         '{"kind": "to_address_contains", "text": "billing@"}; '
         '{"kind": "status_in", "statuses": ["pending"]}; '
-        '{"kind": "sentiment_in", "sentiments": ["negative"]}.',
+        '{"kind": "sentiment_in", "sentiments": ["negative"]}; '
+        '{"kind": "sla_in", "states": ["breached"]} (the SLA pill\'s clock: on_track, '
+        "close, breached, met; not on created).",
     ),
 ]
 Actions = Annotated[
@@ -135,6 +138,8 @@ Steps = Annotated[
         'filled when it runs); {"kind": "note", "text": "..."}; '
         '{"kind": "set_status", "status": "resolved"}; '
         '{"kind": "set_priority", "priority": "low"}; '
+        '{"kind": "set_type", "type_id": "...", "only_if_empty": false} (fields the new '
+        "type lacks are cleared); "
         '{"kind": "set_team", "team_id": "..."} (re-routes the ticket); '
         '{"kind": "add_tag", "tag": "refund"}. At most one reply and one note.',
     ),
