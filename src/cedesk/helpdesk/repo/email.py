@@ -13,7 +13,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 Row = RowMapping
 
 _ADDRESS = (
-    "SELECT id, address, name, signature, is_default, created_at, updated_at FROM hd_email_address"
+    "SELECT id, address, name, signature, is_default, created_at, updated_at, "
+    "forwarding_verified_at, verify_sent_at, dkim_selector, dns_checked_at, dns_result, "
+    "(SELECT o.status FROM hd_email_out o WHERE o.id = a.verify_email_id) "
+    "    AS verify_email_status, "
+    "(SELECT o.last_error FROM hd_email_out o WHERE o.id = a.verify_email_id) "
+    "    AS verify_email_error "
+    "FROM hd_email_address a"
 )
 
 
@@ -74,6 +80,49 @@ async def update_address(
             "signature = coalesce(:signature, signature), updated_at = now() WHERE id = :id"
         ),
         {"id": address_id, "name": name, "signature": signature},
+    )
+
+
+async def set_dkim_selector(session: AsyncSession, address_id: UUID, selector: str | None) -> None:
+    await session.execute(
+        text("UPDATE hd_email_address SET dkim_selector = :sel, updated_at = now() WHERE id = :id"),
+        {"id": address_id, "sel": selector},
+    )
+
+
+async def set_verify_code(
+    session: AsyncSession, address_id: UUID, code_hash: str, email_id: UUID
+) -> None:
+    """A new forwarding check: its code (and its queued email) replace the last one's."""
+    await session.execute(
+        text(
+            "UPDATE hd_email_address SET verify_code_hash = :h, verify_sent_at = now(), "
+            "verify_email_id = :email WHERE id = :id"
+        ),
+        {"id": address_id, "h": code_hash, "email": email_id},
+    )
+
+
+async def verify_by_code(session: AsyncSession, code_hash: str, since: datetime) -> Row | None:
+    """Marks the address whose check carried this code (sent after `since`) as verified;
+    the code is used up."""
+    result = await session.execute(
+        text(
+            "UPDATE hd_email_address SET forwarding_verified_at = now(), verify_code_hash = NULL "
+            "WHERE verify_code_hash = :h AND verify_sent_at > :since RETURNING id, address"
+        ),
+        {"h": code_hash, "since": since},
+    )
+    return result.mappings().first()
+
+
+async def save_dns(session: AsyncSession, address_id: UUID, found: Mapping[str, Any]) -> None:
+    await session.execute(
+        text(
+            "UPDATE hd_email_address SET dns_checked_at = now(), "
+            "dns_result = CAST(:found AS jsonb) WHERE id = :id"
+        ),
+        {"id": address_id, "found": json.dumps(found)},
     )
 
 

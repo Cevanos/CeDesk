@@ -3,6 +3,38 @@
 `openapi.json` next to this file is the API as served (`uv run cedesk openapi`). Every
 route is under `/api/v1`. Breaking changes only come in v2 (md 2B). Newest first.
 
+## 2026-11-11: SLA editors, breach alerts, checking support addresses (Phase 2, W10-W12, W14, C10)
+
+- New (Admin): `PUT /sla/policies` `{policies: [{name, enabled, vip_only, channels,
+  priorities, first_reply_minutes, resolve_minutes}] | null}`: the whole ordered list
+  (first enabled match wins). The last one must be on with no conditions; no other may
+  match every ticket; names once; channels from email, web, portal, api, chat, phone,
+  whatsapp, slack. `null`: back to the three built-in policies. 422 with a message.
+- New (Admin): `PUT /sla/calendar` `{timezone, days, opens, closes, always_open}`.
+- New (Admin): `POST /holidays` `{day, name}` (201; 409 when the day has one),
+  `PATCH /holidays/{id}`, `DELETE /holidays/{id}` (204).
+- Changed: `GET /sla` holidays now carry `id`. Every settings change above (and targets)
+  works out each open ticket's SLA again at once.
+- New: SLA breach alerts. Once a minute the worker notifies the assignee and the
+  Supervisors of the ticket's team when a ticket's SLA clock runs out: notification
+  `kind: "sla_breach"`, text "SLA breached on T-1001 (first reply overdue): <subject>".
+  Once per clock (first reply, then resolution). Only when time runs out: a change that
+  puts a due time in the past at once (shorter targets, new hours, a reopened old
+  ticket) shows as breached but sends no alert. Tickets already overdue at upgrade are
+  not alerted.
+- New (Admin): `POST /email-addresses/{id}/forwarding-check` (202; 409 under a minute
+  after the last): emails the address a one-time code from itself. When it comes back in,
+  `forwarding_verified` turns true; it never makes a ticket. The inbound webhook answers
+  `outcome: "verification"` for it.
+- New (Admin): `POST /email-addresses/{id}/dns-check`: SPF (following include/redirect;
+  checks the mail service's name when the server sets `CEDESK_MAIL_SPF_INCLUDE`), DKIM
+  (at `dkim_selector`) and DMARC, each `{status: ok|missing|wrong|not_checked|error,
+  record, note}`. At most about 15 seconds.
+- Changed: email addresses carry `forwarding_verified`, `forwarding_verified_at`,
+  `forwarding_check_sent_at`, `forwarding_check_email` (pending | sent | failed | null),
+  `forwarding_check_error`, `forward_to`, `dkim_selector` and `dns` (the last check).
+  `PATCH /email-addresses/{id}` takes `dkim_selector` ("" clears).
+
 ## 2026-11-11: Triage, card redaction and the team report (Phase 2, I1-I5, R1, R2, R6, W6)
 
 - Changed: every new ticket and every customer reply is triaged by keywords (no AI):

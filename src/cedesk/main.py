@@ -20,6 +20,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from cedesk import logs
 from cedesk.cevanos_client import make_cevanos
 from cedesk.db import make_engine, make_sessionmaker
+from cedesk.dnscheck import DnsLookup
 from cedesk.helpdesk.api import articles as articles_api
 from cedesk.helpdesk.api import attachments as attachments_api
 from cedesk.helpdesk.api import auth as auth_api
@@ -125,6 +126,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # Built now, so a storage setting that is missing stops the app at start-up.
     app.state.store = make_store(settings)
     app.state.cevanos = make_cevanos(settings)  # the connector; each workspace's key is in the db
+    app.state.dns = DnsLookup()  # the support address DNS check (md C10)
     app.state.attempts = SlidingWindowLimiter(
         settings.sign_in_limit, settings.sign_in_window_seconds
     )

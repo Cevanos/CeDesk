@@ -66,6 +66,7 @@ def _create_workspace(args: argparse.Namespace) -> int:
 
 
 SWEEP_EVERY_SECONDS = 600  # expired idempotency keys
+SLA_ALERT_EVERY_SECONDS = 60  # SLA breach alerts (md W14)
 
 
 def _seed_workflow(slug: str) -> int:
@@ -158,7 +159,8 @@ def _prune_sessions() -> int:
 def _worker(once: bool) -> int:
     """Every few seconds: reads new emails from the IMAP mailbox (when one is set), reads
     connected Cevanos chats for new customer messages, sends queued emails, delivers
-    outbox events (Cevanos take-overs and replies), and drops expired idempotency keys. Run one
+    outbox events (Cevanos take-overs and replies), alerts SLA breaches (once a minute),
+    and drops expired idempotency keys. Run one
     next to the API (sending and delivering are safe with several; reading a mailbox is
     meant for one)."""
     import logging
@@ -176,6 +178,7 @@ def _worker(once: bool) -> int:
     from cedesk.helpdesk.service.portal_notice import PortalNoticeHandler
     from cedesk.helpdesk.service.scanning import scan_due
     from cedesk.helpdesk.service.sla import refresh_everywhere
+    from cedesk.helpdesk.service.sla_alerts import alert_everywhere
     from cedesk.mail import MailboxError, make_mailbox, make_mailer
     from cedesk.scanning import make_scanner
     from cedesk.settings import get_settings
@@ -213,6 +216,7 @@ def _worker(once: bool) -> int:
         ]
         chats = ChatPoller(sm, cevanos, batch=settings.cevanos_poll_batch)
         swept_at = 0.0
+        alerted_at = 0.0
         logger.info("worker started", extra={"event": settings.mail_backend.value})
         # Tickets made before SLA was wired (or while the SLA code had a bug) get their
         # stored due time, so `sort=sla` is right after every deploy without a manual step.
@@ -261,6 +265,15 @@ def _worker(once: bool) -> int:
                         f"{result.failed} failed",
                         extra={"event": "email"},
                     )
+                if time.monotonic() - alerted_at > SLA_ALERT_EVERY_SECONDS:
+                    try:
+                        breached = await alert_everywhere(sm)
+                    except Exception:
+                        breached = 0
+                        logger.exception("SLA breach alerts failed")
+                    if breached:
+                        logger.info(f"SLA breaches alerted: {breached}", extra={"event": "sla"})
+                    alerted_at = time.monotonic()
                 if time.monotonic() - swept_at > SWEEP_EVERY_SECONDS:
                     await sweep_everywhere(sm)
                     swept_at = time.monotonic()

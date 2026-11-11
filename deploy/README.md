@@ -116,6 +116,16 @@ workspace that owns the address they wrote to. Choose one way:
 Auto-replies, bounces, mailing-list emails and emails from our own support addresses are
 ignored, so CeDesk never answers an out-of-office forever.
 
+Checking a support address (Settings › Email): "Check forwarding" emails the address a
+one-time code; when it comes back in (by the mailbox or the webhook above) the address
+shows as verified, with no ticket made. Set `CEDESK_MAIL_FORWARD_TO` to the address
+Admins should forward to, so the page can say it. "Check DNS" reads the domain's SPF,
+DKIM (at the selector the Admin enters) and DMARC records; set `CEDESK_MAIL_SPF_INCLUDE`
+to your mail service's SPF name so it checks SPF names it.
+
+SLA breach alerts: the worker checks once a minute and notifies the assignee and the
+Supervisors of the ticket's team when a ticket's SLA runs out. Nothing to set.
+
 Then an Admin adds the support address (Settings › Email, or `POST /api/v1/email-addresses`)
 and uses "Send test" to check it arrives. For real sending the address's domain needs
 SPF and DKIM set up for the mail service, or emails land in spam.
