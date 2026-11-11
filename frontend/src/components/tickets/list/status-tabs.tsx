@@ -12,7 +12,6 @@ const STATUS_META: Record<TicketStatus, { icon: typeof CircleDot; accent: string
     resolved: { icon: CircleCheck, accent: "text-success bg-success-soft", hint: "All done" },
   };
 
-/** Status tabs presented as summary cards, with live counts. */
 export function StatusTabs({
   active,
   counts,
