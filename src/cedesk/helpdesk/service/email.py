@@ -1,6 +1,8 @@
 """Email out (md C9, 7.4).
 
-- Admins manage the workspace's support addresses (name, signature, one default).
+- Admins manage the workspace's support addresses (name, signature, one default), and
+  check them (C10): a forwarding check (an email with a one-time code that must come back
+  in through CeDesk) and a DNS check (SPF, DKIM, DMARC). Neither stops an address working.
 - A reply on an email ticket is queued in the reply's own transaction (`queue_reply`):
   From = the address the customer wrote to (else the default), To = the customer, CC kept
   from their first email with a CC, the signature added, and the threading headers set.
@@ -9,6 +11,7 @@
 """
 
 import logging
+import time
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -19,7 +22,9 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cedesk.db import workspace_session
+from cedesk.dnscheck import LookupFailed, TxtLookup
 from cedesk.helpdesk.domain import email as rules
+from cedesk.helpdesk.domain import email_verify as verify
 from cedesk.helpdesk.domain import paging
 from cedesk.helpdesk.domain.attachments import BLOCKED, ready
 from cedesk.helpdesk.domain.auth import Caller
@@ -119,9 +124,10 @@ async def update_address(
     name: str | None = None,
     signature: str | None = None,
     is_default: bool | None = None,
+    dkim_selector: str | None = None,
 ) -> Row:
-    """The address itself can't change (replies already sent came from it): add a new one
-    and delete the old one instead."""
+    """`dkim_selector`: "" clears it. The address itself can't change (replies already
+    sent came from it): add a new one and delete the old one instead."""
     require(caller, Action.settings)
     if is_default is False:
         raise Invalid("Make another address the default instead.")
@@ -132,6 +138,8 @@ async def update_address(
         if await repo.get_address(s, address_id) is None:
             raise NotFound("Email address not found.")
         await repo.update_address(s, address_id, name=shown, signature=sig)
+        if dkim_selector is not None:
+            await repo.set_dkim_selector(s, address_id, _selector(dkim_selector))
         if is_default:
             await repo.clear_default(s)
             await repo.make_default(s, address_id)
@@ -190,6 +198,143 @@ async def send_test(sm: Sessionmaker, caller: Caller, address_id: UUID) -> str:
             references=[],
         )
     return me
+
+
+# Checking an address (C10)
+
+CHECK_WAIT = timedelta(minutes=1)
+DNS_BUDGET_SECONDS = 15  # no new lookup starts after this; each one stops after 5 s
+
+
+def _selector(value: str) -> str | None:
+    value = value.strip().lower()
+    if not value:
+        return None
+    if not verify.SELECTOR.fullmatch(value):
+        raise Invalid("A DKIM selector is letters, digits, dots, dashes or underscores.")
+    return value
+
+
+async def send_forwarding_check(sm: Sessionmaker, caller: Caller, address_id: UUID) -> Row:
+    """Emails the address a one-time code (from itself, as replies are). When the email
+    comes back in through CeDesk, `receive` marks the address verified. A new check
+    replaces the last one's code; at most one a minute."""
+    require(caller, Action.settings)
+    code = verify.new_code()
+    async with workspace_session(sm, caller.workspace_id) as s:
+        row = await repo.get_address(s, address_id)
+        if row is None:
+            raise NotFound("Email address not found.")
+        sent = row["verify_sent_at"]
+        if sent is not None and datetime.now(UTC) - sent < CHECK_WAIT:
+            raise Conflict("A check was sent less than a minute ago. Wait for it first.")
+        address = str(row["address"])
+        email_id = await repo.enqueue(
+            s,
+            caller.workspace_id,
+            ticket_id=None,
+            message_id=None,
+            from_address=address,
+            from_name=str(row["name"]),
+            to=[address],
+            cc=[],
+            subject=verify.CODE_SUBJECT.format(code=code),
+            body=(
+                f"CeDesk sent this to {address} to check that emails to it reach CeDesk. "
+                "Nothing to do: when it arrives through your forwarding (or the mailbox "
+                "CeDesk reads), the address shows as verified. It makes no ticket."
+            ),
+            header_message_id=rules.new_message_id(address),
+            in_reply_to=None,
+            references=[],
+        )
+        await repo.set_verify_code(s, address_id, verify.code_hash(code), email_id)
+        found = await repo.get_address(s, address_id)
+    assert found is not None
+    return found
+
+
+async def verify_forwarding(sm: Sessionmaker, workspace_id: UUID, code: str) -> bool:
+    """A forwarding-check email came in (email in calls this). True: an address was
+    verified; False: the code is unknown, used or too old."""
+    since = datetime.now(UTC) - verify.CODE_LIFETIME
+    async with workspace_session(sm, workspace_id) as s:
+        found = await repo.verify_by_code(s, verify.code_hash(code), since)
+    if found is not None:
+        logger.info("support address verified", extra={"event": "email_verify"})
+    return found is not None
+
+
+def _as_dict(result: verify.Result) -> dict[str, Any]:
+    return {"status": result.status.value, "record": result.record, "note": result.note}
+
+
+async def check_dns(
+    sm: Sessionmaker,
+    caller: Caller,
+    address_id: UUID,
+    lookup: TxtLookup,
+    *,
+    spf_include: str | None = None,
+) -> Row:
+    """Reads the address's SPF, DKIM and DMARC records now and keeps what was found.
+    The lookups run outside any transaction."""
+    require(caller, Action.settings)
+    async with workspace_session(sm, caller.workspace_id) as s:
+        row = await repo.get_address(s, address_id)
+    if row is None:
+        raise NotFound("Email address not found.")
+    domain = verify.domain_of(str(row["address"]))
+    selector = row["dkim_selector"]
+
+    deadline = time.monotonic() + DNS_BUDGET_SECONDS
+
+    async def records(name: str) -> list[str] | None:
+        """None: DNS didn't answer, or the check already took its time."""
+        if time.monotonic() > deadline:
+            return None
+        try:
+            return await lookup.txt(name)
+        except LookupFailed:
+            return None
+
+    def failed(name: str) -> verify.Result:
+        return verify.Result(verify.Check.error, None, f"DNS didn't answer for {name}; try again.")
+
+    async def spf_reached(first: list[str]) -> frozenset[str]:
+        """Every name the SPF record leads to, at most SPF_LOOKUPS lookups deep."""
+        record = verify.spf_record(first)
+        todo = verify.spf_links(record) if record else []
+        reached: set[str] = set()
+        while todo and len(reached) < verify.SPF_LOOKUPS:
+            name = todo.pop(0)
+            if name in reached:
+                continue
+            reached.add(name)
+            found = verify.spf_record(await records(name) or [])
+            todo += verify.spf_links(found) if found else []
+        return frozenset(reached)
+
+    spf_txt = await records(domain)
+    reached = await spf_reached(spf_txt) if spf_txt is not None and spf_include else frozenset()
+    dmarc_txt = await records(f"_dmarc.{domain}")
+    dkim_name = f"{selector}._domainkey.{domain}"
+    dkim_txt = await records(dkim_name) if selector else []
+    found = {
+        "domain": domain,
+        "spf": _as_dict(failed(domain) if spf_txt is None
+                        else verify.spf(domain, spf_txt, spf_include, reached)),
+        "dkim": _as_dict(failed(dkim_name) if dkim_txt is None
+                         else verify.dkim(domain, selector, dkim_txt)),
+        "dmarc": _as_dict(failed(f"_dmarc.{domain}") if dmarc_txt is None
+                          else verify.dmarc(domain, dmarc_txt)),
+    }  # fmt: skip
+    async with workspace_session(sm, caller.workspace_id) as s:
+        await repo.save_dns(s, address_id, found)
+        saved = await repo.get_address(s, address_id)
+    if saved is None:  # deleted meanwhile
+        raise NotFound("Email address not found.")
+    return saved
 
 
 # Replies

@@ -36,7 +36,7 @@ async def desk(client: AsyncClient, sm: Sm, *, always_open: bool = True) -> dict
 
 
 async def calendar(sm: Sm, ws: UUID, *, days: list[int], always_open: bool = False) -> None:
-    """No editor yet (Phase 2): written straight to the table."""
+    """Written straight to the table (the editor, PUT /sla/calendar, has its own tests)."""
     async with workspace_session(sm, ws) as s:
         await s.execute(
             text(

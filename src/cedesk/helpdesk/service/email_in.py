@@ -20,6 +20,7 @@ from typing import Protocol
 from uuid import UUID
 
 from cedesk.db import workspace_session
+from cedesk.helpdesk.domain import email_verify as verify
 from cedesk.helpdesk.domain import inbound as rules
 from cedesk.helpdesk.domain.email import normalise_address
 from cedesk.helpdesk.domain.tickets import Channel
@@ -27,6 +28,7 @@ from cedesk.helpdesk.repo import email as repo
 from cedesk.helpdesk.service.attachments import IncomingFiles
 from cedesk.helpdesk.service.auth import Sessionmaker
 from cedesk.helpdesk.service.customer_replies import customer_reply
+from cedesk.helpdesk.service.email import verify_forwarding
 from cedesk.helpdesk.service.errors import Conflict
 from cedesk.helpdesk.service.tickets import NewTicket, create_from_channel
 from cedesk.storage import ObjectStore
@@ -46,6 +48,7 @@ class Outcome(StrEnum):
     automatic = "automatic"  # an auto-reply, bounce or list email: ignored
     from_us = "from_us"  # sent from one of our support addresses: ignored
     no_workspace = "no_workspace"  # not sent to any support address
+    verification = "verification"  # a forwarding check (md C10): never a ticket
     unreadable = "unreadable"
 
 
@@ -90,10 +93,21 @@ async def receive(
     except rules.InboundError as exc:
         logger.warning("email dropped", extra={"error": str(exc), "event": "email_in"})
         return Received(Outcome.unreadable)
+    extra = [a for a in (normalise_address(r) for r in recipients) if a is not None]
+
+    # Our own forwarding check coming back (before the "from us" and auto-reply checks:
+    # it is from the address itself, and a forwarder may mark it automatic).
+    code = verify.code_in(email.subject)
+    if code is not None:
+        async with sm() as s, s.begin():
+            found = await repo.workspace_for_addresses(s, [*email.to, *email.cc, *extra])
+        if found is None:
+            return Received(Outcome.no_workspace)
+        await verify_forwarding(sm, found[0], code)
+        return Received(Outcome.verification, workspace_id=found[0])
     if email.auto:
         return Received(Outcome.automatic)
 
-    extra = [a for a in (normalise_address(r) for r in recipients) if a is not None]
     async with sm() as s, s.begin():
         if await repo.is_support_address(s, email.from_address):
             return Received(Outcome.from_us)
