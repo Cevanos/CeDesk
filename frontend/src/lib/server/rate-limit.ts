@@ -1,8 +1,7 @@
 /**
- * Small in-memory fixed-window limiter, used on credential endpoints to blunt
- * brute force. It is per server instance: behind several replicas the effective
- * limit is `limit x replicas`, so keep the backend's own limiter as the
- * authority. This is defence in depth, not the only line.
+ * In-memory fixed-window limiter for credential endpoints. Per instance, so with
+ * several replicas the real limit is `limit x replicas`; the backend limiter is
+ * still the authority.
  */
 export interface Limiter {
   /** Returns `{ ok: true }` or `{ ok: false, retryAfter }` (seconds). */

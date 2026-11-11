@@ -1,9 +1,6 @@
 import type { Role } from "@/lib/api/types";
 
-/**
- * Role matrix from the guide (section 4). The UI hides or disables what a
- * role cannot do; the API still enforces it with 403.
- */
+/** Role matrix. The UI only hides/disables things; the API still enforces with 403. */
 const RANK: Record<Role, number> = {
   light_agent: 0,
   agent: 1,

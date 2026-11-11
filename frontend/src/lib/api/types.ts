@@ -1,4 +1,4 @@
-/** Domain types for the CDesk API (Phase 1). Source: CDESK_FRONTEND_GUIDE.md */
+/** Domain types for the CDesk API. Source: CDESK_FRONTEND_GUIDE.md */
 
 export type Role = "light_agent" | "agent" | "supervisor" | "admin";
 export type TicketStatus = "open" | "pending" | "resolved";
@@ -206,8 +206,6 @@ export interface ContactTickets {
   items: TicketSummary[];
   next_cursor?: string | null;
 }
-
-/* ---- Phase 1 additions ---- */
 
 export interface SlaTarget {
   priority: Priority;

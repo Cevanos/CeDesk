@@ -1,8 +1,4 @@
-/**
- * Browser-side API client. Every call goes to this app's own /api/* proxy,
- * never to the real backend, and carries no credentials in JS (the session is
- * an httpOnly cookie the browser attaches by itself).
- */
+/** Browser-side API client. Talks to our own /api/* proxy only; the session cookie is httpOnly. */
 
 export interface FieldError {
   field: string;
@@ -39,7 +35,7 @@ export class ApiError extends Error {
     this.retryAfter = init.retryAfter ?? null;
   }
 
-  /** Message to show the user, per the guide's status table. */
+  /** Message to show the user. */
   get userMessage(): string {
     switch (this.status) {
       case 401:
@@ -170,7 +166,6 @@ export async function request<T>(path: string, opts: RequestOptions = {}): Promi
   return { data: (text ? JSON.parse(text) : undefined) as T, etag };
 }
 
-/** Convenience: just the data. */
 export const api = {
   get: <T>(path: string, query?: Query, signal?: AbortSignal) =>
     request<T>(path, { query, signal }).then((r) => r.data),
@@ -183,10 +178,7 @@ export const api = {
   delete: <T>(path: string) => request<T>(path, { method: "DELETE" }).then((r) => r.data),
 };
 
-/**
- * The guide doesn't spell out list envelopes, so accept a bare array or an
- * object whose list lives under any key (`items`, `tickets`, `data`, ...).
- */
+/** List envelopes aren't consistent, so accept a bare array or a list under any key. */
 export function listOf<T>(d: unknown): T[] {
   if (Array.isArray(d)) return d as T[];
   if (d && typeof d === "object") {
@@ -213,7 +205,7 @@ export function listOf<T>(d: unknown): T[] {
 }
 
 /**
- * One `Idempotency-Key` per user action (guide 3.2). Call `header()` when
+ * One `Idempotency-Key` per user action. Call `header()` when
  * sending: it makes a key the first time and returns the SAME key on every
  * retry. Call `done()` once the action succeeded (or the input changed) so the
  * next click gets a fresh key.

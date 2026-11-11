@@ -1,14 +1,11 @@
 /**
- * Content-Security-Policy, built per request so scripts can be allowed by a
- * fresh nonce instead of `'unsafe-inline'`.
+ * CSP built per request, so scripts are allowed by a nonce instead of 'unsafe-inline'.
  *
- * `connect-src 'self'` is the important line: the browser may only talk to this
- * origin. The real backend is reached through the server-side proxy at /api/*,
- * so its address never appears in any bundle, network panel or CSP.
+ * connect-src 'self' keeps the browser talking only to this origin; the backend
+ * is reached through the /api proxy so its address never shows up client side.
  *
- * `style-src 'unsafe-inline'` remains: React inline `style` props and the
- * emotion styles used by react-select need it, and style injection is a far
- * smaller risk than script injection.
+ * style-src still needs 'unsafe-inline' for React style props and react-select's
+ * emotion styles. Style injection is a much smaller risk than script injection.
  */
 export function buildCsp(nonce: string, isDev: boolean): string {
   return [

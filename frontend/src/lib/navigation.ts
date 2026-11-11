@@ -1,8 +1,4 @@
-/**
- * Full-page navigation. Used where a client-side transition would be wrong:
- * ending a session must drop every in-memory cache and React state, which only
- * a real document load guarantees.
- */
+/** Full page load, for when a client-side transition would keep stale caches (e.g. sign-out). */
 export function hardNavigate(url: string) {
   window.location.href = url;
 }

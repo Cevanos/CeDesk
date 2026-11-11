@@ -1,9 +1,6 @@
 import { z } from "zod";
 
-/**
- * Server environment, validated once. Deliberately free of `server-only` so it
- * can also run from `instrumentation.ts`; it only ever reads `process.env`.
- */
+/** Validated server env. No `server-only` import so instrumentation.ts can use it too. */
 const schema = z.object({
   CDESK_API_URL: z
     .string()

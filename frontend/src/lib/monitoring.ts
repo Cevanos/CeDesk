@@ -1,12 +1,12 @@
 /**
- * One seam for error reporting and product telemetry. Nothing else in the app
- * imports a vendor SDK, so adopting Sentry (or anything else) is a single call:
+ * Single place for error reporting and telemetry. Nothing else imports a vendor
+ * SDK, so adopting Sentry is one call:
  *
  *   // src/instrumentation-client.ts
  *   import * as Sentry from "@sentry/nextjs";
  *   setErrorReporter((e, ctx) => Sentry.captureException(e, { extra: ctx }));
  *
- * Until then errors go to the console so nothing is swallowed silently.
+ * Until then errors just go to the console.
  */
 export type ErrorContext = Record<string, unknown>;
 export type ErrorReporter = (error: unknown, context?: ErrorContext) => void;
