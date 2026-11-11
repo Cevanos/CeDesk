@@ -44,7 +44,7 @@ export function useReorderMacros() {
   });
 }
 
-/** Run a macro on a ticket: `If-Match` + `Idempotency-Key` (guide 3.3, 3.2). */
+/** Run a macro on a ticket: `If-Match` + `Idempotency-Key`. */
 export function useRunMacro(ticketId: string) {
   const qc = useQueryClient();
   const [runKey] = useState(createIdempotency);

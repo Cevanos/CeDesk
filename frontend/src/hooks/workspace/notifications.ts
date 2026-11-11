@@ -6,7 +6,7 @@ import { api, listOf } from "@/lib/api/client";
 import { queryKeys } from "@/lib/api/query-keys";
 import type { NotificationList } from "@/lib/api/types";
 
-/* ---- notifications: no push in Phase 1, poll every 30 s (guide §5.2) ---- */
+// no push yet, so poll every 30s
 export function useNotifications() {
   return useQuery({
     queryKey: queryKeys.notifications.list(),
