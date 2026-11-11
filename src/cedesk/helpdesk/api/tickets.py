@@ -106,6 +106,8 @@ def _ticket_out(view: TicketView) -> TicketOut:
         vip=t["contact_vip"],
         customer_since=t["contact_since"],
         other_tickets=view.other_tickets,
+        csat_average=t["contact_csat_average"],
+        csat_count=t["contact_csat_count"],
     )
     return TicketOut.model_validate(
         {

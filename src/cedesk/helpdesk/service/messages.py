@@ -1,7 +1,8 @@
 """Agent replies, private notes with @mentions, and each member's notifications.
 
-A reply goes to the customer (on an email ticket it is queued to be emailed; on a Cevanos
-chat the worker sends it with the connector, after Accept); a note is for the team only.
+A reply goes to the customer (on an email or web form ticket it is queued to be emailed;
+on a Cevanos chat the worker sends it with the connector, after Accept); a note is for
+the team only.
 Neither changes the ticket's status (T17).
 """
 
@@ -31,6 +32,7 @@ from cedesk.helpdesk.service.members import require
 
 BODY_MAX = 50_000
 MAX_MENTIONS = 20
+WEB_FORM_SOURCE = "web_form"  # web tickets from the public form (agents' own are `web` too)
 NOT_ACCEPTED = "Accept the chat first. Notes are allowed before that."
 NO_FILES_ON_CHAT = "Files can't be sent into a Cevanos chat. Add them to a note instead."
 
@@ -95,7 +97,11 @@ async def add_message(
         author_member_id=caller.member_id,
         author_name=who,
     )
-    emailed = kind is MessageKind.reply and detail["channel"] == "email"
+    # Email and web form customers hear back by email (a web form ticket has no other way).
+    # Tickets agents make themselves are `web` too, but not from the form: not emailed.
+    emailed = kind is MessageKind.reply and (
+        detail["channel"] == "email" or detail["source"] == WEB_FORM_SOURCE
+    )
     # Before the email is queued: the worker reads the files from the message.
     await attachments.attach_to_message(
         s, caller, ticket_id, message_id, attachment_ids, emailed=emailed

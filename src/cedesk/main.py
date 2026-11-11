@@ -20,6 +20,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from cedesk import logs
 from cedesk.cevanos_client import make_cevanos
 from cedesk.db import make_engine, make_sessionmaker
+from cedesk.helpdesk.api import articles as articles_api
 from cedesk.helpdesk.api import attachments as attachments_api
 from cedesk.helpdesk.api import auth as auth_api
 from cedesk.helpdesk.api import catalog as catalog_api
@@ -30,6 +31,8 @@ from cedesk.helpdesk.api import macros as macros_api
 from cedesk.helpdesk.api import members as members_api
 from cedesk.helpdesk.api import messages as messages_api
 from cedesk.helpdesk.api import outbox as outbox_api
+from cedesk.helpdesk.api import portal as portal_api
+from cedesk.helpdesk.api import public as public_api
 from cedesk.helpdesk.api import routing as routing_api
 from cedesk.helpdesk.api import rules as rules_api
 from cedesk.helpdesk.api import saved_replies as saved_replies_api
@@ -123,6 +126,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.attempts = SlidingWindowLimiter(
         settings.sign_in_limit, settings.sign_in_window_seconds
     )
+    # The public web form has its own budget, so form posts never use up sign-ins.
+    app.state.form_attempts = SlidingWindowLimiter(
+        settings.form_limit, settings.form_window_seconds
+    )
+    app.state.vote_attempts = SlidingWindowLimiter(
+        settings.vote_limit, settings.vote_window_seconds
+    )
+    app.state.public_attempts = SlidingWindowLimiter(
+        settings.public_limit, settings.public_window_seconds
+    )
 
     @app.middleware("http")
     async def request_log(request: Request, call_next: Any) -> Response:
@@ -206,8 +219,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             CORSMiddleware,
             allow_origins=origins,
             allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
-            allow_headers=["Authorization", "Content-Type", "If-Match", "X-Request-ID"],
-            expose_headers=["ETag", "X-Request-ID", "Retry-After"],
+            allow_headers=[
+                "Authorization",
+                "Content-Type",
+                "If-Match",
+                "Idempotency-Key",
+                "X-Request-ID",
+            ],
+            expose_headers=["ETag", "X-Request-ID", "Retry-After", "Idempotent-Replayed"],
             max_age=600,
         )
 
@@ -227,6 +246,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(email_in_api.router, prefix="/api/v1")
     app.include_router(sla_api.router, prefix="/api/v1")
     app.include_router(outbox_api.router, prefix="/api/v1")
+    app.include_router(portal_api.router, prefix="/api/v1")
+    app.include_router(public_api.router, prefix="/api/v1")
+    app.include_router(articles_api.router, prefix="/api/v1")
 
     @app.get("/healthz", tags=["health"], summary="The process is up")
     async def healthz() -> dict[str, str]:

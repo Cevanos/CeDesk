@@ -1452,7 +1452,7 @@
         "tags": [
           "ticket types"
         ],
-        "summary": "Rename, change fields or skill (Admin)",
+        "summary": "Rename, change fields or skill, show or hide for customers (Admin)",
         "operationId": "change_type_api_v1_ticket_types__type_id__patch",
         "security": [
           {
@@ -3743,6 +3743,1569 @@
         }
       }
     },
+    "/api/v1/portal/{workspace}/code": {
+      "post": {
+        "tags": [
+          "portal"
+        ],
+        "summary": "Email me a sign-in code (customer)",
+        "description": "Always 202 for a valid email, whether or not we know it (and for an unknown workspace), so it can't be used to find customers. The code has 6 digits and works for 10 minutes; a new code replaces the last one; at most 5 per hour.",
+        "operationId": "request_code_api_v1_portal__workspace__code_post",
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 40,
+              "title": "Workspace"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CodeBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "403": {
+            "description": "This portal is limited to some email domains (the message says which: show it)"
+          },
+          "422": {
+            "description": "Not an email address"
+          },
+          "429": {
+            "description": "Too many attempts from this address; see Retry-After"
+          }
+        }
+      }
+    },
+    "/api/v1/portal/{workspace}/session": {
+      "post": {
+        "tags": [
+          "portal"
+        ],
+        "summary": "Sign in with the emailed code (customer)",
+        "operationId": "sign_in_api_v1_portal__workspace__session_post",
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 40,
+              "title": "Workspace"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SessionBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PortalSignedInOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Wrong, used or expired code (same answer for every reason). After 5 wrong tries the code stops working"
+          },
+          "403": {
+            "description": "The portal is now limited to other email domains"
+          },
+          "429": {
+            "description": "Too many attempts from this address; see Retry-After"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/portal/me": {
+      "get": {
+        "tags": [
+          "portal"
+        ],
+        "summary": "The signed-in customer",
+        "operationId": "me_api_v1_portal_me_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerOut"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/portal/sign-out": {
+      "post": {
+        "tags": [
+          "portal"
+        ],
+        "summary": "Sign out (customer)",
+        "operationId": "sign_out_api_v1_portal_sign_out_post",
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/portal-settings": {
+      "get": {
+        "tags": [
+          "portal"
+        ],
+        "summary": "Portal settings (Admin)",
+        "operationId": "get_settings_api_v1_portal_settings_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PortalSettingsOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Admins only"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "portal"
+        ],
+        "summary": "Save the portal settings (Admin)",
+        "operationId": "save_settings_api_v1_portal_settings_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PortalSettingsIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PortalSettingsOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Admins only"
+          },
+          "422": {
+            "description": "Not a domain"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/portal/ticket-types": {
+      "get": {
+        "tags": [
+          "portal"
+        ],
+        "summary": "Ticket types to pick from on New ticket (customer)",
+        "operationId": "ticket_types_api_v1_portal_ticket_types_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PortalTypeOut"
+                  },
+                  "type": "array",
+                  "title": "Response Ticket Types Api V1 Portal Ticket Types Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/portal/tickets": {
+      "get": {
+        "tags": [
+          "portal"
+        ],
+        "summary": "My tickets (customer)",
+        "operationId": "my_tickets_api_v1_portal_tickets_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PortalTicketsOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "portal"
+        ],
+        "summary": "Open a ticket (customer)",
+        "description": "Rules, auto-assignment and SLA run as for any new ticket (channel `portal`). The subject is the first 60 characters of `message`.",
+        "operationId": "open_ticket_api_v1_portal_tickets_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewPortalTicketIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PortalTicketOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Empty message, unknown type, or a field missing or wrong"
+          },
+          "429": {
+            "description": "Over 10 new tickets in an hour; see Retry-After"
+          }
+        }
+      }
+    },
+    "/api/v1/portal/tickets/{ticket_id}": {
+      "get": {
+        "tags": [
+          "portal"
+        ],
+        "summary": "One of my tickets (customer)",
+        "operationId": "my_ticket_api_v1_portal_tickets__ticket_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "ticket_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Ticket Id"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PortalTicketOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found, or not this customer's"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/portal/tickets/{ticket_id}/messages": {
+      "post": {
+        "tags": [
+          "portal"
+        ],
+        "summary": "Reply on my ticket (customer)",
+        "description": "A reply on a resolved ticket reopens it, unless it is only a thank-you.",
+        "operationId": "reply_api_v1_portal_tickets__ticket_id__messages_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "ticket_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Ticket Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PortalReplyIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PortalTicketOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found, or not this customer's"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/portal/attachments/{attachment_id}": {
+      "get": {
+        "tags": [
+          "portal"
+        ],
+        "summary": "A short-lived link to a file on my ticket (customer)",
+        "description": "Only files on messages the customer can see. 409 when the file failed the virus scan or (with scanning on) is still being checked.",
+        "operationId": "download_api_v1_portal_attachments__attachment_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "attachment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Attachment Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PortalDownloadOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found, or not on this customer's messages"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/portal/tickets/{ticket_id}/csat": {
+      "post": {
+        "tags": [
+          "portal"
+        ],
+        "summary": "Rate my resolved ticket (customer)",
+        "description": "Rating again changes it. Adds a line for the agents.",
+        "operationId": "rate_my_ticket_api_v1_portal_tickets__ticket_id__csat_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "ticket_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Ticket Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RatingIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CsatOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found, or not this customer's"
+          },
+          "409": {
+            "description": "The ticket is not resolved"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/public/csat/{token}": {
+      "get": {
+        "tags": [
+          "portal"
+        ],
+        "summary": "The rating page behind an emailed survey link (no sign-in)",
+        "description": "The page reads the token from the link's `#token=` and an optional `?score=` (the star the customer clicked in the email).",
+        "operationId": "rating_page_api_v1_public_csat__token__get",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 10,
+              "maxLength": 200,
+              "title": "Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RatingPageOut"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "The link is invalid or expired (30 days)"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "portal"
+        ],
+        "summary": "Rate a ticket from the emailed survey link (no sign-in)",
+        "description": "Rating again (within 30 days) changes it.",
+        "operationId": "rate_by_link_api_v1_public_csat__token__post",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 10,
+              "maxLength": 200,
+              "title": "Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RatingIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CsatOut"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "The link is invalid or expired (30 days)"
+          },
+          "409": {
+            "description": "The ticket was reopened"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/public/{workspace}/form": {
+      "get": {
+        "tags": [
+          "public"
+        ],
+        "summary": "The web form: ticket types and their fields (no sign-in)",
+        "operationId": "get_form_api_v1_public__workspace__form_get",
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Workspace"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FormOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown workspace, or its web form is off"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "public"
+        ],
+        "summary": "Send the web form: makes a ticket (no sign-in)",
+        "description": "Channel `web`; rules, auto-assignment and SLA run as for any new ticket. Agent replies reach the customer by email. No ticket number comes back (anyone can post here).",
+        "operationId": "send_form_api_v1_public__workspace__form_post",
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Workspace"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FormIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FormReceivedOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown workspace, or its web form is off"
+          },
+          "422": {
+            "description": "Bad email, empty message, unknown type, or a field wrong"
+          },
+          "429": {
+            "description": "Too many posts from this IP, or over 5 an hour from this email"
+          }
+        }
+      }
+    },
+    "/api/v1/public/{workspace}/articles": {
+      "get": {
+        "tags": [
+          "public"
+        ],
+        "summary": "The help center: categories, articles, search (no sign-in)",
+        "operationId": "help_center_api_v1_public__workspace__articles_get",
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Workspace"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Search words",
+              "title": "Q"
+            },
+            "description": "Search words"
+          },
+          {
+            "name": "category_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Category Id"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HelpCenterOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown workspace"
+          },
+          "429": {
+            "description": "Too many requests from this IP"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/public/{workspace}/articles/{article_id}": {
+      "get": {
+        "tags": [
+          "public"
+        ],
+        "summary": "One published article (no sign-in)",
+        "operationId": "public_article_api_v1_public__workspace__articles__article_id__get",
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Workspace"
+            }
+          },
+          {
+            "name": "article_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Article Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicArticleOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown workspace, or not a published article"
+          },
+          "429": {
+            "description": "Too many requests from this IP"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/public/{workspace}/articles/{article_id}/vote": {
+      "post": {
+        "tags": [
+          "public"
+        ],
+        "summary": "\"Was this helpful?\" (no sign-in)",
+        "operationId": "vote_api_v1_public__workspace__articles__article_id__vote_post",
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Workspace"
+            }
+          },
+          {
+            "name": "article_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Article Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VoteIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "Not a published article"
+          },
+          "429": {
+            "description": "Too many"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/article-categories": {
+      "get": {
+        "tags": [
+          "help center"
+        ],
+        "summary": "Categories",
+        "operationId": "list_categories_api_v1_article_categories_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CategoryOut"
+                  },
+                  "type": "array",
+                  "title": "Response List Categories Api V1 Article Categories Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "help center"
+        ],
+        "summary": "Add a category (Admin)",
+        "operationId": "create_category_api_v1_article_categories_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CategoryIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CategoryOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Admins only"
+          },
+          "409": {
+            "description": "That name is taken"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/article-categories/{category_id}": {
+      "patch": {
+        "tags": [
+          "help center"
+        ],
+        "summary": "Rename or move a category (Admin)",
+        "operationId": "update_category_api_v1_article_categories__category_id__patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "category_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Category Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CategoryPatch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CategoryOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Admins only"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "409": {
+            "description": "Name taken"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "help center"
+        ],
+        "summary": "Delete a category; its articles stay, with no category (Admin)",
+        "operationId": "delete_category_api_v1_article_categories__category_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "category_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Category Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Admins only"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/articles": {
+      "get": {
+        "tags": [
+          "help center"
+        ],
+        "summary": "Articles, drafts included",
+        "operationId": "list_articles_api_v1_articles_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Search words",
+              "title": "Q"
+            },
+            "description": "Search words"
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ArticleStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "name": "category_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Category Id"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArticlesOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "help center"
+        ],
+        "summary": "Write an article (Admin)",
+        "operationId": "create_article_api_v1_articles_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ArticleIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArticleOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Admins only"
+          },
+          "422": {
+            "description": "Unknown category, or too long"
+          }
+        }
+      }
+    },
+    "/api/v1/articles/{article_id}": {
+      "get": {
+        "tags": [
+          "help center"
+        ],
+        "summary": "One article",
+        "operationId": "get_article_api_v1_articles__article_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "article_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Article Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArticleOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "help center"
+        ],
+        "summary": "Edit, publish or unpublish an article (Admin)",
+        "description": "Send only what changes. `status: published` puts it in the public help center; `draft` takes it out.",
+        "operationId": "update_article_api_v1_articles__article_id__patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "article_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Article Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ArticlePatch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArticleOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Admins only"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "422": {
+            "description": "Invalid"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "help center"
+        ],
+        "summary": "Delete an article and its votes (Admin)",
+        "operationId": "delete_article_api_v1_articles__article_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "article_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Article Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Admins only"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/healthz": {
       "get": {
         "tags": [
@@ -3932,6 +5495,252 @@
         ],
         "title": "AgentStatus"
       },
+      "ArticleIn": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Title"
+          },
+          "body": {
+            "type": "string",
+            "maxLength": 100000,
+            "title": "Body",
+            "default": ""
+          },
+          "status": {
+            "$ref": "#/components/schemas/ArticleStatus",
+            "default": "draft"
+          },
+          "category_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "title"
+        ],
+        "title": "ArticleIn"
+      },
+      "ArticleOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "body": {
+            "type": "string",
+            "title": "Body",
+            "description": "Markdown. Render it without raw HTML."
+          },
+          "status": {
+            "$ref": "#/components/schemas/ArticleStatus"
+          },
+          "category_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Id"
+          },
+          "category_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Name"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "published_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published At",
+            "description": "When it first went live."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "updated_by_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated By Name"
+          },
+          "helpful_count": {
+            "type": "integer",
+            "title": "Helpful Count",
+            "description": "\"Was this helpful?\" yes votes."
+          },
+          "not_helpful_count": {
+            "type": "integer",
+            "title": "Not Helpful Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "body",
+          "status",
+          "category_id",
+          "category_name",
+          "source",
+          "published_at",
+          "created_at",
+          "updated_at",
+          "updated_by_name",
+          "helpful_count",
+          "not_helpful_count"
+        ],
+        "title": "ArticleOut"
+      },
+      "ArticlePatch": {
+        "properties": {
+          "title": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "body": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Body"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ArticleStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "category_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Id",
+            "description": "null: no category."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ArticlePatch"
+      },
+      "ArticleStatus": {
+        "type": "string",
+        "enum": [
+          "draft",
+          "published"
+        ],
+        "title": "ArticleStatus"
+      },
+      "ArticlesOut": {
+        "properties": {
+          "articles": {
+            "items": {
+              "$ref": "#/components/schemas/ArticleOut"
+            },
+            "type": "array",
+            "title": "Articles",
+            "description": "Newest first; with `q`, best match first."
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor",
+            "description": "null with `q` (the best 20 only)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "articles",
+          "next_cursor"
+        ],
+        "title": "ArticlesOut"
+      },
       "AttachmentOut": {
         "properties": {
           "id": {
@@ -4090,6 +5899,111 @@
         ],
         "title": "CalendarOut"
       },
+      "CategoryIn": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "position": {
+            "type": "integer",
+            "maximum": 10000.0,
+            "minimum": 0.0,
+            "title": "Position",
+            "description": "Lower shows first.",
+            "default": 0
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "CategoryIn"
+      },
+      "CategoryOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "position": {
+            "type": "integer",
+            "title": "Position"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source",
+            "description": "Set on imported categories, e.g. zendesk."
+          },
+          "article_count": {
+            "type": "integer",
+            "title": "Article Count"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "position",
+          "source",
+          "article_count",
+          "created_at"
+        ],
+        "title": "CategoryOut"
+      },
+      "CategoryPatch": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "position": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 10000.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Position"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "CategoryPatch"
+      },
       "ChangeMemberBody": {
         "properties": {
           "name": {
@@ -4175,6 +6089,23 @@
           "messaging"
         ],
         "title": "ChannelGroup"
+      },
+      "CodeBody": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "maxLength": 254,
+            "minLength": 3,
+            "pattern": "^[^@\\s]+@[^@\\s]+$",
+            "title": "Email"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "email"
+        ],
+        "title": "CodeBody"
       },
       "ConnectionIn": {
         "properties": {
@@ -4336,6 +6267,23 @@
           "other_tickets": {
             "type": "integer",
             "title": "Other Tickets"
+          },
+          "csat_average": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Csat Average",
+            "description": "Average of this customer's ratings, 1-5; null: none yet."
+          },
+          "csat_count": {
+            "type": "integer",
+            "title": "Csat Count",
+            "default": 0
           }
         },
         "type": "object",
@@ -4529,6 +6477,67 @@
           "resolved"
         ],
         "title": "Counts"
+      },
+      "CsatOut": {
+        "properties": {
+          "score": {
+            "type": "integer",
+            "title": "Score",
+            "description": "1-5"
+          },
+          "comment": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comment"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source",
+            "description": "portal or email"
+          },
+          "rated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Rated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "score",
+          "comment",
+          "source",
+          "rated_at"
+        ],
+        "title": "CsatOut"
+      },
+      "CustomerOut": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "title": "Email"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "workspace_name": {
+            "type": "string",
+            "title": "Workspace Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "email",
+          "name",
+          "workspace_name"
+        ],
+        "title": "CustomerOut"
       },
       "CustomerReplyBody": {
         "properties": {
@@ -5124,6 +7133,140 @@
         ],
         "title": "ForgotPasswordBody"
       },
+      "FormIn": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 100,
+            "title": "Name",
+            "default": ""
+          },
+          "email": {
+            "type": "string",
+            "maxLength": 320,
+            "minLength": 3,
+            "title": "Email"
+          },
+          "message": {
+            "type": "string",
+            "maxLength": 50000,
+            "minLength": 1,
+            "title": "Message",
+            "description": "Its first 60 characters become the subject."
+          },
+          "type_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Type Id"
+          },
+          "fields": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "object",
+            "maxProperties": 30,
+            "title": "Fields",
+            "default": {}
+          },
+          "website": {
+            "type": "string",
+            "maxLength": 500,
+            "title": "Website",
+            "description": "Honeypot: render it hidden (off-screen, `tabindex=-1`, `autocomplete=\"off\"`) and always send it empty. Filled in: nothing is made.",
+            "default": ""
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "email",
+          "message"
+        ],
+        "title": "FormIn"
+      },
+      "FormOut": {
+        "properties": {
+          "workspace_name": {
+            "type": "string",
+            "title": "Workspace Name"
+          },
+          "types": {
+            "items": {
+              "$ref": "#/components/schemas/FormTypeOut"
+            },
+            "type": "array",
+            "title": "Types",
+            "description": "Show a type picker when there are any."
+          }
+        },
+        "type": "object",
+        "required": [
+          "workspace_name",
+          "types"
+        ],
+        "title": "FormOut"
+      },
+      "FormReceivedOut": {
+        "properties": {
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "Show this to the customer."
+          }
+        },
+        "type": "object",
+        "required": [
+          "message"
+        ],
+        "title": "FormReceivedOut"
+      },
+      "FormTypeOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "fields": {
+            "items": {
+              "$ref": "#/components/schemas/FieldDefOut"
+            },
+            "type": "array",
+            "title": "Fields"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "fields"
+        ],
+        "title": "FormTypeOut"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -5136,6 +7279,50 @@
         },
         "type": "object",
         "title": "HTTPValidationError"
+      },
+      "HelpCenterOut": {
+        "properties": {
+          "workspace_name": {
+            "type": "string",
+            "title": "Workspace Name"
+          },
+          "categories": {
+            "items": {
+              "$ref": "#/components/schemas/PublicCategoryOut"
+            },
+            "type": "array",
+            "title": "Categories",
+            "description": "Only ones with articles."
+          },
+          "articles": {
+            "items": {
+              "$ref": "#/components/schemas/PublicArticleRow"
+            },
+            "type": "array",
+            "title": "Articles",
+            "description": "Newest first; with `q`, best first."
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor",
+            "description": "null with `q` (the best 20 only)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "workspace_name",
+          "categories",
+          "articles",
+          "next_cursor"
+        ],
+        "title": "HelpCenterOut"
       },
       "HolidayOut": {
         "properties": {
@@ -5674,6 +7861,59 @@
         ],
         "title": "MessagePageOut"
       },
+      "NewPortalTicketIn": {
+        "properties": {
+          "message": {
+            "type": "string",
+            "maxLength": 50000,
+            "minLength": 1,
+            "title": "Message",
+            "description": "What happened. Its first 60 characters become the subject."
+          },
+          "type_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Type Id",
+            "description": "From GET /portal/ticket-types."
+          },
+          "fields": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "object",
+            "maxProperties": 30,
+            "title": "Fields",
+            "description": "The chosen type's fields, by key.",
+            "default": {}
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "message"
+        ],
+        "title": "NewPortalTicketIn"
+      },
       "NotificationOut": {
         "properties": {
           "id": {
@@ -5815,6 +8055,479 @@
         ],
         "title": "PolicyOut"
       },
+      "PortalDownloadOut": {
+        "properties": {
+          "url": {
+            "type": "string",
+            "title": "Url",
+            "description": "Opens the file without signing in, until `expires_at`."
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expires At"
+          },
+          "file": {
+            "$ref": "#/components/schemas/PortalFileOut"
+          }
+        },
+        "type": "object",
+        "required": [
+          "url",
+          "expires_at",
+          "file"
+        ],
+        "title": "PortalDownloadOut"
+      },
+      "PortalFileOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "size": {
+            "type": "integer",
+            "title": "Size"
+          },
+          "mime": {
+            "type": "string",
+            "title": "Mime"
+          },
+          "scan_status": {
+            "type": "string",
+            "title": "Scan Status",
+            "description": "infected / scan_failed: show as blocked, no link."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "size",
+          "mime",
+          "scan_status"
+        ],
+        "title": "PortalFileOut"
+      },
+      "PortalMessageOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "author": {
+            "type": "string",
+            "title": "Author",
+            "description": "\"You\", \"Acme assistant\" or \"Neha · Acme Support\"."
+          },
+          "from_customer": {
+            "type": "boolean",
+            "title": "From Customer",
+            "description": "true: show on the customer's side."
+          },
+          "body": {
+            "type": "string",
+            "title": "Body"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "attachments": {
+            "items": {
+              "$ref": "#/components/schemas/PortalFileOut"
+            },
+            "type": "array",
+            "title": "Attachments"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "author",
+          "from_customer",
+          "body",
+          "created_at",
+          "attachments"
+        ],
+        "title": "PortalMessageOut"
+      },
+      "PortalReplyIn": {
+        "properties": {
+          "body": {
+            "type": "string",
+            "maxLength": 50000,
+            "minLength": 1,
+            "title": "Body"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "body"
+        ],
+        "title": "PortalReplyIn"
+      },
+      "PortalSettingsIn": {
+        "properties": {
+          "allowed_domains": {
+            "items": {
+              "type": "string",
+              "maxLength": 253
+            },
+            "type": "array",
+            "maxItems": 50,
+            "title": "Allowed Domains",
+            "description": "Empty: anyone can sign in. Otherwise only these email domains (and their subdomains), e.g. [\"acme.com\"]."
+          },
+          "csat_survey": {
+            "type": "boolean",
+            "title": "Csat Survey",
+            "description": "Email a 1-5 survey when a ticket is resolved.",
+            "default": true
+          },
+          "web_form": {
+            "type": "boolean",
+            "title": "Web Form",
+            "description": "The public contact form (`/public/{workspace}/form`) is open. Off: 404.",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "allowed_domains"
+        ],
+        "title": "PortalSettingsIn"
+      },
+      "PortalSettingsOut": {
+        "properties": {
+          "allowed_domains": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Allowed Domains"
+          },
+          "csat_survey": {
+            "type": "boolean",
+            "title": "Csat Survey"
+          },
+          "web_form": {
+            "type": "boolean",
+            "title": "Web Form"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "updated_by_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated By Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "allowed_domains",
+          "csat_survey",
+          "web_form",
+          "updated_at",
+          "updated_by_name"
+        ],
+        "title": "PortalSettingsOut"
+      },
+      "PortalSignedInOut": {
+        "properties": {
+          "token": {
+            "type": "string",
+            "title": "Token",
+            "description": "Send as `Authorization: Bearer <token>` on portal routes."
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expires At"
+          },
+          "customer": {
+            "$ref": "#/components/schemas/CustomerOut"
+          }
+        },
+        "type": "object",
+        "required": [
+          "token",
+          "expires_at",
+          "customer"
+        ],
+        "title": "PortalSignedInOut"
+      },
+      "PortalTicketOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label",
+            "description": "T-1001"
+          },
+          "subject": {
+            "type": "string",
+            "title": "Subject"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "description": "open, pending or resolved"
+          },
+          "status_label": {
+            "type": "string",
+            "title": "Status Label",
+            "description": "Show this: \"Open\", \"Waiting on you\", \"Resolved\""
+          },
+          "type_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Type Name"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "fields": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "object",
+            "title": "Fields"
+          },
+          "resolved_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolved At"
+          },
+          "csat": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CsatOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The customer's rating. Offer 1-5 stars when `status` is resolved."
+          },
+          "messages": {
+            "items": {
+              "$ref": "#/components/schemas/PortalMessageOut"
+            },
+            "type": "array",
+            "title": "Messages",
+            "description": "Customer, agent and AI messages only, oldest to newest (the latest page)."
+          },
+          "older_messages_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Older Messages Cursor",
+            "description": "Pass as `cursor` to load the page before these."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "label",
+          "subject",
+          "status",
+          "status_label",
+          "type_name",
+          "created_at",
+          "updated_at",
+          "fields",
+          "resolved_at",
+          "csat",
+          "messages",
+          "older_messages_cursor"
+        ],
+        "title": "PortalTicketOut"
+      },
+      "PortalTicketRow": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label",
+            "description": "T-1001"
+          },
+          "subject": {
+            "type": "string",
+            "title": "Subject"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "description": "open, pending or resolved"
+          },
+          "status_label": {
+            "type": "string",
+            "title": "Status Label",
+            "description": "Show this: \"Open\", \"Waiting on you\", \"Resolved\""
+          },
+          "type_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Type Name"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "label",
+          "subject",
+          "status",
+          "status_label",
+          "type_name",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "PortalTicketRow"
+      },
+      "PortalTicketsOut": {
+        "properties": {
+          "tickets": {
+            "items": {
+              "$ref": "#/components/schemas/PortalTicketRow"
+            },
+            "type": "array",
+            "title": "Tickets",
+            "description": "Newest first."
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tickets",
+          "next_cursor"
+        ],
+        "title": "PortalTicketsOut"
+      },
+      "PortalTypeOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "fields": {
+            "items": {
+              "$ref": "#/components/schemas/FieldDefOut"
+            },
+            "type": "array",
+            "title": "Fields"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "fields"
+        ],
+        "title": "PortalTypeOut"
+      },
       "Priority": {
         "type": "string",
         "enum": [
@@ -5824,6 +8537,201 @@
           "low"
         ],
         "title": "Priority"
+      },
+      "PublicArticleOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "category_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Id"
+          },
+          "category_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Name"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "body": {
+            "type": "string",
+            "title": "Body",
+            "description": "Markdown. Render it without raw HTML."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "category_id",
+          "category_name",
+          "updated_at",
+          "body"
+        ],
+        "title": "PublicArticleOut"
+      },
+      "PublicArticleRow": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "category_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Id"
+          },
+          "category_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Name"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "category_id",
+          "category_name",
+          "updated_at"
+        ],
+        "title": "PublicArticleRow"
+      },
+      "PublicCategoryOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "article_count": {
+            "type": "integer",
+            "title": "Article Count",
+            "description": "Published articles in it."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "article_count"
+        ],
+        "title": "PublicCategoryOut"
+      },
+      "RatingIn": {
+        "properties": {
+          "score": {
+            "type": "integer",
+            "maximum": 5.0,
+            "minimum": 1.0,
+            "title": "Score"
+          },
+          "comment": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comment"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "score"
+        ],
+        "title": "RatingIn"
+      },
+      "RatingPageOut": {
+        "properties": {
+          "workspace_name": {
+            "type": "string",
+            "title": "Workspace Name"
+          },
+          "ticket_label": {
+            "type": "string",
+            "title": "Ticket Label",
+            "description": "T-1001"
+          },
+          "subject": {
+            "type": "string",
+            "title": "Subject"
+          },
+          "rating": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CsatOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Already rated: show it, allow a change."
+          }
+        },
+        "type": "object",
+        "required": [
+          "workspace_name",
+          "ticket_label",
+          "subject",
+          "rating"
+        ],
+        "title": "RatingPageOut"
       },
       "ReceivedOut": {
         "properties": {
@@ -6371,6 +9279,31 @@
         ],
         "title": "Sentiment",
         "description": "Set by triage (keyword rules, Phase 2) or the Cevanos handover."
+      },
+      "SessionBody": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "maxLength": 254,
+            "minLength": 3,
+            "pattern": "^[^@\\s]+@[^@\\s]+$",
+            "title": "Email"
+          },
+          "code": {
+            "type": "string",
+            "maxLength": 20,
+            "minLength": 1,
+            "title": "Code",
+            "description": "The 6 digits from the email (spaces or a dash are fine)."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "email",
+          "code"
+        ],
+        "title": "SessionBody"
       },
       "SignInBody": {
         "properties": {
@@ -7218,6 +10151,17 @@
             "type": "object",
             "title": "Fields"
           },
+          "csat": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CsatOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The customer's rating of this ticket, if any."
+          },
           "first_reply_at": {
             "anyOf": [
               {
@@ -7733,6 +10677,12 @@
               }
             ],
             "title": "Required Skill"
+          },
+          "for_customers": {
+            "type": "boolean",
+            "title": "For Customers",
+            "description": "Customers can pick it in the portal and the web form.",
+            "default": true
           }
         },
         "additionalProperties": false,
@@ -7774,6 +10724,10 @@
               }
             ],
             "title": "Required Skill"
+          },
+          "for_customers": {
+            "type": "boolean",
+            "title": "For Customers"
           }
         },
         "type": "object",
@@ -7782,7 +10736,8 @@
           "name",
           "fields",
           "position",
-          "required_skill"
+          "required_skill",
+          "for_customers"
         ],
         "title": "TicketTypeOut"
       },
@@ -7830,6 +10785,18 @@
             ],
             "title": "Required Skill",
             "description": "null clears it."
+          },
+          "for_customers": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "For Customers",
+            "description": "false hides it from the portal and the web form."
           }
         },
         "additionalProperties": false,
@@ -7875,6 +10842,28 @@
           "type"
         ],
         "title": "ValidationError"
+      },
+      "VoteIn": {
+        "properties": {
+          "helpful": {
+            "type": "boolean",
+            "title": "Helpful"
+          },
+          "visitor": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 8,
+            "title": "Visitor",
+            "description": "A random id the page keeps for this browser (e.g. a UUID in localStorage). One vote per visitor per article; voting again changes it."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "helpful",
+          "visitor"
+        ],
+        "title": "VoteIn"
       },
       "WorkspaceOut": {
         "properties": {
