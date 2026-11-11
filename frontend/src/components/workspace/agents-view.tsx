@@ -92,7 +92,6 @@ export function AgentsView() {
         </Button>
       </header>
 
-      {/* summary */}
       <div className="mt-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
         {[
           { label: "Total agents", value: counts.all, dot: "bg-primary" },
@@ -114,7 +113,6 @@ export function AgentsView() {
         ))}
       </div>
 
-      {/* search + filters */}
       <div className="mt-6 flex flex-col gap-3 md:flex-row md:items-center">
         <div className="relative md:max-w-md md:flex-1">
           <Search
@@ -181,7 +179,6 @@ export function AgentsView() {
         </div>
       </div>
 
-      {/* grid */}
       <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {agents.isPending ? (
           Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-44 rounded-2xl" />)

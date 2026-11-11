@@ -131,7 +131,6 @@ function DrawerBody({
 
   return (
     <>
-      {/* hero */}
       <div className="relative overflow-hidden bg-nav px-6 pt-6 pb-14 text-white">
         <div
           aria-hidden
@@ -164,7 +163,6 @@ function DrawerBody({
         </div>
       </div>
 
-      {/* stats */}
       <div className="mt-5 grid grid-cols-3 gap-2.5 px-6">
         {[
           { label: "Open tickets", value: a.open_tickets },
