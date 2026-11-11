@@ -28,7 +28,7 @@ import type {
 export type { TicketFilters } from "@/lib/api/ticket-filters";
 export type { TicketPatch } from "@/lib/api/apply-ticket-patch";
 
-/** Cursor-paged ticket list (guide §3.4, §5.3). Counts come with every page. */
+/** Cursor-paged ticket list Counts come with every page. */
 export function useTickets(filters: TicketFilters) {
   return useInfiniteQuery({
     queryKey: queryKeys.tickets.list(filters),
@@ -58,7 +58,7 @@ export interface TicketWithEtag {
   etag: string | null;
 }
 
-/** A ticket together with the ETag needed for `If-Match` edits (guide §3.3). */
+/** A ticket together with the ETag needed for `If-Match` edits */
 export function useTicket(id: string) {
   return useQuery({
     queryKey: queryKeys.tickets.detail(id),
@@ -109,7 +109,7 @@ export function useCreateTicket() {
   });
 }
 
-/** Make a ticket from a Cevanos chat (guide 5.15). */
+/** Make a ticket from a Cevanos chat. */
 export function useTicketFromConversation() {
   const qc = useQueryClient();
   const [idem] = useState(createIdempotency);
@@ -173,7 +173,7 @@ function settle(qc: QueryClient, id: string) {
 
 /**
  * PATCH with `If-Match`. Applies the change to the cache immediately and rolls
- * back if the server refuses; a 409 then reloads the ticket (guide §3.3).
+ * back if the server refuses; a 409 then reloads the ticket
  */
 export function useUpdateTicket(id: string) {
   const qc = useQueryClient();
@@ -234,7 +234,7 @@ export function useAttachments(id: string) {
   });
 }
 
-/** Raw file body, not multipart (guide §5.6). Max 25 MB. */
+/** Raw file body, not multipart. Max 25 MB. */
 export function useUploadAttachment(id: string) {
   const qc = useQueryClient();
   // One key per file, reused if the same File is sent again after a failure.
