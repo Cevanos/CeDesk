@@ -18,7 +18,7 @@ export function formatMinutes(total: number): string {
 const LABEL = { first_reply: "First reply", resolve: "Resolution" } as const;
 
 /**
- * SLA pill for a ticket (guide 5.14). `on_track` grey, `close` amber,
+ * SLA pill for a ticket. `on_track` grey, `close` amber,
  * `breached` red "Overdue ...", `met` a tick (hidden in the compact list view).
  */
 export function SlaPill({
@@ -131,7 +131,7 @@ function ClockRow({
   );
 }
 
-/** Sidebar panel: both clocks with a progress bar each (guide 5.14). */
+/** Sidebar panel: both clocks with a progress bar each. */
 export function SlaPanel({ sla }: { sla?: TicketSla | null }) {
   if (!sla) {
     return <p className="text-sm text-muted-foreground">No SLA applies to this ticket.</p>;
