@@ -31,7 +31,7 @@ from cedesk.helpdesk.domain.tickets import Status, label
 from cedesk.helpdesk.repo import messages as message_repo
 from cedesk.helpdesk.repo import outbox
 from cedesk.helpdesk.repo import tickets as repo
-from cedesk.helpdesk.service import routing, sla
+from cedesk.helpdesk.service import routing, sla, triage
 from cedesk.helpdesk.service import rules as automation
 from cedesk.helpdesk.service.attachments import IncomingFiles, save_incoming
 from cedesk.helpdesk.service.auth import Sessionmaker
@@ -115,6 +115,13 @@ async def customer_reply(
             seen = await repo.message_by_channel_id(s, ticket_id, channel_message_id)
             if seen is not None:
                 return CustomerReply(seen, Outcome.duplicate)
+        # Card numbers out before saving (I5); the rules and the thank-you check read
+        # the cleaned text too.
+        cfg = await triage.config(s)
+        cleaned = triage.clean(cfg, body)
+        body = cleaned.text
+        email, email_numbers = triage.clean_email(cfg, email)
+        removed = len(cleaned.numbers | email_numbers)
         message_id = await repo.insert_message(
             s,
             workspace_id=workspace_id,
@@ -126,6 +133,10 @@ async def customer_reply(
             email=email,
             channel_message_id=channel_message_id,
         )
+        if removed:
+            await _line(s, workspace_id, ticket_id, triage.removed_line(removed))
+        # Topic and language from all they wrote; the mood from this message (I4).
+        await triage.retriage(s, ticket_id, newest=body, cfg=cfg)
         await save_incoming(
             s, files, workspace_id=workspace_id, ticket_id=ticket_id, message_id=message_id
         )

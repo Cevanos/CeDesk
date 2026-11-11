@@ -19,6 +19,7 @@ from cedesk.helpdesk.domain.routing import (
     channel_group,
     pick_agent,
 )
+from cedesk.helpdesk.domain.triage import SKILL_FOR_LANGUAGE
 from cedesk.helpdesk.repo import catalog
 from cedesk.helpdesk.repo import routing as repo
 from cedesk.helpdesk.repo.routing import Row
@@ -83,6 +84,7 @@ async def route(
         [_agent(r) for r in await repo.team_agents(s, team_id, ticket_id)],
         channel=channel,
         required_skill=ticket_type["required_skill"] if ticket_type else None,
+        language_skill=SKILL_FOR_LANGUAGE.get(str(await repo.ticket_language(s, ticket_id))),
     )
     if pick.agent is not None:
         await repo.move_pointer(s, team_id, pick.agent.member_id)

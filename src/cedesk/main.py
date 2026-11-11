@@ -33,11 +33,13 @@ from cedesk.helpdesk.api import messages as messages_api
 from cedesk.helpdesk.api import outbox as outbox_api
 from cedesk.helpdesk.api import portal as portal_api
 from cedesk.helpdesk.api import public as public_api
+from cedesk.helpdesk.api import reports as reports_api
 from cedesk.helpdesk.api import routing as routing_api
 from cedesk.helpdesk.api import rules as rules_api
 from cedesk.helpdesk.api import saved_replies as saved_replies_api
 from cedesk.helpdesk.api import sla as sla_api
 from cedesk.helpdesk.api import tickets as tickets_api
+from cedesk.helpdesk.api import triage as triage_api
 from cedesk.helpdesk.service.errors import ServiceError, TooManyAttempts
 from cedesk.ratelimit import SlidingWindowLimiter
 from cedesk.settings import Settings, get_settings
@@ -249,6 +251,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(portal_api.router, prefix="/api/v1")
     app.include_router(public_api.router, prefix="/api/v1")
     app.include_router(articles_api.router, prefix="/api/v1")
+    app.include_router(triage_api.router, prefix="/api/v1")
+    app.include_router(reports_api.router, prefix="/api/v1")
 
     @app.get("/healthz", tags=["health"], summary="The process is up")
     async def healthz() -> dict[str, str]:

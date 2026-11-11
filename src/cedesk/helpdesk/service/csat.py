@@ -29,6 +29,7 @@ from cedesk.helpdesk.repo import auth as auth_repo
 from cedesk.helpdesk.repo import csat as repo
 from cedesk.helpdesk.repo import email as email_repo
 from cedesk.helpdesk.repo import tickets as ticket_repo
+from cedesk.helpdesk.service import triage
 from cedesk.helpdesk.service.auth import Sessionmaker
 from cedesk.helpdesk.service.delivery import Event
 from cedesk.helpdesk.service.errors import Conflict, Gone, Invalid, NotFound
@@ -86,6 +87,8 @@ async def _save(
         raise NotFound("Ticket not found.")
     if ticket["status"] != "resolved" or ticket["merged_into_id"] is not None:
         raise Conflict(NOT_RESOLVED)
+    if comment:  # card numbers out, as in every customer message (I5)
+        comment = triage.clean(await triage.config(s), comment, rules.COMMENT_MAX).text
     before = await repo.for_ticket(s, ticket_id)
     await repo.save(
         s,

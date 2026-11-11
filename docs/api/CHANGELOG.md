@@ -3,6 +3,39 @@
 `openapi.json` next to this file is the API as served (`uv run cedesk openapi`). Every
 route is under `/api/v1`. Breaking changes only come in v2 (md 2B). Newest first.
 
+## 2026-11-11: Triage, card redaction and the team report (Phase 2, I1-I5, R1, R2, R6, W6)
+
+- Changed: every new ticket and every customer reply is triaged by keywords (no AI):
+  `topic` ("Refund / return", "Billing", "Delivery", "App problem", "General question"),
+  `sentiment` (negative / neutral / positive) and `language` ("hi", "en"; null when it
+  can't tell). These were null before unless Cevanos sent them. On a reply, topic and
+  language read the customer's first message and their 20 newest; the mood is the newest
+  message's, except that a mood Cevanos's AI sent (`conversation.classified`) is kept. Triage
+  runs before the rules, so the default "Upset customer goes first" rule now works on
+  every channel.
+- Changed: card numbers (13-19 digits, groups split by one space or dash, Luhn) are removed
+  before saving from customer messages, the subject, the stored email subject, text
+  fields filled in on a new ticket, Cevanos's AI chat lines and handover reason, and CSAT
+  comments:
+  "[card number removed]", with the system line "1 card number removed from the
+  customer's message". It can't be undone. Agent replies and notes are not touched.
+- Changed: portal and web form subjects are made from the message after redaction.
+- Changed: routing puts Hindi tickets (`language: "hi"`) first with agents who have the
+  skill `hindi` (`PATCH /agents/{id}/routing {"skills": ["hindi"]}`), after the ticket
+  type's skill. The line shows "skill hindi".
+- New (Admin): `GET/PUT /triage-settings` `{topics: [{name, keywords}] | null,
+  redact_cards}`. Each of the four topics once; `null` goes back to the built-in lists.
+  `keywords_are_default`, `general_topic`, `updated_by_name` in the answer.
+- New (Supervisor, Admin): `GET /reports/team?from&to&team_id` (default the last 30 days;
+  times with a time zone; at most 366 days). `summary`: open and open_breaching (now),
+  created, resolved, avg_first_response_minutes, avg_resolution_minutes,
+  first_reply_sla_met_percent (+ `first_reply_sla_measured`), csat {ratings, average,
+  happy_percent (4-5), by_score 5..1}. `teams[]` (with a "No team" row) and `agents[]`
+  (active members except light agents: role, status now, open, resolved, average first
+  response, CSAT). Imported tickets (`source` intercom, zendesk, freshdesk, gorgias,
+  helpscout, hubspot, zoho, csv) are left out of the time metrics; their CSAT counts.
+  Merged tickets are left out. 403 for agents, 404 unknown team, 422 bad period.
+
 ## 2026-11-11: Customer portal, CSAT, web form and help center (Phase 2, C2, P1-P6, S7)
 
 - New (customer, no agent login): `POST /portal/{workspace}/code` `{email}` → always 202

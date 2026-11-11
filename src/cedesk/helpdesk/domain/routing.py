@@ -108,9 +108,18 @@ def _after_pointer(agents: Sequence[Agent], pointer: UUID | None) -> list[Agent]
 
 
 def pick_agent(
-    team: Team, agents: Sequence[Agent], *, channel: str, required_skill: str | None
+    team: Team,
+    agents: Sequence[Agent],
+    *,
+    channel: str,
+    required_skill: str | None,
+    language_skill: str | None = None,
 ) -> Pick:
-    """`agents` in the team's fixed order (the order the Admin listed them)."""
+    """`agents` in the team's fixed order (the order the Admin listed them).
+
+    `required_skill`: the ticket type's; `language_skill`: "hindi" for a Hindi ticket
+    (md W6). Free agents with both go first, then those with the type's skill, then
+    those with the language, then anyone free."""
     if not team.auto_assign:
         return Pick(None, f"Left unassigned: auto-assign is off for {team.name}", ())
     if not agents:
@@ -126,19 +135,28 @@ def pick_agent(
         else:
             free.append(agent)
 
-    skill = (required_skill or "").strip().lower() or None
-    skilled = [a for a in free if skill in a.skills] if skill else []
-    if skill and free and not skilled:
-        skipped.append(f"nobody free has skill {required_skill}")
-    pool = skilled or free
+    wanted = [
+        (k, shown)
+        for k, shown in (
+            ((required_skill or "").strip().lower(), required_skill),
+            ((language_skill or "").strip().lower(), language_skill),
+        )
+        if k
+    ]
+    keys = [k for k, _ in wanted]
+    for key, shown in wanted:
+        if free and not any(key in a.skills for a in free):
+            skipped.append(f"nobody free has skill {shown}")
+    pools = [[a for a in free if all(k in a.skills for k in keys)]] if keys else []
+    pools += [[a for a in free if k in a.skills] for k in keys]
+    pool = next((p for p in pools if p), free)
     chosen = pool[0] if pool else None
 
     tail = f" · skipped: {'; '.join(skipped)}" if skipped else ""
     if chosen is None:
         return Pick(None, f"Left unassigned in {team.name}: nobody is free{tail}", tuple(skipped))
     parts = [team.name]
-    if skill and chosen in skilled:
-        parts.append(f"skill {required_skill}")
+    parts += [f"skill {shown}" for key, shown in wanted if key in chosen.skills]
     load = chosen.open_by_group.get(group, 0) + 1
     parts.append(f"{GROUP_LABEL[group]} {load} of {chosen.caps.get(group, 0)}")
     line = f"Auto-assigned to {chosen.name} ({' · '.join(parts)}){tail}"
