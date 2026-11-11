@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/) and commits follow [Conventional Commits](https://www.conventionalcommits.org).
+Notable changes are listed here. The format follows [Keep a Changelog](https://keepachangelog.com/), and commits follow [Conventional Commits](https://www.conventionalcommits.org).
 
 ## [Unreleased]
 
@@ -15,7 +15,7 @@ All notable changes are recorded here. The format follows [Keep a Changelog](htt
 - Per-request CSP nonce, sign-in rate limiting, Zod-validated environment, `/api/health`.
 - Dockerfile (standalone output), bundle analyser script, OpenAPI type generation script.
 - next-intl scaffolding with `messages/en.json`; development-only component gallery at `/dev/ui`.
-- ADRs, CONTRIBUTING, expanded README.
+- ADRs, CONTRIBUTING, and a longer README.
 
 ### Changed
 
