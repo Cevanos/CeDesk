@@ -5,7 +5,6 @@ import * as React from "react";
 
 import { cn } from "@/lib/utils";
 
-/* ----------------------------- Button ----------------------------- */
 type Variant = "primary" | "secondary" | "ghost" | "danger" | "outline";
 type Size = "sm" | "md" | "lg" | "icon";
 
@@ -63,7 +62,6 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(function 
   );
 });
 
-/* ----------------------------- Field ------------------------------ */
 const controlBase =
   "w-full rounded-lg border border-input bg-surface px-3 text-sm text-foreground placeholder:text-subtle-foreground transition-colors hover:border-border-strong focus:border-primary focus:outline-none focus:ring-4 focus:ring-primary/15 disabled:cursor-not-allowed disabled:opacity-50 aria-[invalid=true]:border-danger aria-[invalid=true]:focus:ring-danger/15";
 
@@ -126,7 +124,6 @@ export function Field({
   );
 }
 
-/* ----------------------------- Card ------------------------------- */
 export function Card({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
   return (
     <div
@@ -136,7 +133,6 @@ export function Card({ className, ...props }: React.HTMLAttributes<HTMLDivElemen
   );
 }
 
-/* ----------------------------- Badge ------------------------------ */
 const TONES = {
   neutral: "bg-surface-2 text-muted-foreground",
   primary: "bg-primary-soft text-primary-ink",
@@ -164,7 +160,6 @@ export function Badge({
   );
 }
 
-/* ---------------------------- Skeleton ---------------------------- */
 export function Skeleton({ className }: { className?: string }) {
   return <div aria-hidden className={cn("animate-pulse rounded-md bg-surface-3", className)} />;
 }
