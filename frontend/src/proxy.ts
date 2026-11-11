@@ -6,12 +6,12 @@ import { safeNext } from "@/lib/safe-next";
 /**
  * Route guard + CSP (Next 16 `proxy`, formerly middleware).
  *
- * Guard: optimistic check only. It looks for the session cookie so signed-out
- * users never see an app screen flash. The real authority is the backend, which
- * rejects a bad token with 401 and the API proxy then clears the cookie.
+ * The guard only checks for the session cookie so signed-out users don't see a
+ * flash of the app. The backend is the real authority: a bad token gets a 401
+ * and the API proxy clears the cookie.
  *
- * CSP: a fresh nonce per request. Next.js reads it from the request's CSP
- * header and stamps its own scripts; `x-nonce` hands it to our layout.
+ * CSP gets a fresh nonce per request; Next reads it from the header and `x-nonce`
+ * passes it to our layout.
  */
 const SESSION_COOKIE = "cdesk_session";
 const AUTH_PAGES = ["/login", "/forgot-password", "/reset-password"];

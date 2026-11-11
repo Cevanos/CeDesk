@@ -1,10 +1,9 @@
 import { getRequestConfig } from "next-intl/server";
 
 /**
- * i18n without locale routing: one locale today, but every user-facing string
- * added from now on goes through `messages/<locale>.json`, so adding a language
- * is a translation job rather than a refactor. Resolve the locale here (cookie,
- * Accept-Language, or a member preference) when a second language ships.
+ * No locale routing, one locale for now. User-facing strings still go through
+ * messages/<locale>.json so a second language is only translation work. Resolve
+ * the locale here (cookie, Accept-Language, member pref) when that happens.
  */
 export default getRequestConfig(async () => {
   const locale = "en";
