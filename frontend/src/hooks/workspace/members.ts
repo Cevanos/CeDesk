@@ -6,7 +6,6 @@ import { api, listOf } from "@/lib/api/client";
 import { queryKeys } from "@/lib/api/query-keys";
 import type { Member, MemberList, Role } from "@/lib/api/types";
 
-/* ---- members (admin) ---- */
 export function useMembers() {
   return useInfiniteQuery({
     queryKey: queryKeys.members.list,

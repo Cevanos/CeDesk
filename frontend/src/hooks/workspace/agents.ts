@@ -6,7 +6,6 @@ import { api, listOf } from "@/lib/api/client";
 import { queryKeys } from "@/lib/api/query-keys";
 import type { AgentRow, AgentStatus, ChannelGroup } from "@/lib/api/types";
 
-/* ---- agents / routing ---- */
 export function useAgents() {
   return useQuery({
     queryKey: queryKeys.agents.all,

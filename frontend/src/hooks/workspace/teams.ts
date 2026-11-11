@@ -6,7 +6,6 @@ import { api, listOf } from "@/lib/api/client";
 import { queryKeys } from "@/lib/api/query-keys";
 import type { Team } from "@/lib/api/types";
 
-/* ---- teams ---- */
 export function useTeams() {
   return useQuery({
     queryKey: queryKeys.teams.all,

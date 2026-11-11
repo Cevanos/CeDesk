@@ -6,7 +6,6 @@ import { api, listOf } from "@/lib/api/client";
 import { queryKeys } from "@/lib/api/query-keys";
 import type { TicketType } from "@/lib/api/types";
 
-/* ---- ticket types ---- */
 export function useTicketTypes() {
   return useQuery({
     queryKey: queryKeys.ticketTypes.all,
