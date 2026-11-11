@@ -70,6 +70,21 @@ class Settings(BaseSettings):
         default=20, ge=1, description="Sign-in or password-change attempts per IP per window."
     )
     sign_in_window_seconds: int = Field(default=300, ge=1)
+    form_limit: int = Field(
+        default=10, ge=1, description="Public web form posts per IP per window (md C2)."
+    )
+    form_window_seconds: int = Field(default=600, ge=1)
+    vote_limit: int = Field(
+        default=60, ge=1, description="Help article votes per IP per window (md P6)."
+    )
+    vote_window_seconds: int = Field(default=600, ge=1)
+    public_limit: int = Field(
+        default=120,
+        ge=1,
+        description="Requests per IP per window to public pages with no sign-in: the CSAT "
+        "rating page and the help center (votes and the web form have their own).",
+    )
+    public_window_seconds: int = Field(default=600, ge=1)
     log_level: str = "INFO"
 
     # Uploaded files. One setting picks where they live; the rest belongs to that driver.
@@ -93,6 +108,11 @@ class Settings(BaseSettings):
     app_url: str = Field(
         default="http://localhost:3000",
         description="The agent app's address, for links in emails (password reset).",
+    )
+    portal_url: str = Field(
+        default="",
+        description="The customer portal's address, for links in emails (the CSAT survey "
+        "opens `<portal_url>/rate`). Empty: the same as app_url.",
     )
     # Sender of account emails (password reset) when the workspace has no support
     # address yet, e.g. no-reply@cedesk.in. Empty: such emails can't be sent.

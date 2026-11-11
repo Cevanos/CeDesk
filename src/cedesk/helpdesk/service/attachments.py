@@ -239,6 +239,11 @@ async def download_link(
         row = await repo.get(s, attachment_id)
     if row is None:
         raise NotFound("File not found.")
+    return await link_for(store, row, seconds=seconds, scanning=scanning)
+
+
+async def link_for(store: ObjectStore, row: Row, *, seconds: int, scanning: bool) -> Download:
+    """The link for a file the caller was already allowed to read (agent or portal)."""
     if row["scan_status"] == ScanStatus.infected:
         raise Conflict("This file failed the virus scan, so it can't be downloaded.")
     if row["scan_status"] == ScanStatus.scan_failed:

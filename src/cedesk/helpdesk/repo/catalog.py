@@ -92,11 +92,13 @@ async def active_members(session: AsyncSession, member_ids: Sequence[UUID]) -> s
     return {UUID(str(r[0])) for r in result.all()}
 
 
-_TYPE = "SELECT id, name, fields, position, required_skill FROM hd_ticket_type"
+_TYPE = "SELECT id, name, fields, position, required_skill, for_customers FROM hd_ticket_type"
 
 
-async def list_types(session: AsyncSession) -> Sequence[Row]:
-    result = await session.execute(text(_TYPE + " ORDER BY position, name"))
+async def list_types(session: AsyncSession, *, customers_only: bool = False) -> Sequence[Row]:
+    """`customers_only`: the types a customer may pick in the portal or the web form."""
+    where = " WHERE for_customers" if customers_only else ""
+    result = await session.execute(text(_TYPE + where + " ORDER BY position, name"))
     return result.mappings().all()
 
 
@@ -111,14 +113,22 @@ async def insert_type(
     name: str,
     fields: list[dict[str, Any]],
     required_skill: str | None,
+    for_customers: bool = True,
 ) -> UUID:
     result = await session.execute(
         text(
-            "INSERT INTO hd_ticket_type (workspace_id, name, fields, required_skill, position) "
-            "VALUES (:ws, :name, CAST(:fields AS jsonb), :skill, "
-            "(SELECT coalesce(max(position), -1) + 1 FROM hd_ticket_type)) RETURNING id"
+            "INSERT INTO hd_ticket_type (workspace_id, name, fields, required_skill, "
+            "for_customers, position) VALUES (:ws, :name, CAST(:fields AS jsonb), :skill, "
+            ":customers, (SELECT coalesce(max(position), -1) + 1 FROM hd_ticket_type)) "
+            "RETURNING id"
         ),
-        {"ws": workspace_id, "name": name, "fields": json.dumps(fields), "skill": required_skill},
+        {
+            "ws": workspace_id,
+            "name": name,
+            "fields": json.dumps(fields),
+            "skill": required_skill,
+            "customers": for_customers,
+        },
     )
     return UUID(str(result.scalar_one()))
 
@@ -131,10 +141,12 @@ async def update_type(
     fields: list[dict[str, Any]] | None,
     required_skill: str | None,
     clear_skill: bool,
+    for_customers: bool | None = None,
 ) -> bool:
     result = await session.execute(
         text(
             "UPDATE hd_ticket_type SET name = coalesce(:name, name), "
+            "for_customers = coalesce(:customers, for_customers), "
             "fields = coalesce(CAST(:fields AS jsonb), fields), "
             "required_skill = CASE WHEN :clear THEN NULL "
             "ELSE coalesce(:skill, required_skill) END, updated_at = now() "
@@ -146,6 +158,7 @@ async def update_type(
             "fields": None if fields is None else json.dumps(fields),
             "skill": required_skill,
             "clear": clear_skill,
+            "customers": for_customers,
         },
     )
     return result.first() is not None

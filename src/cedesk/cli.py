@@ -167,10 +167,13 @@ def _worker(once: bool) -> int:
     from cedesk.cevanos_client import make_cevanos
     from cedesk.db import make_engine, make_sessionmaker
     from cedesk.helpdesk.service.cevanos import CevanosHandler, ChatPoller
+    from cedesk.helpdesk.service.csat import CsatHandler
     from cedesk.helpdesk.service.delivery import Handler, deliver_due
     from cedesk.helpdesk.service.email import send_due
     from cedesk.helpdesk.service.email_in import poll
     from cedesk.helpdesk.service.idempotency import sweep_everywhere
+    from cedesk.helpdesk.service.password_reset import Sender
+    from cedesk.helpdesk.service.portal_notice import PortalNoticeHandler
     from cedesk.helpdesk.service.scanning import scan_due
     from cedesk.helpdesk.service.sla import refresh_everywhere
     from cedesk.mail import MailboxError, make_mailbox, make_mailer
@@ -194,9 +197,20 @@ def _worker(once: bool) -> int:
         store = make_store(settings)  # files on replies out, files in customer emails
         scanner = make_scanner(settings)
         # Outbox handlers (webhooks join in Phase 3). The Cevanos one does nothing for a
-        # workspace that has not connected Cevanos.
+        # workspace that has not connected Cevanos; the CSAT one emails the survey; the portal
+        # one tells portal customers an agent replied.
         cevanos = make_cevanos(settings)
-        handlers: list[Handler] = [CevanosHandler(sm, cevanos)]
+        fallback = (
+            Sender(settings.mail_from_address, settings.mail_from_name)
+            if settings.mail_from_address
+            else None
+        )
+        portal_url = settings.portal_url or settings.app_url
+        handlers: list[Handler] = [
+            CevanosHandler(sm, cevanos),
+            CsatHandler(sm, base_url=portal_url, fallback=fallback),
+            PortalNoticeHandler(sm, base_url=portal_url, fallback=fallback),
+        ]
         chats = ChatPoller(sm, cevanos, batch=settings.cevanos_poll_batch)
         swept_at = 0.0
         logger.info("worker started", extra={"event": settings.mail_backend.value})
@@ -232,19 +246,20 @@ def _worker(once: bool) -> int:
                         f"messages, {polled.failed} not read",
                         extra={"event": "cevanos"},
                     )
-                result = await send_due(sm, mailer, store=store, scanning=scanner is not None)
-                if result.sent or result.retrying or result.failed:
-                    logger.info(
-                        f"emails: {result.sent} sent, {result.retrying} retrying, "
-                        f"{result.failed} failed",
-                        extra={"event": "email"},
-                    )
+                # Before sending: a handler may queue an email (the CSAT survey).
                 outbox = await deliver_due(sm, handlers)
                 if outbox.retrying or outbox.failed:
                     logger.info(
                         f"outbox: {outbox.delivered} delivered, {outbox.retrying} retrying, "
                         f"{outbox.failed} failed",
                         extra={"event": "outbox"},
+                    )
+                result = await send_due(sm, mailer, store=store, scanning=scanner is not None)
+                if result.sent or result.retrying or result.failed:
+                    logger.info(
+                        f"emails: {result.sent} sent, {result.retrying} retrying, "
+                        f"{result.failed} failed",
+                        extra={"event": "email"},
                     )
                 if time.monotonic() - swept_at > SWEEP_EVERY_SECONDS:
                     await sweep_everywhere(sm)

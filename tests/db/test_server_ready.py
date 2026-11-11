@@ -41,11 +41,23 @@ async def test_cors_lets_the_frontend_call_the_api(
     )
     assert preflight.status_code == 200
     assert preflight.headers["access-control-allow-origin"] == FRONTEND
+    # Creates send an Idempotency-Key (md 2B); a browser asks first, and a refusal
+    # here would block every such call from the frontend.
+    preflight = await cors_client.options(
+        "/api/v1/tickets",
+        headers={
+            "Origin": FRONTEND,
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "authorization,content-type,idempotency-key",
+        },
+    )
+    assert preflight.status_code == 200, preflight.text
     slug = await new_workspace(app_sessionmaker)
     token = await sign_in(cors_client, slug, "admin@example.com")
     r = await cors_client.get("/api/v1/me", headers={**bearer(token), "Origin": FRONTEND})
     assert r.headers["access-control-allow-origin"] == FRONTEND
-    assert "etag" in r.headers["access-control-expose-headers"].lower()
+    exposed = r.headers["access-control-expose-headers"].lower()
+    assert "etag" in exposed and "idempotent-replayed" in exposed
     # Errors carry the header too, so the frontend can read the message.
     r = await cors_client.get("/api/v1/me", headers={"Origin": FRONTEND})
     assert r.status_code == 401 and r.headers["access-control-allow-origin"] == FRONTEND
