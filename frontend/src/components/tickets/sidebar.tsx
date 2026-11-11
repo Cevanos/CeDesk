@@ -75,7 +75,7 @@ export function TicketSidebar({ ticket, etag }: { ticket: Ticket; etag: string |
       { patch: p, etag },
       {
         onError: (e) => {
-          // 422: surface each field message (guide §3.2).
+          // 422: show each field message.
           if (e instanceof ApiError && e.status === 422) {
             toast.error(e.details.map((d) => d.message).join(" ") || e.userMessage);
           }
