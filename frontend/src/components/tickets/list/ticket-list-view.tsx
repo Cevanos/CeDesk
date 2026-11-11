@@ -32,7 +32,6 @@ function ListSkeleton() {
   );
 }
 
-/** Ticket queue: status tabs, filters (kept in the URL) and a virtualised list. */
 export function TicketListView() {
   const { perms } = useCurrentUser();
   const teams = useTeams();
@@ -48,7 +47,6 @@ export function TicketListView() {
 
   return (
     <div className="mx-auto w-full max-w-6xl px-3 py-5 sm:px-6 sm:py-8">
-      {/* ------------------------------ header ------------------------------ */}
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="min-w-0">
           <h1 className="text-[26px] leading-tight font-semibold tracking-tight sm:text-3xl">
@@ -85,7 +83,6 @@ export function TicketListView() {
         set={set}
       />
 
-      {/* -------------------------------- list ------------------------------- */}
       <div className="mt-4 mb-1 flex items-center justify-between px-1 text-xs text-muted-foreground">
         <span aria-live="polite">
           {q.isPending
