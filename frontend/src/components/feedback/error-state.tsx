@@ -8,7 +8,6 @@ import { useEffect } from "react";
 import { Button } from "@/components/ui/primitives";
 import { reportError } from "@/lib/monitoring";
 
-/** Shared body for every `error.tsx` boundary. */
 export function ErrorState({
   error,
   reset,

@@ -1,6 +1,5 @@
 import { Card, Skeleton } from "@/components/ui/primitives";
 
-/** Layout-matched placeholders for route `loading.tsx` files. */
 export function ListSkeleton({ rows = 7 }: { rows?: number }) {
   return (
     <div

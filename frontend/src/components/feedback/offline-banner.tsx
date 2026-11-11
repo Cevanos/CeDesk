@@ -7,7 +7,6 @@ import { toast } from "sonner";
 
 import { useOnline } from "@/hooks/use-online";
 
-/** Persistent notice while offline, plus a short toast when the link returns. */
 export function OfflineBanner() {
   const t = useTranslations("offline");
   const online = useOnline();
