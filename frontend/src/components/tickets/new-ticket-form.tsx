@@ -100,7 +100,7 @@ export function NewTicketForm() {
   }
 
   const onSubmit = handleSubmit((v) => {
-    // Only fields that belong to the chosen type are sent (guide §5.4).
+    // Only fields that belong to the chosen type are sent.
     const fields: Record<string, string | number> = {};
     for (const f of type?.fields ?? []) {
       const raw = v.fields?.[f.key];
@@ -409,7 +409,6 @@ function Panel({
   );
 }
 
-/** Radio group drawn as pills: one tap to choose, keyboard and screen-reader friendly. */
 function Segmented({
   legend,
   value,
