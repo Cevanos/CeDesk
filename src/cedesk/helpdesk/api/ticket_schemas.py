@@ -48,6 +48,9 @@ class TicketTypeIn(Body):
     name: Short
     fields: list[FieldDefIn] = Field(default=[], max_length=30)
     required_skill: Short | None = None
+    for_customers: bool = Field(
+        default=True, description="Customers can pick it in the portal and the web form."
+    )
 
 
 class TicketTypePatch(Body):
@@ -58,6 +61,9 @@ class TicketTypePatch(Body):
         description="The whole new list: add, remove, rename or reorder fields.",
     )
     required_skill: Short | None = Field(default=None, description="null clears it.")
+    for_customers: bool | None = Field(
+        default=None, description="false hides it from the portal and the web form."
+    )
 
 
 class TicketTypeOut(BaseModel):
@@ -66,6 +72,7 @@ class TicketTypeOut(BaseModel):
     fields: list[FieldDefOut]
     position: int
     required_skill: str | None
+    for_customers: bool
 
 
 class ReorderBody(Body):
@@ -152,6 +159,17 @@ class ContactOut(BaseModel):
 class ContactCard(ContactOut):
     customer_since: datetime
     other_tickets: int
+    csat_average: float | None = Field(
+        default=None, description="Average of this customer's ratings, 1-5; null: none yet."
+    )
+    csat_count: int = 0
+
+
+class CsatOut(BaseModel):
+    score: int = Field(description="1-5")
+    comment: str | None
+    source: str = Field(description="portal or email")
+    rated_at: datetime
 
 
 class SlaClockOut(BaseModel):
@@ -248,6 +266,9 @@ class MessageOut(BaseModel):
 
 class TicketOut(TicketRowOut):
     fields: dict[str, Any]
+    csat: CsatOut | None = Field(
+        default=None, description="The customer's rating of this ticket, if any."
+    )
     first_reply_at: datetime | None
     reopen_count: int
     conversation_id: str | None = Field(description="The Cevanos chat, for handovers.")

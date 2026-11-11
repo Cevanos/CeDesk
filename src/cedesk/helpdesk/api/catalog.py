@@ -40,6 +40,7 @@ async def create_type(body: TicketTypeIn, caller: CallerDep, sm: SessionmakerDep
         name=body.name,
         fields=[f.model_dump() for f in body.fields],
         required_skill=body.required_skill,
+        for_customers=body.for_customers,
     )
     return TicketTypeOut.model_validate(dict(row))
 
@@ -61,7 +62,7 @@ async def reorder_types(
     "/ticket-types/{type_id}",
     response_model=TicketTypeOut,
     tags=["ticket types"],
-    summary="Rename, change fields or skill (Admin)",
+    summary="Rename, change fields or skill, show or hide for customers (Admin)",
 )
 async def change_type(
     type_id: UUID, body: TicketTypePatch, caller: CallerDep, sm: SessionmakerDep
@@ -74,6 +75,7 @@ async def change_type(
         fields=None if body.fields is None else [f.model_dump() for f in body.fields],
         required_skill=body.required_skill,
         clear_skill="required_skill" in body.model_fields_set and body.required_skill is None,
+        for_customers=body.for_customers,
     )
     return TicketTypeOut.model_validate(dict(row))
 

@@ -1,0 +1,63 @@
+"""Help center rules (md P6) that need no database."""
+
+import hashlib
+import unicodedata
+from enum import StrEnum
+
+TITLE_MAX = 200
+BODY_MAX = 100_000
+CATEGORY_MAX = 80
+SEARCH_WORDS = 8
+SEARCH_RESULTS = 20
+
+
+class ArticleStatus(StrEnum):
+    draft = "draft"
+    published = "published"
+
+
+class BadArticle(ValueError):
+    pass
+
+
+def clean_title(title: str) -> str:
+    value = " ".join(title.split())
+    if not 1 <= len(value) <= TITLE_MAX:
+        raise BadArticle(f"A title needs 1 to {TITLE_MAX} characters.")
+    return value
+
+
+def clean_body(body: str) -> str:
+    value = body.strip()
+    if len(value) > BODY_MAX:
+        raise BadArticle(f"An article can be at most {BODY_MAX} characters.")
+    return value
+
+
+def clean_category(name: str) -> str:
+    value = " ".join(name.split())
+    if not 1 <= len(value) <= CATEGORY_MAX:
+        raise BadArticle(f"A category name needs 1 to {CATEGORY_MAX} characters.")
+    return value
+
+
+def _words(text: str) -> list[str]:
+    """Letters, combining marks and digits make words. Python's `\\w` leaves out marks,
+    which would split Hindi ("रिफंड") into single letters."""
+    keep = "".join(c if unicodedata.category(c)[0] in "LMN" else " " for c in text)
+    return [w.lower() for w in keep.split()]
+
+
+def search_query(text: str) -> str | None:
+    """A Postgres tsquery from what the customer typed: each word must match, the last
+    one as a prefix ("refu" finds "refund"). Only letters, marks and digits get through,
+    so the result is always valid tsquery syntax. None: nothing to search for."""
+    words = _words(text)[:SEARCH_WORDS]
+    if not words:
+        return None
+    return " & ".join([*words[:-1], words[-1] + ":*"])
+
+
+def visitor_hash(visitor: str) -> bytes:
+    """The browser's random visitor id is stored only as a hash."""
+    return hashlib.sha256(f"article-vote:{visitor}".encode()).digest()

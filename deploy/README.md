@@ -95,6 +95,11 @@ Password reset emails ("Forgot password?") come from the workspace's default sup
 address, else from `CEDESK_MAIL_FROM_ADDRESS`. Set `CEDESK_APP_URL` to the agent app's
 address, or the links in them won't open the app.
 
+The CSAT survey (emailed by the worker when a ticket is resolved) links to
+`CEDESK_PORTAL_URL/rate`, or `CEDESK_APP_URL/rate` when that is empty, and comes from the
+same sender as password resets. Admins turn it off, and turn the public web form on, in
+Settings › Portal (`/portal-settings`).
+
 Receiving: customers' emails become tickets (or join the ticket they answer) in the
 workspace that owns the address they wrote to. Choose one way:
 
