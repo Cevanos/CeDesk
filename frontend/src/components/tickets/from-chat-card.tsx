@@ -9,7 +9,6 @@ import { Button, Card, Field, Input } from "@/components/ui/primitives";
 import { useTicketFromConversation } from "@/hooks/use-tickets";
 import { ApiError } from "@/lib/api/client";
 
-/** "Make a ticket from a Cevanos chat" (guide 5.15). */
 export function FromChatCard() {
   const router = useRouter();
   const make = useTicketFromConversation();
