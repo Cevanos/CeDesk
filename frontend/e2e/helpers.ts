@@ -6,7 +6,6 @@ export const CREDENTIALS = {
   password: "correct-horse",
 };
 
-/** Fill and submit the login form on the page that is already open. */
 export async function submitLogin(page: Page, password = CREDENTIALS.password) {
   await page.getByLabel("Workspace").fill(CREDENTIALS.workspace);
   await page.getByLabel("Email").fill(CREDENTIALS.email);
@@ -24,7 +23,6 @@ export async function signedIn(page: Page) {
   await expect(page).toHaveURL(/\/tickets/);
 }
 
-/** Restore the mock backend to its seed data so specs stay independent. */
 export async function resetBackend() {
   const res = await fetch("http://localhost:3101/__reset", { method: "POST" });
   if (!res.ok) throw new Error(`mock backend reset failed: ${res.status}`);
