@@ -33,7 +33,7 @@ import { useAgents, useSavedReplies } from "@/hooks/use-workspace";
 import type { Delivery, Message, SavedReply, Ticket } from "@/lib/api/types";
 import { cn, formatDateTime, initials } from "@/lib/utils";
 
-/** Handover box: shown only when the ticket came from the AI (guide §5.5). */
+/** Handover box: shown only when the ticket came from the AI. */
 export function HandoverCard({ ticket }: { ticket: Ticket }) {
   const h = ticket.handover;
   if (!h) return null;
@@ -260,7 +260,7 @@ export function Thread({ ticket, myId }: { ticket: Ticket; myId?: string }) {
 
 const MAX_FILES = 10;
 const MAX_FILE_BYTES = 25 * 1024 * 1024;
-/** Email replies: files may total at most 18 MB (guide 5.6). */
+/** Email replies: files may total at most 18 MB. */
 const MAX_EMAIL_REPLY_BYTES = 18 * 1024 * 1024;
 
 interface Pending {
