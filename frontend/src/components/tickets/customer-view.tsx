@@ -92,7 +92,6 @@ export function CustomerView({ id }: { id: string }) {
         <ArrowLeft className="size-4" /> Tickets
       </Link>
 
-      {/* Hero */}
       <Card className="relative overflow-hidden rounded-2xl border-0 shadow-pop ring-1 ring-border">
         <div className="relative h-24 bg-gradient-to-br from-[#5b45e8] via-[#7762fb] to-[#a78bfa] sm:h-28">
           <div className="pointer-events-none absolute -top-10 -right-8 size-48 rounded-full bg-white/15 blur-2xl" />
@@ -145,7 +144,6 @@ export function CustomerView({ id }: { id: string }) {
         </div>
       </Card>
 
-      {/* Stats */}
       <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Stat
           icon={Ticket}
@@ -170,7 +168,6 @@ export function CustomerView({ id }: { id: string }) {
         />
       </div>
 
-      {/* Tickets */}
       <div className="mt-8 mb-3 flex items-center gap-2">
         <h2 className="text-base font-semibold tracking-tight">All tickets</h2>
         <span className="rounded-full bg-surface-3 px-2 py-0.5 text-xs font-medium text-muted-foreground">
