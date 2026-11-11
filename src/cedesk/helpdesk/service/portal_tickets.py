@@ -155,7 +155,8 @@ async def open_ticket(
         sm,
         customer.workspace_id,
         tickets.NewTicket(
-            subject=rules.subject_from(body),
+            subject=rules.subject_from(body),  # remade after redaction
+            subject_from_description=True,
             contact_email=customer.email,
             contact_name=customer.name,
             description=body,

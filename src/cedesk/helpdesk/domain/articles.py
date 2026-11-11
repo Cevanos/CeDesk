@@ -1,8 +1,9 @@
 """Help center rules (md P6) that need no database."""
 
 import hashlib
-import unicodedata
 from enum import StrEnum
+
+from cedesk.helpdesk.domain.text import words
 
 TITLE_MAX = 200
 BODY_MAX = 100_000
@@ -41,21 +42,14 @@ def clean_category(name: str) -> str:
     return value
 
 
-def _words(text: str) -> list[str]:
-    """Letters, combining marks and digits make words. Python's `\\w` leaves out marks,
-    which would split Hindi ("रिफंड") into single letters."""
-    keep = "".join(c if unicodedata.category(c)[0] in "LMN" else " " for c in text)
-    return [w.lower() for w in keep.split()]
-
-
 def search_query(text: str) -> str | None:
     """A Postgres tsquery from what the customer typed: each word must match, the last
     one as a prefix ("refu" finds "refund"). Only letters, marks and digits get through,
     so the result is always valid tsquery syntax. None: nothing to search for."""
-    words = _words(text)[:SEARCH_WORDS]
-    if not words:
+    found = words(text)[:SEARCH_WORDS]
+    if not found:
         return None
-    return " & ".join([*words[:-1], words[-1] + ":*"])
+    return " & ".join([*found[:-1], found[-1] + ":*"])
 
 
 def visitor_hash(visitor: str) -> bytes:
