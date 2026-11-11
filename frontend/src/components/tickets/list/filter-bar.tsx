@@ -98,7 +98,6 @@ export function FilterBar({
           )}
         </div>
 
-        {/* filters toggle (mobile/tablet only) */}
         <Button
           variant="outline"
           className="relative lg:hidden"
@@ -115,20 +114,17 @@ export function FilterBar({
           )}
         </Button>
 
-        {/* desktop inline filters */}
         <div className="hidden items-center gap-2 lg:flex">
           <FilterSelects filters={filters} set={set} teams={teams} />
         </div>
       </div>
 
-      {/* collapsible filters for small screens */}
       {showFilters && (
         <div id="ticket-filters" className="mt-2.5 grid gap-2 sm:grid-cols-2 lg:hidden">
           <FilterSelects filters={filters} set={set} teams={teams} stacked />
         </div>
       )}
 
-      {/* active filter chips */}
       {chips.length > 0 && (
         <div className="mt-2.5 flex flex-wrap items-center gap-1.5 border-t border-border pt-2.5">
           <span className="mr-0.5 text-xs text-muted-foreground">Filtered by</span>
