@@ -68,7 +68,6 @@ export function TicketRow({ t, showStatus }: { t: TicketSummary; showStatus: boo
       href={`/tickets/${t.id}`}
       className="group relative block py-3.5 pr-3 pl-4 outline-offset-[-2px] transition-colors hover:bg-primary-soft/40 focus-visible:bg-primary-soft/40 sm:py-4 sm:pr-5 sm:pl-5"
     >
-      {/* priority accent */}
       <span
         aria-hidden
         className={cn(
@@ -81,7 +80,6 @@ export function TicketRow({ t, showStatus }: { t: TicketSummary; showStatus: boo
         <Avatar name={t.contact?.name} className="mt-0.5 hidden sm:grid" />
 
         <div className="min-w-0 flex-1">
-          {/* meta line */}
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <span className="font-mono text-xs font-medium text-muted-foreground">{t.label}</span>
             <PriorityBadge priority={t.priority} />
@@ -91,12 +89,10 @@ export function TicketRow({ t, showStatus }: { t: TicketSummary; showStatus: boo
             {t.status !== "resolved" && <SlaPill sla={t.sla} compact />}
           </div>
 
-          {/* subject */}
           <div className="mt-1.5 line-clamp-2 text-[15px] leading-snug font-semibold text-foreground group-hover:text-primary-ink sm:truncate sm:text-base">
             {t.subject}
           </div>
 
-          {/* customer + context */}
           <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
             <span className="inline-flex items-center gap-1.5 font-medium text-foreground-2">
               <Avatar name={t.contact?.name} className="size-5 text-[9px] sm:hidden" />
@@ -131,7 +127,6 @@ export function TicketRow({ t, showStatus }: { t: TicketSummary; showStatus: boo
           </div>
         </div>
 
-        {/* right rail: assignee + time */}
         <div className="flex flex-none flex-col items-end gap-2">
           <time
             className="text-xs whitespace-nowrap text-subtle-foreground"
