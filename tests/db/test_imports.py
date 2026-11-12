@@ -254,6 +254,12 @@ async def test_a_csv_import_end_to_end(im: AsyncClient, app_sessionmaker: Sm) ->
         for e in await sql(sm, w["ws"], "SELECT kind FROM hd_import_event ORDER BY created_at, id")
     ]
     assert kinds == ["connected", "started", "finished", "credentials_deleted"]
+    # The Admin's steps are in the audit log too (S9).
+    logged = ok(await im.get("/api/v1/audit", headers=w["admin"], params={"area": "imports"}))
+    assert [(e["action"], e["target"]) for e in logged["entries"]] == [
+        ("started", "Import from CSV file"),
+        ("connected", "Import from a CSV file"),
+    ]
     again = await im.get(f"{I}/connections/{conn['id']}/discover", headers=w["admin"])
     assert again.status_code == 409
 
@@ -269,7 +275,8 @@ async def test_an_import_stays_out_of_live_work(im: AsyncClient, app_sessionmake
     ok(await im.post(f"{I}/connections/{conn['id']}/run", headers=w["admin"], json={}), 202)
     await work(im, sm)
 
-    assert await sql(sm, w["ws"], "SELECT 1 FROM hd_outbox") == []  # no events, no webhooks
+    # No events, no webhooks. (Adding Asha in `desk` sends the Admins a security alert.)
+    assert await sql(sm, w["ws"], "SELECT 1 FROM hd_outbox WHERE event <> 'security.alert'") == []
     assert await sql(sm, w["ws"], "SELECT 1 FROM hd_notification") == []
     async with workspace_session(sm, w["ws"]) as s:  # an old open ticket pages nobody
         assert await sla_repo.newly_breached(s, datetime.now(UTC), 100) == []

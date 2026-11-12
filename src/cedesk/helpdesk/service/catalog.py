@@ -8,15 +8,21 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cedesk.db import workspace_session
+from cedesk.helpdesk.domain import audit as audit_rules
+from cedesk.helpdesk.domain.audit import Area
 from cedesk.helpdesk.domain.auth import Caller
 from cedesk.helpdesk.domain.permissions import Action
 from cedesk.helpdesk.domain.tickets import FieldDef, FieldError, FieldKind, check_definitions
 from cedesk.helpdesk.repo import catalog as repo
 from cedesk.helpdesk.repo import roles as role_repo
 from cedesk.helpdesk.repo.catalog import Row
+from cedesk.helpdesk.service import audit
 from cedesk.helpdesk.service.auth import Sessionmaker
 from cedesk.helpdesk.service.errors import Conflict, Invalid, NotFound
 from cedesk.helpdesk.service.members import require
+
+TEAM_FIELDS = ("name", "auto_assign", "max_open_per_agent", "member_ids")
+TYPE_FIELDS = ("name", "fields", "required_skill", "for_customers")
 
 
 def field_defs(raw: Sequence[Any]) -> list[FieldDef]:
@@ -91,6 +97,15 @@ async def create_team(
                 s, caller.workspace_id, team_id, list(dict.fromkeys(member_ids))
             )
             row = await repo.get_team(s, team_id)
+            await audit.record(
+                s,
+                caller,
+                Area.teams,
+                "created",
+                f"Team {name}",
+                target_id=team_id,
+                detail=audit_rules.snapshot(row, TEAM_FIELDS[1:]),
+            )
     except IntegrityError as exc:
         raise Conflict("A team with that name already exists.") from exc
     assert row is not None
@@ -110,7 +125,8 @@ async def change_team(
     require(caller, Action.settings)
     try:
         async with workspace_session(sm, caller.workspace_id) as s:
-            if not await repo.update_team(
+            before = await repo.get_team(s, team_id)
+            if before is None or not await repo.update_team(
                 s, team_id, name=name, auto_assign=auto_assign, max_open=max_open
             ):
                 raise NotFound("Team not found.")
@@ -120,6 +136,16 @@ async def change_team(
                     s, caller.workspace_id, team_id, list(dict.fromkeys(member_ids))
                 )
             row = await repo.get_team(s, team_id)
+            assert row is not None
+            await audit.record(
+                s,
+                caller,
+                Area.teams,
+                "changed",
+                f"Team {row['name']}",
+                target_id=team_id,
+                detail={"changes": audit_rules.changes(before, row, fields=TEAM_FIELDS)},
+            )
     except IntegrityError as exc:
         raise Conflict("A team with that name already exists.") from exc
     assert row is not None
@@ -133,8 +159,18 @@ async def delete_team(sm: Sessionmaker, caller: Caller, team_id: UUID) -> None:
         roles = await role_repo.roles_of_team(s, team_id)
         if roles:
             raise Conflict(f"Roles work on this team: {', '.join(roles)}. Change them first.")
-        if not await repo.delete_team(s, team_id):
+        before = await repo.get_team(s, team_id)
+        if before is None or not await repo.delete_team(s, team_id):
             raise NotFound("Team not found.")
+        await audit.record(
+            s,
+            caller,
+            Area.teams,
+            "deleted",
+            f"Team {before['name']}",
+            target_id=team_id,
+            detail=audit_rules.snapshot(before, TEAM_FIELDS[1:]),
+        )
 
 
 # Ticket types
@@ -163,6 +199,15 @@ async def create_type(
                 s, caller.workspace_id, name, stored, required_skill, for_customers
             )
             row = await repo.get_type(s, type_id)
+            await audit.record(
+                s,
+                caller,
+                Area.ticket_types,
+                "created",
+                f"Ticket type {name}",
+                target_id=type_id,
+                detail=audit_rules.snapshot(row, TYPE_FIELDS[1:]),
+            )
     except IntegrityError as exc:
         raise Conflict("A ticket type with that name already exists.") from exc
     assert row is not None
@@ -189,7 +234,8 @@ async def change_type(
     stored = None if fields is None else _checked(fields)
     try:
         async with workspace_session(sm, caller.workspace_id) as s:
-            if not await repo.update_type(
+            before = await repo.get_type(s, type_id)
+            if before is None or not await repo.update_type(
                 s,
                 type_id,
                 name=name,
@@ -200,6 +246,16 @@ async def change_type(
             ):
                 raise NotFound("Ticket type not found.")
             row = await repo.get_type(s, type_id)
+            assert row is not None
+            await audit.record(
+                s,
+                caller,
+                Area.ticket_types,
+                "changed",
+                f"Ticket type {row['name']}",
+                target_id=type_id,
+                detail={"changes": audit_rules.changes(before, row, fields=TYPE_FIELDS)},
+            )
     except IntegrityError as exc:
         raise Conflict("A ticket type with that name already exists.") from exc
     assert row is not None
@@ -210,8 +266,18 @@ async def delete_type(sm: Sessionmaker, caller: Caller, type_id: UUID) -> None:
     """Tickets of a deleted type keep their other details and lose only the type."""
     require(caller, Action.settings)
     async with workspace_session(sm, caller.workspace_id) as s:
-        if not await repo.delete_type(s, type_id):
+        before = await repo.get_type(s, type_id)
+        if before is None or not await repo.delete_type(s, type_id):
             raise NotFound("Ticket type not found.")
+        await audit.record(
+            s,
+            caller,
+            Area.ticket_types,
+            "deleted",
+            f"Ticket type {before['name']}",
+            target_id=type_id,
+            detail=audit_rules.snapshot(before, TYPE_FIELDS[1:]),
+        )
 
 
 async def reorder_types(
@@ -223,4 +289,5 @@ async def reorder_types(
         if set(type_ids) != current or len(type_ids) != len(current):
             raise Invalid("Send every ticket type id exactly once, in the new order.")
         await repo.reorder_types(s, type_ids)
+        await audit.record(s, caller, Area.ticket_types, "reordered", "Ticket type order")
         return await repo.list_types(s)

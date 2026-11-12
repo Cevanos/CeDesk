@@ -22,11 +22,14 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cedesk.db import workspace_session
+from cedesk.helpdesk.domain import audit as audit_rules
 from cedesk.helpdesk.domain import redaction
 from cedesk.helpdesk.domain import triage as rules
+from cedesk.helpdesk.domain.audit import Area
 from cedesk.helpdesk.domain.auth import Caller
 from cedesk.helpdesk.domain.permissions import Action
 from cedesk.helpdesk.repo import triage as repo
+from cedesk.helpdesk.service import audit
 from cedesk.helpdesk.service.auth import Sessionmaker
 from cedesk.helpdesk.service.errors import Invalid
 from cedesk.helpdesk.service.members import require
@@ -162,5 +165,20 @@ async def save_settings(
     except rules.BadKeywords as exc:
         raise Invalid(str(exc)) from exc
     async with workspace_session(sm, caller.workspace_id) as s:
+        before = await repo.settings_row(s)
         await repo.save_settings(s, caller.workspace_id, cleaned, redact_cards, caller.member_id)
+        changed = audit_rules.changes(
+            before or {"topic_keywords": None, "redact_cards": True},
+            await repo.settings_row(s),
+            fields=("topic_keywords", "redact_cards"),
+        )
+        if changed:
+            await audit.record(
+                s,
+                caller,
+                Area.triage,
+                "changed",
+                "Triage and redaction",
+                detail={"changes": changed},
+            )
     return await get_settings(sm, caller)

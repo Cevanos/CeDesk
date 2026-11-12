@@ -31,6 +31,8 @@ class Caller:
     second_factor_pending: bool = False
     # The workspace requires 2FA and this member hasn't set it up: only setting it up works.
     two_factor_setup_required: bool = False
+    # The request's address as CeDesk sees it, for the audit log (S9).
+    ip: str | None = None
 
     def __post_init__(self) -> None:
         if self.access is None:

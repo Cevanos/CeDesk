@@ -1,5 +1,6 @@
 """Request dependencies. Authenticated routes take `CallerDep`; none reads auth headers."""
 
+from dataclasses import replace
 from typing import Annotated
 
 from fastapi import Depends, Header, Request, Response
@@ -83,7 +84,8 @@ async def get_caller(
 ) -> Caller:
     if credentials is None or not credentials.credentials:
         raise NotSignedIn("Sign in first.")
-    caller = await auth.resolve(sm, credentials.credentials.strip(), client_ip(request) or "")
+    ip = client_ip(request)
+    caller = replace(await auth.resolve(sm, credentials.credentials.strip(), ip or ""), ip=ip)
     logs.bind(workspace_id=caller.workspace_id, member_id=caller.member_id)
     path = request.url.path
     if caller.second_factor_pending:
