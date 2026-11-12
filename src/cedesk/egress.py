@@ -30,6 +30,7 @@ ACCOUNT_DOMAINS: Mapping[str, str] = {
     "zendesk": "zendesk.com",
     "freshdesk": "freshdesk.com",
     "gorgias": "gorgias.com",
+    "shopify": "myshopify.com",  # the Shopify app (md PL7): <shop>.myshopify.com
 }
 # sources whose host is fixed (nothing the Admin types reaches it)
 FIXED_HOSTS: Mapping[str, Mapping[str, str]] = {

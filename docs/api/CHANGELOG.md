@@ -3,6 +3,34 @@
 `openapi.json` next to this file is the API as served (`uv run cedesk openapi`). Every
 route is under `/api/v1`. Breaking changes only come in v2 (md 2B). Newest first.
 
+## 2026-11-12: Apps: Shopify and Stripe, and the sidebar's orders and payments (Phase 3, PL7, C12)
+
+- New (Settings): `GET /apps` lists the apps (`shopify`, `stripe`) with what each needs
+  (`settings_fields`, `credential`, `credential_help`), whether it is installed, and
+  `blocked` when it can't be (Cevanos connected). `PUT /apps/{app}` `{settings, secret}`
+  installs it, or changes its settings and credential: the credential is checked with the
+  provider first (422 when refused, 503 when it doesn't answer), then kept encrypted; only
+  `secret_hint` (`…` and the last 4 characters) is shown again. Shopify: `settings: {shop:
+  "acme"}` (a full `acme.myshopify.com` address works too) and an Admin API access token
+  with `read_orders` and `read_customers`. Stripe: no settings, a restricted key (`rk_...`)
+  with read access to Customers and Charges (an `sk_...` key works too). `DELETE
+  /apps/{app}` uninstalls it and deletes the credential (404 when not installed). Audited:
+  area `apps`, actions `installed`, `changed`, `uninstalled` (never the credential).
+- New (anyone who can read the ticket): `GET /tickets/{id}/orders` and `GET
+  /tickets/{id}/payments`: the ticket customer's latest 5 Shopify orders (`number`,
+  `payment`, `fulfillment`, `total`, `currency`, `items`, `url` into the shop's admin) and
+  Stripe charges (`amount`, `currency`, `status`, `refunded`, `url` into the dashboard),
+  found by email, read live (10 s at most) and never stored. They never fail because of
+  the provider: `{source, available, message}` says why there is nothing (no app, no
+  customer email yet, the provider refused or didn't answer).
+- With Cevanos connected (md D16), Shopify and Stripe can't be installed (409) and the
+  cards answer `source: "cevanos", available: false`: Cevanos's integrations fill them
+  once Cevanos serves them over `/v1` (with the Cevanos AI features).
+- Calls go out GET only, through the egress guard (public addresses only, no redirects):
+  `<shop>.myshopify.com` is built from the shop name, Stripe is `api.stripe.com`.
+- Migration 0044: `hd_app_install` (forced RLS). Jira and Slack alerts come next;
+  Calendly is on the cut line.
+
 ## 2026-11-12: Outgoing webhooks (Phase 3, PL3-PL6)
 
 Admin only, signed in (not with an API key): a webhook sends ticket data out of CeDesk.
