@@ -9352,7 +9352,7 @@
           "inbound api"
         ],
         "summary": "A customer's new request from another system (API key)",
-        "description": "Makes a ticket on the `api` channel as the customer: triage, rules, SLA and routing run. 200 instead of 201 when `external_id` made a ticket before. Agents' replies stay in CeDesk: read them with `GET /tickets/{id}`.",
+        "description": "Makes a ticket on the `api` channel as the customer: triage, rules, SLA and routing run. 200 instead of 201 when `external_id` made a ticket before. Agents' replies stay in CeDesk: a webhook on `message.created` says when one is added; read it with `GET /tickets/{id}`.",
         "operationId": "new_request_api_v1_inbound_tickets_post",
         "requestBody": {
           "content": {
@@ -9480,6 +9480,1177 @@
             }
           }
         }
+      }
+    },
+    "/api/v1/webhooks": {
+      "get": {
+        "tags": [
+          "webhooks"
+        ],
+        "summary": "Webhooks (Admin)",
+        "operationId": "list_webhooks_api_v1_webhooks_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/WebhookOut"
+                  },
+                  "type": "array",
+                  "title": "Response List Webhooks Api V1 Webhooks Get"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Admins only, signed in (not with an API key)"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "webhooks"
+        ],
+        "summary": "Add a webhook (Admin; the secret is shown once)",
+        "description": "Each delivery is a POST with the JSON event as body and the headers X-CeDesk-Event, X-CeDesk-Delivery (the same on every retry), X-CeDesk-Timestamp (unix seconds) and X-CeDesk-Signature: sha256=<hex HMAC-SHA256(secret, '<timestamp>.<body>')>. Check the signature and that the timestamp is within 5 minutes. Answer 2xx within 10 s; otherwise it is tried again after 1 min, 5 min, 30 min, 2 h and 12 h. At most 20 per workspace (409). Audited.",
+        "operationId": "create_webhook_api_v1_webhooks_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WebhookIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookSecretOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Admins only, signed in (not with an API key)"
+          },
+          "422": {
+            "description": "Not https, not a public host, unknown event"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/webhooks/{webhook_id}": {
+      "patch": {
+        "tags": [
+          "webhooks"
+        ],
+        "summary": "Change a webhook (Admin; only what is sent changes)",
+        "operationId": "update_webhook_api_v1_webhooks__webhook_id__patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "webhook_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Webhook Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WebhookPatch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Admins only, signed in (not with an API key)"
+          },
+          "404": {
+            "description": "No such webhook"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "webhooks"
+        ],
+        "summary": "Delete a webhook (Admin; its queue and log go too)",
+        "operationId": "delete_webhook_api_v1_webhooks__webhook_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "webhook_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Webhook Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Admins only, signed in (not with an API key)"
+          },
+          "404": {
+            "description": "No such webhook"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/webhooks/{webhook_id}/secret": {
+      "post": {
+        "tags": [
+          "webhooks"
+        ],
+        "summary": "A new secret (Admin; shown once, the old one stops at once)",
+        "operationId": "new_secret_api_v1_webhooks__webhook_id__secret_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "webhook_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Webhook Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookSecretOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Admins only, signed in (not with an API key)"
+          },
+          "404": {
+            "description": "No such webhook"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/webhooks/{webhook_id}/test": {
+      "post": {
+        "tags": [
+          "webhooks"
+        ],
+        "summary": "Send a test ping now (Admin)",
+        "description": "Body `{event: 'ping', id, occurred_at, webhook: {id}}`, signed like any delivery. One try, no retries; waits for the answer (at most 10 s) and logs it.",
+        "operationId": "test_webhook_api_v1_webhooks__webhook_id__test_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "webhook_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Webhook Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeliveryOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Admins only, signed in (not with an API key)"
+          },
+          "404": {
+            "description": "No such webhook"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/webhooks/deliveries": {
+      "get": {
+        "tags": [
+          "webhooks"
+        ],
+        "summary": "Delivery log (Admin)",
+        "description": "Newest first, each with every try. `state=failed`: the ones that gave up (send them again with POST /webhooks/deliveries/{id}/retry).",
+        "operationId": "list_deliveries_api_v1_webhooks_deliveries_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "state",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "pending",
+                    "delivered",
+                    "failed"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "State"
+            }
+          },
+          {
+            "name": "webhook_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Webhook Id"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeliveryPageOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Admins only, signed in (not with an API key)"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/webhooks/deliveries/{delivery_id}/retry": {
+      "post": {
+        "tags": [
+          "webhooks"
+        ],
+        "summary": "Send a failed delivery again (Admin)",
+        "operationId": "retry_delivery_api_v1_webhooks_deliveries__delivery_id__retry_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "delivery_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Delivery Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Admins only, signed in (not with an API key)"
+          },
+          "404": {
+            "description": "No failed delivery with that id"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/apps": {
+      "get": {
+        "tags": [
+          "apps"
+        ],
+        "summary": "Apps and what is installed (Settings)",
+        "operationId": "list_apps_api_v1_apps_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AppOut"
+                  },
+                  "type": "array",
+                  "title": "Response List Apps Api V1 Apps Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/apps/{app}": {
+      "put": {
+        "tags": [
+          "apps"
+        ],
+        "summary": "Install an app, or change its settings and credential (Settings)",
+        "description": "The credential is checked with the provider first and then kept encrypted; only its last 4 characters are shown again. Audited.",
+        "operationId": "install_app_api_v1_apps__app__put",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "app",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/App"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InstallIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Cevanos is connected: its integrations are used instead"
+          },
+          "422": {
+            "description": "Bad settings, or the provider refused the credential"
+          },
+          "503": {
+            "description": "The provider didn't answer; try again"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "apps"
+        ],
+        "summary": "Uninstall an app (Settings; its credential is deleted)",
+        "operationId": "uninstall_app_api_v1_apps__app__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "app",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/App"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "Not installed"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tickets/{ticket_id}/orders": {
+      "get": {
+        "tags": [
+          "apps"
+        ],
+        "summary": "The customer's latest orders (sidebar)",
+        "description": "Read live from the Shopify app for the ticket's customer (by email), at most 5; nothing is stored. Never fails because of the shop: see `available`.",
+        "operationId": "ticket_orders_api_v1_tickets__ticket_id__orders_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "ticket_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Ticket Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrdersOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tickets/{ticket_id}/payments": {
+      "get": {
+        "tags": [
+          "apps"
+        ],
+        "summary": "The customer's latest payments (sidebar)",
+        "description": "Read live from the Stripe app for the ticket's customer (by email), at most 5; nothing is stored. Never fails because of Stripe: see `available`.",
+        "operationId": "ticket_payments_api_v1_tickets__ticket_id__payments_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "ticket_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Ticket Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentsOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tickets/{ticket_id}/jira": {
+      "get": {
+        "tags": [
+          "jira"
+        ],
+        "summary": "Jira issues on a ticket",
+        "operationId": "list_issues_api_v1_tickets__ticket_id__jira_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "ticket_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Ticket Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/JiraIssueOut"
+                  },
+                  "title": "Response List Issues Api V1 Tickets  Ticket Id  Jira Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "jira"
+        ],
+        "summary": "Create a Jira issue from a ticket",
+        "description": "In the app's project, type Task. The ticket gets a system line.",
+        "operationId": "create_issue_api_v1_tickets__ticket_id__jira_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "ticket_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Ticket Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewIssueIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JiraIssueOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Can't reply, or the ticket is another team's (view only)"
+          },
+          "404": {
+            "description": "No such ticket, or no such issue in Jira"
+          },
+          "409": {
+            "description": "Jira isn't installed, the issue is already on the ticket, or 10 are"
+          },
+          "422": {
+            "description": "Jira refused (bad key, no access to the project)"
+          },
+          "503": {
+            "description": "Jira didn't answer"
+          }
+        }
+      }
+    },
+    "/api/v1/tickets/{ticket_id}/jira/link": {
+      "post": {
+        "tags": [
+          "jira"
+        ],
+        "summary": "Link an existing Jira issue to a ticket",
+        "operationId": "link_issue_api_v1_tickets__ticket_id__jira_link_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "ticket_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Ticket Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LinkIssueIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JiraIssueOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Can't reply, or the ticket is another team's (view only)"
+          },
+          "404": {
+            "description": "No such ticket, or no such issue in Jira"
+          },
+          "409": {
+            "description": "Jira isn't installed, the issue is already on the ticket, or 10 are"
+          },
+          "422": {
+            "description": "Jira refused (bad key, no access to the project)"
+          },
+          "503": {
+            "description": "Jira didn't answer"
+          }
+        }
+      }
+    },
+    "/api/v1/tickets/{ticket_id}/jira/{key}": {
+      "delete": {
+        "tags": [
+          "jira"
+        ],
+        "summary": "Take a Jira issue off a ticket (it stays in Jira)",
+        "operationId": "unlink_issue_api_v1_tickets__ticket_id__jira__key__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "ticket_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Ticket Id"
+            }
+          },
+          {
+            "name": "key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Key"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "That issue isn't on this ticket"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tickets/{ticket_id}/side-conversations": {
+      "get": {
+        "tags": [
+          "side conversations"
+        ],
+        "summary": "Side conversations on a ticket (agents only; never shown to the customer)",
+        "operationId": "list_sides_api_v1_tickets__ticket_id__side_conversations_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "ticket_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Ticket Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SideOut"
+                  },
+                  "title": "Response List Sides Api V1 Tickets  Ticket Id  Side Conversations Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "side conversations"
+        ],
+        "summary": "Start a side conversation by email",
+        "description": "Sent from the ticket's support address by the worker. Their reply comes back here (matched by the email's reply headers), the assignee is told (notification side_reply), and the customer sees none of it. The ticket gets a system line.",
+        "operationId": "start_side_api_v1_tickets__ticket_id__side_conversations_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "ticket_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Ticket Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SideOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Can't reply, or the ticket is another team's (view only)"
+          },
+          "404": {
+            "description": "No such ticket or side conversation"
+          },
+          "409": {
+            "description": "No support address yet, or 20 side conversations already"
+          },
+          "422": {
+            "description": "Not an address, the customer, one of our own addresses, empty"
+          }
+        }
+      }
+    },
+    "/api/v1/side-conversations/{side_id}/messages": {
+      "post": {
+        "tags": [
+          "side conversations"
+        ],
+        "summary": "Write again in a side conversation",
+        "description": "Threaded under the earlier emails, to the same addresses.",
+        "operationId": "write_again_api_v1_side_conversations__side_id__messages_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "side_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Side Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgainIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SideOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Can't reply, or the ticket is another team's (view only)"
+          },
+          "404": {
+            "description": "No such ticket or side conversation"
+          },
+          "409": {
+            "description": "No support address yet, or 20 side conversations already"
+          },
+          "422": {
+            "description": "Not an address, the customer, one of our own addresses, empty"
+          }
+        }
+      }
+    },
+    "/api/v1/usage": {
+      "get": {
+        "tags": [
+          "usage and retention"
+        ],
+        "summary": "Usage and plan limits (Settings)",
+        "description": "Over a limit, adding a member, uploading a file, or an agent or API key opening a ticket answers 402. A customer's own email, chat or portal request is never refused.",
+        "operationId": "get_usage_api_v1_usage_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UsageOut"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/retention": {
+      "get": {
+        "tags": [
+          "usage and retention"
+        ],
+        "summary": "Retention (Settings)",
+        "operationId": "get_retention_api_v1_retention_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RetentionOut"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "usage and retention"
+        ],
+        "summary": "Set retention (Settings; audited)",
+        "description": "The worker deletes once a day; each run is in the audit log (area retention). Deleted tickets can't be brought back.",
+        "operationId": "set_retention_api_v1_retention_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RetentionIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RetentionOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
       }
     },
     "/healthz": {
@@ -9655,6 +10826,22 @@
           "password"
         ],
         "title": "AddMemberBody"
+      },
+      "AgainIn": {
+        "properties": {
+          "body": {
+            "type": "string",
+            "maxLength": 20000,
+            "minLength": 1,
+            "title": "Body"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "body"
+        ],
+        "title": "AgainIn"
       },
       "AgeRowOut": {
         "properties": {
@@ -9902,6 +11089,121 @@
         ],
         "title": "AgentTimeOut"
       },
+      "App": {
+        "type": "string",
+        "enum": [
+          "shopify",
+          "stripe",
+          "jira",
+          "slack_alerts"
+        ],
+        "title": "App"
+      },
+      "AppOut": {
+        "properties": {
+          "app": {
+            "$ref": "#/components/schemas/App"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "card": {
+            "type": "string",
+            "title": "Card",
+            "description": "What it shows in the ticket sidebar: orders or payments."
+          },
+          "settings_fields": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Settings Fields",
+            "description": "Settings to send at install (not secret)."
+          },
+          "credential": {
+            "type": "string",
+            "title": "Credential",
+            "description": "The name of the credential to send."
+          },
+          "credential_help": {
+            "type": "string",
+            "title": "Credential Help"
+          },
+          "installed": {
+            "type": "boolean",
+            "title": "Installed"
+          },
+          "settings": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Settings"
+          },
+          "secret_hint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Secret Hint",
+            "description": "… and the credential's last 4 characters."
+          },
+          "installed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Installed At"
+          },
+          "installed_by_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Installed By Name"
+          },
+          "blocked": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Blocked",
+            "description": "Why it can't be installed here, e.g. Cevanos is connected (md D16)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "app",
+          "name",
+          "card",
+          "settings_fields",
+          "credential",
+          "credential_help",
+          "installed",
+          "settings",
+          "secret_hint",
+          "installed_at",
+          "installed_by_name",
+          "blocked"
+        ],
+        "title": "AppOut"
+      },
       "ApprovalIn": {
         "properties": {
           "approver_id": {
@@ -10107,7 +11409,11 @@
           "sandbox",
           "privacy",
           "imports",
-          "api_keys"
+          "api_keys",
+          "webhooks",
+          "apps",
+          "retention",
+          "plan"
         ],
         "title": "Area",
         "description": "Filter on the audit page. Other teams' features add their own (api_keys,\nwebhooks, apps, retention): the column takes any lower-case name."
@@ -10594,6 +11900,63 @@
           "next_cursor"
         ],
         "title": "AttachmentPageOut"
+      },
+      "AttemptOut": {
+        "properties": {
+          "at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "At"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status",
+            "description": "The answer's HTTP status; null: no answer."
+          },
+          "ms": {
+            "type": "integer",
+            "title": "Ms"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "response": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Response",
+            "description": "The start of the answer (300 characters)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "at",
+          "status",
+          "ms",
+          "error",
+          "response"
+        ],
+        "title": "AttemptOut"
       },
       "AuditEntryOut": {
         "properties": {
@@ -11761,6 +13124,163 @@
         "additionalProperties": false,
         "type": "object",
         "title": "DefaultsPatch"
+      },
+      "DeliveryOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id",
+            "description": "As sent in X-CeDesk-Delivery."
+          },
+          "webhook_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Webhook Id"
+          },
+          "url": {
+            "type": "string",
+            "title": "Url"
+          },
+          "event": {
+            "type": "string",
+            "title": "Event"
+          },
+          "body": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Body",
+            "description": "Exactly what was (or will be) sent."
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "delivered",
+              "failed"
+            ],
+            "title": "State"
+          },
+          "tries": {
+            "type": "integer",
+            "title": "Tries"
+          },
+          "next_try_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Try At"
+          },
+          "last_status": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Status"
+          },
+          "last_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Ms"
+          },
+          "last_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error"
+          },
+          "delivered_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delivered At"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "attempts": {
+            "items": {
+              "$ref": "#/components/schemas/AttemptOut"
+            },
+            "type": "array",
+            "title": "Attempts"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "webhook_id",
+          "url",
+          "event",
+          "body",
+          "state",
+          "tries",
+          "next_try_at",
+          "last_status",
+          "last_ms",
+          "last_error",
+          "delivered_at",
+          "created_at",
+          "attempts"
+        ],
+        "title": "DeliveryOut"
+      },
+      "DeliveryPageOut": {
+        "properties": {
+          "deliveries": {
+            "items": {
+              "$ref": "#/components/schemas/DeliveryOut"
+            },
+            "type": "array",
+            "title": "Deliveries"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "deliveries",
+          "next_cursor"
+        ],
+        "title": "DeliveryPageOut"
       },
       "DiffOut": {
         "properties": {
@@ -13334,6 +14854,75 @@
         ],
         "title": "InboxOut"
       },
+      "InstallIn": {
+        "properties": {
+          "settings": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "maxProperties": 5,
+            "title": "Settings",
+            "description": "Shopify: {\"shop\": \"acme\"}. Jira: {\"site\": \"acme\", \"email\": \"ops@acme.com\", \"project\": \"SUP\"}. Stripe and Slack alerts: none.",
+            "default": {}
+          },
+          "secret": {
+            "type": "string",
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Secret",
+            "description": "The app's credential (Slack alerts: the Incoming Webhook URL)."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "secret"
+        ],
+        "title": "InstallIn"
+      },
+      "JiraIssueOut": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "url": {
+            "type": "string",
+            "title": "Url"
+          },
+          "made_here": {
+            "type": "boolean",
+            "title": "Made Here",
+            "description": "Created from CeDesk; false: an existing one linked."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "created_by_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "url",
+          "made_here",
+          "created_at",
+          "created_by_name"
+        ],
+        "title": "JiraIssueOut"
+      },
       "KeyAccess": {
         "type": "string",
         "enum": [
@@ -13491,6 +15080,22 @@
           "ticket_id"
         ],
         "title": "LinkIn"
+      },
+      "LinkIssueIn": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "maxLength": 30,
+            "title": "Key",
+            "description": "An issue that exists, e.g. SUP-123."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "key"
+        ],
+        "title": "LinkIssueIn"
       },
       "MacroIn": {
         "properties": {
@@ -14180,6 +15785,39 @@
         ],
         "title": "MetricsSummaryOut"
       },
+      "NewIssueIn": {
+        "properties": {
+          "summary": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 250
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary",
+            "description": "Default: the ticket's subject."
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 5000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description",
+            "description": "What the Jira team needs to know. A link back to the ticket is added; the customer's messages are not sent unless you put them here."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "NewIssueIn"
+      },
       "NewKeyOut": {
         "properties": {
           "id": {
@@ -14443,6 +16081,135 @@
         "type": "object",
         "title": "OptionsIn"
       },
+      "OrderOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "number": {
+            "type": "string",
+            "title": "Number"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "payment": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payment"
+          },
+          "fulfillment": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fulfillment"
+          },
+          "total": {
+            "type": "string",
+            "title": "Total"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "items": {
+            "type": "integer",
+            "title": "Items"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "number",
+          "created_at",
+          "payment",
+          "fulfillment",
+          "total",
+          "currency",
+          "items",
+          "url"
+        ],
+        "title": "OrderOut"
+      },
+      "OrdersOut": {
+        "properties": {
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source",
+            "description": "shopify, stripe, cevanos, or null (no app)."
+          },
+          "available": {
+            "type": "boolean",
+            "title": "Available",
+            "description": "false: nothing to show, and `message` says why (not installed, no customer email, the provider refused or didn't answer)."
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "orders": {
+            "items": {
+              "$ref": "#/components/schemas/OrderOut"
+            },
+            "type": "array",
+            "title": "Orders"
+          }
+        },
+        "type": "object",
+        "required": [
+          "source",
+          "available",
+          "message",
+          "orders"
+        ],
+        "title": "OrdersOut"
+      },
       "Outcome": {
         "type": "string",
         "enum": [
@@ -14453,6 +16220,116 @@
           "duplicate"
         ],
         "title": "Outcome"
+      },
+      "PaymentOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "amount": {
+            "type": "string",
+            "title": "Amount"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "refunded": {
+            "type": "boolean",
+            "title": "Refunded"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "url": {
+            "type": "string",
+            "title": "Url"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "amount",
+          "currency",
+          "status",
+          "refunded",
+          "created_at",
+          "description",
+          "url"
+        ],
+        "title": "PaymentOut"
+      },
+      "PaymentsOut": {
+        "properties": {
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source",
+            "description": "shopify, stripe, cevanos, or null (no app)."
+          },
+          "available": {
+            "type": "boolean",
+            "title": "Available",
+            "description": "false: nothing to show, and `message` says why (not installed, no customer email, the provider refused or didn't answer)."
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "payments": {
+            "items": {
+              "$ref": "#/components/schemas/PaymentOut"
+            },
+            "type": "array",
+            "title": "Payments"
+          }
+        },
+        "type": "object",
+        "required": [
+          "source",
+          "available",
+          "message",
+          "payments"
+        ],
+        "title": "PaymentsOut"
       },
       "PoliciesIn": {
         "properties": {
@@ -15708,6 +17585,101 @@
         ],
         "title": "ResultOut"
       },
+      "RetentionIn": {
+        "properties": {
+          "closed_ticket_days": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 3650.0,
+                "minimum": 30.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closed Ticket Days",
+            "description": "Delete resolved tickets (and their files) this many days after they were resolved; null keeps them for good. A cloud plan may cap it."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "closed_ticket_days"
+        ],
+        "title": "RetentionIn"
+      },
+      "RetentionOut": {
+        "properties": {
+          "closed_ticket_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closed Ticket Days"
+          },
+          "plan_history_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plan History Days",
+            "description": "The cloud plan's cap, if any."
+          },
+          "effective_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective Days",
+            "description": "What the nightly job uses."
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "updated_by_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated By Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "closed_ticket_days",
+          "plan_history_days",
+          "effective_days",
+          "updated_at",
+          "updated_by_name"
+        ],
+        "title": "RetentionOut"
+      },
       "Role": {
         "type": "string",
         "enum": [
@@ -16771,6 +18743,112 @@
         ],
         "title": "SetupOut"
       },
+      "SideMessageOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "direction": {
+            "type": "string",
+            "title": "Direction",
+            "description": "out: sent from CeDesk; in: their reply."
+          },
+          "body": {
+            "type": "string",
+            "title": "Body"
+          },
+          "author_name": {
+            "type": "string",
+            "title": "Author Name"
+          },
+          "from_address": {
+            "type": "string",
+            "title": "From Address"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "direction",
+          "body",
+          "author_name",
+          "from_address",
+          "created_at"
+        ],
+        "title": "SideMessageOut"
+      },
+      "SideOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "subject": {
+            "type": "string",
+            "title": "Subject"
+          },
+          "to": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "To"
+          },
+          "from_address": {
+            "type": "string",
+            "title": "From Address",
+            "description": "The support address it goes out from."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "last_message_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Last Message At"
+          },
+          "created_by_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By Name"
+          },
+          "messages": {
+            "items": {
+              "$ref": "#/components/schemas/SideMessageOut"
+            },
+            "type": "array",
+            "title": "Messages"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "subject",
+          "to",
+          "from_address",
+          "created_at",
+          "last_message_at",
+          "created_by_name",
+          "messages"
+        ],
+        "title": "SideOut"
+      },
       "SignInBody": {
         "properties": {
           "workspace": {
@@ -17190,6 +19268,46 @@
           "start_url"
         ],
         "title": "SsoStatusOut"
+      },
+      "StartIn": {
+        "properties": {
+          "to": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 10,
+            "minItems": 1,
+            "title": "To",
+            "description": "Email addresses."
+          },
+          "subject": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subject",
+            "description": "Default: \"About <ticket subject>\". The ticket's label is added."
+          },
+          "body": {
+            "type": "string",
+            "maxLength": 20000,
+            "minLength": 1,
+            "title": "Body"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "to",
+          "body"
+        ],
+        "title": "StartIn"
       },
       "Status": {
         "type": "string",
@@ -19298,6 +21416,74 @@
         ],
         "title": "TriedOut"
       },
+      "UsageOut": {
+        "properties": {
+          "plan": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plan",
+            "description": "The cloud plan; null: no limits (self-hosted, or none set)."
+          },
+          "agents": {
+            "type": "integer",
+            "title": "Agents",
+            "description": "Active members who take tickets (light agents are free)."
+          },
+          "tickets_this_month": {
+            "type": "integer",
+            "title": "Tickets This Month",
+            "description": "Made this calendar month (UTC), not imported."
+          },
+          "storage_bytes": {
+            "type": "integer",
+            "title": "Storage Bytes",
+            "description": "Files on tickets."
+          },
+          "limits": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "object",
+            "title": "Limits",
+            "description": "agents, tickets_month, storage_bytes; null: no limit."
+          },
+          "retention_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retention Days",
+            "description": "Resolved tickets are deleted this many days after resolving; null: kept."
+          }
+        },
+        "type": "object",
+        "required": [
+          "plan",
+          "agents",
+          "tickets_this_month",
+          "storage_bytes",
+          "limits",
+          "retention_days"
+        ],
+        "title": "UsageOut"
+      },
       "ValidationError": {
         "properties": {
           "loc": {
@@ -19411,6 +21597,225 @@
           "visitor"
         ],
         "title": "VoteIn"
+      },
+      "WebhookIn": {
+        "properties": {
+          "url": {
+            "type": "string",
+            "maxLength": 500,
+            "title": "Url",
+            "description": "https, a public host name."
+          },
+          "events": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "ticket.created",
+                "ticket.updated",
+                "ticket.resolved",
+                "message.created"
+              ]
+            },
+            "type": "array",
+            "maxItems": 4,
+            "minItems": 1,
+            "title": "Events",
+            "description": "message.created: customer and agent replies only (never notes); it names the message, the text is read through the API."
+          },
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "default": true
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "url",
+          "events"
+        ],
+        "title": "WebhookIn"
+      },
+      "WebhookOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "url": {
+            "type": "string",
+            "title": "Url"
+          },
+          "events": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Events"
+          },
+          "secret_hint": {
+            "type": "string",
+            "title": "Secret Hint",
+            "description": "whsec_… and the secret's last 4 characters."
+          },
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "created_by_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "url",
+          "events",
+          "secret_hint",
+          "enabled",
+          "created_at",
+          "updated_at",
+          "created_by_name"
+        ],
+        "title": "WebhookOut"
+      },
+      "WebhookPatch": {
+        "properties": {
+          "url": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          },
+          "events": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "ticket.created",
+                    "ticket.updated",
+                    "ticket.resolved",
+                    "message.created"
+                  ]
+                },
+                "type": "array",
+                "minItems": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Events"
+          },
+          "enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enabled"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "WebhookPatch"
+      },
+      "WebhookSecretOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "url": {
+            "type": "string",
+            "title": "Url"
+          },
+          "events": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Events"
+          },
+          "secret_hint": {
+            "type": "string",
+            "title": "Secret Hint",
+            "description": "whsec_… and the secret's last 4 characters."
+          },
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "created_by_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By Name"
+          },
+          "secret": {
+            "type": "string",
+            "title": "Secret",
+            "description": "Shown this once: sign checks need it."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "url",
+          "events",
+          "secret_hint",
+          "enabled",
+          "created_at",
+          "updated_at",
+          "created_by_name",
+          "secret"
+        ],
+        "title": "WebhookSecretOut"
       },
       "WorkspaceOut": {
         "properties": {

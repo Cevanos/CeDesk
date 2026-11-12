@@ -71,7 +71,8 @@ class InboundMessageOut(BaseModel):
     summary="A customer's new request from another system (API key)",
     description="Makes a ticket on the `api` channel as the customer: triage, rules, SLA "
     "and routing run. 200 instead of 201 when `external_id` made a ticket before. "
-    "Agents' replies stay in CeDesk: read them with `GET /tickets/{id}`.",
+    "Agents' replies stay in CeDesk: a webhook on `message.created` says when one is "
+    "added; read it with `GET /tickets/{id}`.",
     responses=_KEY | {200: {"description": "This external_id made the ticket before"}},
 )
 async def new_request(

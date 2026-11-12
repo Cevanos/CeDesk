@@ -10,8 +10,8 @@ customer wrote, with an API key that can write.
   gives back the ticket made the first time, the same message is saved once.
 - Only tickets that came in through the API take customer messages this way; an email or
   chat customer writes on their own channel.
-- Agents' replies don't go anywhere by themselves: the system reads them with
-  `GET /tickets/{id}` (webhooks come with md PL3).
+- Agents' replies don't go anywhere by themselves: a webhook on `message.created` (md PL3)
+  tells the system, which reads the reply with `GET /tickets/{id}`.
 """
 
 from dataclasses import dataclass

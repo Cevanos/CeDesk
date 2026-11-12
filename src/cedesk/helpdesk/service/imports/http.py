@@ -25,7 +25,7 @@ from urllib.parse import quote, urljoin, urlsplit
 
 import httpx
 
-from cedesk.egress import BadAddress, Guard, check_public
+from cedesk.egress import BadAddress, Guard, check_public, pinned
 from cedesk.helpdesk.domain.imports import RateLimited, SourceError
 
 TIMEOUT_SECONDS = 30
@@ -96,8 +96,11 @@ class SourceHttp:
         transport: httpx.AsyncBaseTransport | None = None,
         base_path: str = "",
         label: str = "The source",
+        timeout: float = TIMEOUT_SECONDS,
     ) -> None:
+        """`timeout`: seconds per request; the ticket sidebar's cards (md C12) wait less."""
         self.host = host
+        self._timeout = timeout
         self._base = f"https://{host}{base_path}"
         self._headers = {
             **headers,
@@ -163,7 +166,9 @@ class SourceHttp:
             try:
                 async with (
                     httpx.AsyncClient(
-                        timeout=TIMEOUT_SECONDS, follow_redirects=False, transport=self._transport
+                        timeout=TIMEOUT_SECONDS,
+                        follow_redirects=False,
+                        transport=pinned(self._transport),
                     ) as client,
                     client.stream("GET", current, headers=sent) as response,
                 ):
@@ -216,7 +221,7 @@ class SourceHttp:
             raise SourceError(str(exc), permanent=True) from None
         try:
             async with httpx.AsyncClient(
-                timeout=TIMEOUT_SECONDS, follow_redirects=False, transport=self._transport
+                timeout=self._timeout, follow_redirects=False, transport=pinned(self._transport)
             ) as client:
                 response = await client.request(
                     method,
