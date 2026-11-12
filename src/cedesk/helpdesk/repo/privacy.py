@@ -315,6 +315,25 @@ async def erase_contact(session: AsyncSession, contact_id: UUID, email: str) -> 
             "OR payload->>'contact_id' = CAST(:c AS text)",
             {**p, "stopped": STOPPED},
         ),
+        # Webhook deliveries are copies of those events (md PL5: the body names the ticket,
+        # and its subject is the customer's words): the same, and the receiver's answers go.
+        "webhook_responses": await _changed(
+            session,
+            "UPDATE hd_webhook_attempt SET response = NULL WHERE response IS NOT NULL "
+            "AND delivery_id IN (SELECT id FROM hd_webhook_delivery WHERE "
+            "body->'ticket'->>'id' IN (SELECT CAST(id AS text) FROM hd_ticket "
+            "WHERE contact_id = :c))",
+            p,
+        ),
+        "webhook_deliveries": await _changed(
+            session,
+            "UPDATE hd_webhook_delivery SET body = jsonb_build_object('erased', true), "
+            "state = CASE WHEN state = 'pending' THEN 'failed' ELSE state END, "
+            "last_error = CASE WHEN state = 'pending' THEN :stopped ELSE last_error END, "
+            "lease_until = NULL WHERE body->'ticket'->>'id' IN "
+            "(SELECT CAST(id AS text) FROM hd_ticket WHERE contact_id = :c)",
+            {**p, "stopped": STOPPED},
+        ),
     }
     await session.execute(
         text(

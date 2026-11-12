@@ -39,6 +39,7 @@ RETRY_AFTER: tuple[timedelta, ...] = (
 )  # fmt: skip
 MAX_TRIES = len(RETRY_AFTER) + 1
 RESPONSE_KEPT = 300  # characters of the receiver's answer kept in the log
+KEEP_DAYS = 30  # a delivered or failed delivery (and its tries) is deleted after this
 SIGNATURE_TOLERANCE_SECONDS = 300  # what receivers are told to accept
 
 

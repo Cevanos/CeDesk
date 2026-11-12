@@ -12,7 +12,7 @@ from typing import Any
 
 import httpx
 
-from cedesk.egress import BadAddress, Guard, check_public
+from cedesk.egress import BadAddress, Guard, check_public, pinned
 from cedesk.helpdesk.domain import webhooks as rules
 
 USER_AGENT = "CeDesk-Webhooks/1"
@@ -72,7 +72,7 @@ class WebhookClient:
         try:
             async with (
                 httpx.AsyncClient(
-                    transport=self._transport, timeout=self._timeout, follow_redirects=False
+                    transport=pinned(self._transport), timeout=self._timeout, follow_redirects=False
                 ) as client,
                 client.stream("POST", url, content=payload, headers=headers) as answer,
             ):

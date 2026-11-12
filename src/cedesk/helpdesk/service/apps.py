@@ -279,22 +279,35 @@ def _unavailable(app: App, exc: Exception) -> Card:
 async def orders(
     sm: Sessionmaker, sealer: Sealer, http: AppHttp, caller: Caller, ticket_id: UUID
 ) -> Card:
-    """The customer's latest Shopify orders, by email."""
+    """The customer's latest Shopify orders: the shop's customers with this exact email,
+    then each one's orders (Shopify's order list can't be filtered by email)."""
     early, email, row, secret = await _card_source(sm, sealer, caller, ticket_id, App.shopify)
     if early is not None:
         return early
     shop = str(row["settings"]["shop"])
     client = _client(http, App.shopify, {"shop": shop}, secret)
+    api = f"/admin/api/{rules.SHOPIFY_API}"
     try:
-        data = await client.get(
-            f"/admin/api/{rules.SHOPIFY_API}/orders.json",
-            {"email": email, "status": "any", "limit": rules.CARD_LIMIT,
-             "fields": "id,name,order_number,created_at,financial_status,fulfillment_status,"
-                       "total_price,currency,line_items"},
-        )  # fmt: skip
+        customers = rules.shopify_customer_ids(
+            await client.get(
+                f"{api}/customers/search.json",
+                {"query": f"email:{email}", "fields": "id,email", "limit": 3},
+            ),
+            email,
+        )
+        found: list[rules.Order] = []
+        for customer in customers:
+            data = await client.get(
+                f"{api}/customers/{customer}/orders.json",
+                {"status": "any", "limit": rules.CARD_LIMIT,
+                 "fields": "id,email,name,order_number,created_at,financial_status,"
+                           "fulfillment_status,total_price,currency,line_items"},
+            )  # fmt: skip
+            found += rules.shopify_orders(data, shop, email)
     except (SourceError, RateLimited) as exc:
         return _unavailable(App.shopify, exc)
-    return Card(App.shopify.value, True, orders=rules.shopify_orders(data, shop))
+    found.sort(key=lambda o: o.created_at.timestamp() if o.created_at else 0, reverse=True)
+    return Card(App.shopify.value, True, orders=found[: rules.CARD_LIMIT])
 
 
 async def payments(

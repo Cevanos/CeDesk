@@ -248,6 +248,7 @@ def _worker(once: bool) -> int:
     from cedesk.helpdesk.service.stream import prune_everywhere as prune_stream
     from cedesk.helpdesk.service.task_alerts import alert_everywhere as alert_tasks
     from cedesk.helpdesk.service.webhooks import WebhookFanout
+    from cedesk.helpdesk.service.webhooks import prune_everywhere as prune_webhooks
     from cedesk.helpdesk.service.webhooks import send_due as send_webhooks
     from cedesk.mail import MailboxError, make_mailbox, make_mailer
     from cedesk.scanning import make_scanner
@@ -396,6 +397,10 @@ def _worker(once: bool) -> int:
                         await prune_stream(sm)
                     except Exception:
                         logger.exception("Pruning the live-update events failed")
+                    try:  # webhook deliveries past their 30 days (md PL6)
+                        await prune_webhooks(sm)
+                    except Exception:
+                        logger.exception("Pruning the webhook log failed")
                     swept_at = time.monotonic()
                 if time.monotonic() - retained_at > RETENTION_EVERY_SECONDS:
                     try:  # resolved tickets past the workspace's retention (md O2)

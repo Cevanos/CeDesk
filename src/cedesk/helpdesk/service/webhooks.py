@@ -424,3 +424,14 @@ async def send_due(
             else:
                 result.failed += 1
     return result
+
+
+async def prune_everywhere(sm: Sessionmaker) -> int:
+    """The worker's sweep: each workspace's delivery log keeps `KEEP_DAYS` days."""
+    async with sm() as s, s.begin():
+        workspace_ids = await auth_repo.all_workspace_ids(s)
+    gone = 0
+    for workspace_id in workspace_ids:
+        async with workspace_session(sm, workspace_id) as s:
+            gone += await repo.prune(s, rules.KEEP_DAYS)
+    return gone

@@ -3,6 +3,26 @@
 `openapi.json` next to this file is the API as served (`uv run cedesk openapi`). Every
 route is under `/api/v1`. Breaking changes only come in v2 (md 2B). Newest first.
 
+## 2026-11-12: Fixes from the review of webhooks, apps and retention (PL3-PL7, C12, O2)
+
+- Erasing a customer (S11) now also clears their webhook deliveries: the body becomes
+  `{"erased": true}`, the receiver's saved answers go, and one not sent yet is stopped
+  (`failed`, "Stopped: the customer was erased."). The erase's `counts` add
+  `webhook_deliveries` and `webhook_responses`.
+- The webhook log keeps 30 days: delivered and failed deliveries (and their tries) older
+  than that are deleted by the worker. One still being tried stays.
+- Every call a workspace can point (webhooks, imports and their files, Shopify, Stripe,
+  Jira, Slack) now connects to the exact address it checked (public only), with the host
+  name kept for HTTPS. A host whose address changes between the check and the connection
+  (DNS rebinding) can no longer reach the server's own network.
+- The Shopify orders card looks the customer up first (`customers/search.json`, the exact
+  email only) and reads that customer's orders; an order whose email isn't the
+  customer's is never shown. Shopify's order list can't be filtered by email, so before
+  this the card could show the shop's latest orders, other customers' included.
+- Retention counts an imported ticket from when it was imported (the latest run of its
+  import), not from its old resolved date: importing years of history no longer has it
+  deleted the next day. A deleted ticket's events and webhook deliveries go with it.
+
 ## 2026-11-12: Usage, cloud plan limits and retention (Phase 3, O2, O4, O5)
 
 - New (Settings): `GET /usage` → `{plan, agents, tickets_this_month, storage_bytes,

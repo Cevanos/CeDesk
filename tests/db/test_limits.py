@@ -187,3 +187,57 @@ async def test_retention_deletes_old_resolved_tickets_and_their_files(
         await s.execute(text("UPDATE hd_ticket SET resolved_at = :at WHERE id = :id"),
                         {"at": now - timedelta(days=61), "id": UUID(recent["id"])})  # fmt: skip
     assert await limits.run_retention(sm, store) == 1  # the plan alone deletes after 60
+
+
+async def test_retention_counts_imported_tickets_from_their_import(
+    client: AsyncClient, app_sessionmaker: Sm, files: Path
+) -> None:
+    """An imported ticket keeps its old dates: resolved 2 years ago in Zendesk, imported
+    5 days ago, it is kept (counted from the import). Deleting a ticket also deletes its
+    events and webhook deliveries, which name it."""
+    sm = app_sessionmaker
+    w = await desk(client, sm)
+    ok(await client.put("/api/v1/retention", headers=w["h"], json={"closed_ticket_days": 90}))
+    imported, own = [ok(await ticket(client, w, s), 201) for s in ("From Zendesk", "Ours")]
+    now = datetime.now(UTC)
+    async with workspace_session(sm, w["ws"]) as s:
+        conn = (
+            await s.execute(
+                text(
+                    "INSERT INTO hd_import_connection (workspace_id, source, label) "
+                    "VALUES (:ws, 'zendesk', 'acme') RETURNING id"
+                ),
+                {"ws": w["ws"]},
+            )
+        ).scalar_one()
+        await s.execute(text(
+            "INSERT INTO hd_import_run (workspace_id, connection_id, source, state, started_at, "
+            "finished_at) VALUES (:ws, :c, 'zendesk', 'done', :at, :at)"),
+            {"ws": w["ws"], "c": conn, "at": now - timedelta(days=5)})  # fmt: skip
+        for t, source in ((imported, "zendesk"), (own, "web")):
+            await s.execute(text(
+                "UPDATE hd_ticket SET status = 'resolved', resolved_at = :at, source = :src, "
+                "source_id = :sid WHERE id = :id"),
+                {"at": now - timedelta(days=730), "src": source,
+                 "sid": "z-1" if source == "zendesk" else None, "id": UUID(t["id"])})  # fmt: skip
+        await s.execute(text(
+            "INSERT INTO hd_webhook (workspace_id, url, events, secret_sealed, secret_hint) "
+            "VALUES (:ws, 'https://hooks.example.com/x', ARRAY['ticket.created'], '\\x00', "
+            "'…abcd')"), {"ws": w["ws"]})  # fmt: skip
+        await s.execute(text(
+            "INSERT INTO hd_webhook_delivery (workspace_id, webhook_id, event, body, state) "
+            "SELECT :ws, id, 'ticket.created', jsonb_build_object('ticket', "
+            "jsonb_build_object('id', CAST(:t AS text), 'subject', 'Ours')), 'delivered' "
+            "FROM hd_webhook"), {"ws": w["ws"], "t": own["id"]})  # fmt: skip
+
+    store = client._transport.app.state.store  # type: ignore[attr-defined]
+    assert await limits.run_retention(sm, store) == 1
+    ok(await client.get(f"{T}/{imported['id']}", headers=w["h"]))  # imported 5 days ago: kept
+    assert (await client.get(f"{T}/{own['id']}", headers=w["h"])).status_code == 404
+    async with workspace_session(sm, w["ws"]) as s:
+        events = (await s.execute(text("SELECT count(*) FROM hd_outbox WHERE ticket_id = :t"),
+                                  {"t": UUID(own["id"])})).scalar_one()  # fmt: skip
+        hooks = (await s.execute(text("SELECT count(*) FROM hd_webhook_delivery"))).scalar_one()
+        kept = (await s.execute(text("SELECT count(*) FROM hd_outbox WHERE ticket_id = :t"),
+                                {"t": UUID(imported["id"])})).scalar_one()  # fmt: skip
+    assert (events, hooks) == (0, 0) and kept >= 1
