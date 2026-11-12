@@ -15,7 +15,7 @@ import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Protocol
+from typing import Any, Protocol, runtime_checkable
 from uuid import UUID
 
 from cedesk.helpdesk.domain.reports import IMPORT_SOURCES
@@ -36,6 +36,11 @@ BODY_MAX = 50_000  # hd_message.body
 TAG_MAX = 20
 FIELD_MAX = 50
 FIELD_TEXT_MAX = 2000
+FILE_MAX = 25 * 1024 * 1024  # a file bigger than this is kept as a link, not copied (md 8.2 step 5)
+FILES_PER_MESSAGE = 20
+SYNC_SOURCES: tuple[str, ...] = AVAILABLE_SOURCES  # a CSV file has nothing to ask again
+SYNC_EVERY_SECONDS = 300  # "keep syncing until go-live": the worker looks every 5 minutes
+SYNC_OVERLAP_SECONDS = 300  # each look starts this far before the last one, so none is missed
 
 LABELS = {
     "intercom": "Intercom",
@@ -94,6 +99,17 @@ class Contact:
 
 
 @dataclass(frozen=True)
+class Attachment:
+    """A file on a source message. `url` is whatever the connector needs to fetch it (it
+    decides how: some sources need the account's credentials, some hand out a signed link)."""
+
+    name: str
+    url: str
+    size: int | None = None  # bytes, when the source says
+    mime: str | None = None
+
+
+@dataclass(frozen=True)
 class Message:
     kind: str  # customer | agent | note
     body: str
@@ -101,6 +117,7 @@ class Message:
     external_id: str | None = None
     author_name: str | None = None
     author_email: str | None = None
+    attachments: Sequence[Attachment] = ()
 
 
 @dataclass(frozen=True)
@@ -188,6 +205,28 @@ class SourceConnector(Protocol):
 
     async def page(self, kind: str, cursor: Mapping[str, Any] | None) -> Page[Any]:
         """One page of `kind` (one of `KINDS`) after `cursor` (None: the first page)."""
+        ...
+
+
+@runtime_checkable
+class FileSource(Protocol):
+    """A connector that can hand over the bytes of an attachment."""
+
+    async def fetch(self, attachment: Attachment, limit: int) -> bytes | None:
+        """The file's bytes, or None when the source no longer has it or it is bigger than
+        `limit`. Never reads more than `limit` bytes."""
+        ...
+
+
+@runtime_checkable
+class ChangeSource(Protocol):
+    """A connector that can say what changed in the source since a time (M9)."""
+
+    async def changed_tickets(
+        self, since: datetime, cursor: Mapping[str, Any] | None
+    ) -> Page[Ticket]:
+        """Tickets created or updated at or after `since`, with all their messages, one page
+        at a time (the same shape as `page("tickets", cursor)`)."""
         ...
 
 
@@ -306,6 +345,12 @@ def clean_fields(raw: Mapping[str, Any]) -> dict[str, str]:
         if len(out) >= FIELD_MAX:
             break
     return out
+
+
+def link_line(name: str, size: int | None, url: str, why: str) -> str:
+    """The system line for a file kept as a link instead of a copy."""
+    big = f" ({size / (1024 * 1024):.1f} MB)" if size else ""
+    return f"Attachment kept as a link ({why}): {name[:120]}{big} · {url[:500]}"
 
 
 def history_line(source: str, group: str | None, external_id: str, raw_status: str) -> str:

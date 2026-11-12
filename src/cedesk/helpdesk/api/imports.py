@@ -30,6 +30,10 @@ router = APIRouter(tags=["imports"])
 
 Source = Literal["intercom", "zendesk", "freshdesk", "gorgias", "helpscout"]
 Kind = Literal["contacts", "tickets", "articles", "replies"]
+Cursor = Annotated[
+    str | None, Query(max_length=200, description="`next_cursor` from the previous page.")
+]
+Limit = Annotated[int, Query(ge=1, le=200)]
 
 
 def _importers(request: Request) -> framework.Importers:
@@ -69,6 +73,12 @@ class OptionsIn(BaseModel):
     team_map: dict[str, UUID | None] = Field(
         default_factory=dict,
         description="A source group's id -> the CeDesk team its tickets go to (null: no team).",
+    )
+    sync: bool = Field(
+        default=False,
+        description="Keep syncing until go-live: after the import, the worker asks the source "
+        "every 5 minutes for new tickets and new replies, and the credentials are kept until "
+        "`sync-stop`. Not for a CSV file.",
     )
 
 
@@ -115,6 +125,34 @@ class RunOut(BaseModel):
     started_at: datetime
     finished_at: datetime | None
     last_error: str | None = Field(description="Why it paused or failed, in words.")
+    last_sync_at: datetime | None = Field(
+        default=None, description="When the source was last asked for changes (sync on)."
+    )
+
+
+class HistoryRunOut(BaseModel):
+    id: UUID
+    connection_id: UUID
+    source: str = Field(description="intercom, zendesk, freshdesk, gorgias, helpscout or csv.")
+    account: str = Field(description="The account, or the file's name.")
+    result: Literal["running", "finished", "syncing", "failed"]
+    started_by_id: UUID | None
+    started_by: str | None = Field(description="The Admin who started it (null if removed).")
+    started_at: datetime
+    finished_at: datetime | None
+    kinds: list[str]
+    counts: dict[str, Any] = Field(
+        description="What it brought: per kind created and skipped; tickets also `files` "
+        "copied and `files_linked`; `sync` has what the syncing looks added."
+    )
+    sync_on: bool
+    last_sync_at: datetime | None
+    last_error: str | None = Field(description="Why it failed or last paused, in words.")
+
+
+class HistoryOut(BaseModel):
+    runs: list[HistoryRunOut]
+    next_cursor: str | None
 
 
 def _connection_out(view: framework.ConnectionView) -> ConnectionOut:
@@ -274,8 +312,9 @@ async def dry_run(
     status_code=status.HTTP_202_ACCEPTED,
     summary="Start importing (Admin)",
     description="The worker does the run in the background. 409 when this connection already "
-    "has a run in progress or was closed. Poll `GET /imports/runs/{id}`. Accepts "
-    "`Idempotency-Key`: a repeat returns the run the first one queued.",
+    "has a run in progress, is syncing (stop it first) or was closed. 422 for `sync` on a "
+    "CSV file. Poll `GET /imports/runs/{id}`. Accepts `Idempotency-Key`: a repeat returns "
+    "the run the first one queued.",
 )
 async def start_run(
     connection_id: UUID,
@@ -285,9 +324,11 @@ async def start_run(
     response: Response,
     idempotency_key: IdempotencyKey = None,
 ) -> RunOut:
-    sent = json.dumps(_options(body), sort_keys=True).encode()
+    sent = json.dumps([_options(body), body.sync], sort_keys=True).encode()
     idem = idempotency(idempotency_key, f"POST /imports/connections/{connection_id}/run", sent)
-    view = await framework.start_run(sm, caller, connection_id, _options(body), idem=idem)
+    view = await framework.start_run(
+        sm, caller, connection_id, _options(body), idem=idem, sync=body.sync
+    )
     mark_replayed(idem, response)
     return _run_out(view)
 
@@ -309,6 +350,49 @@ async def get_run(run_id: UUID, caller: CallerDep, sm: SessionmakerDep) -> RunOu
     return _run_out(await framework.get_run(sm, caller, run_id))
 
 
+@router.post(
+    "/imports/runs/{run_id}/sync-now",
+    response_model=RunOut,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Ask the source for changes now instead of in 5 minutes (Admin)",
+    description="Only for a run that is syncing (`sync_on`, state `done`); the worker does the "
+    "look within its next pass. 409 when the run isn't syncing or its first import is still "
+    "running.",
+)
+async def sync_now(run_id: UUID, caller: CallerDep, sm: SessionmakerDep) -> RunOut:
+    return _run_out(await framework.sync_now(sm, caller, run_id))
+
+
+@router.post(
+    "/imports/runs/{run_id}/sync-stop",
+    response_model=RunOut,
+    summary="Go-live: stop syncing and delete the stored credentials (Admin)",
+    description="CeDesk stops asking the source and keeps no access to it. The import history "
+    "stays. 409 when the run isn't syncing.",
+)
+async def sync_stop(
+    run_id: UUID, request: Request, caller: CallerDep, sm: SessionmakerDep
+) -> RunOut:
+    return _run_out(await framework.sync_stop(sm, _importers(request), caller, run_id))
+
+
+@router.get(
+    "/imports/history",
+    response_model=HistoryOut,
+    summary="Every import: when, from where, by whom, how it went (Admin)",
+    description="Newest first, cursor pages. `result` is running, finished, syncing (the "
+    "import is done and still asking for changes) or failed (with `last_error`). To see the "
+    "tickets an import brought, filter the ticket list with `imported`.",
+)
+async def history(
+    caller: CallerDep, sm: SessionmakerDep, cursor: Cursor = None, limit: Limit = 50
+) -> HistoryOut:
+    page = await framework.history(sm, caller, cursor=cursor, limit=limit)
+    return HistoryOut(
+        runs=[HistoryRunOut(**r.__dict__) for r in page.runs], next_cursor=page.next_cursor
+    )
+
+
 def _run_out(view: framework.RunView) -> RunOut:
     return RunOut(
         id=view.id,
@@ -321,4 +405,5 @@ def _run_out(view: framework.RunView) -> RunOut:
         started_at=view.started_at,
         finished_at=view.finished_at,
         last_error=view.last_error,
+        last_sync_at=view.last_sync_at,
     )

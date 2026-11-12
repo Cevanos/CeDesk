@@ -18,6 +18,19 @@ redaction run; **rules, routing, notifications, outbox events and webhooks do no
 are matched by email; one who isn't in CeDesk keeps their name on their messages and the
 ticket stays unassigned. Ticket numbers are reserved a batch at a time in their own short
 transaction, so writing a batch never holds the counter that live tickets need.
+
+**Files** (md 8.2 step 5): a message's attachments are copied to the object store, in the
+same way as a file in a customer's email (the virus scan sees them like any other). They are
+fetched and stored *before* the page's transaction opens, so no transaction waits on a
+download; if the page then fails, the copies are deleted. A file over 25 MB, or one the
+source no longer serves, is kept as a link in a system line under its message.
+
+**Keep syncing until go-live** (M9): a run started with `sync` doesn't delete the
+credentials when its first import ends. It stays `done` with `sync_on`, and the worker asks
+the source "what changed since the last look" every 5 minutes (`run_due`, the same pass that
+does imports): a new ticket is imported, a ticket already here gets only its new messages
+(found by their source ids) and its new status. `sync-now` makes the next look due at once;
+`sync-stop` turns it off and deletes the credentials.
 """
 
 import json
@@ -35,12 +48,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from cedesk.crypto import CannotOpen, Sealer
 from cedesk.db import workspace_session
 from cedesk.helpdesk.domain import imports as rules
+from cedesk.helpdesk.domain import paging
 from cedesk.helpdesk.domain import saved_replies as reply_rules
+from cedesk.helpdesk.domain.attachments import clean_mime, clean_name, object_key
 from cedesk.helpdesk.domain.audit import Area
 from cedesk.helpdesk.domain.auth import Caller
 from cedesk.helpdesk.domain.imports import (
     Article,
+    ChangeSource,
     Contact,
+    FileSource,
+    Message,
     RateLimited,
     Reply,
     SourceConnector,
@@ -49,6 +67,7 @@ from cedesk.helpdesk.domain.imports import (
 )
 from cedesk.helpdesk.domain.permissions import Action
 from cedesk.helpdesk.domain.portal import normalise_email
+from cedesk.helpdesk.repo import attachments as attach_repo
 from cedesk.helpdesk.repo import auth as auth_repo
 from cedesk.helpdesk.repo import imports as repo
 from cedesk.helpdesk.repo import saved_replies as reply_repo
@@ -142,6 +161,40 @@ class RunView:
     started_at: datetime
     finished_at: datetime | None
     last_error: str | None
+    last_sync_at: datetime | None = None
+
+
+@dataclass(frozen=True)
+class HistoryItem:
+    id: UUID
+    connection_id: UUID
+    source: str
+    account: str
+    result: str  # running | finished | syncing | failed
+    started_by_id: UUID | None
+    started_by: str | None
+    started_at: datetime
+    finished_at: datetime | None
+    kinds: list[str]
+    counts: dict[str, Any]
+    sync_on: bool
+    last_sync_at: datetime | None
+    last_error: str | None
+
+
+@dataclass(frozen=True)
+class HistoryPage:
+    runs: list[HistoryItem]
+    next_cursor: str | None
+
+
+def result_word(state: str, sync_on: bool) -> str:
+    """What an Admin reads for a run: `running` covers queued and running."""
+    if state == "failed":
+        return "failed"
+    if state == "done":
+        return "syncing" if sync_on else "finished"
+    return "running"
 
 
 def _run_view(row: Mapping[Any, Any]) -> RunView:
@@ -156,6 +209,7 @@ def _run_view(row: Mapping[Any, Any]) -> RunView:
         started_at=row["started_at"],
         finished_at=row["finished_at"],
         last_error=row["last_error"],
+        last_sync_at=row["last_sync_at"],
     )
 
 
@@ -469,8 +523,11 @@ async def start_run(
     connection_id: UUID,
     raw_options: Mapping[str, Any] | None,
     idem: Idempotency | None = None,
+    *,
+    sync: bool = False,
 ) -> RunView:
-    """Queues the run; the worker does it. One run at a time per connection. With an
+    """Queues the run; the worker does it. One run at a time per connection. `sync`: keep
+    asking the source for changes after the import, until the Admin stops it (M9). With an
     `Idempotency-Key`, a repeat returns the run the first one queued."""
     require(caller, Action.settings)
     ws = caller.workspace_id
@@ -484,19 +541,23 @@ async def start_run(
         if row["state"] == "closed":
             raise Conflict("This connection was closed. Connect again.")
         chosen = await _checked_options(s, raw_options)
+        if sync and row["source"] not in rules.SYNC_SOURCES:
+            raise Invalid("This source can't keep syncing: there is nothing to ask again.")
         if await repo.active_run(s, connection_id) is not None:
             raise Conflict("A run is already in progress on this connection.")
+        if await repo.syncing_run(s, connection_id) is not None:
+            raise Conflict("This connection is syncing. Stop the sync before starting again.")
         run_id = await repo.insert_run(
             s, workspace_id=ws, connection_id=connection_id, source=row["source"],
-            options=chosen.as_json(), started_by=caller.member_id,
+            options=chosen.as_json(), started_by=caller.member_id, sync_on=sync,
         )  # fmt: skip
         await repo.add_event(
             s, ws, connection_id, "started", run_id=run_id, member_id=caller.member_id,
-            detail={"kinds": list(chosen.kinds)},
+            detail={"kinds": list(chosen.kinds), "sync": sync},
         )  # fmt: skip
         await audit.record(
             s, caller, Area.imports, "started", f"Import from {rules.label(row['source'])}",
-            target_id=run_id, detail={"kinds": list(chosen.kinds)},
+            target_id=run_id, detail={"kinds": list(chosen.kinds), "sync": sync},
         )  # fmt: skip
         await remember(s, caller, idem, run_id)
         found = await repo.run(s, run_id)
@@ -513,7 +574,104 @@ async def get_run(sm: Sessionmaker, caller: Caller, run_id: UUID) -> RunView:
     return _run_view(row)
 
 
+async def sync_now(sm: Sessionmaker, caller: Caller, run_id: UUID) -> RunView:
+    """Makes the next look at the source due now (the worker does it within its next pass)."""
+    require(caller, Action.settings)
+    async with workspace_session(sm, caller.workspace_id) as s:
+        row = await repo.run(s, run_id)
+        if row is None:
+            raise NotFound("No such run.")
+        if not row["sync_on"]:
+            raise Conflict("This run isn't syncing.")
+        if row["state"] != "done":
+            raise Conflict("The first import is still running; syncing starts when it ends.")
+        await repo.sync_now(s, run_id)
+        found = await repo.run(s, run_id)
+    assert found is not None
+    return _run_view(found)
+
+
+async def sync_stop(
+    sm: Sessionmaker, importers: Importers, caller: Caller, run_id: UUID
+) -> RunView:
+    """Go-live: stops asking the source and deletes the stored credentials, so CeDesk keeps
+    no access to the old help desk. While the first import is still running, only the sync
+    is turned off; the credentials go when the import ends."""
+    require(caller, Action.settings)
+    ws = caller.workspace_id
+    async with workspace_session(sm, ws) as s:
+        row = await repo.run(s, run_id)
+        if row is None:
+            raise NotFound("No such run.")
+        if not await repo.stop_sync(s, run_id):
+            raise Conflict("This run isn't syncing.")
+        label = rules.label(row["source"])
+        await repo.add_event(
+            s, ws, row["connection_id"], "sync_stopped", run_id=run_id, member_id=caller.member_id
+        )
+        await audit.record(
+            s, caller, Area.imports, "sync_stopped", f"Import from {label}", target_id=run_id
+        )
+        if row["state"] == "done" and await repo.close_connection(s, row["connection_id"]):
+            await repo.add_event(
+                s, ws, row["connection_id"], "credentials_deleted", run_id=run_id,
+                member_id=caller.member_id,
+            )  # fmt: skip
+        found = await repo.run(s, run_id)
+    assert found is not None
+    return _run_view(found)
+
+
+async def history(
+    sm: Sessionmaker, caller: Caller, *, cursor: str | None = None, limit: int = 50
+) -> HistoryPage:
+    """Every import, newest first: when, from where, by whom, and how it went (M10)."""
+    require(caller, Action.settings)
+    before = None
+    if cursor:
+        try:
+            before = paging.decode_time(cursor, "import")
+        except paging.CursorError as exc:
+            raise Invalid(str(exc)) from None
+    async with workspace_session(sm, caller.workspace_id) as s:
+        rows = await repo.history(s, before=before, limit=limit + 1)
+    page, next_cursor = paging.time_page(rows, limit, "import")
+    return HistoryPage(
+        runs=[
+            HistoryItem(
+                id=r["id"], connection_id=r["connection_id"], source=r["source"],
+                account=r["label"], result=result_word(r["state"], bool(r["sync_on"])),
+                started_by_id=r["started_by"], started_by=r["started_by_name"],
+                started_at=r["started_at"], finished_at=r["finished_at"],
+                kinds=list(r["options"].get("kinds", rules.KINDS)), counts=dict(r["counts"]),
+                sync_on=bool(r["sync_on"]), last_sync_at=r["last_sync_at"],
+                last_error=r["last_error"],
+            )
+            for r in page
+        ],
+        next_cursor=next_cursor,
+    )  # fmt: skip
+
+
 # The worker: runs that are due
+
+
+@dataclass(frozen=True)
+class _Kept:
+    """A file copied to the object store, waiting for its row."""
+
+    attachment_id: UUID
+    key: str
+    name: str
+    size: int
+    mime: str
+
+
+@dataclass(frozen=True)
+class _Linked:
+    """A file kept as a link: the system line that says so."""
+
+    line: str
 
 
 @dataclass
@@ -526,10 +684,17 @@ class _Ctx:
     team_map: Mapping[str, UUID | None]
     status_map: Mapping[str, str]
     group_names: Mapping[str, str]
+    store: ObjectStore
+    update_existing: bool = False  # a sync look: tickets already here get their new messages
     cfg: triage.Config | None = None
     members: dict[str, Row | None] = field(default_factory=dict)
     contacts: dict[str, UUID] = field(default_factory=dict)
     categories: dict[str, UUID] = field(default_factory=dict)
+    # Set by `_prepare` for the page about to be written:
+    have: dict[str, UUID] = field(default_factory=dict)  # source id -> ticket already here
+    ticket_ids: dict[str, UUID] = field(default_factory=dict)  # source id -> ticket id to use
+    seen: dict[UUID, tuple[set[str], set[tuple[str, int]]]] = field(default_factory=dict)
+    files: dict[int, list[_Kept | _Linked]] = field(default_factory=dict)  # by id(message)
 
 
 async def run_due(
@@ -545,8 +710,11 @@ async def run_due(
     for workspace_id in workspace_ids:
         while time.monotonic() < deadline:
             now = datetime.now(UTC)
+            lease = now + timedelta(seconds=rules.LEASE_SECONDS)
             async with workspace_session(sm, workspace_id) as s:
-                claimed = await repo.claim_due(s, now, now + timedelta(seconds=rules.LEASE_SECONDS))
+                claimed = await repo.claim_due(s, now, lease)
+                if claimed is None:  # imports first; then a syncing run whose look is due
+                    claimed = await repo.claim_sync(s, now, lease)
             if claimed is None:
                 break
             worked += 1
@@ -556,24 +724,49 @@ async def run_due(
 
 async def _work(sm: Sessionmaker, importers: Importers, run: Row, deadline: float) -> None:
     ws, run_id = run["workspace_id"], run["id"]
+    syncing = run["state"] == "done"  # a finished run being asked for changes (M9)
     try:
-        await _slice(sm, importers, run, deadline)
+        if syncing:
+            await _sync_slice(sm, importers, run, deadline)
+        else:
+            await _slice(sm, importers, run, deadline)
     except RateLimited as exc:
         wait = rules.wait_seconds(exc.retry_after)
         await _pause(sm, ws, run_id, wait, "The source is rate limiting this import.")
     except SourceError as exc:
         if exc.permanent:
-            await _fail(sm, ws, run, str(exc))
+            await _stop(sm, ws, run, str(exc))
         else:
             await _pause(sm, ws, run_id, rules.DEFAULT_RATE_WAIT, str(exc))
     except (CannotOpen, BadFile) as exc:
-        await _fail(sm, ws, run, str(exc))
+        await _stop(sm, ws, run, str(exc))
     except ObjectMissing:
-        await _fail(sm, ws, run, "The uploaded file is no longer stored. Upload it again.")
+        await _stop(sm, ws, run, "The uploaded file is no longer stored. Upload it again.")
     except Exception as exc:
         # Never the message: a database error can quote the customer's data.
         logger.error("import run failed: %s", type(exc).__name__, extra={"event": "import"})
-        await _fail(sm, ws, run, "The import stopped on an unexpected error. See the server log.")
+        await _stop(sm, ws, run, "The import stopped on an unexpected error. See the server log.")
+
+
+SYNC_RETRY_SECONDS = 3600  # a sync look that failed for good is tried again in an hour
+
+
+async def _stop(sm: Sessionmaker, workspace_id: UUID, run: Row, message: str) -> None:
+    """An import that can't go on fails. A sync that can't (a key that was revoked) is not
+    ended: it says so in `last_error`, once in the history, and tries again in an hour."""
+    if run["state"] != "done":
+        await _fail(sm, workspace_id, run, message)
+        return
+    async with workspace_session(sm, workspace_id) as s:
+        await repo.sync_error(
+            s, run["id"], error=message,
+            next_run_at=datetime.now(UTC) + timedelta(seconds=SYNC_RETRY_SECONDS),
+        )  # fmt: skip
+        if run["last_error"] != message[:500]:
+            await repo.add_event(
+                s, workspace_id, run["connection_id"], "sync_failed", run_id=run["id"],
+                detail={"error": message[:300]},
+            )  # fmt: skip
 
 
 async def _pause(
@@ -592,6 +785,10 @@ async def _fail(sm: Sessionmaker, workspace_id: UUID, run: Row, message: str) ->
             s, workspace_id, run["connection_id"], "failed", run_id=run["id"],
             detail={"error": message[:300]},
         )  # fmt: skip
+        await audit.record_server(
+            s, workspace_id, Area.imports, "failed", f"Import from {rules.label(run['source'])}",
+            detail={"error": message[:300]},
+        )  # fmt: skip
 
 
 async def _slice(sm: Sessionmaker, importers: Importers, run: Row, deadline: float) -> None:
@@ -607,6 +804,7 @@ async def _slice(sm: Sessionmaker, importers: Importers, run: Row, deadline: flo
     ctx = _Ctx(
         sm=sm, ws=ws, run_id=run_id, source=run["source"], started_by=run["started_by"],
         team_map=chosen.team_map, status_map=connector.status_map, group_names=groups,
+        store=importers.store,
     )  # fmt: skip
     cursor: dict[str, Any] = dict(run["cursor"])
     counts: dict[str, Any] = dict(run["counts"])
@@ -621,21 +819,184 @@ async def _slice(sm: Sessionmaker, importers: Importers, run: Row, deadline: flo
                 await repo.release(s, run_id, next_run_at=datetime.now(UTC))
             return
         page = await connector.page(kind, cursor.get("page"))
+        items = list(page.items)
+        kept = await _prepare(ctx, connector, items) if kind == "tickets" else []
+        try:
+            async with workspace_session(sm, ws) as s:
+                stats = await _write(s, ctx, kind, items)
+                counts[kind] = _add(counts.get(kind, {}), stats)
+                skipped = getattr(connector, "bad_rows", None)
+                if skipped is not None:
+                    counts["rows_left_out"] = len(skipped)
+                if page.cursor is None:
+                    done.append(kind)
+                    cursor = {"done": done}
+                else:
+                    cursor = {"done": done, "page": dict(page.cursor)}
+                await repo.save_progress(
+                    s, run_id, cursor=cursor, counts=counts,
+                    lease_until=datetime.now(UTC) + timedelta(seconds=rules.LEASE_SECONDS),
+                )  # fmt: skip
+        except Exception:
+            await _discard(importers.store, kept)
+            raise
+
+
+async def _sync_slice(sm: Sessionmaker, importers: Importers, run: Row, deadline: float) -> None:
+    """One look at the source for what changed since the last one, as many pages as the
+    time allows. The look's place is in the run's cursor, so a long one carries on."""
+    ws, run_id = run["workspace_id"], run["id"]
+    async with workspace_session(sm, ws) as s:
+        conn = await repo.connection(s, run["connection_id"])
+    if conn is None or conn["state"] == "closed":
         async with workspace_session(sm, ws) as s:
-            stats = await _write(s, ctx, kind, list(page.items))
-            counts[kind] = _add(counts.get(kind, {}), stats)
-            skipped = getattr(connector, "bad_rows", None)
-            if skipped is not None:
-                counts["rows_left_out"] = len(skipped)
-            if page.cursor is None:
-                done.append(kind)
-                cursor = {"done": done}
-            else:
-                cursor = {"done": done, "page": dict(page.cursor)}
-            await repo.save_progress(
-                s, run_id, cursor=cursor, counts=counts,
-                lease_until=datetime.now(UTC) + timedelta(seconds=rules.LEASE_SECONDS),
-            )  # fmt: skip
+            await repo.stop_sync(s, run_id)  # the credentials are gone: nothing to ask with
+        return
+    connector = await _build(importers, ws, conn)
+    if not isinstance(connector, ChangeSource):
+        raise SourceError("This source can't be asked what changed.", permanent=True)
+    chosen = rules.options(run["options"])
+    groups = {g.external_id: g.name for g in await connector.groups()}
+    ctx = _Ctx(
+        sm=sm, ws=ws, run_id=run_id, source=run["source"], started_by=run["started_by"],
+        team_map=chosen.team_map, status_map=connector.status_map, group_names=groups,
+        store=importers.store, update_existing=True,
+    )  # fmt: skip
+    mark: dict[str, Any] = dict((run["cursor"] or {}).get("sync") or {})
+    now = datetime.now(UTC)
+    started = datetime.fromisoformat(mark["started"]) if mark.get("started") else now
+    if mark.get("since"):
+        since = datetime.fromisoformat(mark["since"])
+    else:  # a little before the last look, so a change made while it ran is not missed
+        since = (run["last_sync_at"] or run["started_at"]) - timedelta(
+            seconds=rules.SYNC_OVERLAP_SECONDS
+        )
+    counts: dict[str, Any] = dict(run["counts"])
+    total: dict[str, int] = dict(counts.get("sync") or {})
+    this_look: dict[str, int] = dict(mark.get("look") or {})
+    page_cursor: Mapping[str, Any] | None = mark.get("page")
+    while True:
+        if time.monotonic() >= deadline:
+            async with workspace_session(sm, ws) as s:
+                await repo.release(s, run_id, next_run_at=datetime.now(UTC))
+            return
+        page = await connector.changed_tickets(since, page_cursor)
+        items = list(page.items)
+        kept = await _prepare(ctx, connector, items)
+        try:
+            async with workspace_session(sm, ws) as s:
+                stats = await _tickets(s, ctx, items)
+                total, this_look = _add(total, stats), _add(this_look, stats)
+                counts["sync"] = total
+                if page.cursor is None:
+                    done_at = datetime.now(UTC)
+                    await repo.sync_pass_done(
+                        s, run_id, last_sync_at=started, counts=counts,
+                        next_run_at=done_at + timedelta(seconds=rules.SYNC_EVERY_SECONDS),
+                    )  # fmt: skip
+                    if this_look.get("created", 0) or this_look.get("updated", 0):
+                        await repo.add_event(
+                            s, ws, run["connection_id"], "synced", run_id=run_id, detail=this_look
+                        )
+                else:
+                    page_cursor = dict(page.cursor)
+                    mark = {
+                        "since": since.isoformat(), "started": started.isoformat(),
+                        "page": page_cursor, "look": this_look,
+                    }  # fmt: skip
+                    await repo.save_progress(
+                        s, run_id, cursor={"sync": mark}, counts=counts,
+                        lease_until=datetime.now(UTC) + timedelta(seconds=rules.LEASE_SECONDS),
+                    )  # fmt: skip
+        except Exception:
+            await _discard(importers.store, kept)
+            raise
+        if page.cursor is None:
+            return
+
+
+# Files
+
+
+async def _discard(store: ObjectStore, keys: Sequence[str]) -> None:
+    for key in keys:
+        try:
+            await store.delete(key)
+        except Exception:  # best effort: an unreferenced object is harmless
+            logger.warning("import file left in storage", extra={"event": "import"})
+
+
+def _is_new(message: Message, known: tuple[set[str], set[tuple[str, int]]] | None) -> bool:
+    """Whether a source message is not on the CeDesk ticket yet. Without a known ticket, all
+    are. A message with a source id is known by it; one without, by (kind, second)."""
+    if known is None:
+        return True
+    ids, stamps = known
+    if message.external_id:
+        return message.external_id[:200] not in ids
+    return (message.kind, int(message.created_at.timestamp())) not in stamps
+
+
+def _worth_keeping(message: Message) -> bool:
+    return bool(rules.body(message.body)) or bool(message.attachments)
+
+
+async def _prepare(ctx: _Ctx, connector: SourceConnector, items: list[Ticket]) -> list[str]:
+    """Before a page of tickets is written: which are already here, and the files of the
+    messages about to be added, copied to the object store. Runs outside any transaction (a
+    download can be slow). Returns the stored keys, for `_discard` if the page then fails."""
+    unique = {t.external_id: t for t in items}
+    async with workspace_session(ctx.sm, ctx.ws) as s:
+        ctx.have = await repo.ticket_ids_by_source(s, ctx.source, list(unique))
+        ctx.seen = (
+            await repo.message_keys(s, list(ctx.have.values())) if ctx.update_existing else {}
+        )
+    ctx.ticket_ids = {ext: ctx.have.get(ext) or uuid4() for ext in unique}
+    ctx.files = {}
+    stored: list[str] = []
+    if not isinstance(connector, FileSource):
+        return stored
+    try:
+        for ext, ticket in unique.items():
+            known_id = ctx.have.get(ext)
+            if known_id is not None and not ctx.update_existing:
+                continue
+            known = ctx.seen.get(known_id) if known_id is not None else None
+            for message in ticket.messages:
+                if message.attachments and _worth_keeping(message) and _is_new(message, known):
+                    ctx.files[id(message)] = await _copy_files(
+                        ctx, connector, ctx.ticket_ids[ext], message, stored
+                    )
+    except BaseException:
+        await _discard(ctx.store, stored)
+        raise
+    return stored
+
+
+async def _copy_files(
+    ctx: _Ctx, connector: FileSource, ticket_id: UUID, message: Message, stored: list[str]
+) -> list[_Kept | _Linked]:
+    out: list[_Kept | _Linked] = []
+    for i, att in enumerate(message.attachments):
+        if i >= 2 * rules.FILES_PER_MESSAGE:
+            break
+        if i >= rules.FILES_PER_MESSAGE:
+            out.append(_Linked(rules.link_line(att.name, att.size, att.url, "too many files")))
+        elif att.size is not None and att.size > rules.FILE_MAX:
+            out.append(_Linked(rules.link_line(att.name, att.size, att.url, "over 25 MB")))
+        else:
+            data = await connector.fetch(att, rules.FILE_MAX)
+            if data is None:
+                why = "over 25 MB or no longer in the source"
+                out.append(_Linked(rules.link_line(att.name, att.size, att.url, why)))
+            elif data:
+                attachment_id = uuid4()
+                key = object_key(ctx.ws, ticket_id, attachment_id)
+                mime = clean_mime(att.mime)
+                await ctx.store.put(key, data, content_type=mime)
+                stored.append(key)
+                out.append(_Kept(attachment_id, key, clean_name(att.name), len(data), mime))
+    return out
 
 
 def _add(total: Mapping[str, int], more: Mapping[str, int]) -> dict[str, int]:
@@ -650,11 +1011,24 @@ async def _complete(
 ) -> None:
     file_key = conn["settings"].get("file_key")
     async with workspace_session(sm, ws) as s:
-        await repo.finish(s, run["id"], state="done")
+        current = await repo.run(s, run["id"])  # sync may have been stopped while it ran
+        syncing = bool(current and current["sync_on"])
+        if syncing:
+            now = datetime.now(UTC)
+            await repo.finish_to_sync(
+                s, run["id"], last_sync_at=run["started_at"], counts=counts,
+                next_run_at=now + timedelta(seconds=rules.SYNC_EVERY_SECONDS),
+            )  # fmt: skip
+        else:
+            await repo.finish(s, run["id"], state="done")
         await repo.add_event(
             s, ws, run["connection_id"], "finished", run_id=run["id"], detail=counts
         )
-        if not run["sync_on"] and await repo.close_connection(s, run["connection_id"]):
+        await audit.record_server(
+            s, ws, Area.imports, "finished", f"Import from {rules.label(run['source'])}",
+            detail={"syncing": syncing},
+        )  # fmt: skip
+        if not syncing and await repo.close_connection(s, run["connection_id"]):
             await repo.add_event(
                 s, ws, run["connection_id"], "credentials_deleted", run_id=run["id"]
             )
@@ -716,25 +1090,135 @@ async def _member(s: AsyncSession, ctx: _Ctx, email: str | None) -> Row | None:
 
 
 async def _tickets(s: AsyncSession, ctx: _Ctx, items: list[Ticket]) -> dict[str, int]:
+    """Writes a page prepared by `_prepare`: new tickets are created; ones already here are
+    skipped, or (a sync look) get their new messages and status."""
     unique = {t.external_id: t for t in items}
-    have = await repo.existing_ticket_source_ids(s, ctx.source, list(unique))
-    fresh = [t for key, t in unique.items() if key not in have]
-    stats = {"created": 0, "skipped": len(items) - len(fresh), "unknown_agent_messages": 0}
-    if not fresh:
-        return stats
-    # The numbers are taken in their own short transaction: the counter row stays locked only
-    # for that statement, not for the whole batch.
-    async with workspace_session(ctx.sm, ctx.ws) as reserved:
-        first = await ticket_repo.reserve_numbers(reserved, ctx.ws, len(fresh))
+    fresh = [t for key, t in unique.items() if key not in ctx.have]
+    stats = {
+        "created": 0, "skipped": len(unique) - len(fresh) + len(items) - len(unique),
+        "updated": 0, "new_messages": 0, "unknown_agent_messages": 0,
+        "files": 0, "files_linked": 0,
+    }  # fmt: skip
     cfg = ctx.cfg = ctx.cfg or await triage.config(s)
-    ids = []
-    for offset, ticket in enumerate(fresh):
-        ids.append(await _ticket(s, ctx, cfg, ticket, first + offset, stats))
-        stats["created"] += 1
+    ids: list[UUID] = []
+    if fresh:
+        # The numbers are taken in their own short transaction: the counter row stays locked
+        # only for that statement, not for the whole batch.
+        async with workspace_session(ctx.sm, ctx.ws) as reserved:
+            first = await ticket_repo.reserve_numbers(reserved, ctx.ws, len(fresh))
+        for offset, ticket in enumerate(fresh):
+            ids.append(await _ticket(s, ctx, cfg, ticket, first + offset, stats))
+            stats["created"] += 1
+    if ctx.update_existing:
+        for key, ticket in unique.items():
+            if key in ctx.have:
+                stats["skipped"] -= 1
+                ids.append(await _refresh(s, ctx, cfg, ctx.have[key], ticket, stats))
     # An old open ticket has a due time in the past; the SLA code files that breach as
     # already alerted when a change (an import) makes it, so nobody is paged for it.
-    await sla.refresh(s, ticket_ids=ids)
+    if ids:
+        await sla.refresh(s, ticket_ids=ids)
     return stats
+
+
+async def _add_message(
+    s: AsyncSession,
+    ctx: _Ctx,
+    cfg: triage.Config,
+    ticket_id: UUID,
+    t: Ticket,
+    message: Message,
+    seen: set[str],
+    removed: set[Any],
+    stats: dict[str, int],
+) -> set[Any]:
+    """One source message on a ticket, with its files; returns the card numbers removed so far."""
+    body = rules.body(message.body) or ("(attachment)" if message.attachments else "")
+    author_member, name = None, message.author_name
+    if message.kind == "customer":
+        cleaned = triage.clean(cfg, body)
+        body, removed = cleaned.text, removed | cleaned.numbers
+        name = name or t.requester.name
+    else:
+        member = await _member(s, ctx, message.author_email)
+        if member is not None:
+            author_member, name = member["id"], member["name"]
+        else:
+            name = rules.unknown_agent(name, ctx.source)
+            if message.kind == "agent":
+                stats["unknown_agent_messages"] += 1
+    external = message.external_id[:200] if message.external_id else None
+    if external in seen:
+        external = None
+    if external:
+        seen.add(external)
+    message_id = await repo.insert_message(
+        s, workspace_id=ctx.ws, ticket_id=ticket_id, kind=message.kind, body=body,
+        created_at=message.created_at, author_member_id=author_member, author_name=name,
+        channel_message_id=external,
+    )  # fmt: skip
+    for file in ctx.files.get(id(message), []):
+        if isinstance(file, _Kept):
+            await attach_repo.insert(
+                s, attachment_id=file.attachment_id, workspace_id=ctx.ws, ticket_id=ticket_id,
+                object_key=file.key, name=file.name, size=file.size, mime=file.mime,
+                uploaded_by=None, message_id=message_id,
+            )  # fmt: skip
+            stats["files"] += 1
+        else:
+            await repo.insert_message(
+                s, workspace_id=ctx.ws, ticket_id=ticket_id, kind="system", body=file.line,
+                created_at=message.created_at + timedelta(milliseconds=1),
+                author_member_id=None, author_name=None, channel_message_id=None,
+            )  # fmt: skip
+            stats["files_linked"] += 1
+    return removed
+
+
+async def _refresh(
+    s: AsyncSession,
+    ctx: _Ctx,
+    cfg: triage.Config,
+    ticket_id: UUID,
+    t: Ticket,
+    stats: dict[str, int],
+) -> UUID:
+    """A ticket already imported, seen again by a sync look: its messages that aren't here
+    yet, and where the source now has its status (M9). Nothing already here is changed or
+    removed."""
+    known = ctx.seen.get(ticket_id, (set(), set()))
+    messages = sorted((m for m in t.messages if _worth_keeping(m)), key=lambda m: m.created_at)
+    fresh = [m for m in messages if _is_new(m, known)]
+    seen = set(known[0])
+    removed: set[Any] = set()
+    for message in fresh:
+        removed = await _add_message(s, ctx, cfg, ticket_id, t, message, seen, removed, stats)
+    last = messages[-1].created_at if messages else t.created_at
+    if removed:
+        await repo.insert_message(
+            s, workspace_id=ctx.ws, ticket_id=ticket_id, kind="system",
+            body=triage.removed_line(len(removed)), created_at=last, author_member_id=None,
+            author_name=None, channel_message_id=None,
+        )  # fmt: skip
+    state = rules.status(t.status, ctx.status_map)
+    resolved_at = (t.resolved_at or t.updated_at or last) if state == "resolved" else None
+    await repo.refresh_ticket(
+        s, ticket_id, status=state, priority=rules.priority(t.priority), resolved_at=resolved_at,
+        first_reply_at=next((m.created_at for m in messages if m.kind == "agent"), None),
+        updated_at=max(t.updated_at or t.created_at, last),
+    )  # fmt: skip
+    if t.csat is not None and state == "resolved" and resolved_at is not None:
+        contact_id = await _contact(s, ctx, t.requester)
+        await repo.insert_csat(
+            s, workspace_id=ctx.ws, ticket_id=ticket_id, contact_id=contact_id,
+            score=t.csat.score, comment=(t.csat.comment or "")[:2000] or None,
+            source=ctx.source, rated_at=t.csat.rated_at or resolved_at,
+        )  # fmt: skip
+    if fresh:
+        await triage.retriage(s, ticket_id, cfg=cfg)
+        stats["updated"] += 1
+        stats["new_messages"] += len(fresh)
+    return ticket_id
 
 
 async def _ticket(
@@ -742,7 +1226,7 @@ async def _ticket(
 ) -> UUID:
     contact_id = await _contact(s, ctx, t.requester)
     state = rules.status(t.status, ctx.status_map)
-    messages = sorted((m for m in t.messages if rules.body(m.body)), key=lambda m: m.created_at)
+    messages = sorted((m for m in t.messages if _worth_keeping(m)), key=lambda m: m.created_at)
     last = messages[-1].created_at if messages else t.created_at
     resolved_at = (t.resolved_at or t.updated_at or last) if state == "resolved" else None
     assignee = await _member(s, ctx, t.assignee_email)
@@ -751,6 +1235,7 @@ async def _ticket(
     ticket_id = await repo.insert_ticket(
         s,
         {
+            "id": ctx.ticket_ids[t.external_id],
             "workspace_id": ctx.ws,
             "number": number,
             "subject": subject.text or rules.subject(None),
@@ -779,30 +1264,12 @@ async def _ticket(
         author_name=None, channel_message_id=None,
     )  # fmt: skip
     seen: set[str] = set()
+    removed_numbers: set[Any] = set(removed)
     for message in messages:
-        body, author_member, name = rules.body(message.body), None, message.author_name
-        if message.kind == "customer":
-            cleaned = triage.clean(cfg, body)
-            body, removed = cleaned.text, removed | cleaned.numbers
-            name = name or t.requester.name
-        else:
-            member = await _member(s, ctx, message.author_email)
-            if member is not None:
-                author_member, name = member["id"], member["name"]
-            else:
-                name = rules.unknown_agent(name, ctx.source)
-                if message.kind == "agent":
-                    stats["unknown_agent_messages"] += 1
-        external = message.external_id[:200] if message.external_id else None
-        if external in seen:
-            external = None
-        if external:
-            seen.add(external)
-        await repo.insert_message(
-            s, workspace_id=ctx.ws, ticket_id=ticket_id, kind=message.kind, body=body,
-            created_at=message.created_at, author_member_id=author_member, author_name=name,
-            channel_message_id=external,
-        )  # fmt: skip
+        removed_numbers = await _add_message(
+            s, ctx, cfg, ticket_id, t, message, seen, removed_numbers, stats
+        )
+    removed = removed_numbers
     if removed:
         await repo.insert_message(
             s, workspace_id=ctx.ws, ticket_id=ticket_id, kind="system",

@@ -1,0 +1,6 @@
+{"comments":[
+{"id":1051,"author_id":1,"plain_body":"See attached","public":true,"created_at":"2025-05-01T10:00:00Z","attachments":[
+{"file_name":"receipt.pdf","content_url":"https://acme.zendesk.com/attachments/token/abc/?name=receipt.pdf","content_type":"application/pdf","size":2048},
+{"file_name":"http.png","content_url":"http://acme.zendesk.com/a.png","content_type":"image/png","size":10},
+{"file_name":"nourl.txt","content_type":"text/plain","size":1}]}],
+"meta":{"has_more":false}}

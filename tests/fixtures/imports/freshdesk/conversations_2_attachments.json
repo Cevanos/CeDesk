@@ -1,0 +1,1 @@
+[{"id":9101,"private":false,"incoming":true,"user_id":201,"from_email":"ann@example.org","body_text":"See file","created_at":"2025-04-01T11:00:00Z","attachments":[{"id":5,"name":"log.txt","content_type":"text/plain","size":10,"attachment_url":"https://s3.example.com/files/log.txt"}]}]

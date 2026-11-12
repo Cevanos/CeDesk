@@ -13,7 +13,19 @@ Shape decisions:
 - Articles are paged by number (`page`, `per_page`), not by cursor; their cursor is `{"page": n}`.
 - Intercom has no public saved-replies API, so `replies` is always an empty page.
 
-Not verified against a live account. Unsure: the exact `Intercom-Version` to pin (2.14 is used);
+Attachments: `attachments: [{type, name, url, content_type, filesize}]` on the opening `source`
+and on each conversation part (same retrieve-conversation doc). Entries without an https `url`
+are skipped. `fetch` downloads the (signed, usually other-host) `url` through `SourceHttp.download`.
+
+Changed since: `POST /conversations/search` is a POST and the client is read only, so
+`changed_tickets` pages the GET `/conversations` list and stops at the first conversation whose
+`updated_at` is before `since`. That relies on the list being newest-update first (believed from
+the list-conversations doc, not confirmed); if a list stub has no `updated_at`, the full
+conversation's is used.
+
+Not verified against a live account. Unsure: the list order above; the attachment field names
+beyond the doc; whether a part with attachments but no text should be kept (it is, with the
+body "(attachment)"); the exact `Intercom-Version` to pin (2.14 is used);
 whether `parent_id` exists on articles (we read `parent_id`, else the last of `parent_ids`, and
 name the category by its id because the collection name needs another endpoint); the
 `total_count` on list endpoints (used for `discover`; a missing one counts as 0).
@@ -21,6 +33,7 @@ name the category by its id because the collection name needs another endpoint);
 
 import re
 from collections.abc import Mapping, Sequence
+from datetime import datetime
 from html.parser import HTMLParser
 from typing import Any
 
@@ -32,6 +45,7 @@ from cedesk.helpdesk.domain import imports as rules
 from cedesk.helpdesk.domain.imports import (
     AccountInfo,
     Article,
+    Attachment,
     Category,
     Contact,
     Counts,
@@ -167,17 +181,34 @@ class IntercomConnector:
             self._contacts[contact_id] = _contact(raw)
         return self._contacts[contact_id]
 
-    async def _tickets_page(self, cursor: Mapping[str, Any] | None) -> Page[Ticket]:
+    async def _tickets_page(
+        self, cursor: Mapping[str, Any] | None, since: datetime | None = None
+    ) -> Page[Ticket]:
+        """With `since`, stops (cursor None) at the first conversation last updated before it;
+        the list is newest-update first, so everything after it is older too."""
         params = {"per_page": rules.PAGE_MAX, "starting_after": (cursor or {}).get("after")}
         listing = _dict(await self._http.get("/conversations", params))
         tickets: list[Ticket] = []
         for stub in _list(listing.get("conversations")):
             if not isinstance(stub, Mapping) or stub.get("id") is None:
                 continue
+            if since is not None and _older(stub, since):
+                return Page(tickets, None)
             full = await self._http.get(f"/conversations/{segment(stub['id'])}", missing_ok=True)
-            if isinstance(full, Mapping):
-                tickets.append(await self._ticket(full))
+            if not isinstance(full, Mapping):
+                continue
+            if since is not None and _older(full, since):
+                return Page(tickets, None)
+            tickets.append(await self._ticket(full))
         return Page(tickets, _after(listing))
+
+    async def changed_tickets(
+        self, since: datetime, cursor: Mapping[str, Any] | None
+    ) -> Page[Ticket]:
+        return await self._tickets_page(cursor, since)
+
+    async def fetch(self, attachment: Attachment, limit: int) -> bytes | None:
+        return await self._http.download(attachment.url, limit)
 
     async def _ticket(self, conv: Mapping[str, Any]) -> Ticket:
         admins = await self._admin_directory()
@@ -237,8 +268,10 @@ class IntercomConnector:
         external_id: object,
     ) -> Message | None:
         text = plain_text(raw.get("body"))
-        if not text:  # assignment, open, close and similar events carry no body
+        files = _attachments(raw.get("attachments"))
+        if not text and not files:  # assignment, open, close and similar events carry no body
             return None
+        text = text or "(attachment)"
         author = _dict(raw.get("author"))
         kind_of = str(author.get("type") or "")
         name: str | None = author.get("name")
@@ -261,6 +294,7 @@ class IntercomConnector:
             external_id=str(external_id) if external_id else None,
             author_name=name or None,
             author_email=email,
+            attachments=files,
         )
 
     async def _requester(self, conv: Mapping[str, Any], src: Mapping[str, Any]) -> Contact:
@@ -287,6 +321,28 @@ class IntercomConnector:
         total = pages.get("total_pages")
         more = number < total if isinstance(total, int) else bool(pages.get("next"))
         return Page(items, {"page": number + 1} if more else None)
+
+
+def _older(conv: Mapping[str, Any], since: datetime) -> bool:
+    updated = when(conv.get("updated_at"))
+    return updated is not None and updated < since
+
+
+def _size(value: object) -> int | None:
+    return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else None
+
+
+def _attachments(raw: object) -> list[Attachment]:
+    out: list[Attachment] = []
+    for item in _list(raw):
+        data = _dict(item)
+        url = str(data.get("url") or "")
+        if not url.lower().startswith("https://"):
+            continue
+        name = str(data.get("name") or "") or url.rsplit("/", 1)[-1].split("?", 1)[0] or "file"
+        mime = data.get("content_type")
+        out.append(Attachment(name, url, _size(data.get("filesize")), str(mime) if mime else None))
+    return out
 
 
 def _contact(raw: object) -> Contact | None:
