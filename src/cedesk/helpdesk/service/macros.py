@@ -28,7 +28,7 @@ from cedesk.helpdesk.repo import outbox
 from cedesk.helpdesk.repo import rules as rule_repo
 from cedesk.helpdesk.repo import tickets as ticket_repo
 from cedesk.helpdesk.repo.macros import Row
-from cedesk.helpdesk.service import idempotency, routing, sla, tickets
+from cedesk.helpdesk.service import children, idempotency, routing, sla, tickets
 from cedesk.helpdesk.service import rules as automation
 from cedesk.helpdesk.service.auth import Sessionmaker
 from cedesk.helpdesk.service.errors import Conflict, Invalid, NotFound
@@ -238,6 +238,9 @@ async def run_macro(
         )
         if before["status"] == Status.resolved.value and state.status is not Status.resolved:
             after["reopen_count"] += 1
+        resolving = state.status is Status.resolved and before["status"] != Status.resolved.value
+        if resolving:
+            await children.refuse_open_children(s, ticket_id)  # all steps, or none
 
         routed_line: str | None = None
         routed_to: UUID | None = None
@@ -260,6 +263,8 @@ async def run_macro(
 
         await ticket_repo.update_ticket(s, ticket_id, after)
         await sla.refresh(s, ticket_ids=[ticket_id])
+        if resolving:
+            await children.child_resolved(s, caller.workspace_id, before, who, caller.member_id)
         lines = [engine.line(str(macro["name"]), who, done), *cleared]
         lines += [routed_line] if routed_line else []
         for body in lines:

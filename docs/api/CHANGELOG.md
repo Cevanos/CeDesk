@@ -3,6 +3,57 @@
 `openapi.json` next to this file is the API as served (`uv run cedesk openapi`). Every
 route is under `/api/v1`. Breaking changes only come in v2 (md 2B). Newest first.
 
+## 2026-11-12: Ticket tools: merge, links, child tickets, approvals, tasks, time (Phase 3, X1-X4, X6, X8, X9)
+
+Light agents read all of these but change none (403). Every change writes a grey line.
+
+- Merge (X1): `POST /tickets/{id}/merge` `{into}` → the ticket merged into. The customer,
+  agent, AI and note messages are copied into it in time order (their files move with
+  them), and so do its open tasks and waiting approvals (line "Moved from T-1004: 2 open
+  tasks, 1 waiting approval"); the merged ticket is resolved with `merged_into_id` set and a line "Merged into
+  T-1005 by Neha". No CSAT and no events come from it. 422 into itself; 409 when the
+  target is resolved or merged, the ticket was already merged, it is a live Cevanos chat
+  (resolve it first), or it has open child tickets.
+- Related card: `GET /tickets/{id}/related` → `{parent, merged_into, children, links,
+  merged_from}`, each ticket as `{id, label, subject, status, assignee_name, team_name}`
+  (lists newest first, up to 50).
+- Links (X2): `POST /tickets/{id}/links` `{ticket_id}` → 201 the Related card (both ways;
+  linking again changes nothing). `DELETE /tickets/{id}/links/{other_id}` → 204 (404 if
+  not linked).
+- Child tickets (X3): `POST /tickets/{id}/children` `{team_id, subject?, note?,
+  assignee_id?}` → 201 the new ticket (takes `Idempotency-Key`). It copies the customer,
+  type and fields; channel `email` if the parent's is email, otherwise `portal`;
+  `parent_id` is set; the note (default "Opened from T-1001: …") is its first message, a
+  private note. Rules and routing run as on any new ticket, so a rule can still move it to
+  another team. The parent gets "Child ticket T-1012 created for Shipping by Neha".
+- X4: resolving a ticket with an open child is 409 ("Resolve the child tickets first:
+  T-1012 still open."), from Resolve, the status field and macros (a macro then runs no
+  step). A rule that would resolve it leaves the status as it was (its other steps run)
+  and writes "Status not changed: …". Resolving or merging a child writes "Child ticket T-1012 resolved by Chetan" on the parent
+  and notifies the parent's assignee (new notification kind `child_resolved`).
+- Approvals (X6): `POST /tickets/{id}/approvals` `{approver_id, what?, amount?,
+  currency?}` → 201. `what` defaults to "Refund of ₹1,500 for order #1042" from the amount
+  and the ticket's `order_id` field (422 when there is neither). The approver must be able
+  to approve (Supervisor or Admin), active, and not you (422). They get a notification
+  (kind `approval`). `POST /approvals/{id}/decide` `{decision: approve|reject, note?}`:
+  the named approver or an Admin, never the requester (403); a decided request is 409.
+  The requester is notified. `GET /tickets/{id}/approvals` (newest first),
+  `GET /approvals/waiting` (mine to decide, oldest first). A Cevanos Governance hold (X7)
+  is not passed on yet: it needs a Cevanos `/v1` route.
+- Tasks (X8): `POST /tickets/{id}/tasks` `{text, owner_id?, due_in?: 1h|4h|tomorrow,
+  due_at?}` → 201 (owner default: you; not a light agent; "tomorrow" is 9:00 next day in
+  the SLA calendar's time zone; `due_at` needs a time zone). The owner is notified (kind
+  `task`). `PATCH /tasks/{id}` `{text?, owner_id?, due_in?, due_at?, done?}` by the owner,
+  the person who added it, or a Supervisor/Admin. Tasks carry `overdue`. `GET
+  /tickets/{id}/tasks` (open first), `GET /tasks/mine` (my open tasks, due soonest first).
+  The worker tells the owner once when a task passes its due time (new notification kind
+  `task_overdue`, "Task overdue on T-1001: …"); a new due time missed again alerts again;
+  a due time set in the past by hand is never alerted.
+- Time log (X9): `POST /tickets/{id}/time` `{minutes 1-1440, note?, billable}` → 201.
+  `GET /tickets/{id}/time` → `{total_minutes, billable_minutes, entries}`. `DELETE
+  /time/{id}`: your own; an Admin can remove any.
+- `hd_notification.kind` gains `approval`, `task`, `task_overdue` and `child_resolved`.
+
 ## 2026-11-12: Macros change the type; rules on the SLA (Phase 2, W14, W15, W18)
 
 - Macros: new step `{"kind": "set_type", "type_id": "...", "only_if_empty": false}`, as in

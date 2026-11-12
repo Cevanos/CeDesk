@@ -37,7 +37,7 @@ from cedesk.helpdesk.repo import catalog, outbox
 from cedesk.helpdesk.repo import messages as message_repo
 from cedesk.helpdesk.repo import tickets as repo
 from cedesk.helpdesk.repo.tickets import Row
-from cedesk.helpdesk.service import idempotency, routing, sla, triage
+from cedesk.helpdesk.service import children, idempotency, routing, sla, triage
 from cedesk.helpdesk.service import rules as automation
 from cedesk.helpdesk.service.attachments import IncomingFiles, save_incoming
 from cedesk.helpdesk.service.auth import Sessionmaker
@@ -96,6 +96,10 @@ class NewTicket:
     # Portal and web form: the subject is the first 60 characters of `description`, made
     # after card numbers are removed (a cut through a number would keep part of it).
     subject_from_description: bool = False
+    # A child ticket (X3): its parent, and the asking agent's note, saved as the first
+    # message (a private note by the caller, so the customer never sees it).
+    parent_id: UUID | None = None
+    note: str | None = None
 
 
 def _check_origin(new: NewTicket) -> None:
@@ -215,6 +219,12 @@ async def _line(s: AsyncSession, caller: Origin, ticket_id: UUID, body: str) -> 
         author_member_id=None,
         author_name=None,
     )
+
+
+async def _number(s: AsyncSession, ticket_id: UUID) -> int:
+    row = await repo.ticket_detail(s, ticket_id)
+    assert row is not None
+    return int(row["number"])
 
 
 async def _tell_assignee(
@@ -399,6 +409,7 @@ async def _create(
                 "language": new.language or found.language,
                 "source": new.source,
                 "source_id": new.source_id,
+                "parent_id": new.parent_id,
             },
         )
         first_message: UUID | None = None
@@ -432,6 +443,21 @@ async def _create(
         if any(line.kind == "agent" for line in new.history):
             await message_repo.ticket_replied(s, ticket_id)  # a person already answered
         await _line(s, origin, ticket_id, f"Ticket created by {who}")
+        if new.note and caller is not None:
+            await repo.insert_message(
+                s,
+                workspace_id=origin.workspace_id,
+                ticket_id=ticket_id,
+                kind="note",
+                body=new.note,
+                author_member_id=caller.member_id,
+                author_name=who,
+            )
+        if new.parent_id is not None:
+            child_label = rules.label(await _number(s, ticket_id))
+            whose = f" for {team}" if team else ""
+            await _line(s, origin, new.parent_id,
+                        f"Child ticket {child_label} created{whose} by {who}")  # fmt: skip
         if removed:
             await _line(s, origin, ticket_id, triage.removed_line(removed))
         if team:
@@ -693,6 +719,8 @@ async def change_ticket(
 
         if "status" in changes and changes["status"] != current["status"]:
             status = Status(changes["status"])
+            if status is Status.resolved:
+                await children.refuse_open_children(s, ticket_id)
             if current["status"] == Status.resolved.value:
                 new["reopen_count"] += 1
             new["status"] = status.value
@@ -807,6 +835,8 @@ async def change_ticket(
                 await _line(s, caller, ticket_id, body)
         if routed_to is not None:
             await _tell_assignee(s, caller, ticket_id, routed_to, current["number"], new["subject"])
+        if new["status"] == Status.resolved.value != current["status"]:
+            await children.child_resolved(s, caller.workspace_id, current, who, caller.member_id)
         view = await _view(s, ticket_id)
         if lines:
             actor = None if rerouted else caller.member_id

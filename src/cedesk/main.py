@@ -39,6 +39,7 @@ from cedesk.helpdesk.api import routing as routing_api
 from cedesk.helpdesk.api import rules as rules_api
 from cedesk.helpdesk.api import saved_replies as saved_replies_api
 from cedesk.helpdesk.api import sla as sla_api
+from cedesk.helpdesk.api import ticket_tools as ticket_tools_api
 from cedesk.helpdesk.api import tickets as tickets_api
 from cedesk.helpdesk.api import triage as triage_api
 from cedesk.helpdesk.service.errors import ServiceError, TooManyAttempts
@@ -239,6 +240,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # Before tickets: `/tickets/from-conversation/{id}` must not be read as a ticket id.
     app.include_router(cevanos_api.router, prefix="/api/v1")
     app.include_router(tickets_api.router, prefix="/api/v1")
+    app.include_router(ticket_tools_api.router, prefix="/api/v1")
     app.include_router(catalog_api.router, prefix="/api/v1")
     app.include_router(messages_api.router, prefix="/api/v1")
     app.include_router(routing_api.router, prefix="/api/v1")

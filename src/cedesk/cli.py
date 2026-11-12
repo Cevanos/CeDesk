@@ -159,10 +159,9 @@ def _prune_sessions() -> int:
 def _worker(once: bool) -> int:
     """Every few seconds: reads new emails from the IMAP mailbox (when one is set), reads
     connected Cevanos chats for new customer messages, sends queued emails, delivers
-    outbox events (Cevanos take-overs and replies), alerts SLA breaches (once a minute),
-    and drops expired idempotency keys. Run one
-    next to the API (sending and delivering are safe with several; reading a mailbox is
-    meant for one)."""
+    outbox events (Cevanos take-overs and replies), alerts SLA breaches and overdue tasks
+    (once a minute), and drops expired idempotency keys. Run one next to the API (sending
+    and delivering are safe with several; reading a mailbox is meant for one)."""
     import logging
 
     from cedesk import logs
@@ -179,6 +178,7 @@ def _worker(once: bool) -> int:
     from cedesk.helpdesk.service.scanning import scan_due
     from cedesk.helpdesk.service.sla import refresh_everywhere
     from cedesk.helpdesk.service.sla_alerts import alert_everywhere
+    from cedesk.helpdesk.service.task_alerts import alert_everywhere as alert_tasks
     from cedesk.mail import MailboxError, make_mailbox, make_mailer
     from cedesk.scanning import make_scanner
     from cedesk.settings import get_settings
@@ -273,6 +273,13 @@ def _worker(once: bool) -> int:
                         logger.exception("SLA breach alerts failed")
                     if breached:
                         logger.info(f"SLA breaches alerted: {breached}", extra={"event": "sla"})
+                    try:
+                        overdue = await alert_tasks(sm)
+                    except Exception:
+                        overdue = 0
+                        logger.exception("Overdue task alerts failed")
+                    if overdue:
+                        logger.info(f"Overdue tasks alerted: {overdue}", extra={"event": "tasks"})
                     alerted_at = time.monotonic()
                 if time.monotonic() - swept_at > SWEEP_EVERY_SECONDS:
                     await sweep_everywhere(sm)
