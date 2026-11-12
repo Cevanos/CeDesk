@@ -224,7 +224,8 @@ _CHANNELS = {
     "chat": "chat", "live_chat": "chat", "messenger": "chat", "whatsapp": "chat",
     "sms": "chat", "social": "chat", "twitter": "chat", "facebook": "chat", "instagram": "chat",
     "phone": "phone", "voice": "phone", "call": "phone",
-    "web": "web", "form": "web", "web_form": "web",
+    "web": "web", "form": "web", "web_form": "web", "contact_form": "web",
+    "help_center": "web", "help-center": "web",
     "portal": "portal", "api": "api",
 }  # fmt: skip
 
