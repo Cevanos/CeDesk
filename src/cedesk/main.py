@@ -22,6 +22,7 @@ from cedesk.cevanos_client import make_cevanos
 from cedesk.db import make_engine, make_sessionmaker
 from cedesk.dnscheck import DnsLookup
 from cedesk.helpdesk.api import api_keys as api_keys_api
+from cedesk.helpdesk.api import apps as apps_api
 from cedesk.helpdesk.api import articles as articles_api
 from cedesk.helpdesk.api import attachments as attachments_api
 from cedesk.helpdesk.api import audit as audit_api
@@ -54,6 +55,7 @@ from cedesk.helpdesk.api import tickets as tickets_api
 from cedesk.helpdesk.api import triage as triage_api
 from cedesk.helpdesk.api import two_factor as two_factor_api
 from cedesk.helpdesk.api import webhooks as webhooks_api
+from cedesk.helpdesk.service import apps as apps_service
 from cedesk.helpdesk.service.errors import ServiceError, TooManyAttempts
 from cedesk.helpdesk.service.imports.framework import make_importers
 from cedesk.helpdesk.service.stream import Slots
@@ -163,6 +165,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.api_key_requests = SlidingWindowLimiter(settings.api_key_limit, 60)
     # Outgoing webhooks: checks a URL's host when it is saved, sends the test ping (md PL3).
     app.state.webhook_client = WebhookClient()
+    # Marketplace apps: how the Shopify and Stripe cards reach the provider (md PL7, C12).
+    app.state.app_http = apps_service.make_http
 
     @app.middleware("http")
     async def request_log(request: Request, call_next: Any) -> Response:
@@ -292,6 +296,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(api_keys_api.router, prefix="/api/v1")
     app.include_router(inbound_api_api.router, prefix="/api/v1")
     app.include_router(webhooks_api.router, prefix="/api/v1")
+    app.include_router(apps_api.router, prefix="/api/v1")
 
     @app.get("/healthz", tags=["health"], summary="The process is up")
     async def healthz() -> dict[str, str]:

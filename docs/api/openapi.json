@@ -9743,6 +9743,230 @@
         }
       }
     },
+    "/api/v1/apps": {
+      "get": {
+        "tags": [
+          "apps"
+        ],
+        "summary": "Apps and what is installed (Settings)",
+        "operationId": "list_apps_api_v1_apps_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AppOut"
+                  },
+                  "type": "array",
+                  "title": "Response List Apps Api V1 Apps Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/apps/{app}": {
+      "put": {
+        "tags": [
+          "apps"
+        ],
+        "summary": "Install an app, or change its settings and credential (Settings)",
+        "description": "The credential is checked with the provider first and then kept encrypted; only its last 4 characters are shown again. Audited.",
+        "operationId": "install_app_api_v1_apps__app__put",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "app",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/App"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InstallIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Cevanos is connected: its integrations are used instead"
+          },
+          "422": {
+            "description": "Bad settings, or the provider refused the credential"
+          },
+          "503": {
+            "description": "The provider didn't answer; try again"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "apps"
+        ],
+        "summary": "Uninstall an app (Settings; its credential is deleted)",
+        "operationId": "uninstall_app_api_v1_apps__app__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "app",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/App"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "Not installed"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tickets/{ticket_id}/orders": {
+      "get": {
+        "tags": [
+          "apps"
+        ],
+        "summary": "The customer's latest orders (sidebar)",
+        "description": "Read live from the Shopify app for the ticket's customer (by email), at most 5; nothing is stored. Never fails because of the shop: see `available`.",
+        "operationId": "ticket_orders_api_v1_tickets__ticket_id__orders_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "ticket_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Ticket Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrdersOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tickets/{ticket_id}/payments": {
+      "get": {
+        "tags": [
+          "apps"
+        ],
+        "summary": "The customer's latest payments (sidebar)",
+        "description": "Read live from the Stripe app for the ticket's customer (by email), at most 5; nothing is stored. Never fails because of Stripe: see `available`.",
+        "operationId": "ticket_payments_api_v1_tickets__ticket_id__payments_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "ticket_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Ticket Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentsOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/healthz": {
       "get": {
         "tags": [
@@ -10163,6 +10387,119 @@
         ],
         "title": "AgentTimeOut"
       },
+      "App": {
+        "type": "string",
+        "enum": [
+          "shopify",
+          "stripe"
+        ],
+        "title": "App"
+      },
+      "AppOut": {
+        "properties": {
+          "app": {
+            "$ref": "#/components/schemas/App"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "card": {
+            "type": "string",
+            "title": "Card",
+            "description": "What it shows in the ticket sidebar: orders or payments."
+          },
+          "settings_fields": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Settings Fields",
+            "description": "Settings to send at install (not secret)."
+          },
+          "credential": {
+            "type": "string",
+            "title": "Credential",
+            "description": "The name of the credential to send."
+          },
+          "credential_help": {
+            "type": "string",
+            "title": "Credential Help"
+          },
+          "installed": {
+            "type": "boolean",
+            "title": "Installed"
+          },
+          "settings": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Settings"
+          },
+          "secret_hint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Secret Hint",
+            "description": "… and the credential's last 4 characters."
+          },
+          "installed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Installed At"
+          },
+          "installed_by_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Installed By Name"
+          },
+          "blocked": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Blocked",
+            "description": "Why it can't be installed here, e.g. Cevanos is connected (md D16)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "app",
+          "name",
+          "card",
+          "settings_fields",
+          "credential",
+          "credential_help",
+          "installed",
+          "settings",
+          "secret_hint",
+          "installed_at",
+          "installed_by_name",
+          "blocked"
+        ],
+        "title": "AppOut"
+      },
       "ApprovalIn": {
         "properties": {
           "approver_id": {
@@ -10369,7 +10706,8 @@
           "privacy",
           "imports",
           "api_keys",
-          "webhooks"
+          "webhooks",
+          "apps"
         ],
         "title": "Area",
         "description": "Filter on the audit page. Other teams' features add their own (api_keys,\nwebhooks, apps, retention): the column takes any lower-case name."
@@ -13646,6 +13984,33 @@
         ],
         "title": "InboxOut"
       },
+      "InstallIn": {
+        "properties": {
+          "settings": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "maxProperties": 5,
+            "title": "Settings",
+            "description": "Shopify: {\"shop\": \"acme\"} (or acme.myshopify.com).",
+            "default": {}
+          },
+          "secret": {
+            "type": "string",
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Secret",
+            "description": "The app's credential."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "secret"
+        ],
+        "title": "InstallIn"
+      },
       "KeyAccess": {
         "type": "string",
         "enum": [
@@ -14749,6 +15114,135 @@
         "type": "object",
         "title": "OptionsIn"
       },
+      "OrderOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "number": {
+            "type": "string",
+            "title": "Number"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "payment": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payment"
+          },
+          "fulfillment": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fulfillment"
+          },
+          "total": {
+            "type": "string",
+            "title": "Total"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "items": {
+            "type": "integer",
+            "title": "Items"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "number",
+          "created_at",
+          "payment",
+          "fulfillment",
+          "total",
+          "currency",
+          "items",
+          "url"
+        ],
+        "title": "OrderOut"
+      },
+      "OrdersOut": {
+        "properties": {
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source",
+            "description": "shopify, stripe, cevanos, or null (no app)."
+          },
+          "available": {
+            "type": "boolean",
+            "title": "Available",
+            "description": "false: nothing to show, and `message` says why (not installed, no customer email, the provider refused or didn't answer)."
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "orders": {
+            "items": {
+              "$ref": "#/components/schemas/OrderOut"
+            },
+            "type": "array",
+            "title": "Orders"
+          }
+        },
+        "type": "object",
+        "required": [
+          "source",
+          "available",
+          "message",
+          "orders"
+        ],
+        "title": "OrdersOut"
+      },
       "Outcome": {
         "type": "string",
         "enum": [
@@ -14759,6 +15253,116 @@
           "duplicate"
         ],
         "title": "Outcome"
+      },
+      "PaymentOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "amount": {
+            "type": "string",
+            "title": "Amount"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "refunded": {
+            "type": "boolean",
+            "title": "Refunded"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "url": {
+            "type": "string",
+            "title": "Url"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "amount",
+          "currency",
+          "status",
+          "refunded",
+          "created_at",
+          "description",
+          "url"
+        ],
+        "title": "PaymentOut"
+      },
+      "PaymentsOut": {
+        "properties": {
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source",
+            "description": "shopify, stripe, cevanos, or null (no app)."
+          },
+          "available": {
+            "type": "boolean",
+            "title": "Available",
+            "description": "false: nothing to show, and `message` says why (not installed, no customer email, the provider refused or didn't answer)."
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "payments": {
+            "items": {
+              "$ref": "#/components/schemas/PaymentOut"
+            },
+            "type": "array",
+            "title": "Payments"
+          }
+        },
+        "type": "object",
+        "required": [
+          "source",
+          "available",
+          "message",
+          "payments"
+        ],
+        "title": "PaymentsOut"
       },
       "PoliciesIn": {
         "properties": {

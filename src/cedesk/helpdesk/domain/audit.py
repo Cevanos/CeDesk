@@ -50,6 +50,7 @@ class Area(StrEnum):
     imports = "imports"
     api_keys = "api_keys"
     webhooks = "webhooks"
+    apps = "apps"
 
 
 @dataclass(frozen=True)
