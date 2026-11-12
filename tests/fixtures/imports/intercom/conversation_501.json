@@ -1,0 +1,15 @@
+{"type":"conversation","id":"501","created_at":1740823200,"updated_at":1740830400,"state":"closed","priority":"high","admin_assignee_id":9,"team_assignee_id":700,
+ "title":null,
+ "source":{"type":"email","id":"s1","subject":"Refund &amp; returns","body":"<p>Where is my <b>refund</b>?</p><p>Order 1042&nbsp;please</p>","author":{"type":"user","id":"c1","name":"Ann Customer","email":"ann@example.org"}},
+ "contacts":{"type":"contact.list","contacts":[{"type":"contact","id":"c1"}]},
+ "tags":{"type":"tag.list","tags":[{"type":"tag","id":"t1","name":"VIP"},{"type":"tag","id":"t2","name":"refund"}]},
+ "custom_attributes":{"order_id":"1042","plan":null},
+ "conversation_rating":{"rating":5,"remark":"Thanks!","created_at":1740830000},
+ "statistics":{"last_close_at":1740830300},
+ "conversation_parts":{"type":"conversation_part.list","total_count":6,"conversation_parts":[
+  {"type":"conversation_part","id":"p1","part_type":"assignment","body":null,"created_at":1740823300,"author":{"type":"admin","id":"9"}},
+  {"type":"conversation_part","id":"p2","part_type":"comment","body":"<p>Refund sent.<br>Allow 3 days.</p>","created_at":1740826800,"author":{"type":"admin","id":"9","name":"Sam Agent"}},
+  {"type":"conversation_part","id":"p3","part_type":"note","body":"<p>Checked with finance</p>","created_at":1740827000,"author":{"type":"admin","id":"10","name":"Kim Note"}},
+  {"type":"conversation_part","id":"p4","part_type":"comment","body":"<p>Thank you</p>","created_at":1740828000,"author":{"type":"user","id":"c1","name":"Ann Customer","email":"ann@example.org"}},
+  {"type":"conversation_part","id":"p5","part_type":"comment","body":"<p>Anything else?</p>","created_at":1740826000,"author":{"type":"bot","id":"b1","name":"Fin","from_ai_agent":true}},
+  {"type":"conversation_part","id":"p6","part_type":"close","body":null,"created_at":1740830300,"author":{"type":"admin","id":"9"}}]}}

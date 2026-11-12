@@ -1,0 +1,1 @@
+{"type":"list","total_count":3,"data":[{"type":"contact","id":"c1","role":"user","email":"ann@example.org","name":"Ann Customer"},{"type":"contact","id":"c2","role":"lead","email":null,"name":null}],"pages":{"type":"pages","page":1,"per_page":2,"total_pages":2,"next":{"page":2,"starting_after":"cursor-2"}}}
