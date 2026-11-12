@@ -1,6 +1,6 @@
 "use client";
 
-import { AtSign, Bell, CheckCheck, UserPlus } from "lucide-react";
+import { AlarmClock, AtSign, Bell, CheckCheck, UserPlus } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 import { MenuItem, Popover } from "@/components/ui/overlay";
@@ -66,8 +66,17 @@ export function NotificationBell() {
                     if (n.ticket_id) router.push(`/tickets/${n.ticket_id}`);
                   }}
                 >
-                  <span className="mt-0.5 grid size-7 flex-none place-items-center rounded-full bg-primary-soft text-primary-ink">
-                    {n.kind === "mention" ? (
+                  <span
+                    className={cn(
+                      "mt-0.5 grid size-7 flex-none place-items-center rounded-full",
+                      n.kind === "sla_breach"
+                        ? "bg-danger-soft text-danger"
+                        : "bg-primary-soft text-primary-ink",
+                    )}
+                  >
+                    {n.kind === "sla_breach" ? (
+                      <AlarmClock className="size-3.5" aria-label="SLA breached" />
+                    ) : n.kind === "mention" ? (
                       <AtSign className="size-3.5" />
                     ) : (
                       <UserPlus className="size-3.5" />

@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/primitives";
 import {
   CONDITION_KINDS,
+  conditionKindsFor,
   ItemBuilder,
   RULE_ACTION_KINDS,
   summarize,
@@ -36,6 +37,7 @@ import type { Rule, RuleEvent } from "@/lib/api/types";
 export const EVENT_LABEL: Record<RuleEvent, string> = {
   created: "When a ticket is created",
   customer_replied: "When the customer replies",
+  sla_breached: "When the SLA is breached",
 };
 const EVENT_OPTIONS = (Object.keys(EVENT_LABEL) as RuleEvent[]).map((v) => ({
   value: v,
@@ -62,8 +64,8 @@ export function RulesView() {
     <div>
       <div className="mb-4 flex items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground">
-          Rules run by themselves, top to bottom, when a ticket is created or the customer replies.
-          Agent edits never run rules. Tickets show a grey “Rule applied” line.
+          Rules run by themselves, top to bottom, when a ticket is created, the customer replies or
+          its SLA is breached. Agent edits never run rules. Tickets show a grey “Rule applied” line.
         </p>
         <Button onClick={() => setEditing("new")}>
           <Plus className="size-4" /> Add rule
@@ -200,13 +202,21 @@ function RuleForm({ rule, onClose }: { rule: Rule | null; onClose: () => void })
           id="r-event"
           value={event}
           options={EVENT_OPTIONS}
-          onChange={(e) => setEvent(e.target.value as RuleEvent)}
+          onChange={(e) => {
+            const next = e.target.value as RuleEvent;
+            setEvent(next);
+            // "SLA is …" makes no sense on a brand new ticket, so drop it.
+            if (next === "created" && conditions.some((c) => c.kind === "sla_in")) {
+              setConditions((cs) => cs.filter((c) => c.kind !== "sla_in"));
+              toast.info("“SLA is” conditions were removed: a new ticket has no SLA state yet.");
+            }
+          }}
         />
       </Field>
       <ItemBuilder
         title="Conditions (all must match)"
         addLabel="Add condition"
-        kinds={CONDITION_KINDS}
+        kinds={conditionKindsFor(event)}
         items={conditions}
         onChange={setConditions}
       />

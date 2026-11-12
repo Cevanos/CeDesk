@@ -8,6 +8,7 @@ import {
   Clock,
   Inbox,
   Mail,
+  Smile,
   Star,
   Ticket,
 } from "lucide-react";
@@ -144,7 +145,7 @@ export function CustomerView({ id }: { id: string }) {
         </div>
       </Card>
 
-      <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <Stat
           icon={Ticket}
           label="Total tickets"
@@ -157,6 +158,23 @@ export function CustomerView({ id }: { id: string }) {
           label="Resolved"
           value={resolvedCount}
           tone="bg-success-soft text-success"
+        />
+        <Stat
+          icon={Smile}
+          label="Satisfaction"
+          value={
+            contact.csat_count && contact.csat_average != null ? (
+              <>
+                {contact.csat_average.toFixed(1)} ★{" "}
+                <span className="text-xs font-normal text-muted-foreground">
+                  · {contact.csat_count} {contact.csat_count === 1 ? "rating" : "ratings"}
+                </span>
+              </>
+            ) : (
+              "No ratings"
+            )
+          }
+          tone="bg-amber-100 text-amber-700"
         />
         <Stat
           icon={CalendarDays}

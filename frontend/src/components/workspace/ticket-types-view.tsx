@@ -15,6 +15,7 @@ import {
   Select,
   Skeleton,
 } from "@/components/ui/primitives";
+import { Switch } from "@/components/ui/switch";
 import {
   useDeleteTicketType,
   useReorderTicketTypes,
@@ -86,6 +87,7 @@ export function TicketTypesView() {
                   <div className="font-medium">{t.name}</div>
                   <div className="text-xs text-muted-foreground">{t.fields.length} fields</div>
                 </div>
+                {t.for_customers && <Badge tone="success">Customers can pick</Badge>}
                 {t.required_skill && <Badge tone="primary">Skill: {t.required_skill}</Badge>}
                 <Button size="sm" variant="outline" onClick={() => setEditing(t)}>
                   <Pencil className="size-3.5" /> Edit
@@ -137,6 +139,7 @@ function TypeForm({ type, onClose }: { type: TicketType | null; onClose: () => v
   const [name, setName] = useState(type?.name ?? "");
   const [skill, setSkill] = useState(type?.required_skill ?? "");
   const [fields, setFields] = useState<TicketTypeField[]>(type?.fields ?? []);
+  const [forCustomers, setForCustomers] = useState(type?.for_customers ?? false);
   const [error, setError] = useState<string | null>(null);
 
   const patch = (i: number, p: Partial<TicketTypeField>) =>
@@ -166,7 +169,13 @@ function TypeForm({ type, onClose }: { type: TicketType | null; onClose: () => v
         if (clean.length > 30) return setError("A type can have at most 30 fields.");
         setError(null);
         save.mutate(
-          { id: type?.id, name: name.trim(), fields: clean, required_skill: skill.trim() || null },
+          {
+            id: type?.id,
+            name: name.trim(),
+            fields: clean,
+            required_skill: skill.trim() || null,
+            for_customers: forCustomers,
+          },
           {
             onSuccess: () => {
               toast.success("Ticket type saved");
@@ -196,6 +205,23 @@ function TypeForm({ type, onClose }: { type: TicketType | null; onClose: () => v
         >
           <Input id="tt-skill" value={skill} onChange={(e) => setSkill(e.target.value)} />
         </Field>
+      </div>
+
+      <div className="flex items-center justify-between gap-4 rounded-lg border border-border p-3 text-sm">
+        <div>
+          <p id="tt-customers" className="font-medium">
+            Customers can pick this
+          </p>
+          <p id="tt-customers-d" className="text-xs text-muted-foreground">
+            Show this type on the customer portal and the web form.
+          </p>
+        </div>
+        <Switch
+          checked={forCustomers}
+          onChange={setForCustomers}
+          labelledBy="tt-customers"
+          describedBy="tt-customers-d"
+        />
       </div>
 
       <div>

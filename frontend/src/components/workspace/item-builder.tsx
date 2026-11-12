@@ -41,6 +41,11 @@ const STATUS_OPTS = opts(STATUSES, (v) => STATUS_LABEL[v as keyof typeof STATUS_
 const PRIORITY_OPTS = opts(PRIORITIES, (v) => PRIORITY_LABEL[v as keyof typeof PRIORITY_LABEL]);
 const CHANNEL_OPTS = opts(["email", "web", "portal", "api", "chat", "phone"]);
 const SENTIMENT_OPTS = opts(["negative", "neutral", "positive"]);
+const SLA_STATE_OPTS = [
+  { value: "on_track", label: "On track" },
+  { value: "close", label: "Close to breach" },
+  { value: "breached", label: "Breached" },
+];
 
 export const CONDITION_KINDS: KindSpec[] = [
   {
@@ -73,7 +78,21 @@ export const CONDITION_KINDS: KindSpec[] = [
     fields: [{ key: "sentiments", label: "Sentiments", type: "multi", options: SENTIMENT_OPTS }],
     initial: { sentiments: [] },
   },
+  {
+    kind: "sla_in",
+    label: "SLA is",
+    fields: [{ key: "states", label: "SLA states", type: "multi", options: SLA_STATE_OPTS }],
+    initial: { states: ["breached"] },
+  },
 ];
+
+/**
+ * Conditions a rule can use for its event. A new ticket has no SLA state to check yet,
+ * so `sla_in` is only offered on the other events.
+ */
+export function conditionKindsFor(event: string): KindSpec[] {
+  return event === "created" ? CONDITION_KINDS.filter((k) => k.kind !== "sla_in") : CONDITION_KINDS;
+}
 
 export const RULE_ACTION_KINDS: KindSpec[] = [
   {

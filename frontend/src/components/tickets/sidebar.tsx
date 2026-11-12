@@ -12,6 +12,7 @@ import {
   STATUS_LABEL,
   VipBadge,
 } from "@/components/tickets/badges";
+import { CsatAverage, CsatCard } from "@/components/tickets/csat";
 import { FileChip } from "@/components/tickets/message-files";
 import { SlaPanel } from "@/components/tickets/sla";
 import { Badge, Card, Input, Select, Skeleton } from "@/components/ui/primitives";
@@ -320,6 +321,12 @@ export function TicketSidebar({ ticket, etag }: { ticket: Ticket; etag: string |
         <Section title="SLA">
           <SlaPanel sla={ticket.sla} />
         </Section>
+
+        {ticket.csat && (
+          <Section title="Customer rating">
+            <CsatCard csat={ticket.csat} />
+          </Section>
+        )}
       </div>
 
       <div
@@ -345,6 +352,17 @@ export function TicketSidebar({ ticket, etag }: { ticket: Ticket; etag: string |
               <>
                 <dt className="text-muted-foreground">Customer since</dt>
                 <dd className="text-right">{formatDateTime(ticket.contact?.customer_since)}</dd>
+              </>
+            )}
+            {!!ticket.contact?.csat_count && (
+              <>
+                <dt className="text-muted-foreground">Satisfaction</dt>
+                <dd className="flex justify-end">
+                  <CsatAverage
+                    average={ticket.contact.csat_average}
+                    count={ticket.contact.csat_count}
+                  />
+                </dd>
               </>
             )}
             {ticket.contact?.other_tickets != null && (
