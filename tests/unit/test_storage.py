@@ -1,6 +1,11 @@
-"""The storage drivers and signed links, without a database. S3 runs against moto's fake S3."""
+"""The storage drivers and signed links, without a database. S3 runs against moto's fake S3.
+Azure runs against Azurite when `CEDESK_TEST_AZURITE_KEY` holds its development key (and
+`CEDESK_TEST_AZURITE_URL` its address, default http://127.0.0.1:10000/devstoreaccount1);
+otherwise those tests are skipped and only the link they sign is checked."""
 
 import asyncio
+import base64
+import os
 import time
 from collections.abc import Iterator
 from pathlib import Path
@@ -13,6 +18,7 @@ from moto import mock_aws
 
 from cedesk.settings import Settings, StorageDriver
 from cedesk.storage import (
+    AzureStore,
     LocalStore,
     ObjectMissing,
     S3Store,
@@ -195,3 +201,125 @@ def test_s3_is_one_setting_away() -> None:
 def test_s3_without_a_bucket_stops_at_start_up() -> None:
     with pytest.raises(ValueError, match="CEDESK_STORAGE_S3_BUCKET"):
         make_store(Settings(storage_driver=StorageDriver.s3))
+
+
+# ── GCS (S3-compatible API) ──────────────────────────────────────────────────
+
+
+def gcs_settings(**extra: str) -> Settings:
+    values: dict[str, str] = {
+        "storage_gcs_bucket": "cedesk-files",
+        "storage_gcs_hmac_access_id": "GOOG1EXAMPLE",
+        "storage_gcs_hmac_secret": "hmac-secret-example",
+        **extra,
+    }
+    return Settings(storage_driver=StorageDriver.gcs, **values)  # type: ignore[arg-type]
+
+
+def test_gcs_is_s3_signed_against_google() -> None:
+    store = make_store(gcs_settings())
+    assert isinstance(store, S3Store) and store.bucket == "cedesk-files"
+    url = asyncio.run(
+        store.download_url(KEY, name="Report Q3.pdf", content_type="application/pdf", expires_in=60)
+    )
+    parts = urlsplit(url)
+    query = parse_qs(parts.query)
+    assert (parts.scheme, parts.netloc) == ("https", "storage.googleapis.com")
+    assert parts.path == f"/cedesk-files/{KEY}"  # path style: bucket names with dots work
+    assert query["X-Amz-Credential"][0].startswith("GOOG1EXAMPLE/")
+    assert "/auto/s3/aws4_request" in query["X-Amz-Credential"][0]
+    assert query["response-content-disposition"] == [content_disposition("Report Q3.pdf")]
+    assert "hmac-secret-example" not in url
+
+
+@pytest.mark.parametrize("missing", ["storage_gcs_bucket", "storage_gcs_hmac_access_id",
+                                     "storage_gcs_hmac_secret"])  # fmt: skip
+def test_gcs_without_its_settings_stops_at_start_up(missing: str) -> None:
+    with pytest.raises(ValueError, match="CEDESK_STORAGE_GCS_HMAC_SECRET"):
+        make_store(gcs_settings(**{missing: ""}))
+
+
+# ── Azure Blob (Azurite) ─────────────────────────────────────────────────────
+
+FAKE_AZURE_KEY = base64.b64encode(b"not a real key, only signs a link").decode()
+
+
+def azure_settings(**extra: str) -> Settings:
+    values: dict[str, str] = {
+        "storage_azure_account_name": "cedeskfiles",
+        "storage_azure_account_key": FAKE_AZURE_KEY,
+        "storage_azure_container": "attachments",
+        **extra,
+    }
+    return Settings(storage_driver=StorageDriver.azure, **values)  # type: ignore[arg-type]
+
+
+def test_azure_signs_a_read_only_link_that_names_the_file() -> None:
+    store = make_store(azure_settings())
+    assert isinstance(store, AzureStore) and store.container == "attachments"
+    url = asyncio.run(
+        store.download_url(KEY, name="Report Q3.pdf", content_type="application/pdf", expires_in=60)
+    )
+    parts = urlsplit(url)
+    query = parse_qs(parts.query)
+    assert (parts.scheme, parts.netloc) == ("https", "cedeskfiles.blob.core.windows.net")
+    assert parts.path == f"/attachments/{KEY}"
+    assert query["sp"] == ["r"] and query["spr"] == ["https"] and "sig" in query
+    assert query["rscd"] == [content_disposition("Report Q3.pdf")]
+    assert query["rsct"] == ["application/pdf"]
+    assert FAKE_AZURE_KEY not in url
+
+
+@pytest.mark.parametrize("missing", ["storage_azure_account_name", "storage_azure_account_key",
+                                     "storage_azure_container"])  # fmt: skip
+def test_azure_without_its_settings_stops_at_start_up(missing: str) -> None:
+    with pytest.raises(ValueError, match="CEDESK_STORAGE_AZURE_CONTAINER"):
+        make_store(azure_settings(**{missing: ""}))
+
+
+def test_azure_refuses_keys_it_would_not_make() -> None:
+    store = make_store(azure_settings())
+    with pytest.raises(ValueError):
+        asyncio.run(store.put("../x", b"x", content_type="text/plain"))
+
+
+@pytest.fixture
+def azurite() -> Iterator[AzureStore]:
+    key = os.environ.get("CEDESK_TEST_AZURITE_KEY")
+    if not key:
+        pytest.skip("Azurite isn't set up (CEDESK_TEST_AZURITE_KEY)")
+    endpoint = os.environ.get("CEDESK_TEST_AZURITE_URL", "http://127.0.0.1:10000/devstoreaccount1")
+    container = f"t{time.time_ns()}"
+    store = AzureStore(
+        account_name="devstoreaccount1", account_key=key, container=container, endpoint=endpoint
+    )
+    store._container.create_container()
+    yield store
+    store._container.delete_container()
+
+
+def test_azure_store_writes_reads_and_deletes(azurite: AzureStore) -> None:
+    async def run() -> None:
+        await azurite.put(KEY, b"%PDF-1.7", content_type="application/pdf")
+        assert await azurite.get(KEY) == b"%PDF-1.7"
+        await azurite.delete(KEY)
+        await azurite.delete(KEY)  # deleting again is fine
+        with pytest.raises(ObjectMissing):
+            await azurite.get(KEY)
+
+    asyncio.run(run())
+
+
+def test_azure_link_downloads_as_an_attachment_and_cannot_be_widened(azurite: AzureStore) -> None:
+    async def run(seconds: int) -> str:
+        await azurite.put(KEY, b"%PDF-1.7", content_type="application/pdf")
+        return await azurite.download_url(
+            KEY, name="Report Q3.pdf", content_type="application/pdf", expires_in=seconds
+        )
+
+    response = requests.get(asyncio.run(run(300)), timeout=5)
+    assert response.status_code == 200 and response.content == b"%PDF-1.7"
+    assert response.headers["Content-Disposition"] == content_disposition("Report Q3.pdf")
+    assert response.headers["Content-Type"] == "application/pdf"
+    tampered = asyncio.run(run(300)).replace("sp=r", "sp=rw")
+    assert requests.get(tampered, timeout=5).status_code == 403
