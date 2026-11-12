@@ -1281,7 +1281,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ConnectionOut"
+                  "$ref": "#/components/schemas/cedesk__helpdesk__api__cevanos__ConnectionOut"
                 }
               }
             }
@@ -1316,7 +1316,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ConnectionOut"
+                  "$ref": "#/components/schemas/cedesk__helpdesk__api__cevanos__ConnectionOut"
                 }
               }
             }
@@ -7592,6 +7592,430 @@
         }
       }
     },
+    "/api/v1/imports/connections": {
+      "post": {
+        "tags": [
+          "imports"
+        ],
+        "summary": "Connect a help desk to import from (Admin)",
+        "description": "The credentials are checked with the source, then kept encrypted. 422 when the source refuses them, 503 when it can't be reached. Intercom, Zendesk, Freshdesk, Gorgias and Help Scout (HubSpot and Zoho Desk come in Phase 3). Accepts `Idempotency-Key`.",
+        "operationId": "connect_api_v1_imports_connections_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional, any unique string (a UUID is good), up to 255 characters. Send the same key when you retry: a repeat returns what the first request made (header `Idempotent-Replayed: true`) instead of making it twice. The same key with a different request is 422. Keys last 24 hours, per member.",
+              "title": "Idempotency-Key"
+            },
+            "description": "Optional, any unique string (a UUID is good), up to 255 characters. Send the same key when you retry: a repeat returns what the first request made (header `Idempotent-Replayed: true`) instead of making it twice. The same key with a different request is 422. Keys last 24 hours, per member."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConnectIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/cedesk__helpdesk__api__imports__ConnectionOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/imports/csv": {
+      "post": {
+        "tags": [
+          "imports"
+        ],
+        "summary": "Upload a CSV file to import (Admin)",
+        "description": "The request body is the file itself (UTF-8 CSV), not a form. One row per message, grouped by `ticket_id`. Required columns: `ticket_id`, `subject`, `requester_email`, `message_from` (customer, agent or note), `message_body`, `message_created_at` (ISO 8601). Optional: `status`, `priority`, `channel`, `team`, `tags` (`;` between), `ticket_created_at`, `resolved_at`, `requester_name`, `assignee_email`, `csat_score`, `csat_comment`, `message_id`, `author_name`, `author_email`, and `field.<key>` for custom fields. At most 25 MB (413). The file is deleted when the run ends. Rows that can't be read are listed as warnings and left out; they never stop the import. Accepts `Idempotency-Key`.",
+        "operationId": "upload_csv_api_v1_imports_csv_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "filename",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200,
+              "description": "The file's name, e.g. tickets.csv.",
+              "title": "Filename"
+            },
+            "description": "The file's name, e.g. tickets.csv."
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional, any unique string (a UUID is good), up to 255 characters. Send the same key when you retry: a repeat returns what the first request made (header `Idempotent-Replayed: true`) instead of making it twice. The same key with a different request is 422. Keys last 24 hours, per member.",
+              "title": "Idempotency-Key"
+            },
+            "description": "Optional, any unique string (a UUID is good), up to 255 characters. Send the same key when you retry: a repeat returns what the first request made (header `Idempotent-Replayed: true`) instead of making it twice. The same key with a different request is 422. Keys last 24 hours, per member."
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/cedesk__helpdesk__api__imports__ConnectionOut"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The file is larger than 25 MB."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "text/csv": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/imports/connections/{connection_id}/discover": {
+      "get": {
+        "tags": [
+          "imports"
+        ],
+        "summary": "What the source holds, and the team each group probably maps to (Admin)",
+        "operationId": "discover_api_v1_imports_connections__connection_id__discover_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "connection_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Connection Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiscoveryOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/imports/connections/{connection_id}/dry-run": {
+      "post": {
+        "tags": [
+          "imports"
+        ],
+        "summary": "What a run would do, saving nothing (Admin)",
+        "operationId": "dry_run_api_v1_imports_connections__connection_id__dry_run_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "connection_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Connection Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OptionsIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DryRunOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/imports/connections/{connection_id}/run": {
+      "post": {
+        "tags": [
+          "imports"
+        ],
+        "summary": "Start importing (Admin)",
+        "description": "The worker does the run in the background. 409 when this connection already has a run in progress or was closed. Poll `GET /imports/runs/{id}`. Accepts `Idempotency-Key`: a repeat returns the run the first one queued.",
+        "operationId": "start_run_api_v1_imports_connections__connection_id__run_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "connection_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Connection Id"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional, any unique string (a UUID is good), up to 255 characters. Send the same key when you retry: a repeat returns what the first request made (header `Idempotent-Replayed: true`) instead of making it twice. The same key with a different request is 422. Keys last 24 hours, per member.",
+              "title": "Idempotency-Key"
+            },
+            "description": "Optional, any unique string (a UUID is good), up to 255 characters. Send the same key when you retry: a repeat returns what the first request made (header `Idempotent-Replayed: true`) instead of making it twice. The same key with a different request is 422. Keys last 24 hours, per member."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OptionsIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/imports/connections/{connection_id}/close": {
+      "post": {
+        "tags": [
+          "imports"
+        ],
+        "summary": "Delete the stored credentials or file now (Admin)",
+        "description": "The import history stays. 409 while a run is in progress.",
+        "operationId": "close_connection_api_v1_imports_connections__connection_id__close_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "connection_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Connection Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/imports/runs/{run_id}": {
+      "get": {
+        "tags": [
+          "imports"
+        ],
+        "summary": "A run's progress (Admin)",
+        "operationId": "get_run_api_v1_imports_runs__run_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Run Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/healthz": {
       "get": {
         "tags": [
@@ -8830,6 +9254,46 @@
         ],
         "title": "ChildIn"
       },
+      "ConnectIn": {
+        "properties": {
+          "source": {
+            "type": "string",
+            "enum": [
+              "intercom",
+              "zendesk",
+              "freshdesk",
+              "gorgias",
+              "helpscout"
+            ],
+            "title": "Source"
+          },
+          "settings": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Settings",
+            "description": "What isn't secret: a subdomain, a region. Which keys depends on the source."
+          },
+          "credentials": {
+            "additionalProperties": {
+              "type": "string",
+              "format": "password",
+              "writeOnly": true
+            },
+            "type": "object",
+            "title": "Credentials",
+            "description": "The token or key for the source. Read-only use: nothing is ever written back. Stored encrypted; deleted when the run ends without syncing."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "source",
+          "credentials"
+        ],
+        "title": "ConnectIn"
+      },
       "ConnectionIn": {
         "properties": {
           "api_key": {
@@ -8881,87 +9345,6 @@
         },
         "type": "object",
         "title": "ConnectionIn"
-      },
-      "ConnectionOut": {
-        "properties": {
-          "connected": {
-            "type": "boolean",
-            "title": "Connected",
-            "description": "false: Cevanos features are hidden."
-          },
-          "readable": {
-            "type": "boolean",
-            "title": "Readable",
-            "description": "false: the server's secret key changed since the secrets were saved; enter both again."
-          },
-          "api_key_hint": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Api Key Hint",
-            "description": "The key's last 4 characters."
-          },
-          "close_on_resolve": {
-            "type": "boolean",
-            "title": "Close On Resolve"
-          },
-          "team_id": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "uuid"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Team Id"
-          },
-          "team_name": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Team Name"
-          },
-          "updated_at": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Updated At"
-          },
-          "webhook_path": {
-            "type": "string",
-            "title": "Webhook Path",
-            "description": "Add this path, on the API's address, in Cevanos."
-          }
-        },
-        "type": "object",
-        "required": [
-          "connected",
-          "readable",
-          "api_key_hint",
-          "close_on_resolve",
-          "team_id",
-          "team_name",
-          "updated_at",
-          "webhook_path"
-        ],
-        "title": "ConnectionOut"
       },
       "ContactCard": {
         "properties": {
@@ -9201,6 +9584,39 @@
         ],
         "title": "Counts"
       },
+      "CountsOut": {
+        "properties": {
+          "contacts": {
+            "type": "integer",
+            "title": "Contacts"
+          },
+          "tickets": {
+            "type": "integer",
+            "title": "Tickets"
+          },
+          "articles": {
+            "type": "integer",
+            "title": "Articles"
+          },
+          "replies": {
+            "type": "integer",
+            "title": "Replies"
+          },
+          "groups": {
+            "type": "integer",
+            "title": "Groups"
+          }
+        },
+        "type": "object",
+        "required": [
+          "contacts",
+          "tickets",
+          "articles",
+          "replies",
+          "groups"
+        ],
+        "title": "CountsOut"
+      },
       "CsatOut": {
         "properties": {
           "score": {
@@ -9427,6 +9843,49 @@
         "type": "object",
         "title": "DefaultsPatch"
       },
+      "DiscoveryOut": {
+        "properties": {
+          "counts": {
+            "$ref": "#/components/schemas/CountsOut"
+          },
+          "group_name": {
+            "type": "string",
+            "title": "Group Name",
+            "description": "What the source calls groups: \"Groups\", \"Mailboxes\"."
+          },
+          "groups": {
+            "items": {
+              "$ref": "#/components/schemas/GroupOut"
+            },
+            "type": "array",
+            "title": "Groups"
+          },
+          "status_map": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Status Map",
+            "description": "The source's status -> open/pending/resolved."
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          }
+        },
+        "type": "object",
+        "required": [
+          "counts",
+          "group_name",
+          "groups",
+          "status_map",
+          "warnings"
+        ],
+        "title": "DiscoveryOut"
+      },
       "DnsCheckOut": {
         "properties": {
           "status": {
@@ -9525,6 +9984,41 @@
           "attachment"
         ],
         "title": "DownloadOut"
+      },
+      "DryRunOut": {
+        "properties": {
+          "will_create": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Will Create",
+            "description": "Per kind, what a run would add."
+          },
+          "already_imported": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Already Imported",
+            "description": "What this source brought before."
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings",
+            "description": "For example \"No team picked for Billing.\""
+          }
+        },
+        "type": "object",
+        "required": [
+          "will_create",
+          "already_imported",
+          "warnings"
+        ],
+        "title": "DryRunOut"
       },
       "DueIn": {
         "type": "string",
@@ -10268,6 +10762,50 @@
           "fields"
         ],
         "title": "FormTypeOut"
+      },
+      "GroupOut": {
+        "properties": {
+          "external_id": {
+            "type": "string",
+            "title": "External Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "suggested_team_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suggested Team Id",
+            "description": "A team picked from the group's name."
+          },
+          "suggested_team": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suggested Team"
+          }
+        },
+        "type": "object",
+        "required": [
+          "external_id",
+          "name",
+          "suggested_team_id",
+          "suggested_team"
+        ],
+        "title": "GroupOut"
       },
       "HTTPValidationError": {
         "properties": {
@@ -11122,6 +11660,50 @@
           "created_at"
         ],
         "title": "NotificationOut"
+      },
+      "OptionsIn": {
+        "properties": {
+          "kinds": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "contacts",
+                    "tickets",
+                    "articles",
+                    "replies"
+                  ]
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kinds",
+            "description": "What to bring. Default: contacts, tickets, articles, replies."
+          },
+          "team_map": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "object",
+            "title": "Team Map",
+            "description": "A source group's id -> the CeDesk team its tickets go to (null: no team)."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "OptionsIn"
       },
       "PoliciesIn": {
         "properties": {
@@ -12703,6 +13285,94 @@
         "additionalProperties": false,
         "type": "object",
         "title": "RulePatch"
+      },
+      "RunOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "connection_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Connection Id"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "running",
+              "done",
+              "failed"
+            ],
+            "title": "State"
+          },
+          "kinds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Kinds"
+          },
+          "counts": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Counts",
+            "description": "Per kind: created and skipped (and, for tickets, unknown_agent_messages); rows_left_out for a CSV."
+          },
+          "sync_on": {
+            "type": "boolean",
+            "title": "Sync On"
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Started At"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "last_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error",
+            "description": "Why it paused or failed, in words."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "connection_id",
+          "source",
+          "state",
+          "kinds",
+          "counts",
+          "sync_on",
+          "started_at",
+          "finished_at",
+          "last_error"
+        ],
+        "title": "RunOut"
       },
       "SavedReplyIn": {
         "properties": {
@@ -15666,6 +16336,140 @@
           "slug"
         ],
         "title": "WorkspaceOut"
+      },
+      "cedesk__helpdesk__api__cevanos__ConnectionOut": {
+        "properties": {
+          "connected": {
+            "type": "boolean",
+            "title": "Connected",
+            "description": "false: Cevanos features are hidden."
+          },
+          "readable": {
+            "type": "boolean",
+            "title": "Readable",
+            "description": "false: the server's secret key changed since the secrets were saved; enter both again."
+          },
+          "api_key_hint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Api Key Hint",
+            "description": "The key's last 4 characters."
+          },
+          "close_on_resolve": {
+            "type": "boolean",
+            "title": "Close On Resolve"
+          },
+          "team_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Team Id"
+          },
+          "team_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Team Name"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "webhook_path": {
+            "type": "string",
+            "title": "Webhook Path",
+            "description": "Add this path, on the API's address, in Cevanos."
+          }
+        },
+        "type": "object",
+        "required": [
+          "connected",
+          "readable",
+          "api_key_hint",
+          "close_on_resolve",
+          "team_id",
+          "team_name",
+          "updated_at",
+          "webhook_path"
+        ],
+        "title": "ConnectionOut"
+      },
+      "cedesk__helpdesk__api__imports__ConnectionOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label",
+            "description": "The account, or the file's name."
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "connected",
+              "closed"
+            ],
+            "title": "State"
+          },
+          "credentials_hint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Credentials Hint",
+            "description": "The last 4 characters, to tell keys apart."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "source",
+          "label",
+          "state",
+          "credentials_hint",
+          "created_at"
+        ],
+        "title": "ConnectionOut"
       },
       "cedesk__helpdesk__api__portal__CodeBody": {
         "properties": {
