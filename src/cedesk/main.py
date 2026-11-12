@@ -53,12 +53,14 @@ from cedesk.helpdesk.api import ticket_tools as ticket_tools_api
 from cedesk.helpdesk.api import tickets as tickets_api
 from cedesk.helpdesk.api import triage as triage_api
 from cedesk.helpdesk.api import two_factor as two_factor_api
+from cedesk.helpdesk.api import webhooks as webhooks_api
 from cedesk.helpdesk.service.errors import ServiceError, TooManyAttempts
 from cedesk.helpdesk.service.imports.framework import make_importers
 from cedesk.helpdesk.service.stream import Slots
 from cedesk.ratelimit import SlidingWindowLimiter
 from cedesk.settings import Settings, get_settings
 from cedesk.storage import make_store
+from cedesk.webhook_client import WebhookClient
 
 logger = logging.getLogger("cedesk")
 READY_TIMEOUT_SECONDS = 2.0
@@ -159,6 +161,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     # Requests with API keys, per workspace (md PL2).
     app.state.api_key_requests = SlidingWindowLimiter(settings.api_key_limit, 60)
+    # Outgoing webhooks: checks a URL's host when it is saved, sends the test ping (md PL3).
+    app.state.webhook_client = WebhookClient()
 
     @app.middleware("http")
     async def request_log(request: Request, call_next: Any) -> Response:
@@ -287,6 +291,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(stream_api.router, prefix="/api/v1")
     app.include_router(api_keys_api.router, prefix="/api/v1")
     app.include_router(inbound_api_api.router, prefix="/api/v1")
+    app.include_router(webhooks_api.router, prefix="/api/v1")
 
     @app.get("/healthz", tags=["health"], summary="The process is up")
     async def healthz() -> dict[str, str]:

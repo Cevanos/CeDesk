@@ -193,6 +193,7 @@ def _worker(once: bool) -> int:
 
     from cedesk import logs
     from cedesk.cevanos_client import make_cevanos
+    from cedesk.crypto import Sealer
     from cedesk.db import make_engine, make_sessionmaker
     from cedesk.helpdesk.service.cevanos import CevanosHandler, ChatPoller
     from cedesk.helpdesk.service.csat import CsatHandler
@@ -211,10 +212,13 @@ def _worker(once: bool) -> int:
     from cedesk.helpdesk.service.sla_alerts import alert_everywhere
     from cedesk.helpdesk.service.stream import prune_everywhere as prune_stream
     from cedesk.helpdesk.service.task_alerts import alert_everywhere as alert_tasks
+    from cedesk.helpdesk.service.webhooks import WebhookFanout
+    from cedesk.helpdesk.service.webhooks import send_due as send_webhooks
     from cedesk.mail import MailboxError, make_mailbox, make_mailer
     from cedesk.scanning import make_scanner
     from cedesk.settings import get_settings
     from cedesk.storage import make_store
+    from cedesk.webhook_client import WebhookClient
 
     settings = get_settings()
     logs.configure(settings.log_level)
@@ -231,7 +235,7 @@ def _worker(once: bool) -> int:
         mailbox = make_mailbox(settings)
         store = make_store(settings)  # files on replies out, files in customer emails
         scanner = make_scanner(settings)
-        # Outbox handlers (webhooks join in Phase 3). The Cevanos one does nothing for a
+        # Outbox handlers. The Cevanos one does nothing for a
         # workspace that has not connected Cevanos; the CSAT one emails the survey; the portal
         # one tells portal customers an agent replied.
         cevanos = make_cevanos(settings)
@@ -246,7 +250,10 @@ def _worker(once: bool) -> int:
             CsatHandler(sm, base_url=portal_url, fallback=fallback),
             PortalNoticeHandler(sm, base_url=portal_url, fallback=fallback),
             SecurityAlertHandler(sm, fallback=fallback),
+            WebhookFanout(sm),  # queues one delivery per webhook; send_webhooks sends them
         ]
+        sealer = Sealer(settings.secret_key.get_secret_value())
+        webhook_client = WebhookClient()
         chats = ChatPoller(sm, cevanos, batch=settings.cevanos_poll_batch)
         importers = make_importers(settings.secret_key.get_secret_value(), store)
         swept_at = 0.0
@@ -308,6 +315,17 @@ def _worker(once: bool) -> int:
                         f"{result.failed} failed",
                         extra={"event": "email"},
                     )
+                try:
+                    hooks = await send_webhooks(sm, sealer, webhook_client)
+                except Exception:
+                    logger.exception("webhook pass failed")
+                else:
+                    if hooks.delivered or hooks.retrying or hooks.failed:
+                        logger.info(
+                            f"webhooks: {hooks.delivered} delivered, {hooks.retrying} "
+                            f"retrying, {hooks.failed} failed",
+                            extra={"event": "webhook"},
+                        )
                 if time.monotonic() - alerted_at > SLA_ALERT_EVERY_SECONDS:
                     try:
                         breached = await alert_everywhere(sm)
