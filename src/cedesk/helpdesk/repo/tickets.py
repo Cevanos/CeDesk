@@ -165,7 +165,15 @@ async def insert_ticket(session: AsyncSession, values: Mapping[str, Any]) -> UUI
     params["fields"] = json.dumps(params["fields"])
     handover = params.get("handover")
     params["handover"] = None if handover is None else json.dumps(handover)
-    for key in ("conversation_id", "topic", "sentiment", "language", "source", "source_id"):
+    for key in (
+        "conversation_id",
+        "topic",
+        "sentiment",
+        "language",
+        "source",
+        "source_id",
+        "parent_id",
+    ):
         params.setdefault(key, None)
     params.setdefault("accepted", True)
     result = await session.execute(
@@ -173,11 +181,11 @@ async def insert_ticket(session: AsyncSession, values: Mapping[str, Any]) -> UUI
             "INSERT INTO hd_ticket (workspace_id, number, subject, status, priority, type_id, "
             "team_id, assignee_id, contact_id, channel, fields, tags, created_by_id, "
             "conversation_id, accepted, handover, topic, sentiment, language, source, "
-            "source_id) "
+            "source_id, parent_id) "
             "VALUES (:workspace_id, :number, :subject, 'open', :priority, :type_id, :team_id, "
             ":assignee_id, :contact_id, :channel, CAST(:fields AS jsonb), :tags, :created_by_id, "
             ":conversation_id, :accepted, CAST(:handover AS jsonb), :topic, :sentiment, "
-            ":language, :source, :source_id) "
+            ":language, :source, :source_id, :parent_id) "
             "RETURNING id"
         ),
         params,
@@ -189,8 +197,8 @@ async def lock_ticket(session: AsyncSession, ticket_id: UUID) -> Row | None:
     result = await session.execute(
         text(
             "SELECT id, number, subject, status, priority, channel, type_id, team_id, "
-            "assignee_id, fields, tags, resolved_at, reopen_count, updated_at "
-            "FROM hd_ticket WHERE id = :id FOR UPDATE"
+            "assignee_id, fields, tags, resolved_at, reopen_count, updated_at, parent_id, "
+            "merged_into_id FROM hd_ticket WHERE id = :id FOR UPDATE"
         ),
         {"id": ticket_id},
     )
