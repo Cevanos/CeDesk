@@ -24,6 +24,8 @@ DEV_SECRET_KEY = "dev-only-change-me"  # noqa: S105  (the value refused outside 
 class StorageDriver(StrEnum):
     local = "local"  # a folder on this server's disk
     s3 = "s3"  # AWS S3, or any S3-compatible service (MinIO, R2, ...) through an endpoint URL
+    gcs = "gcs"  # Google Cloud Storage, through its S3-compatible API with HMAC keys
+    azure = "azure"  # Azure Blob Storage, with the storage account's name and key
 
 
 class ScanBackend(StrEnum):
@@ -113,6 +115,20 @@ class Settings(BaseSettings):
     storage_s3_secret_access_key: SecretStr | None = None
     storage_s3_path_style: bool = Field(
         default=False, description="MinIO and some other services need path-style URLs."
+    )
+    # GCS: a bucket and an HMAC key (Cloud Storage > Settings > Interoperability), signed
+    # like S3 against storage.googleapis.com.
+    storage_gcs_bucket: str = ""
+    storage_gcs_hmac_access_id: str | None = None
+    storage_gcs_hmac_secret: SecretStr | None = None
+    # Azure: the storage account, its key and a container that already exists.
+    storage_azure_account_name: str = ""
+    storage_azure_account_key: SecretStr | None = None
+    storage_azure_container: str = ""
+    storage_azure_endpoint: str | None = Field(
+        default=None,
+        description="Leave empty for Azure; e.g. http://127.0.0.1:10000/devstoreaccount1 for "
+        "Azurite.",
     )
     attachment_max_bytes: int = Field(default=25 * 1024 * 1024, ge=1)
     # S3 caps a presigned link at 7 days.

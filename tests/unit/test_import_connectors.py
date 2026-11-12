@@ -23,7 +23,7 @@ def test_every_offered_source_says_what_it_needs() -> None:
     assert set(connectors.WHERE) == set(AVAILABLE_SOURCES)
 
 
-@pytest.mark.parametrize("source", ["hubspot", "zoho", "csv", "nonsense"])
+@pytest.mark.parametrize("source", ["csv", "nonsense"])
 def test_a_source_that_is_not_offered_is_refused(source: str) -> None:
     with pytest.raises(SourceError) as caught:
         build(source, {}, {"token": "x"})

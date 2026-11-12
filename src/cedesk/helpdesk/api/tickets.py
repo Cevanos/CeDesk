@@ -192,8 +192,8 @@ async def list_tickets(
         str | None,
         Query(
             description="Only tickets brought from another help desk: `any`, or one source "
-            "(intercom, zendesk, freshdesk, gorgias, helpscout, csv). Each also has the tag "
-            "`imported-<source>`.",
+            "(intercom, zendesk, freshdesk, gorgias, helpscout, hubspot, zoho, csv). Each also has "
+            "the tag `imported-<source>`.",
         ),
     ] = None,
     cursor: Cursor = None,

@@ -1,0 +1,11 @@
+{
+ "id": "t1",
+ "direction": "in",
+ "content": "<div>Where is my order 1042?</div>",
+ "createdTime": "2025-03-01T10:00:00.000Z",
+ "author": {
+  "name": "Priya Sharma",
+  "email": "priya@example.org",
+  "type": "END_USER"
+ }
+}
