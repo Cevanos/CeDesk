@@ -3,6 +3,45 @@
 `openapi.json` next to this file is the API as served (`uv run cedesk openapi`). Every
 route is under `/api/v1`. Breaking changes only come in v2 (md 2B). Newest first.
 
+## 2026-11-12: Outgoing webhooks (Phase 3, PL3-PL6)
+
+Admin only, signed in (not with an API key): a webhook sends ticket data out of CeDesk.
+
+- New: `POST /webhooks` `{url, events, enabled?}` → 201 with `secret` (`whsec_...`, shown
+  this once; kept encrypted, `secret_hint` afterwards). The URL must be https with a public
+  host name (no IP address, no user or password, nothing that resolves to a private,
+  loopback or link-local address: checked when saved and again before every send).
+  `events`: any of `ticket.created`, `ticket.updated`, `ticket.resolved`,
+  `message.created`. At most 20 per workspace (409). `GET /webhooks`;
+  `PATCH /webhooks/{id}` `{url?, events?, enabled?}`; `POST /webhooks/{id}/secret` (a new
+  secret, shown once; the old one stops at once); `DELETE /webhooks/{id}` (204; its queue
+  and log go too). Audited: area `webhooks`, actions `created`, `changed`,
+  `secret_changed`, `deleted` (never the secret).
+- Each delivery is a POST of the event as JSON (PL5): `{event, ticket: {id, number,
+  subject, status, priority, team, topic}, id, occurred_at}`; `ticket.updated` adds
+  `changes` (the fields that changed); `message.created` adds `message: {id, kind,
+  author_member_id}`, only for customer and agent replies (never notes), and never the
+  text: read it with `GET /tickets/{id}`. This is how a system using the inbound API
+  (`/inbound/tickets`) hears about agents' replies.
+- Headers: `X-CeDesk-Event`, `X-CeDesk-Delivery` (the same on every retry: drop repeats),
+  `X-CeDesk-Timestamp` (unix seconds), `X-CeDesk-Signature: sha256=<hex HMAC-SHA256(secret,
+  "<timestamp>.<body>")>`. Receivers check the signature and that the timestamp is within 5
+  minutes (the timestamp is signed, so an old delivery can't be replayed as new).
+- A 2xx answer within 10 s is delivered; redirects are not followed. Otherwise it is tried
+  again after 1 min, 5 min, 30 min, 2 h and 12 h; after the 6th try it has failed. Each URL
+  has its own queue: one that is down never holds up the others. A webhook turned off
+  stops getting new events; what was queued for it is marked failed, not sent.
+- New: `POST /webhooks/{id}/test`: a signed `ping` (`{event: "ping", id, occurred_at,
+  webhook: {id}}`) sent now, one try, the answer returned and logged.
+- New (PL6): `GET /webhooks/deliveries?state&webhook_id&cursor&limit`, newest first, each
+  with `body` (exactly what is sent), `state` (pending, delivered, failed), `tries`,
+  `next_try_at`, the last status, time and error, and `attempts` (every try: when,
+  status, ms, error, the first 300 characters of the answer). `POST
+  /webhooks/deliveries/{id}/retry` sends a failed one again with a full set of tries (404
+  for any other).
+- The worker (`cedesk worker`) sends them: no new process or setting.
+- Migration 0043: `hd_webhook`, `hd_webhook_delivery`, `hd_webhook_attempt` (forced RLS).
+
 ## 2026-11-12: API keys, the public REST API and the inbound API channel (Phase 3, PL1, PL2, C3)
 
 Other systems call the same `/api/v1` routes as the app, with an API key instead of a
