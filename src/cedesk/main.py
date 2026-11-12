@@ -21,6 +21,7 @@ from cedesk import logs
 from cedesk.cevanos_client import make_cevanos
 from cedesk.db import make_engine, make_sessionmaker
 from cedesk.dnscheck import DnsLookup
+from cedesk.helpdesk.api import api_keys as api_keys_api
 from cedesk.helpdesk.api import articles as articles_api
 from cedesk.helpdesk.api import attachments as attachments_api
 from cedesk.helpdesk.api import audit as audit_api
@@ -30,6 +31,7 @@ from cedesk.helpdesk.api import cevanos as cevanos_api
 from cedesk.helpdesk.api import email as email_api
 from cedesk.helpdesk.api import email_in as email_in_api
 from cedesk.helpdesk.api import imports as imports_api
+from cedesk.helpdesk.api import inbound_api as inbound_api_api
 from cedesk.helpdesk.api import macros as macros_api
 from cedesk.helpdesk.api import members as members_api
 from cedesk.helpdesk.api import messages as messages_api
@@ -155,6 +157,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.public_attempts = SlidingWindowLimiter(
         settings.public_limit, settings.public_window_seconds
     )
+    # Requests with API keys, per workspace (md PL2).
+    app.state.api_key_requests = SlidingWindowLimiter(settings.api_key_limit, 60)
 
     @app.middleware("http")
     async def request_log(request: Request, call_next: Any) -> Response:
@@ -281,6 +285,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(reports_api.router, prefix="/api/v1")
     app.include_router(imports_api.router, prefix="/api/v1")
     app.include_router(stream_api.router, prefix="/api/v1")
+    app.include_router(api_keys_api.router, prefix="/api/v1")
+    app.include_router(inbound_api_api.router, prefix="/api/v1")
 
     @app.get("/healthz", tags=["health"], summary="The process is up")
     async def healthz() -> dict[str, str]:

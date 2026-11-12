@@ -85,6 +85,12 @@ class Settings(BaseSettings):
         "rating page and the help center (votes and the web form have their own).",
     )
     public_window_seconds: int = Field(default=600, ge=1)
+    api_key_limit: int = Field(
+        default=700,
+        ge=1,
+        description="Requests a minute per workspace with API keys, all its keys together "
+        "(md PL2). Over it: 429 with Retry-After. Counted in each API process.",
+    )
     log_level: str = "INFO"
 
     # Uploaded files. One setting picks where they live; the rest belongs to that driver.

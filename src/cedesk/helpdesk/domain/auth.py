@@ -33,6 +33,11 @@ class Caller:
     two_factor_setup_required: bool = False
     # The request's address as CeDesk sees it, for the audit log (S9).
     ip: str | None = None
+    # An API key acting as the member who made it (md PL1): its id, name and level
+    # (domain/api_keys.KeyAccess). None for a person signed in.
+    api_key_id: UUID | None = None
+    api_key_name: str | None = None
+    api_key_access: str | None = None
 
     def __post_init__(self) -> None:
         if self.access is None:
@@ -40,6 +45,13 @@ class Caller:
 
     def can(self, action: Action) -> bool:
         return self.access.can(action)
+
+    def acting(self, name: str) -> str:
+        """The name for system lines and the audit log: "Neha", or, through a key,
+        'Neha (API key "Shopify sync")'."""
+        if self.api_key_name is None:
+            return name
+        return f'{name} (API key "{self.api_key_name}")'
 
 
 # Forgot password (md A3): a link lasts 30 minutes; at most 3 are sent per hour per member.

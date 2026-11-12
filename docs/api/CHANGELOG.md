@@ -48,6 +48,52 @@ account's own host.
 
 No migration: nothing in the database changes.
 
+## 2026-11-12: API keys, the public REST API and the inbound API channel (Phase 3, PL1, PL2, C3)
+
+Other systems call the same `/api/v1` routes as the app, with an API key instead of a
+sign-in: `Authorization: Bearer cdk_...`.
+
+- New (Admin, signed in; a key can't use these): `POST /api-keys` `{name, access}` → 201
+  with `key`, shown this once (CeDesk keeps its SHA-256 and last 4 characters);
+  `GET /api-keys` (live first, then revoked; `hint` `cdk_…abcd`, `created_by_name`,
+  `last_used_at` to the minute, `revoked_at`); `DELETE /api-keys/{id}` → 204, the key answers
+  401 from then on. Audited: area `api_keys`, actions `created` and `revoked` (name, level
+  and hint; never the key).
+- What a key does: it acts as the Admin who made it, within its `access`:
+  - `read`: GET only.
+  - `read_write`: also writes on tickets (messages, notes, tags, fields, status, assign,
+    macros, ticket tools), `/contacts`, `/tasks`, `/time`, and `/inbound/tickets`.
+  - `admin`: also writes on `/teams`, `/ticket-types`, `/saved-replies`, `/macros`,
+    `/rules`, `/article-categories` and `/articles`.
+  - Reads: those, plus `/reports`, `/members`, `/agents`, `/attachments`, `/files` and
+    `GET /me` (who the key acts as).
+  - Anything else answers 403 with the reason: sign-in, `/me/...` (password, 2FA,
+    status), members, roles, security, SSO, Cevanos, email addresses, imports, privacy,
+    audit, sandbox, the live stream, `/api-keys`. A key never approves.
+  - System lines and the audit log name the key: `Priority set to High by Admin (API key
+    "Shop sync")`.
+  - The workspace's IP list (S4) applies to keys. A key stops (401) when revoked or when
+    the member who made it is deactivated.
+- Rate limit (PL2): 700 requests a minute per workspace, all its keys together (setting
+  `CEDESK_API_KEY_LIMIT`); over it, 429 with `Retry-After`. Requests by people aren't
+  counted.
+- New (C3, a `read_write` or `admin` key): `POST /inbound/tickets` `{contact {email, name},
+  message, subject?, priority?, type_id?, team_id?, fields?, tags?, external_id?}` → 201
+  `{ticket_id, number, created}`. A ticket on the `api` channel made as the customer:
+  card numbers removed, triage, rules, SLA and routing run, line "Ticket created by Priya
+  (api)". The subject defaults to the first 60 characters of the message. The same
+  `external_id` again → 200 with the same ticket, `created: false`. No assignee: routing
+  picks.
+- New (C3): `POST /inbound/tickets/{id}/messages` `{message, external_id?}` → 201
+  `{message_id, outcome}`: the customer's reply (reopens a resolved ticket; a thank-you
+  keeps it resolved; reply rules run). The same `external_id` again → 200, `outcome:
+  duplicate`. 409 on a ticket that didn't come in through the API, or was merged (the
+  message names the ticket it went into). 404 for another workspace's ticket.
+- Both inbound routes answer 403 to a person signed in: agents reply or add notes.
+  Agents' replies on `api` tickets aren't sent anywhere by CeDesk; the system reads them
+  with `GET /tickets/{id}` (webhooks: PL3).
+- Migration 0042: `hd_api_key` (forced RLS).
+
 ## 2026-11-12: Fix: notifications failed after live updates (C11, P7)
 
 - Since live updates (migration 0040), any change that notifies an agent (auto-assignment,
@@ -56,6 +102,7 @@ No migration: nothing in the database changes.
   event name `notification` broke the event table's name rule (it asked for a dot).
 - Fixed in the query and by migration 0041, which lets an event name be one word. No API
   change; the stream's `notification` event now arrives as documented.
+
 
 ## 2026-11-12: Reports: more metrics, Governance link, article votes, CSV (Phase 3, R3-R5, R7, R8)
 
