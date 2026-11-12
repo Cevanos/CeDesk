@@ -17,6 +17,26 @@ class Forbidden(ServiceError):
     status = 403
 
 
+class IpNotAllowed(Forbidden):
+    """403 with code `IpNotAllowed`: the address isn't on the workspace's IP list (S4)."""
+
+
+class PasswordExpired(Forbidden):
+    """403 with code `PasswordExpired`: the member must choose a new password (S3)."""
+
+
+class TwoFactorRequired(Forbidden):
+    """403 `TwoFactorRequired`: send the authenticator code to POST /auth/2fa (S2)."""
+
+
+class TwoFactorSetupRequired(Forbidden):
+    """403 `TwoFactorSetupRequired`: the workspace requires 2FA; set it up first (S2)."""
+
+
+class SsoRequired(Forbidden):
+    """403 `SsoRequired`: the workspace signs in through its identity provider (S1)."""
+
+
 class NotFound(ServiceError):
     status = 404
 

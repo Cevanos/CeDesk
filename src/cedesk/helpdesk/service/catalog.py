@@ -12,6 +12,7 @@ from cedesk.helpdesk.domain.auth import Caller
 from cedesk.helpdesk.domain.permissions import Action
 from cedesk.helpdesk.domain.tickets import FieldDef, FieldError, FieldKind, check_definitions
 from cedesk.helpdesk.repo import catalog as repo
+from cedesk.helpdesk.repo import roles as role_repo
 from cedesk.helpdesk.repo.catalog import Row
 from cedesk.helpdesk.service.auth import Sessionmaker
 from cedesk.helpdesk.service.errors import Conflict, Invalid, NotFound
@@ -129,6 +130,9 @@ async def delete_team(sm: Sessionmaker, caller: Caller, team_id: UUID) -> None:
     """Tickets of a deleted team keep their other details and lose only the team."""
     require(caller, Action.settings)
     async with workspace_session(sm, caller.workspace_id) as s:
+        roles = await role_repo.roles_of_team(s, team_id)
+        if roles:
+            raise Conflict(f"Roles work on this team: {', '.join(roles)}. Change them first.")
         if not await repo.delete_team(s, team_id):
             raise NotFound("Team not found.")
 

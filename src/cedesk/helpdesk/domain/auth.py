@@ -6,9 +6,8 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from uuid import UUID
 
-from cedesk.helpdesk.domain.permissions import Role
+from cedesk.helpdesk.domain.permissions import Access, Action, Role, built_in
 
-SESSION_LIFETIME = timedelta(hours=12)
 # Sessions that expired or were signed out are deleted once they ended this long ago.
 ENDED_SESSION_KEPT = timedelta(days=7)
 MAX_FAILED_LOGINS = 10
@@ -24,6 +23,21 @@ class Caller:
     member_id: UUID
     role: Role
     session_id: UUID
+    # What they may do and on which tickets; a built-in role's when not given.
+    access: Access = None  # type: ignore[assignment]
+    # Past the workspace's password expiry (S3): only changing the password is allowed.
+    password_expired: bool = False
+    # Password checked, authenticator code not yet (S2): only the code can be sent.
+    second_factor_pending: bool = False
+    # The workspace requires 2FA and this member hasn't set it up: only setting it up works.
+    two_factor_setup_required: bool = False
+
+    def __post_init__(self) -> None:
+        if self.access is None:
+            object.__setattr__(self, "access", built_in(self.role))
+
+    def can(self, action: Action) -> bool:
+        return self.access.can(action)
 
 
 # Forgot password (md A3): a link lasts 30 minutes; at most 3 are sent per hour per member.
@@ -70,9 +84,10 @@ def normalise_email(email: str) -> str:
     return email.strip().lower()
 
 
-def password_problem(password: str) -> str | None:
-    if len(password) < PASSWORD_MIN:
-        return f"Use at least {PASSWORD_MIN} characters."
+def password_problem(password: str, minimum: int = PASSWORD_MIN) -> str | None:
+    """`minimum`: the workspace's setting (S3, 8-64); 10 when it has none."""
+    if len(password) < minimum:
+        return f"Use at least {minimum} characters."
     if len(password) > PASSWORD_MAX:
         return f"Use at most {PASSWORD_MAX} characters."
     return None

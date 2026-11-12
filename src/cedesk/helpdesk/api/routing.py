@@ -66,7 +66,7 @@ class DefaultsPatch(Body):
 
 
 def _out(row: Mapping[Any, Any]) -> AgentOut:
-    light = row["role"] == Role.light_agent.value
+    light = not row["takes_tickets"]
     open_by_channel = {str(k): int(v) for k, v in row["open_by_channel"].items()}
     return AgentOut.model_validate(
         {

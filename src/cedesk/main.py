@@ -35,13 +35,17 @@ from cedesk.helpdesk.api import outbox as outbox_api
 from cedesk.helpdesk.api import portal as portal_api
 from cedesk.helpdesk.api import public as public_api
 from cedesk.helpdesk.api import reports as reports_api
+from cedesk.helpdesk.api import roles as roles_api
 from cedesk.helpdesk.api import routing as routing_api
 from cedesk.helpdesk.api import rules as rules_api
 from cedesk.helpdesk.api import saved_replies as saved_replies_api
+from cedesk.helpdesk.api import security as security_api
 from cedesk.helpdesk.api import sla as sla_api
+from cedesk.helpdesk.api import sso as sso_api
 from cedesk.helpdesk.api import ticket_tools as ticket_tools_api
 from cedesk.helpdesk.api import tickets as tickets_api
 from cedesk.helpdesk.api import triage as triage_api
+from cedesk.helpdesk.api import two_factor as two_factor_api
 from cedesk.helpdesk.service.errors import ServiceError, TooManyAttempts
 from cedesk.ratelimit import SlidingWindowLimiter
 from cedesk.settings import Settings, get_settings
@@ -237,6 +241,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.include_router(auth_api.router, prefix="/api/v1")
     app.include_router(members_api.router, prefix="/api/v1")
+    app.include_router(roles_api.router, prefix="/api/v1")
+    app.include_router(security_api.router, prefix="/api/v1")
+    app.include_router(sso_api.router, prefix="/api/v1")
+    app.include_router(two_factor_api.router, prefix="/api/v1")
     # Before tickets: `/tickets/from-conversation/{id}` must not be read as a ticket id.
     app.include_router(cevanos_api.router, prefix="/api/v1")
     app.include_router(tickets_api.router, prefix="/api/v1")

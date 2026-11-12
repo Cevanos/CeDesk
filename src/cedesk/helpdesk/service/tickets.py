@@ -7,7 +7,7 @@ auto-assigned (W8): on create, and when it moves to another team without a chose
 """
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Protocol
 from uuid import UUID
 
@@ -19,7 +19,7 @@ from cedesk.helpdesk.domain import events, paging
 from cedesk.helpdesk.domain import tickets as rules
 from cedesk.helpdesk.domain.auth import Caller, normalise_email
 from cedesk.helpdesk.domain.paging import CursorError
-from cedesk.helpdesk.domain.permissions import Action, Role
+from cedesk.helpdesk.domain.permissions import Action, Scope
 from cedesk.helpdesk.domain.portal import subject_from
 from cedesk.helpdesk.domain.rules import Event as RuleEvent
 from cedesk.helpdesk.domain.sla import TicketSla
@@ -39,8 +39,9 @@ from cedesk.helpdesk.repo import tickets as repo
 from cedesk.helpdesk.repo.tickets import Row
 from cedesk.helpdesk.service import children, idempotency, routing, sla, triage
 from cedesk.helpdesk.service import rules as automation
+from cedesk.helpdesk.service import scope as scope_rules
 from cedesk.helpdesk.service.attachments import IncomingFiles, save_incoming
-from cedesk.helpdesk.service.auth import Sessionmaker
+from cedesk.helpdesk.service.auth import Sessionmaker, member_access
 from cedesk.helpdesk.service.catalog import field_defs
 from cedesk.helpdesk.service.errors import Conflict, Invalid, NotFound
 from cedesk.helpdesk.service.idempotency import Idempotency
@@ -191,10 +192,16 @@ async def _team_name(s: AsyncSession, team_id: UUID | None) -> str | None:
 
 
 async def _check_assignee(
-    s: AsyncSession, caller: Caller, new: UUID | None, current: UUID | None
+    s: AsyncSession,
+    caller: Caller,
+    new: UUID | None,
+    current: UUID | None,
+    *,
+    team_id: UUID | None,
 ) -> str | None:
     """Agents may take an unassigned ticket or drop their own; moving anyone else's
-    ticket, or giving one to someone else, needs `assign_others`. Returns the new name."""
+    ticket, or giving one to someone else, needs `assign_others`. The assignee's role
+    must be able to work on the ticket's team (A3). Returns the new name."""
     if new == current:
         return None
     if current not in (None, caller.member_id) or new not in (None, caller.member_id):
@@ -204,8 +211,14 @@ async def _check_assignee(
     if new is None:
         return None
     member = await repo.member_brief(s, new)
-    if member is None or not member["is_active"] or member["role"] == Role.light_agent.value:
+    if member is None or not member["is_active"] or not member_access(member).takes_tickets:
         raise Invalid("That person can't be assigned tickets.")
+    access = member_access(member)
+    if not access.edits(team_id):
+        raise Invalid(
+            f"{member['name']}'s role works on {access.team_name or 'another team'}'s tickets "
+            "only, so they can't be given this one."
+        )
     return str(member["name"])
 
 
@@ -275,10 +288,26 @@ async def _view(s: AsyncSession, ticket_id: UUID) -> TicketView:
 
 
 async def create_ticket(
-    sm: Sessionmaker, caller: Caller, new: NewTicket, *, idem: Idempotency | None = None
+    sm: Sessionmaker,
+    caller: Caller,
+    new: NewTicket,
+    *,
+    idem: Idempotency | None = None,
+    handoff: bool = False,
 ) -> TicketView:
-    """`idem`: with an Idempotency-Key, a repeat returns the ticket the first one made."""
+    """`idem`: with an Idempotency-Key, a repeat returns the ticket the first one made.
+    `handoff`: a child ticket for another team (X3), which a scoped role may open."""
     require(caller, Action.create_ticket)
+    access = caller.access
+    if access.scope is not Scope.all and not handoff:
+        # A scoped role (A3) opens tickets for its own team, so it can work on them.
+        if new.team_id is None:
+            new = replace(new, team_id=access.team_id)
+        elif new.team_id != access.team_id:
+            raise Invalid(
+                f"Your role works on {access.team_name or 'its team'}'s tickets only. Pick "
+                "that team, or open a child ticket for another team."
+            )
     try:
         tags = rules.clean_tags(new.tags)
     except FieldError as exc:
@@ -337,7 +366,7 @@ async def _create(
         team = await _team_name(s, new.team_id)
         assignee = None
         if caller is not None:
-            assignee = await _check_assignee(s, caller, new.assignee_id, None)
+            assignee = await _check_assignee(s, caller, new.assignee_id, None, team_id=new.team_id)
             who = await _who(s, caller)
         else:
             who = f"{new.contact_name} ({new.channel.value})"
@@ -503,6 +532,7 @@ async def _create(
 async def get_ticket(sm: Sessionmaker, caller: Caller, ticket_id: UUID) -> TicketView:
     require(caller, Action.read_ticket)
     async with workspace_session(sm, caller.workspace_id) as s:
+        await scope_rules.check(s, caller, ticket_id, edit=False)
         return await _view(s, ticket_id)
 
 
@@ -536,6 +566,7 @@ async def _page(
         priority=priority.value if priority else None,
         team=team_id,
         contact=contact_id,
+        visible_team=scope_rules.visible_team(caller),
         scope=scope,
         q_like=_like(q) if q else None,
         q_number=rules.number_in_query(q) if q else None,
@@ -592,7 +623,7 @@ async def list_tickets(
             cursor=cursor,
             limit=limit,
         )
-        counts = await repo.counts_by_status(s)
+        counts = await repo.counts_by_status(s, scope_rules.visible_team(caller))
         cfg = await sla.config(s)
     return TicketPage(
         tickets=rows,
@@ -697,6 +728,7 @@ async def change_ticket(
     except FieldError as exc:
         raise _invalid(exc) from exc
     async with workspace_session(sm, caller.workspace_id) as s:
+        await scope_rules.check(s, caller, ticket_id, edit=True)
         current = await repo.lock_ticket(s, ticket_id)
         if current is None:
             raise NotFound("Ticket not found.")
@@ -785,7 +817,9 @@ async def change_ticket(
 
         if "assignee_id" in changes and changes["assignee_id"] != current["assignee_id"]:
             new["assignee_id"] = changes["assignee_id"]
-            name = await _check_assignee(s, caller, new["assignee_id"], current["assignee_id"])
+            name = await _check_assignee(
+                s, caller, new["assignee_id"], current["assignee_id"], team_id=new["team_id"]
+            )
             lines.append(f"Assigned to {name} by {who}" if name else f"Unassigned by {who}")
 
         routed_to: UUID | None = None
@@ -857,6 +891,7 @@ async def accept_ticket(
     customer sees that a person joined."""
     require(caller, Action.reply)
     async with workspace_session(sm, caller.workspace_id) as s:
+        await scope_rules.check(s, caller, ticket_id, edit=True)
         made = await idempotency.begin(s, caller, idem)
         if made is not None:
             return await _view(s, made)
@@ -869,7 +904,9 @@ async def accept_ticket(
         who = await _who(s, caller)
         new = {"assignee_id": caller.member_id}
         if current["assignee_id"] != caller.member_id:
-            await _check_assignee(s, caller, caller.member_id, current["assignee_id"])
+            await _check_assignee(
+                s, caller, caller.member_id, current["assignee_id"], team_id=current["team_id"]
+            )
             await repo.set_assignee(s, ticket_id, caller.member_id)
             await _line(s, caller, ticket_id, f"Assigned to {who} by {who}")
         await repo.set_accepted(s, ticket_id)

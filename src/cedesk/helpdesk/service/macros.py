@@ -28,7 +28,7 @@ from cedesk.helpdesk.repo import outbox
 from cedesk.helpdesk.repo import rules as rule_repo
 from cedesk.helpdesk.repo import tickets as ticket_repo
 from cedesk.helpdesk.repo.macros import Row
-from cedesk.helpdesk.service import children, idempotency, routing, sla, tickets
+from cedesk.helpdesk.service import children, idempotency, routing, scope, sla, tickets
 from cedesk.helpdesk.service import rules as automation
 from cedesk.helpdesk.service.auth import Sessionmaker
 from cedesk.helpdesk.service.errors import Conflict, Invalid, NotFound
@@ -181,6 +181,7 @@ async def run_macro(
         raise Invalid(str(exc)) from exc
 
     async with workspace_session(sm, caller.workspace_id) as s:
+        await scope.check(s, caller, ticket_id, edit=True)
         if await idempotency.begin(s, caller, idem) is not None:
             return await tickets.get_ticket(sm, caller, ticket_id)
         macro = await repo.get_macro(s, macro_id)

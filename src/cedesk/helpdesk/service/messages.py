@@ -24,7 +24,7 @@ from cedesk.helpdesk.domain.tickets import label
 from cedesk.helpdesk.repo import catalog, outbox, tickets
 from cedesk.helpdesk.repo import messages as repo
 from cedesk.helpdesk.repo.messages import Row
-from cedesk.helpdesk.service import attachments, email, idempotency, sla
+from cedesk.helpdesk.service import attachments, email, idempotency, scope, sla
 from cedesk.helpdesk.service.auth import Sessionmaker
 from cedesk.helpdesk.service.errors import Conflict, Invalid, NotFound
 from cedesk.helpdesk.service.idempotency import Idempotency
@@ -174,6 +174,7 @@ async def post_message(
         raise Invalid(f"Mention at most {MAX_MENTIONS} people.")
 
     async with workspace_session(sm, caller.workspace_id) as s:
+        await scope.check(s, caller, ticket_id, edit=kind is MessageKind.reply)
         made = await idempotency.begin(s, caller, idem)
         if made is not None:
             earlier = await repo.get_message(s, made)
@@ -231,6 +232,7 @@ async def ticket_messages(
     require(caller, Action.read_ticket)
     before = _after(cursor, "message")
     async with workspace_session(sm, caller.workspace_id) as s:
+        await scope.check(s, caller, ticket_id, edit=False)
         if await tickets.ticket_detail(s, ticket_id) is None:
             raise NotFound("Ticket not found.")
         rows = await tickets.messages(s, ticket_id, before=before, limit=limit + 1)

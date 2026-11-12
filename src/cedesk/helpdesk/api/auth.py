@@ -2,8 +2,9 @@
 
 from fastapi import APIRouter, Request, status
 
-from cedesk.helpdesk.api.deps import AttemptLimit, CallerDep, SessionmakerDep
+from cedesk.helpdesk.api.deps import AttemptLimit, CallerDep, SessionmakerDep, client_ip
 from cedesk.helpdesk.api.schemas import (
+    AccessOut,
     ChangePasswordBody,
     ForgotPasswordBody,
     MemberOut,
@@ -26,19 +27,26 @@ router = APIRouter(tags=["sign-in"])
     summary="Sign in with workspace address, email and password",
     responses={
         401: {"description": "The details did not match (same answer for every reason)"},
+        403: {"description": "This address isn't on the workspace's IP list"},
         429: {"description": "Too many attempts from this address; see Retry-After"},
     },
     dependencies=[AttemptLimit],
 )
-async def sign_in(body: SignInBody, sm: SessionmakerDep) -> SignedInOut:
+async def sign_in(body: SignInBody, request: Request, sm: SessionmakerDep) -> SignedInOut:
     signed = await auth.sign_in(
-        sm, workspace=body.workspace, email=body.email, password=body.password
+        sm,
+        workspace=body.workspace,
+        email=body.email,
+        password=body.password,
+        ip=client_ip(request) or "",
     )
     return SignedInOut(
         token=signed.token,
         expires_at=signed.expires_at,
         member_id=signed.caller.member_id,
         role=signed.caller.role,
+        password_expired=signed.password_expired,
+        two_factor_required=signed.two_factor_required,
     )
 
 
@@ -93,6 +101,9 @@ async def me(caller: CallerDep, sm: SessionmakerDep) -> MeOut:
     return MeOut(
         member=MemberOut.model_validate(dict(member)),
         workspace=WorkspaceOut.model_validate(dict(workspace)),
+        access=AccessOut.of(caller.access),
+        password_expired=caller.password_expired,
+        two_factor_setup_required=caller.two_factor_setup_required,
     )
 
 

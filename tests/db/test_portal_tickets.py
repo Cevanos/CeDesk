@@ -210,6 +210,22 @@ async def test_files_on_replies_can_be_downloaded_but_not_files_on_notes(
     assert got.status_code == 200 and got.content == b"%PDF-1.4"
     for who, file_id in ((priya, ids[1]), (ravi, ids[0])):
         assert (await client.get(f"{P}/attachments/{file_id}", headers=who)).status_code == 404
+        r = await client.get(f"{P}/attachments/{file_id}/content", headers=who)
+        assert r.status_code == 404
+
+    # S5: the workspace wants sign-in for files, so the portal hands out its own path.
+    ok(
+        await client.put(
+            "/api/v1/security-settings", headers=w["admin"], json={"attachments_need_sign_in": True}
+        )
+    )
+    link = ok(await client.get(f"{P}/attachments/{ids[0]}", headers=priya))
+    assert link["needs_sign_in"] is True
+    assert link["url"].endswith(f"/api/v1/portal/attachments/{ids[0]}/content")
+    assert (await client.get(link["url"])).status_code == 401
+    assert (await client.get(link["url"], headers=w["neha"])).status_code == 401  # agent token
+    got = await client.get(link["url"], headers=priya)
+    assert (got.status_code, got.content) == (200, b"%PDF-1.4")
 
 
 async def test_at_most_ten_new_tickets_an_hour(client: AsyncClient, app_sessionmaker: Sm) -> None:

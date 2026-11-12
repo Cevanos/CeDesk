@@ -9,6 +9,7 @@ from uuid import UUID
 from sqlalchemy import RowMapping, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from cedesk.helpdesk.repo import auth as auth_repo
 from cedesk.helpdesk.repo.attachments import MESSAGE_FILES
 
 Row = RowMapping
@@ -98,6 +99,7 @@ _FILTERS = """
     WHERE (CAST(:status AS text) IS NULL OR t.status = CAST(:status AS text))
       AND (CAST(:priority AS text) IS NULL OR t.priority = CAST(:priority AS text))
       AND (CAST(:team AS uuid) IS NULL OR t.team_id = CAST(:team AS uuid))
+      AND (CAST(:vt AS uuid) IS NULL OR t.team_id = CAST(:vt AS uuid))
       AND (CAST(:contact AS uuid) IS NULL OR t.contact_id = CAST(:contact AS uuid))
       AND (CAST(:scope AS text) = 'everyone'
            OR (CAST(:scope AS text) = 'mine' AND t.assignee_id = CAST(:me AS uuid))
@@ -240,6 +242,7 @@ async def list_tickets(
     priority: str | None,
     team: UUID | None,
     contact: UUID | None = None,
+    visible_team: UUID | None = None,
     scope: str,
     q_like: str | None,
     q_number: int | None,
@@ -259,6 +262,7 @@ async def list_tickets(
             "priority": priority,
             "team": team,
             "contact": contact,
+            "vt": visible_team,
             "scope": scope,
             "q_like": q_like,
             "q_number": q_number,
@@ -268,8 +272,17 @@ async def list_tickets(
     return result.mappings().all()
 
 
-async def counts_by_status(session: AsyncSession) -> dict[str, int]:
-    result = await session.execute(text("SELECT status, count(*) FROM hd_ticket GROUP BY status"))
+async def counts_by_status(
+    session: AsyncSession, visible_team: UUID | None = None
+) -> dict[str, int]:
+    """`visible_team`: count only that team's tickets (a `team_only` role)."""
+    result = await session.execute(
+        text(
+            "SELECT status, count(*) FROM hd_ticket t "
+            "WHERE (CAST(:vt AS uuid) IS NULL OR t.team_id = CAST(:vt AS uuid)) GROUP BY status"
+        ),
+        {"vt": visible_team},
+    )
     return {str(status): int(n) for status, n in result.all()}
 
 
@@ -385,7 +398,14 @@ async def message_by_channel_id(
 
 async def member_brief(session: AsyncSession, member_id: UUID) -> Row | None:
     result = await session.execute(
-        text("SELECT id, name, role, is_active FROM member WHERE id = :id"), {"id": member_id}
+        text(
+            "SELECT m.id, m.name, m.role, m.is_active, "  # noqa: S608
+            + auth_repo.ROLE_COLUMNS
+            + " FROM member m "
+            + auth_repo.ROLE_JOIN
+            + "WHERE m.id = :id"
+        ),
+        {"id": member_id},
     )
     return result.mappings().first()
 
@@ -395,3 +415,12 @@ async def set_accepted(session: AsyncSession, ticket_id: UUID) -> None:
         text("UPDATE hd_ticket SET accepted = true, updated_at = now() WHERE id = :id"),
         {"id": ticket_id},
     )
+
+
+async def ticket_team(session: AsyncSession, ticket_id: UUID) -> tuple[bool, UUID | None]:
+    """(found, team_id) of a ticket, for checking a scoped role's access."""
+    result = await session.execute(
+        text("SELECT team_id FROM hd_ticket WHERE id = :id"), {"id": ticket_id}
+    )
+    row = result.first()
+    return (False, None) if row is None else (True, row[0])

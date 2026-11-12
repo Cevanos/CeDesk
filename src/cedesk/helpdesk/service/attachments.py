@@ -30,14 +30,15 @@ from cedesk.helpdesk.domain.attachments import (
 from cedesk.helpdesk.domain.auth import Caller
 from cedesk.helpdesk.domain.permissions import Action
 from cedesk.helpdesk.repo import attachments as repo
+from cedesk.helpdesk.repo import security as security_repo
 from cedesk.helpdesk.repo import tickets as ticket_repo
 from cedesk.helpdesk.repo.attachments import Row
-from cedesk.helpdesk.service import idempotency
+from cedesk.helpdesk.service import idempotency, scope
 from cedesk.helpdesk.service.auth import Sessionmaker
 from cedesk.helpdesk.service.errors import Conflict, Invalid, NotFound, TooLarge
 from cedesk.helpdesk.service.idempotency import Idempotency
 from cedesk.helpdesk.service.members import require
-from cedesk.storage import ObjectStore
+from cedesk.storage import ObjectMissing, ObjectStore
 
 
 @dataclass(frozen=True)
@@ -51,6 +52,15 @@ class Download:
     attachment: Row
     url: str
     expires_at: datetime
+    # The workspace wants files opened only by signed-in people (S5): `url` is an API
+    # path that needs the same Bearer token, not a link anyone can open.
+    needs_sign_in: bool = False
+
+
+@dataclass(frozen=True)
+class FileContent:
+    attachment: Row
+    data: bytes
 
 
 def too_large(max_bytes: int) -> TooLarge:
@@ -80,6 +90,7 @@ async def upload(
     attachment_id = uuid4()
     key = object_key(caller.workspace_id, ticket_id, attachment_id)
     async with workspace_session(sm, caller.workspace_id) as s:
+        await scope.check(s, caller, ticket_id, edit=False)
         made = await idempotency.begin(s, caller, idem)
         if made is not None:
             earlier = await repo.get(s, made)
@@ -216,6 +227,7 @@ async def ticket_attachments(
         except paging.CursorError as exc:
             raise Invalid(str(exc)) from exc
     async with workspace_session(sm, caller.workspace_id) as s:
+        await scope.check(s, caller, ticket_id, edit=False)
         if not await repo.ticket_exists(s, ticket_id):
             raise NotFound("Ticket not found.")
         rows = await repo.for_ticket(s, ticket_id, before=before, limit=limit + 1)
@@ -237,21 +249,64 @@ async def download_link(
     require(caller, Action.read_ticket)
     async with workspace_session(sm, caller.workspace_id) as s:
         row = await repo.get(s, attachment_id)
+        if row is not None:
+            await scope.check(s, caller, row["ticket_id"], edit=False)
+        need_sign_in = (await security_repo.current(s)).attachments_need_sign_in
     if row is None:
         raise NotFound("File not found.")
-    return await link_for(store, row, seconds=seconds, scanning=scanning)
+    return await link_for(
+        store,
+        row,
+        seconds=seconds,
+        scanning=scanning,
+        sign_in_url=f"/api/v1/attachments/{attachment_id}/content" if need_sign_in else None,
+    )
 
 
-async def link_for(store: ObjectStore, row: Row, *, seconds: int, scanning: bool) -> Download:
-    """The link for a file the caller was already allowed to read (agent or portal)."""
+async def file_content(
+    sm: Sessionmaker, store: ObjectStore, caller: Caller, attachment_id: UUID, *, scanning: bool
+) -> FileContent:
+    """The file itself, for a signed-in member (S5). Same checks as `download_link`."""
+    require(caller, Action.read_ticket)
+    async with workspace_session(sm, caller.workspace_id) as s:
+        row = await repo.get(s, attachment_id)
+        if row is not None:
+            await scope.check(s, caller, row["ticket_id"], edit=False)
+    if row is None:
+        raise NotFound("File not found.")
+    return await content_of(store, row, scanning=scanning)
+
+
+async def content_of(store: ObjectStore, row: Row, *, scanning: bool) -> FileContent:
+    """The bytes of a file the caller was already allowed to read (agent or portal)."""
+    _check_scan(row, scanning)
+    try:
+        data = await store.get(str(row["object_key"]))
+    except ObjectMissing as exc:
+        raise NotFound("File not found.") from exc
+    return FileContent(row, data)
+
+
+async def link_for(
+    store: ObjectStore, row: Row, *, seconds: int, scanning: bool, sign_in_url: str | None = None
+) -> Download:
+    """The link for a file the caller was already allowed to read (agent or portal).
+    `sign_in_url`: the workspace wants sign-in for files (S5), so that path is given
+    instead of a link anyone can open."""
+    _check_scan(row, scanning)
+    expires_at = datetime.now(UTC) + timedelta(seconds=seconds)
+    if sign_in_url is not None:
+        return Download(row, sign_in_url, expires_at, needs_sign_in=True)
+    url = await store.download_url(
+        row["object_key"], name=row["name"], content_type=row["mime"], expires_in=seconds
+    )
+    return Download(attachment=row, url=url, expires_at=expires_at)
+
+
+def _check_scan(row: Row, scanning: bool) -> None:
     if row["scan_status"] == ScanStatus.infected:
         raise Conflict("This file failed the virus scan, so it can't be downloaded.")
     if row["scan_status"] == ScanStatus.scan_failed:
         raise Conflict("This file could not be checked for viruses, so it can't be downloaded.")
     if not ready(row["scan_status"], scanning=scanning):
         raise Conflict("This file is still being checked for viruses. Try again in a moment.")
-    expires_at = datetime.now(UTC) + timedelta(seconds=seconds)
-    url = await store.download_url(
-        row["object_key"], name=row["name"], content_type=row["mime"], expires_in=seconds
-    )
-    return Download(attachment=row, url=url, expires_at=expires_at)

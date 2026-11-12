@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from cedesk.db import workspace_session
 from cedesk.helpdesk.domain.auth import Caller
-from cedesk.helpdesk.domain.permissions import Action, Role
+from cedesk.helpdesk.domain.permissions import Action
 from cedesk.helpdesk.domain.routing import (
     Agent,
     AgentStatus,
@@ -44,7 +44,8 @@ def _agent(row: Mapping[Any, Any]) -> Agent:
         member_id=row["id"],
         name=str(row["name"]),
         is_active=bool(row["is_active"]),
-        is_light=row["role"] == Role.light_agent.value,
+        is_light=not row["takes_tickets"],
+        outside_scope=not row.get("fits_team", True),
         status=AgentStatus(row["status"]),
         channels=frozenset(ChannelGroup(c) for c in row["channels"]),
         caps={
@@ -109,8 +110,8 @@ async def list_agents(sm: Sessionmaker, caller: Caller) -> Sequence[Row]:
 
 async def set_my_status(sm: Sessionmaker, caller: Caller, status: AgentStatus) -> Row:
     """Available / On a break / Transfers only / Offline. Light agents have no status."""
-    if caller.role is Role.light_agent:
-        raise Forbidden("Light agents have no status.")
+    if not caller.access.takes_tickets:
+        raise Forbidden("Your role takes no tickets, so it has no status.")
     async with workspace_session(sm, caller.workspace_id) as s:
         await repo.save_state(s, caller.workspace_id, caller.member_id, {"status": status.value})
         row = await repo.agent(s, caller.member_id)
@@ -136,8 +137,8 @@ async def set_routing(
         target = await repo.agent(s, member_id)
         if target is None:
             raise NotFound("Member not found.")
-        if target["role"] == Role.light_agent.value and "status" in changes:
-            raise Invalid("Light agents have no status.")
+        if not target["takes_tickets"] and "status" in changes:
+            raise Invalid("This member's role takes no tickets, so it has no status.")
         await repo.save_state(s, caller.workspace_id, member_id, changes)
         row = await repo.agent(s, member_id)
     assert row is not None

@@ -144,6 +144,9 @@ async def remove_link(session: AsyncSession, a: UUID, b: UUID) -> bool:
     return result.first() is not None
 
 
+# A `team_only` role sees only its team's tickets (`:vt`); NULL means every ticket.
+_VISIBLE = "(CAST(:vt AS uuid) IS NULL OR t.team_id = CAST(:vt AS uuid))"
+
 _RELATED_COLUMNS = (
     "SELECT t.id, t.number, t.subject, t.status, a.name AS assignee_name, "
     "tm.name AS team_name "
@@ -152,8 +155,11 @@ _RELATED_COLUMNS = (
 )
 
 
-async def related(session: AsyncSession, ticket_id: UUID, limit: int) -> dict[str, list[Row]]:
-    """Each list is newest first and at most `limit` long."""
+async def related(
+    session: AsyncSession, ticket_id: UUID, limit: int, visible_team: UUID | None = None
+) -> dict[str, list[Row]]:
+    """Each list is newest first and at most `limit` long; with `visible_team`, only that
+    team's tickets (a `team_only` role)."""
     queries = {
         "links": "WHERE t.id IN (SELECT CASE WHEN ticket_a = :id THEN ticket_b ELSE ticket_a "
         "END FROM hd_link WHERE ticket_a = :id OR ticket_b = :id)",
@@ -163,17 +169,31 @@ async def related(session: AsyncSession, ticket_id: UUID, limit: int) -> dict[st
     out: dict[str, list[Row]] = {}
     for key, where in queries.items():
         result = await session.execute(
-            text(_RELATED_COLUMNS + where + " ORDER BY t.number DESC LIMIT :limit"),
-            {"id": ticket_id, "limit": limit},
+            text(
+                _RELATED_COLUMNS
+                + where
+                + " AND "
+                + _VISIBLE
+                + " ORDER BY t.number DESC LIMIT :limit"
+            ),
+            {"id": ticket_id, "limit": limit, "vt": visible_team},
         )
         out[key] = list(result.mappings().all())
     return out
 
 
-async def related_one(session: AsyncSession, ticket_id: UUID | None) -> Row | None:
+async def related_one(
+    session: AsyncSession, ticket_id: UUID | None, visible_team: UUID | None = None
+) -> Row | None:
     if ticket_id is None:
         return None
-    result = await session.execute(text(_RELATED_COLUMNS + "WHERE t.id = :id"), {"id": ticket_id})
+    result = await session.execute(
+        text(
+            _RELATED_COLUMNS
+            + "WHERE t.id = :id AND (CAST(:vt AS uuid) IS NULL OR t.team_id = CAST(:vt AS uuid))"
+        ),
+        {"id": ticket_id, "vt": visible_team},
+    )
     return result.mappings().first()
 
 

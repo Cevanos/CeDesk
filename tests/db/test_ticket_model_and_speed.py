@@ -170,7 +170,8 @@ async def test_each_sort_is_served_by_its_index(
     caller, _ = await admin_caller(client, app_sessionmaker)
     params: dict[str, Any] = {
         "me": caller.member_id, "status": None, "priority": None, "team": None,
-        "contact": None, "scope": "everyone", "q_like": None, "q_number": None, "limit": 51,
+        "contact": None, "vt": None, "scope": "everyone", "q_like": None, "q_number": None,
+        "limit": 51,
     }  # fmt: skip
     after = {"priority": [0, 1, "1700000000.5", 7], "sla": [0, "1700000000.5", 7]}
     for first_page in (True, False):
