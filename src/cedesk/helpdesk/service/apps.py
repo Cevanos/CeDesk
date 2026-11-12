@@ -22,6 +22,8 @@ from cedesk.crypto import Sealer
 from cedesk.db import workspace_session
 from cedesk.egress import BadAddress, account_host, account_label
 from cedesk.helpdesk.domain import apps as rules
+from cedesk.helpdesk.domain import jira as jira_rules
+from cedesk.helpdesk.domain import slack as slack_rules
 from cedesk.helpdesk.domain.apps import App, Order, Payment
 from cedesk.helpdesk.domain.audit import Area
 from cedesk.helpdesk.domain.auth import Caller
@@ -31,10 +33,15 @@ from cedesk.helpdesk.repo import apps as repo
 from cedesk.helpdesk.repo import cevanos as cevanos_repo
 from cedesk.helpdesk.repo import tickets as ticket_repo
 from cedesk.helpdesk.service import audit, scope
+from cedesk.helpdesk.service import jira as jira_service
+from cedesk.helpdesk.service.app_post import AppCallError
 from cedesk.helpdesk.service.auth import Sessionmaker
 from cedesk.helpdesk.service.errors import Conflict, Invalid, NotFound, Unavailable
 from cedesk.helpdesk.service.imports.http import SourceHttp, bearer
+from cedesk.helpdesk.service.jira import PostFactory
 from cedesk.helpdesk.service.members import require
+
+SLACK_TEST_LINE = "CeDesk is connected: Urgent and High tickets will be posted here."
 
 STRIPE_HOST = "api.stripe.com"
 CARD_TIMEOUT = 10.0
@@ -98,12 +105,23 @@ def _bound(workspace_id: UUID, app: App) -> str:
     return f"{workspace_id}:app:{app.value}"
 
 
-def _blocked(connected: bool) -> str | None:
+def jira_bound(workspace_id: UUID) -> str:
+    return _bound(workspace_id, App.jira)
+
+
+def slack_bound(workspace_id: UUID) -> str:
+    return _bound(workspace_id, App.slack_alerts)
+
+
+_DATA_APPS = frozenset({App.shopify, App.stripe})  # Cevanos's integrations replace these
+
+
+def _blocked(app: App, connected: bool) -> str | None:
+    if not connected or app not in _DATA_APPS:
+        return None
     return (
         "Cevanos is connected: orders and payments come from its integrations, so this "
         "isn't installed a second time."
-        if connected
-        else None
     )
 
 
@@ -112,7 +130,7 @@ async def catalog(sm: Sessionmaker, caller: Caller) -> list[AppView]:
     async with workspace_session(sm, caller.workspace_id) as s:
         rows = {r["app"]: r for r in await repo.installed(s)}
         connected = await cevanos_repo.connection(s) is not None
-    return [_view(app, rows.get(app.value), _blocked(connected)) for app in App]
+    return [_view(app, rows.get(app.value), _blocked(app, connected)) for app in App]
 
 
 def _client(http: AppHttp, app: App, settings: Mapping[str, Any], secret: str) -> SourceHttp:
@@ -136,10 +154,46 @@ async def _check_with_provider(client: SourceHttp, app: App) -> None:
         raise Unavailable("The provider is busy; try again in a minute.") from None
 
 
+def _clean_settings(app: App, settings: Mapping[str, Any]) -> dict[str, Any]:
+    """What the Admin typed, checked; raises BadCredentials, BadAddress, JiraInputError."""
+    if app is App.shopify:
+        return {"shop": account_label("shopify", str(settings.get("shop") or ""))}
+    if app is App.jira:
+        email = str(settings.get("email") or "").strip().lower()
+        if "@" not in email or len(email) > 200 or " " in email:
+            raise rules.BadCredentials("Give the email of the Atlassian account the token is for.")
+        return {
+            "site": account_label("jira", str(settings.get("site") or "")),
+            "email": email,
+            "project": jira_rules.project_key(str(settings.get("project") or "")),
+        }
+    if settings:
+        raise rules.BadCredentials(f"{rules.CATALOG[app].name} takes no settings.")
+    return {}
+
+
+async def _check_by_post(
+    post: PostFactory, app: App, settings: Mapping[str, Any], secret: str
+) -> None:
+    """Jira: the token can see the project. Slack: a test line reaches the channel."""
+    try:
+        if app is App.jira:
+            await jira_service.check_install(post, settings, secret)
+        else:
+            await post(slack_rules.HOST, {}, "Slack").post(
+                slack_rules.path_of(secret), {"text": SLACK_TEST_LINE}
+            )
+    except AppCallError as exc:
+        if exc.permanent:
+            raise Invalid(str(exc)) from None
+        raise Unavailable(str(exc)) from None
+
+
 async def install(
     sm: Sessionmaker,
     sealer: Sealer,
     http: AppHttp,
+    post: PostFactory,
     caller: Caller,
     app: App,
     *,
@@ -151,17 +205,19 @@ async def install(
     require(caller, Action.settings)
     try:
         secret = rules.check_secret(app, secret)
-        clean: dict[str, Any] = {}
-        if app is App.shopify:
-            clean["shop"] = account_label("shopify", str(settings.get("shop") or ""))
-        elif settings:
-            raise rules.BadCredentials(f"{rules.CATALOG[app].name} takes no settings.")
-    except (rules.BadCredentials, BadAddress) as exc:
+        if app is App.slack_alerts:
+            secret = slack_rules.check_webhook(secret)
+        clean = _clean_settings(app, settings)
+    except (rules.BadCredentials, BadAddress, jira_rules.JiraInputError,
+            slack_rules.BadWebhook) as exc:  # fmt: skip
         raise Invalid(str(exc)) from exc
-    async with workspace_session(sm, caller.workspace_id) as s:
-        if await cevanos_repo.connection(s) is not None:
-            raise Conflict(str(_blocked(True)))
-    await _check_with_provider(_client(http, app, clean, secret), app)
+    if app in _DATA_APPS:
+        async with workspace_session(sm, caller.workspace_id) as s:
+            if await cevanos_repo.connection(s) is not None:
+                raise Conflict(str(_blocked(app, True)))
+        await _check_with_provider(_client(http, app, clean, secret), app)
+    else:
+        await _check_by_post(post, app, clean, secret)
     async with workspace_session(sm, caller.workspace_id) as s:
         new = await repo.save(
             s, caller.workspace_id, app=app.value, settings=clean,

@@ -9967,6 +9967,236 @@
         }
       }
     },
+    "/api/v1/tickets/{ticket_id}/jira": {
+      "get": {
+        "tags": [
+          "jira"
+        ],
+        "summary": "Jira issues on a ticket",
+        "operationId": "list_issues_api_v1_tickets__ticket_id__jira_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "ticket_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Ticket Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/JiraIssueOut"
+                  },
+                  "title": "Response List Issues Api V1 Tickets  Ticket Id  Jira Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "jira"
+        ],
+        "summary": "Create a Jira issue from a ticket",
+        "description": "In the app's project, type Task. The ticket gets a system line.",
+        "operationId": "create_issue_api_v1_tickets__ticket_id__jira_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "ticket_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Ticket Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewIssueIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JiraIssueOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Can't reply, or the ticket is another team's (view only)"
+          },
+          "404": {
+            "description": "No such ticket, or no such issue in Jira"
+          },
+          "409": {
+            "description": "Jira isn't installed, the issue is already on the ticket, or 10 are"
+          },
+          "422": {
+            "description": "Jira refused (bad key, no access to the project)"
+          },
+          "503": {
+            "description": "Jira didn't answer"
+          }
+        }
+      }
+    },
+    "/api/v1/tickets/{ticket_id}/jira/link": {
+      "post": {
+        "tags": [
+          "jira"
+        ],
+        "summary": "Link an existing Jira issue to a ticket",
+        "operationId": "link_issue_api_v1_tickets__ticket_id__jira_link_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "ticket_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Ticket Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LinkIssueIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JiraIssueOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Can't reply, or the ticket is another team's (view only)"
+          },
+          "404": {
+            "description": "No such ticket, or no such issue in Jira"
+          },
+          "409": {
+            "description": "Jira isn't installed, the issue is already on the ticket, or 10 are"
+          },
+          "422": {
+            "description": "Jira refused (bad key, no access to the project)"
+          },
+          "503": {
+            "description": "Jira didn't answer"
+          }
+        }
+      }
+    },
+    "/api/v1/tickets/{ticket_id}/jira/{key}": {
+      "delete": {
+        "tags": [
+          "jira"
+        ],
+        "summary": "Take a Jira issue off a ticket (it stays in Jira)",
+        "operationId": "unlink_issue_api_v1_tickets__ticket_id__jira__key__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "ticket_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Ticket Id"
+            }
+          },
+          {
+            "name": "key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Key"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "That issue isn't on this ticket"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/healthz": {
       "get": {
         "tags": [
@@ -10391,7 +10621,9 @@
         "type": "string",
         "enum": [
           "shopify",
-          "stripe"
+          "stripe",
+          "jira",
+          "slack_alerts"
         ],
         "title": "App"
       },
@@ -13993,7 +14225,7 @@
             "type": "object",
             "maxProperties": 5,
             "title": "Settings",
-            "description": "Shopify: {\"shop\": \"acme\"} (or acme.myshopify.com).",
+            "description": "Shopify: {\"shop\": \"acme\"}. Jira: {\"site\": \"acme\", \"email\": \"ops@acme.com\", \"project\": \"SUP\"}. Stripe and Slack alerts: none.",
             "default": {}
           },
           "secret": {
@@ -14001,7 +14233,7 @@
             "maxLength": 300,
             "minLength": 1,
             "title": "Secret",
-            "description": "The app's credential."
+            "description": "The app's credential (Slack alerts: the Incoming Webhook URL)."
           }
         },
         "additionalProperties": false,
@@ -14010,6 +14242,48 @@
           "secret"
         ],
         "title": "InstallIn"
+      },
+      "JiraIssueOut": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "url": {
+            "type": "string",
+            "title": "Url"
+          },
+          "made_here": {
+            "type": "boolean",
+            "title": "Made Here",
+            "description": "Created from CeDesk; false: an existing one linked."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "created_by_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "url",
+          "made_here",
+          "created_at",
+          "created_by_name"
+        ],
+        "title": "JiraIssueOut"
       },
       "KeyAccess": {
         "type": "string",
@@ -14168,6 +14442,22 @@
           "ticket_id"
         ],
         "title": "LinkIn"
+      },
+      "LinkIssueIn": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "maxLength": 30,
+            "title": "Key",
+            "description": "An issue that exists, e.g. SUP-123."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "key"
+        ],
+        "title": "LinkIssueIn"
       },
       "MacroIn": {
         "properties": {
@@ -14856,6 +15146,39 @@
           "billable_minutes"
         ],
         "title": "MetricsSummaryOut"
+      },
+      "NewIssueIn": {
+        "properties": {
+          "summary": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 250
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary",
+            "description": "Default: the ticket's subject."
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 5000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description",
+            "description": "What the Jira team needs to know. A link back to the ticket is added; the customer's messages are not sent unless you put them here."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "NewIssueIn"
       },
       "NewKeyOut": {
         "properties": {

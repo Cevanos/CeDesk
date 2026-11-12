@@ -33,6 +33,7 @@ from cedesk.helpdesk.api import email as email_api
 from cedesk.helpdesk.api import email_in as email_in_api
 from cedesk.helpdesk.api import imports as imports_api
 from cedesk.helpdesk.api import inbound_api as inbound_api_api
+from cedesk.helpdesk.api import jira as jira_api
 from cedesk.helpdesk.api import macros as macros_api
 from cedesk.helpdesk.api import members as members_api
 from cedesk.helpdesk.api import messages as messages_api
@@ -56,6 +57,7 @@ from cedesk.helpdesk.api import triage as triage_api
 from cedesk.helpdesk.api import two_factor as two_factor_api
 from cedesk.helpdesk.api import webhooks as webhooks_api
 from cedesk.helpdesk.service import apps as apps_service
+from cedesk.helpdesk.service import jira as jira_service
 from cedesk.helpdesk.service.errors import ServiceError, TooManyAttempts
 from cedesk.helpdesk.service.imports.framework import make_importers
 from cedesk.helpdesk.service.stream import Slots
@@ -167,6 +169,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.webhook_client = WebhookClient()
     # Marketplace apps: how the Shopify and Stripe cards reach the provider (md PL7, C12).
     app.state.app_http = apps_service.make_http
+    # ...and how Jira issues are made and the Slack test line is sent (md X10, W20).
+    app.state.app_post = jira_service.make_post
 
     @app.middleware("http")
     async def request_log(request: Request, call_next: Any) -> Response:
@@ -297,6 +301,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(inbound_api_api.router, prefix="/api/v1")
     app.include_router(webhooks_api.router, prefix="/api/v1")
     app.include_router(apps_api.router, prefix="/api/v1")
+    app.include_router(jira_api.router, prefix="/api/v1")
 
     @app.get("/healthz", tags=["health"], summary="The process is up")
     async def healthz() -> dict[str, str]:

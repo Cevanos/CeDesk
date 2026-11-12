@@ -3,6 +3,34 @@
 `openapi.json` next to this file is the API as served (`uv run cedesk openapi`). Every
 route is under `/api/v1`. Breaking changes only come in v2 (md 2B). Newest first.
 
+## 2026-11-12: Apps: Jira issues from tickets and Slack alerts (Phase 3, X10, W20, PL7)
+
+- `GET /apps` now also lists `jira` and `slack_alerts`; install them with `PUT /apps/{app}`
+  like the others (Settings, audited, credential sealed):
+  - Jira: `settings: {site: "acme", email, project: "SUP"}`, `secret`: an Atlassian API
+    token. Checked with Jira (the token works and sees the project) before it is saved.
+  - Slack alerts: no settings, `secret`: the Slack Incoming Webhook URL
+    (`https://hooks.slack.com/services/...`). Installing posts a test line to the channel.
+- New: `GET /tickets/{id}/jira` (anyone who can read the ticket); `POST /tickets/{id}/jira`
+  `{summary?, description?}` → 201 `{key, url, made_here, created_at, created_by_name}`:
+  an issue of type Task in the app's project, summary = the ticket's subject unless given,
+  description = what the agent writes plus a link back to the ticket (never the
+  customer's messages unless the agent puts them in); `POST /tickets/{id}/jira/link
+  {key}` links an issue that exists (checked with Jira); `DELETE /tickets/{id}/jira/{key}`
+  takes it off the ticket (it stays in Jira). Needs the right to reply and to change the
+  ticket (team scope); light agents can't. Each writes a system line ("Jira issue SUP-12
+  created by Neha"). At most 10 per ticket. 409 when Jira isn't installed or the issue is
+  already there; 422 when Jira refuses; 503 when it doesn't answer.
+- Slack alerts (W20): when a ticket is created Urgent or High, or a change makes it Urgent
+  or High, the worker posts one line: priority, number (linked to
+  `<CEDESK_APP_URL>/tickets/<id>`), subject and team, escaped so a subject can't mention
+  anyone or make a link. Sent after the change commits (so after the rules ran), retried
+  by the outbox; a webhook Slack refuses fails at once and is listed in
+  `GET /outbox/failed`.
+- Frontend: the alert's link assumes the agent app opens a ticket at `/tickets/<id>`.
+- Migration 0045: `hd_app_install.app` also takes `jira` and `slack_alerts`;
+  `hd_jira_issue` (forced RLS).
+
 ## 2026-11-12: Apps: Shopify and Stripe, and the sidebar's orders and payments (Phase 3, PL7, C12)
 
 - New (Settings): `GET /apps` lists the apps (`shopify`, `stripe`) with what each needs

@@ -12,6 +12,7 @@ from cedesk.helpdesk.api.schemas import Body
 from cedesk.helpdesk.domain.apps import App
 from cedesk.helpdesk.service import apps
 from cedesk.helpdesk.service.apps import AppHttp, AppView, Card
+from cedesk.helpdesk.service.jira import PostFactory
 
 router = APIRouter(tags=["apps"])
 
@@ -22,6 +23,14 @@ def get_http(request: Request) -> AppHttp:
 
 
 HttpDep = Annotated[AppHttp, Depends(get_http)]
+
+
+def get_post(request: Request) -> PostFactory:
+    post: PostFactory = request.app.state.app_post
+    return post
+
+
+PostDep = Annotated[PostFactory, Depends(get_post)]
 
 
 class AppOut(BaseModel):
@@ -43,9 +52,16 @@ class AppOut(BaseModel):
 
 class InstallIn(Body):
     settings: dict[str, str] = Field(
-        default={}, max_length=5, description='Shopify: {"shop": "acme"} (or acme.myshopify.com).'
+        default={},
+        max_length=5,
+        description='Shopify: {"shop": "acme"}. Jira: {"site": "acme", "email": '
+        '"ops@acme.com", "project": "SUP"}. Stripe and Slack alerts: none.',
     )
-    secret: str = Field(min_length=1, max_length=300, description="The app's credential.")
+    secret: str = Field(
+        min_length=1,
+        max_length=300,
+        description="The app's credential (Slack alerts: the Incoming Webhook URL).",
+    )
 
 
 class OrderOut(BaseModel):
@@ -111,11 +127,11 @@ async def list_apps(caller: CallerDep, sm: SessionmakerDep) -> list[AppOut]:
 )
 async def install_app(
     app: App, body: InstallIn, caller: CallerDep, sm: SessionmakerDep, sealer: SealerDep,
-    http: HttpDep,
+    http: HttpDep, post: PostDep,
 ) -> AppOut:  # fmt: skip
     return _out(
         await apps.install(
-            sm, sealer, http, caller, app, settings=body.settings, secret=body.secret
+            sm, sealer, http, post, caller, app, settings=body.settings, secret=body.secret
         )
     )
 
