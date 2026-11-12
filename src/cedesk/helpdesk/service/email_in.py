@@ -4,7 +4,8 @@ customer message on the ticket it answers.
 1. Read it; drop automatic emails (out-of-office, bounces, mailing lists) and emails sent
    from one of our own support addresses, so two systems never answer each other forever.
 2. Find the workspace from the first To/CC (or delivery) address that is a support address.
-3. Seen before (same Message-ID)? Nothing happens.
+3. Seen before (same Message-ID)? Nothing happens. An answer in a side conversation (md
+   X5, by its reply headers) is saved there and goes no further.
 4. Find the ticket: In-Reply-To / References match a message on it; else a '[T-1001]'
    label in the subject, only when the sender is that ticket's customer. A merged ticket
    passes it on to the ticket it was merged into.
@@ -25,6 +26,7 @@ from cedesk.helpdesk.domain import inbound as rules
 from cedesk.helpdesk.domain.email import normalise_address
 from cedesk.helpdesk.domain.tickets import Channel
 from cedesk.helpdesk.repo import email as repo
+from cedesk.helpdesk.service import side_conversations
 from cedesk.helpdesk.service.attachments import IncomingFiles
 from cedesk.helpdesk.service.auth import Sessionmaker
 from cedesk.helpdesk.service.customer_replies import customer_reply
@@ -49,6 +51,7 @@ class Outcome(StrEnum):
     from_us = "from_us"  # sent from one of our support addresses: ignored
     no_workspace = "no_workspace"  # not sent to any support address
     verification = "verification"  # a forwarding check (md C10): never a ticket
+    side_reply = "side_reply"  # an answer in a side conversation (md X5): not the customer's
     unreadable = "unreadable"
 
 
@@ -119,6 +122,15 @@ async def receive(
     async with workspace_session(sm, workspace_id) as s:
         if await repo.email_seen(s, workspace_id, email.message_id):
             return Received(Outcome.duplicate, workspace_id=workspace_id)
+
+    # An answer in a side conversation (md X5) goes there, before any ticket is looked for:
+    # it must never land on the customer's thread.
+    side_ticket = await side_conversations.receive_reply(
+        sm, workspace_id, thread_ids=email.thread_ids(), message_id=email.message_id,
+        from_address=email.from_address, from_name=email.from_name, text=email.text,
+    )  # fmt: skip
+    if side_ticket is not None:
+        return Received(Outcome.side_reply, side_ticket, workspace_id)
 
     stored = email.stored()
     if written_to not in email.to:

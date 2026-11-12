@@ -27,6 +27,169 @@ works as for the other sources.
 
 Not yet run against a real HubSpot or Zoho account: field shapes follow their API docs.
 
+## 2026-11-12: Fixes from the review of webhooks, apps and retention (PL3-PL7, C12, O2)
+
+- Erasing a customer (S11) now also clears their webhook deliveries: the body becomes
+  `{"erased": true}`, the receiver's saved answers go, and one not sent yet is stopped
+  (`failed`, "Stopped: the customer was erased."). The erase's `counts` add
+  `webhook_deliveries` and `webhook_responses`.
+- The webhook log keeps 30 days: delivered and failed deliveries (and their tries) older
+  than that are deleted by the worker. One still being tried stays.
+- Every call a workspace can point (webhooks, imports and their files, Shopify, Stripe,
+  Jira, Slack) now connects to the exact address it checked (public only), with the host
+  name kept for HTTPS. A host whose address changes between the check and the connection
+  (DNS rebinding) can no longer reach the server's own network.
+- The Shopify orders card looks the customer up first (`customers/search.json`, the exact
+  email only) and reads that customer's orders; an order whose email isn't the
+  customer's is never shown. Shopify's order list can't be filtered by email, so before
+  this the card could show the shop's latest orders, other customers' included.
+- Retention counts an imported ticket from when it was imported (the latest run of its
+  import), not from its old resolved date: importing years of history no longer has it
+  deleted the next day. A deleted ticket's events and webhook deliveries go with it.
+
+## 2026-11-12: Usage, cloud plan limits and retention (Phase 3, O2, O4, O5)
+
+- New (Settings): `GET /usage` → `{plan, agents, tickets_this_month, storage_bytes,
+  limits: {agents, tickets_month, storage_bytes}, retention_days}`. Agents are active
+  members who take tickets (light agents are free seats); tickets are this calendar month
+  (UTC), not imported; storage is the files on tickets.
+- Cloud plan limits (O4): only on the cloud edition (`CEDESK_EDITION=cloud`) and only for
+  a workspace given a plan with `cedesk set-plan --workspace <slug> --plan
+  free|growth|enterprise|none` (audited, area `plan`). A self-hosted install, or a
+  workspace with no plan, has no limits. Over a limit, these answer 402 with a clear
+  message: adding a member who takes tickets (or reactivating one, or making a light agent
+  an agent), uploading a file, and an agent or API key opening a ticket. A customer's own
+  email, chat, portal or inbound-API request is never refused. Plans come from
+  `CEDESK_PLANS` (JSON); empty = the md D6 proposal (Free: 3 agents, 1,000 tickets a
+  month, 1 GB, 1 year; Growth: 50 GB, 3 years; Enterprise: none).
+- New (Settings): `GET /retention`, `PUT /retention` `{closed_ticket_days}` (30 to 3650,
+  or null to keep for good; audited, area `retention`) → `{closed_ticket_days,
+  plan_history_days, effective_days, ...}`. The worker deletes resolved tickets older
+  than `effective_days` (the setting, capped by the plan's history), with their messages,
+  files (from storage too) and the rest, once a day; each run is audited as a server
+  change. Open and Pending tickets are never deleted.
+- Not in this change (md cut line): the archive tier (O3) and exporting before deleting.
+- Migration 0047: `hd_workspace_plan`, `hd_retention` (forced RLS).
+
+## 2026-11-12: Side conversations by email (Phase 3, X5)
+
+- New: `POST /tickets/{id}/side-conversations` `{to: [emails], subject?, body}` → 201: an
+  email to another team or a supplier (warehouse@, the courier), from the ticket's support
+  address (the one the customer wrote to, else the default). Subject: the agent's, or
+  "About <ticket subject>", with the ticket's label `[T-1042]`. Needs the right to reply
+  and to change the ticket (team scope); light agents can't (403). Not to the ticket's
+  customer nor to one of the desk's own addresses (422); 409 without a support address,
+  or with 20 already. The worker sends it with the usual retries; if it can't, the ticket
+  gets a line.
+- New: `POST /side-conversations/{id}/messages` `{body}` → 201: writes again, to the same
+  addresses, threaded under the earlier emails (In-Reply-To, References).
+- New: `GET /tickets/{id}/side-conversations` (anyone who can read the ticket): each with
+  `messages` (`direction` out or in, `body`, `author_name`, `from_address`,
+  `created_at`).
+- Their reply: email in recognises it by its reply headers before it looks for a ticket,
+  saves it on the side conversation (once, however often it arrives), writes a line on
+  the ticket ("warehouse@acme.com replied in a side conversation") and tells the
+  assignee (notification kind `side_reply`, new). It is never a customer message: the
+  portal and the customer's emails never show any of it.
+- Slack side conversations (#warehouse) need a Slack bot to bring replies back; they
+  are a follow-up (md X5's other half).
+- Migration 0046: `hd_side_conversation`, `hd_side_message` (forced RLS); notification
+  kind `side_reply`.
+
+## 2026-11-12: Apps: Jira issues from tickets and Slack alerts (Phase 3, X10, W20, PL7)
+
+- `GET /apps` now also lists `jira` and `slack_alerts`; install them with `PUT /apps/{app}`
+  like the others (Settings, audited, credential sealed):
+  - Jira: `settings: {site: "acme", email, project: "SUP"}`, `secret`: an Atlassian API
+    token. Checked with Jira (the token works and sees the project) before it is saved.
+  - Slack alerts: no settings, `secret`: the Slack Incoming Webhook URL
+    (`https://hooks.slack.com/services/...`). Installing posts a test line to the channel.
+- New: `GET /tickets/{id}/jira` (anyone who can read the ticket); `POST /tickets/{id}/jira`
+  `{summary?, description?}` → 201 `{key, url, made_here, created_at, created_by_name}`:
+  an issue of type Task in the app's project, summary = the ticket's subject unless given,
+  description = what the agent writes plus a link back to the ticket (never the
+  customer's messages unless the agent puts them in); `POST /tickets/{id}/jira/link
+  {key}` links an issue that exists (checked with Jira); `DELETE /tickets/{id}/jira/{key}`
+  takes it off the ticket (it stays in Jira). Needs the right to reply and to change the
+  ticket (team scope); light agents can't. Each writes a system line ("Jira issue SUP-12
+  created by Neha"). At most 10 per ticket. 409 when Jira isn't installed or the issue is
+  already there; 422 when Jira refuses; 503 when it doesn't answer.
+- Slack alerts (W20): when a ticket is created Urgent or High, or a change makes it Urgent
+  or High, the worker posts one line: priority, number (linked to
+  `<CEDESK_APP_URL>/tickets/<id>`), subject and team, escaped so a subject can't mention
+  anyone or make a link. Sent after the change commits (so after the rules ran), retried
+  by the outbox; a webhook Slack refuses fails at once and is listed in
+  `GET /outbox/failed`.
+- Frontend: the alert's link assumes the agent app opens a ticket at `/tickets/<id>`.
+- Migration 0045: `hd_app_install.app` also takes `jira` and `slack_alerts`;
+  `hd_jira_issue` (forced RLS).
+
+## 2026-11-12: Apps: Shopify and Stripe, and the sidebar's orders and payments (Phase 3, PL7, C12)
+
+- New (Settings): `GET /apps` lists the apps (`shopify`, `stripe`) with what each needs
+  (`settings_fields`, `credential`, `credential_help`), whether it is installed, and
+  `blocked` when it can't be (Cevanos connected). `PUT /apps/{app}` `{settings, secret}`
+  installs it, or changes its settings and credential: the credential is checked with the
+  provider first (422 when refused, 503 when it doesn't answer), then kept encrypted; only
+  `secret_hint` (`…` and the last 4 characters) is shown again. Shopify: `settings: {shop:
+  "acme"}` (a full `acme.myshopify.com` address works too) and an Admin API access token
+  with `read_orders` and `read_customers`. Stripe: no settings, a restricted key (`rk_...`)
+  with read access to Customers and Charges (an `sk_...` key works too). `DELETE
+  /apps/{app}` uninstalls it and deletes the credential (404 when not installed). Audited:
+  area `apps`, actions `installed`, `changed`, `uninstalled` (never the credential).
+- New (anyone who can read the ticket): `GET /tickets/{id}/orders` and `GET
+  /tickets/{id}/payments`: the ticket customer's latest 5 Shopify orders (`number`,
+  `payment`, `fulfillment`, `total`, `currency`, `items`, `url` into the shop's admin) and
+  Stripe charges (`amount`, `currency`, `status`, `refunded`, `url` into the dashboard),
+  found by email, read live (10 s at most) and never stored. They never fail because of
+  the provider: `{source, available, message}` says why there is nothing (no app, no
+  customer email yet, the provider refused or didn't answer).
+- With Cevanos connected (md D16), Shopify and Stripe can't be installed (409) and the
+  cards answer `source: "cevanos", available: false`: Cevanos's integrations fill them
+  once Cevanos serves them over `/v1` (with the Cevanos AI features).
+- Calls go out GET only, through the egress guard (public addresses only, no redirects):
+  `<shop>.myshopify.com` is built from the shop name, Stripe is `api.stripe.com`.
+- Migration 0044: `hd_app_install` (forced RLS). Jira and Slack alerts come next;
+  Calendly is on the cut line.
+
+## 2026-11-12: Outgoing webhooks (Phase 3, PL3-PL6)
+
+Admin only, signed in (not with an API key): a webhook sends ticket data out of CeDesk.
+
+- New: `POST /webhooks` `{url, events, enabled?}` → 201 with `secret` (`whsec_...`, shown
+  this once; kept encrypted, `secret_hint` afterwards). The URL must be https with a public
+  host name (no IP address, no user or password, nothing that resolves to a private,
+  loopback or link-local address: checked when saved and again before every send).
+  `events`: any of `ticket.created`, `ticket.updated`, `ticket.resolved`,
+  `message.created`. At most 20 per workspace (409). `GET /webhooks`;
+  `PATCH /webhooks/{id}` `{url?, events?, enabled?}`; `POST /webhooks/{id}/secret` (a new
+  secret, shown once; the old one stops at once); `DELETE /webhooks/{id}` (204; its queue
+  and log go too). Audited: area `webhooks`, actions `created`, `changed`,
+  `secret_changed`, `deleted` (never the secret).
+- Each delivery is a POST of the event as JSON (PL5): `{event, ticket: {id, number,
+  subject, status, priority, team, topic}, id, occurred_at}`; `ticket.updated` adds
+  `changes` (the fields that changed); `message.created` adds `message: {id, kind,
+  author_member_id}`, only for customer and agent replies (never notes), and never the
+  text: read it with `GET /tickets/{id}`. This is how a system using the inbound API
+  (`/inbound/tickets`) hears about agents' replies.
+- Headers: `X-CeDesk-Event`, `X-CeDesk-Delivery` (the same on every retry: drop repeats),
+  `X-CeDesk-Timestamp` (unix seconds), `X-CeDesk-Signature: sha256=<hex HMAC-SHA256(secret,
+  "<timestamp>.<body>")>`. Receivers check the signature and that the timestamp is within 5
+  minutes (the timestamp is signed, so an old delivery can't be replayed as new).
+- A 2xx answer within 10 s is delivered; redirects are not followed. Otherwise it is tried
+  again after 1 min, 5 min, 30 min, 2 h and 12 h; after the 6th try it has failed. Each URL
+  has its own queue: one that is down never holds up the others. A webhook turned off
+  stops getting new events; what was queued for it is marked failed, not sent.
+- New: `POST /webhooks/{id}/test`: a signed `ping` (`{event: "ping", id, occurred_at,
+  webhook: {id}}`) sent now, one try, the answer returned and logged.
+- New (PL6): `GET /webhooks/deliveries?state&webhook_id&cursor&limit`, newest first, each
+  with `body` (exactly what is sent), `state` (pending, delivered, failed), `tries`,
+  `next_try_at`, the last status, time and error, and `attempts` (every try: when,
+  status, ms, error, the first 300 characters of the answer). `POST
+  /webhooks/deliveries/{id}/retry` sends a failed one again with a full set of tries (404
+  for any other).
+- The worker (`cedesk worker`) sends them: no new process or setting.
+- Migration 0043: `hd_webhook`, `hd_webhook_delivery`, `hd_webhook_attempt` (forced RLS).
 ## 2026-11-12: Imports: keep syncing until go-live, import history, attachments (Phase 2, M7, M9, M10)
 
 New (Admin only, Settings): the three things that were left of the imports.

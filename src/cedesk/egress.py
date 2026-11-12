@@ -23,6 +23,8 @@ import re
 import socket
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 
+import httpx
+
 LABEL = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
 
 # source -> the vendor domain a workspace's name is put in front of
@@ -30,6 +32,8 @@ ACCOUNT_DOMAINS: Mapping[str, str] = {
     "zendesk": "zendesk.com",
     "freshdesk": "freshdesk.com",
     "gorgias": "gorgias.com",
+    "shopify": "myshopify.com",  # the Shopify app (md PL7): <shop>.myshopify.com
+    "jira": "atlassian.net",  # the Jira app (md X10): <site>.atlassian.net
 }
 # sources whose host is fixed (nothing the Admin types reaches it)
 FIXED_HOSTS: Mapping[str, Mapping[str, str]] = {
@@ -133,3 +137,36 @@ def guard(resolver: Resolver = resolve) -> Guard:
 
 
 check_public: Guard = guard()
+
+
+class PinnedTransport(httpx.AsyncBaseTransport):
+    """Connects only to an address it has just checked. The guard looks a host up and checks
+    it, but a plain client would look it up again when it connects, and a host whose
+    answers change between the two (DNS rebinding) could then reach the server's own
+    network. Here each request is resolved once, every address must be public, and the
+    connection goes to that address, with the host name kept for TLS (SNI and the
+    certificate check) and in the Host header. A refusal is an `httpx.ConnectError`.
+
+    Every outbound call a workspace can point (webhooks, imports, apps) uses it; tests pass
+    their own transport instead."""
+
+    def __init__(self, resolver: Resolver = resolve) -> None:
+        self._resolver = resolver
+        self._inner = httpx.AsyncHTTPTransport()
+
+    async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+        host = request.url.host
+        addresses = list(await self._resolver(host))
+        if not addresses or not all(is_public(a) for a in addresses):
+            raise httpx.ConnectError(f"'{host}' isn't a public address.", request=request)
+        request.url = request.url.copy_with(host=addresses[0].split("%", 1)[0])
+        request.extensions = {**request.extensions, "sni_hostname": host}
+        return await self._inner.handle_async_request(request)
+
+    async def aclose(self) -> None:
+        await self._inner.aclose()
+
+
+def pinned(transport: httpx.AsyncBaseTransport | None) -> httpx.AsyncBaseTransport:
+    """The transport to use: the one given (tests), else a `PinnedTransport`."""
+    return transport if transport is not None else PinnedTransport()

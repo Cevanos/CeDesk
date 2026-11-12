@@ -67,6 +67,7 @@ def _create_workspace(args: argparse.Namespace) -> int:
 
 SWEEP_EVERY_SECONDS = 600  # expired idempotency keys
 SLA_ALERT_EVERY_SECONDS = 60  # SLA breach alerts (md W14)
+RETENTION_EVERY_SECONDS = 24 * 3600  # deleting old resolved tickets (md O2): at start, then daily
 
 
 def _seed_workflow(slug: str) -> int:
@@ -116,6 +117,34 @@ def _clear_ip_allowlist(slug: str) -> int:
         if cleared
         else f"{slug} has no IP allowlist; nothing changed."
     )
+    return 0
+
+
+def _set_plan(slug: str, plan: str) -> int:
+    """Our cloud's operators give a workspace its plan (md O4); `none` takes it off."""
+    from cedesk.db import make_engine, make_sessionmaker
+    from cedesk.helpdesk.domain.limits import parse_plans
+    from cedesk.helpdesk.service import limits
+    from cedesk.helpdesk.service.errors import ServiceError
+    from cedesk.settings import Edition, get_settings
+
+    settings = get_settings()
+    limits.configure(cloud=settings.edition is Edition.cloud, plans=parse_plans(settings.plans))
+
+    async def run() -> None:
+        engine = make_engine(settings.database_url)
+        try:
+            await limits.set_plan(make_sessionmaker(engine), slug, None if plan == "none" else plan)
+        finally:
+            await engine.dispose()
+
+    try:
+        asyncio.run(run())
+    except ServiceError as exc:
+        print(exc.message, file=sys.stderr)
+        return 1
+    note = "" if settings.edition is Edition.cloud else " (self-hosted: limits stay off)"
+    print(f"{slug}: plan {plan}{note}.")
     return 0
 
 
@@ -193,7 +222,11 @@ def _worker(once: bool) -> int:
 
     from cedesk import logs
     from cedesk.cevanos_client import make_cevanos
+    from cedesk.crypto import Sealer
     from cedesk.db import make_engine, make_sessionmaker
+    from cedesk.helpdesk.domain.limits import parse_plans
+    from cedesk.helpdesk.service import limits as plan_limits
+    from cedesk.helpdesk.service.apps import slack_bound
     from cedesk.helpdesk.service.cevanos import CevanosHandler, ChatPoller
     from cedesk.helpdesk.service.csat import CsatHandler
     from cedesk.helpdesk.service.delivery import Handler, deliver_due
@@ -202,6 +235,8 @@ def _worker(once: bool) -> int:
     from cedesk.helpdesk.service.idempotency import sweep_everywhere
     from cedesk.helpdesk.service.imports.framework import make_importers
     from cedesk.helpdesk.service.imports.framework import run_due as run_imports
+    from cedesk.helpdesk.service.jira import make_post
+    from cedesk.helpdesk.service.limits import run_retention
     from cedesk.helpdesk.service.password_reset import Sender
     from cedesk.helpdesk.service.portal_notice import PortalNoticeHandler
     from cedesk.helpdesk.service.privacy import remove_expired_exports
@@ -209,15 +244,24 @@ def _worker(once: bool) -> int:
     from cedesk.helpdesk.service.security_alerts import SecurityAlertHandler
     from cedesk.helpdesk.service.sla import refresh_everywhere
     from cedesk.helpdesk.service.sla_alerts import alert_everywhere
+    from cedesk.helpdesk.service.slack_alerts import SlackAlertHandler
     from cedesk.helpdesk.service.stream import prune_everywhere as prune_stream
     from cedesk.helpdesk.service.task_alerts import alert_everywhere as alert_tasks
+    from cedesk.helpdesk.service.webhooks import WebhookFanout
+    from cedesk.helpdesk.service.webhooks import prune_everywhere as prune_webhooks
+    from cedesk.helpdesk.service.webhooks import send_due as send_webhooks
     from cedesk.mail import MailboxError, make_mailbox, make_mailer
     from cedesk.scanning import make_scanner
     from cedesk.settings import get_settings
     from cedesk.storage import make_store
+    from cedesk.webhook_client import WebhookClient
 
     settings = get_settings()
     logs.configure(settings.log_level)
+    # The worker deletes per the plans too (retention capped by a plan's history, md O2).
+    plan_limits.configure(
+        cloud=settings.edition.value == "cloud", plans=parse_plans(settings.plans)
+    )
     problems = settings.unsafe() + settings.mail_problems()
     if problems:
         print("Refusing to start:\n  " + "\n  ".join(problems), file=sys.stderr)
@@ -231,7 +275,7 @@ def _worker(once: bool) -> int:
         mailbox = make_mailbox(settings)
         store = make_store(settings)  # files on replies out, files in customer emails
         scanner = make_scanner(settings)
-        # Outbox handlers (webhooks join in Phase 3). The Cevanos one does nothing for a
+        # Outbox handlers. The Cevanos one does nothing for a
         # workspace that has not connected Cevanos; the CSAT one emails the survey; the portal
         # one tells portal customers an agent replied.
         cevanos = make_cevanos(settings)
@@ -246,11 +290,19 @@ def _worker(once: bool) -> int:
             CsatHandler(sm, base_url=portal_url, fallback=fallback),
             PortalNoticeHandler(sm, base_url=portal_url, fallback=fallback),
             SecurityAlertHandler(sm, fallback=fallback),
+            WebhookFanout(sm),  # queues one delivery per webhook; send_webhooks sends them
         ]
+        sealer = Sealer(settings.secret_key.get_secret_value())
+        # Slack alerts for Urgent and High tickets, when the workspace installed the app.
+        handlers.append(
+            SlackAlertHandler(sm, sealer, make_post, slack_bound, app_url=settings.app_url)
+        )
+        webhook_client = WebhookClient()
         chats = ChatPoller(sm, cevanos, batch=settings.cevanos_poll_batch)
         importers = make_importers(settings.secret_key.get_secret_value(), store)
         swept_at = 0.0
         alerted_at = 0.0
+        retained_at = -float(RETENTION_EVERY_SECONDS)  # due at the first pass
         logger.info("worker started", extra={"event": settings.mail_backend.value})
         # Tickets made before SLA was wired (or while the SLA code had a bug) get their
         # stored due time, so `sort=sla` is right after every deploy without a manual step.
@@ -308,6 +360,17 @@ def _worker(once: bool) -> int:
                         f"{result.failed} failed",
                         extra={"event": "email"},
                     )
+                try:
+                    hooks = await send_webhooks(sm, sealer, webhook_client)
+                except Exception:
+                    logger.exception("webhook pass failed")
+                else:
+                    if hooks.delivered or hooks.retrying or hooks.failed:
+                        logger.info(
+                            f"webhooks: {hooks.delivered} delivered, {hooks.retrying} "
+                            f"retrying, {hooks.failed} failed",
+                            extra={"event": "webhook"},
+                        )
                 if time.monotonic() - alerted_at > SLA_ALERT_EVERY_SECONDS:
                     try:
                         breached = await alert_everywhere(sm)
@@ -334,7 +397,19 @@ def _worker(once: bool) -> int:
                         await prune_stream(sm)
                     except Exception:
                         logger.exception("Pruning the live-update events failed")
+                    try:  # webhook deliveries past their 30 days (md PL6)
+                        await prune_webhooks(sm)
+                    except Exception:
+                        logger.exception("Pruning the webhook log failed")
                     swept_at = time.monotonic()
+                if time.monotonic() - retained_at > RETENTION_EVERY_SECONDS:
+                    try:  # resolved tickets past the workspace's retention (md O2)
+                        gone = await run_retention(sm, store)
+                        if gone:
+                            logger.info(f"retention: {gone} tickets", extra={"event": "retention"})
+                    except Exception:
+                        logger.exception("Retention failed")
+                    retained_at = time.monotonic()
                 if once:
                     return
                 await asyncio.sleep(settings.worker_interval_seconds)
@@ -410,6 +485,9 @@ def main(argv: list[str] | None = None) -> int:
         "sla-refresh",
         help="Work out the SLA of every open ticket again (once, after migration 0019)",
     )
+    plan = sub.add_parser("set-plan", help="Give a workspace its cloud plan (limits, md O4)")
+    plan.add_argument("--workspace", required=True, help="Sign-in address, e.g. 'acme-store'")
+    plan.add_argument("--plan", required=True, help="free, growth, enterprise, or none")
     spec = sub.add_parser("openapi", help="Write the API description to docs/api/openapi.json")
     spec.add_argument("--out", type=Path, default=ROOT / "docs" / "api" / "openapi.json")
     spec.add_argument("--check", action="store_true", help="Fail if the file is out of date")
@@ -444,6 +522,8 @@ def main(argv: list[str] | None = None) -> int:
         return _clear_ip_allowlist(args.workspace)
     if args.command == "sla-refresh":
         return _sla_refresh()
+    if args.command == "set-plan":
+        return _set_plan(args.workspace, args.plan)
     if args.command == "openapi":
         return _openapi(args.out, args.check)
     return _create_workspace(args)

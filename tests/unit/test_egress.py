@@ -154,3 +154,40 @@ def test_a_host_that_resolves_to_a_private_address_is_refused(addresses: tuple[s
 def test_a_host_that_does_not_resolve_is_refused() -> None:
     with pytest.raises(BadAddress, match="can't be found"):
         check("nothing.zendesk.com")
+
+
+async def test_the_pinned_transport_connects_to_the_address_it_checked() -> None:
+    """DNS rebinding: the host is looked up once, every address must be public, and the
+    connection goes to that address with the host name kept for TLS and Host."""
+    import httpx
+
+    from cedesk.egress import PinnedTransport
+
+    answers = {
+        "hooks.example.com": ["93.184.216.34"],
+        "rebind.example.com": ["93.184.216.34", "127.0.0.1"],
+        "v6.example.com": ["2606:2800:220:1:248:1893:25c8:1946"],
+    }
+
+    async def resolver(host: str) -> list[str]:
+        return answers.get(host, [])
+
+    seen: list[httpx.Request] = []
+    pinned = PinnedTransport(resolver)
+    pinned._inner = httpx.MockTransport(lambda r: seen.append(r) or httpx.Response(204))  # type: ignore[assignment]
+    async with httpx.AsyncClient(transport=pinned) as client:
+        r = await client.post("https://hooks.example.com/x?a=1", content=b"{}")
+        assert r.status_code == 204
+        await client.get("https://v6.example.com/")
+        for bad in ("https://rebind.example.com/", "https://nowhere.example.com/"):
+            try:
+                await client.get(bad)
+            except httpx.ConnectError as exc:
+                assert "isn't a public address" in str(exc)
+            else:
+                raise AssertionError(bad)
+    first, v6 = seen
+    assert (first.url.host, first.url.path, first.url.query) == ("93.184.216.34", "/x", b"a=1")
+    assert first.headers["Host"] == "hooks.example.com"
+    assert first.extensions["sni_hostname"] == "hooks.example.com"
+    assert v6.url.host == "2606:2800:220:1:248:1893:25c8:1946"
