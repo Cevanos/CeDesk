@@ -2,8 +2,11 @@
 
 import {
   type LucideIcon,
+  BookOpen,
   Bot,
+  Globe,
   Mail,
+  ShieldCheck,
   ShieldAlert,
   Tags,
   Timer,
@@ -40,6 +43,14 @@ const GROUPS: {
       { href: "/settings/rules", label: "Rules", icon: Workflow },
       { href: "/settings/macros", label: "Macros", icon: Wand2 },
       { href: "/settings/saved-replies", label: "Saved replies", icon: Zap },
+      { href: "/settings/topics", label: "Topics & redaction", icon: ShieldCheck },
+    ],
+  },
+  {
+    label: "Customers",
+    items: [
+      { href: "/settings/portal", label: "Portal", icon: Globe },
+      { href: "/settings/help-center", label: "Help center", icon: BookOpen },
     ],
   },
   {

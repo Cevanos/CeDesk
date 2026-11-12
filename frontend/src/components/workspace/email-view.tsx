@@ -15,6 +15,7 @@ import {
   Skeleton,
   Textarea,
 } from "@/components/ui/primitives";
+import { EmailChecks } from "@/components/workspace/email-checks";
 import { FormError, fieldErrors, LoadError } from "@/components/workspace/list-shared";
 import {
   useDeleteEmailAddress,
@@ -92,6 +93,7 @@ export function EmailView() {
                 >
                   <Trash2 className="size-3.5" /> Delete
                 </Button>
+                <EmailChecks address={a} />
               </li>
             ))}
           </ul>
