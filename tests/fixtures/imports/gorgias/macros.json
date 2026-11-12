@@ -1,0 +1,5 @@
+{"data": [
+ {"id": 7, "name": "Refund Policy!", "actions": [{"name": "addTags", "arguments": {"tags": "x"}}, {"name": "setResponseText", "arguments": {"body_text": "Refunds take 5 days.", "body_html": "<p>Refunds take 5 days.</p>"}}]},
+ {"id": 8, "name": "Tag only", "actions": [{"name": "addTags", "arguments": {}}]},
+ {"id": 9, "name": "Html Only", "actions": [{"name": "setResponseText", "arguments": {"body_html": "<div>Hi <i>there</i></div>"}}]}
+], "meta": {"next_cursor": null, "total_resources": 3}}
