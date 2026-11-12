@@ -60,6 +60,7 @@ services:
       # clamd: downloads wait until the worker found the file clean.
       CEDESK_SCAN_BACKEND: ${CEDESK_SCAN_BACKEND:-none}
       CEDESK_CEVANOS_URL: ${CEDESK_CEVANOS_URL:-https://api.cevanos.ai}
+      CEDESK_CEVANOS_APP_URL: ${CEDESK_CEVANOS_APP_URL:-https://cevanos.ai}
       CEDESK_STORAGE_LOCAL_PATH: /data/storage
     volumes:
       - files:/data/storage

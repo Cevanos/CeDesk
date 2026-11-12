@@ -78,7 +78,9 @@ ClamAV needs about 1.5 GB of memory, and its first start downloads the virus def
 file; infected ones are removed. Files uploaded before scanning was on are checked too.
 
 Cevanos: `CEDESK_CEVANOS_URL` is Cevanos's API address (default
-`https://api.cevanos.ai`). Each workspace connects itself: an Admin saves the Cevanos API
+`https://api.cevanos.ai`), and `CEDESK_CEVANOS_APP_URL` its web app (default
+`https://cevanos.ai`), which Reports links to for the Governance report. Each workspace
+connects itself: an Admin saves the Cevanos API
 key (scopes `conversations:read` and `conversations:write`) and the webhook signing
 secret at `PUT /api/v1/cevanos/connection`, and in Cevanos adds a webhook to
 `https://<server>/api/v1/cevanos/events/<workspace id>` (the exact path is in the
