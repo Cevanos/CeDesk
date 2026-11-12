@@ -1,0 +1,55 @@
+{
+ "results": [
+  {
+   "id": "0",
+   "label": "Support Pipeline",
+   "stages": [
+    {
+     "id": "1",
+     "label": "New",
+     "metadata": {
+      "ticketState": "OPEN"
+     }
+    },
+    {
+     "id": "2",
+     "label": "Waiting on contact",
+     "metadata": {
+      "ticketState": "OPEN"
+     }
+    },
+    {
+     "id": "3",
+     "label": "Waiting on us",
+     "metadata": {
+      "ticketState": "OPEN"
+     }
+    },
+    {
+     "id": "4",
+     "label": "Closed",
+     "metadata": {
+      "ticketState": "CLOSED"
+     }
+    }
+   ]
+  },
+  {
+   "id": "77",
+   "label": "Billing",
+   "stages": [
+    {
+     "id": "b1",
+     "label": "Open"
+    },
+    {
+     "id": "b2",
+     "label": "Done",
+     "metadata": {
+      "ticketState": "CLOSED"
+     }
+    }
+   ]
+  }
+ ]
+}

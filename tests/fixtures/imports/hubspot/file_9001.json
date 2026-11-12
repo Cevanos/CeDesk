@@ -1,0 +1,8 @@
+{
+ "id": "9001",
+ "name": "label",
+ "extension": "pdf",
+ "size": 2048,
+ "type": "application/pdf",
+ "access": "PRIVATE_NOT_INDEXABLE"
+}
