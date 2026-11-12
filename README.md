@@ -125,10 +125,17 @@ One setting picks where uploaded files live, `CEDESK_STORAGE_DRIVER`:
 - `s3`: AWS S3 or any S3-compatible service (MinIO, Cloudflare R2, Spaces, Wasabi, B2):
   `CEDESK_STORAGE_S3_BUCKET`, plus `..._ENDPOINT_URL` and `..._PATH_STYLE=true` for MinIO.
   Without keys it uses the server's AWS role. See `.env.example`.
+- `gcs`: Google Cloud Storage, through its S3-compatible API. Make an HMAC key for a service
+  account that can read and write the bucket (Cloud Storage > Settings > Interoperability)
+  and set `CEDESK_STORAGE_GCS_BUCKET`, `..._HMAC_ACCESS_ID` and `..._HMAC_SECRET`.
+- `azure`: Azure Blob Storage. Create a container, then set
+  `CEDESK_STORAGE_AZURE_ACCOUNT_NAME`, `..._ACCOUNT_KEY` and `..._CONTAINER`
+  (`..._ENDPOINT` only for Azurite or a sovereign cloud).
 
 A file is stored under `<workspace>/<ticket>/<file id>`, never under its own name. Downloads
 use a link that works without signing in for 5 minutes (`CEDESK_DOWNLOAD_LINK_SECONDS`):
-S3 presigns it, local disk signs it with `CEDESK_SECRET_KEY`. Files are capped at 25 MB
+S3 and GCS presign it, Azure gives a read-only SAS link, local disk signs it with
+`CEDESK_SECRET_KEY`. Files are capped at 25 MB
 (`CEDESK_ATTACHMENT_MAX_BYTES`). `scan_status` is where a virus scanner plugs in; an
 `infected` file is never handed out.
 
