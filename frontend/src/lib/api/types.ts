@@ -35,6 +35,16 @@ export interface Contact {
   vip?: boolean;
   customer_since?: string | null;
   other_tickets?: number;
+  /** Phase 2 (CSAT): average rating 1-5 and how many ratings it is based on. */
+  csat_average?: number | null;
+  csat_count?: number;
+}
+
+/** A customer's satisfaction rating of a resolved ticket. */
+export interface Csat {
+  score: number;
+  comment?: string | null;
+  rated_at?: string | null;
 }
 
 export interface SlaClock {
@@ -121,6 +131,8 @@ export interface Ticket extends TicketSummary {
   assignee_id?: string | null;
   fields?: Record<string, string | number | null>;
   reopen_count?: number;
+  /** Phase 2: the customer's rating, or null when not rated. */
+  csat?: Csat | null;
   messages: Message[];
   older_messages_cursor: string | null;
   handover: Handover | null;
@@ -144,7 +156,7 @@ export interface Attachment {
 
 export interface NotificationItem {
   id: string;
-  kind: "assigned" | "mention";
+  kind: "assigned" | "mention" | "sla_breach" | (string & {});
   text: string;
   ticket_id: string | null;
   read: boolean;
@@ -199,6 +211,8 @@ export interface TicketType {
   name: string;
   fields: TicketTypeField[];
   required_skill?: string | null;
+  /** Phase 2: customers can pick this type on the portal and web form. */
+  for_customers?: boolean;
 }
 
 export interface ContactTickets {
@@ -215,6 +229,7 @@ export interface SlaTarget {
   is_default?: boolean;
 }
 export interface SlaPolicy {
+  id?: string;
   position: number;
   name: string;
   enabled: boolean;
@@ -223,6 +238,12 @@ export interface SlaPolicy {
   priorities: string[];
   first_reply_minutes: number | null;
   resolve_minutes: number | null;
+}
+export interface Holiday {
+  id?: string;
+  /** YYYY-MM-DD */
+  day: string;
+  name: string;
 }
 export interface SlaSettings {
   targets: SlaTarget[];
@@ -234,7 +255,7 @@ export interface SlaSettings {
     opens: string;
     closes: string;
     always_open: boolean;
-    holidays: { day: string; name: string }[];
+    holidays: Holiday[];
     is_default: boolean;
   };
 }
@@ -246,7 +267,7 @@ export interface SavedReply {
   source?: string;
 }
 
-export type RuleEvent = "created" | "customer_replied";
+export type RuleEvent = "created" | "customer_replied" | "sla_breached";
 export interface Rule {
   id: string;
   name: string;
@@ -271,6 +292,32 @@ export interface EmailAddress {
   name: string;
   signature: string;
   is_default: boolean;
+  /** Phase 2: forwarding and DNS checks. */
+  forwarding?: ForwardingState | null;
+  dns?: DnsState | null;
+  dkim_selector?: string | null;
+}
+
+/** `waiting` = a check mail was sent and has not come back yet. */
+export interface ForwardingState {
+  status: "verified" | "not_checked" | "waiting" | (string & {});
+  /** The address customers write to (X in "Forward X to Y"). */
+  forward_from?: string | null;
+  /** The CDesk inbox it must be forwarded to (Y). */
+  forward_to?: string | null;
+  checked_at?: string | null;
+}
+export interface DnsCheck {
+  status: "pass" | "warn" | "fail" | "missing" | "not_checked" | (string & {});
+  note?: string | null;
+  /** The DNS record to publish, when one is needed. */
+  record?: string | null;
+}
+export interface DnsState {
+  spf?: DnsCheck | null;
+  dkim?: DnsCheck | null;
+  dmarc?: DnsCheck | null;
+  checked_at?: string | null;
 }
 
 export interface FailedEmail {
@@ -303,4 +350,131 @@ export interface CevanosConnection {
   team_name: string | null;
   updated_at: string | null;
   webhook_path: string;
+}
+
+/* ------------------------------------------------------------------ *
+ * Phase 2. Shapes are inferred from CEDESK_FRONTEND_TODO_PHASE1_PHASE2.md
+ * and read tolerantly; confirm field names against the API /docs page.
+ * ------------------------------------------------------------------ */
+
+export interface ReportSummary {
+  created: number | null;
+  resolved: number | null;
+  open: number | null;
+  first_reply_minutes: number | null;
+  resolve_minutes: number | null;
+  sla_met_pct: number | null;
+  csat_average: number | null;
+  csat_count: number | null;
+}
+export interface ReportTeamRow {
+  id: string | null;
+  name: string;
+  created: number | null;
+  resolved: number | null;
+  open: number | null;
+  sla_met_pct: number | null;
+  csat_average: number | null;
+}
+export interface ReportAgentRow {
+  id: string | null;
+  name: string;
+  team_name: string | null;
+  resolved: number | null;
+  open: number | null;
+  first_reply_minutes: number | null;
+  csat_average: number | null;
+}
+export interface TeamReport {
+  from: string | null;
+  to: string | null;
+  summary: ReportSummary;
+  /** Index 0 = 1 star ... index 4 = 5 stars. */
+  csat: { score: number; count: number }[];
+  teams: ReportTeamRow[];
+  agents: ReportAgentRow[];
+}
+
+/** Topic name -> keywords. `redact_cards` masks card numbers in stored messages. */
+export interface TriageSettings {
+  topics: Record<string, string[]>;
+  redact_cards: boolean;
+  is_default?: boolean;
+  /** How the API spells `topics`, so a save sends the same shape back. */
+  shape?: "map" | "list";
+}
+
+export interface PortalSettings {
+  allowed_email_domains: string[];
+  csat_enabled: boolean;
+  web_form_enabled: boolean;
+}
+
+export type ArticleStatus = "draft" | "published";
+export interface ArticleCategory {
+  id: string;
+  name: string;
+  position?: number;
+}
+export interface Article {
+  id: string;
+  category_id: string | null;
+  category_name?: string | null;
+  title: string;
+  body: string;
+  status: ArticleStatus;
+  helpful_yes?: number;
+  helpful_no?: number;
+  updated_at?: string | null;
+}
+
+/* Customer-facing (no agent login) */
+
+export interface PublicCsat {
+  workspace_name?: string | null;
+  ticket_label?: string | null;
+  subject?: string | null;
+  /** Set when the ticket was already rated. */
+  score?: number | null;
+  comment?: string | null;
+  already_rated?: boolean;
+}
+
+export interface PortalMessage {
+  id: string;
+  /** `customer` = the signed-in customer; anything else is the support team. */
+  kind: string;
+  body: string;
+  author_name?: string | null;
+  created_at: string;
+}
+export interface PortalTicketSummary {
+  id: string;
+  label: string;
+  subject: string;
+  status: TicketStatus;
+  created_at: string;
+  updated_at: string;
+}
+export interface PortalTicket extends PortalTicketSummary {
+  messages: PortalMessage[];
+  csat?: Csat | null;
+  /** The survey is on and the ticket is resolved. */
+  can_rate?: boolean;
+  workspace_name?: string | null;
+}
+export interface PortalSession {
+  email?: string;
+  name?: string | null;
+  expires_at?: string;
+}
+export interface PublicForm {
+  workspace_name?: string | null;
+  enabled?: boolean;
+  types: { id: string; name: string }[];
+}
+export interface PublicHelp {
+  workspace_name?: string | null;
+  categories: ArticleCategory[];
+  articles: Article[];
 }

@@ -39,6 +39,27 @@ export const queryKeys = {
     events: ["failed", "events"] as const,
   },
   cevanos: { all: ["cevanos"] as const },
+  reports: { team: (p: object) => ["reports", "team", p] as const },
+  triage: { all: ["triage-settings"] as const },
+  portalSettings: { all: ["portal-settings"] as const },
+  helpCenter: {
+    categories: ["help-center", "categories"] as const,
+    articles: ["help-center", "articles"] as const,
+  },
+
+  /** Customer-facing pages. Kept apart from the agent keys on purpose. */
+  portal: {
+    all: ["portal"] as const,
+    tickets: (ws: string) => ["portal", ws, "tickets"] as const,
+    ticket: (id: string) => ["portal", "ticket", id] as const,
+    types: (ws: string) => ["portal", ws, "types"] as const,
+  },
+  public: {
+    csat: (token: string) => ["public", "csat", token] as const,
+    form: (ws: string) => ["public", ws, "form"] as const,
+    help: (ws: string, q: string) => ["public", ws, "help", q] as const,
+    article: (ws: string, id: string) => ["public", ws, "article", id] as const,
+  },
 
   tickets: {
     all: ["tickets"] as const,
