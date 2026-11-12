@@ -48,6 +48,7 @@ class Area(StrEnum):
     sandbox = "sandbox"
     privacy = "privacy"
     imports = "imports"
+    api_keys = "api_keys"
 
 
 @dataclass(frozen=True)
