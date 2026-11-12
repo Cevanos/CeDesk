@@ -1,5 +1,7 @@
 /** Browser-side API client. Talks to our own /api/* proxy only; the session cookie is httpOnly. */
 
+import { newId } from "@/lib/new-id";
+
 export interface FieldError {
   field: string;
   location?: string;
@@ -220,7 +222,7 @@ export function createIdempotency() {
      */
     header(fingerprint?: string): Record<string, string> {
       if (key === null || print !== fingerprint) {
-        key = crypto.randomUUID();
+        key = newId();
         print = fingerprint;
       }
       return { "Idempotency-Key": key };

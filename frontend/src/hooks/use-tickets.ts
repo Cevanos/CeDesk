@@ -24,6 +24,7 @@ import type {
   TicketList,
   TicketSummary,
 } from "@/lib/api/types";
+import { newId } from "@/lib/new-id";
 
 export type { TicketFilters } from "@/lib/api/ticket-filters";
 export type { TicketPatch } from "@/lib/api/apply-ticket-patch";
@@ -243,7 +244,7 @@ export function useUploadAttachment(id: string) {
     meta: { loud422: true },
     mutationFn: (file: File) => {
       let key = keys.get(file);
-      if (!key) keys.set(file, (key = crypto.randomUUID()));
+      if (!key) keys.set(file, (key = newId()));
       return request<Attachment>(`tickets/${id}/attachments`, {
         method: "POST",
         query: { name: file.name },
