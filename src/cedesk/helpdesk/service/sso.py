@@ -22,13 +22,16 @@ from sqlalchemy.engine import RowMapping
 
 from cedesk import saml
 from cedesk.db import workspace_session
+from cedesk.helpdesk.domain import audit as audit_rules
 from cedesk.helpdesk.domain import auth as auth_rules
 from cedesk.helpdesk.domain import security as security_rules
+from cedesk.helpdesk.domain.audit import Area
 from cedesk.helpdesk.domain.auth import Caller
 from cedesk.helpdesk.domain.permissions import Action
 from cedesk.helpdesk.repo import auth as auth_repo
 from cedesk.helpdesk.repo import security as security_repo
 from cedesk.helpdesk.repo import sso as repo
+from cedesk.helpdesk.service import audit
 from cedesk.helpdesk.service.auth import Sessionmaker
 from cedesk.helpdesk.service.errors import Invalid, IpNotAllowed, NotFound, NotSignedIn
 from cedesk.helpdesk.service.members import require
@@ -133,7 +136,15 @@ async def save_settings(sm: Sessionmaker, caller: Caller, new: SsoIn) -> RowMapp
         for what in changes:
             await security_repo.queue_alert(s, caller.workspace_id, what, caller.member_id)
         await repo.save(s, values, caller.member_id)
-        return await repo.settings_row(s)
+        after = await repo.settings_row(s)
+        changed = audit_rules.changes(
+            old, after, fields=("enabled", "enforced", "idp_entity_id", "idp_sso_url", "idp_cert")
+        )
+        if changed:
+            await audit.record(
+                s, caller, Area.sso, "changed", "Single sign-on", detail={"changes": changed}
+            )
+        return after
 
 
 async def _workspace(sm: Sessionmaker, slug: str) -> UUID:

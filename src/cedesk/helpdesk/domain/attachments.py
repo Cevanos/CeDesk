@@ -25,9 +25,10 @@ class ScanStatus(StrEnum):
     clean = "clean"
     infected = "infected"
     scan_failed = "scan_failed"  # the scanner could not check it
+    erased = "erased"  # deleted by a privacy erase (md S11); the row stays
 
 
-BLOCKED = frozenset({ScanStatus.infected, ScanStatus.scan_failed})
+BLOCKED = frozenset({ScanStatus.infected, ScanStatus.scan_failed, ScanStatus.erased})
 """Never downloaded, sent or emailed."""
 
 

@@ -3,6 +3,60 @@
 `openapi.json` next to this file is the API as served (`uv run cedesk openapi`). Every
 route is under `/api/v1`. Breaking changes only come in v2 (md 2B). Newest first.
 
+## 2026-11-12: Audit log, privacy export and erase, sandbox (Phase 3, S9-S11)
+
+**Audit log (S9)**: every settings change is recorded with who, when, from which IP
+and what changed. Needs the `settings` right.
+- `GET /audit?area=&before=&limit=`: newest first, `{entries, next_before, areas}`. Each
+  entry: `{seq, at, actor_id, actor_name, ip, area, action, target, target_id, detail}`.
+  `detail.changes` is `{field: [before, after]}`; secrets (passwords, keys, the SSO
+  certificate, webhook secret) show `"(hidden)"`; long values are cut to 300 characters.
+  Areas: members, roles, security, sso, two_factor, teams, ticket_types, routing, sla,
+  rules, macros, saved_replies, email (addresses and signatures), portal, help_center,
+  triage, cevanos, sandbox, privacy, imports (connect, start, close). Unknown `area`: 422.
+- `POST /audit/verify` → `{ok, checked, broken_at, message}`: entries are hash-chained;
+  an edited or removed entry shows as `broken_at`.
+- `GET /audit/export.csv?area=`: CSV, oldest first (seq, when (UTC), who, ip, area,
+  action, what, changes). Cells that would start a spreadsheet formula get a `'`.
+- Changes made from the server's command line (`clear-ip-allowlist`) show as "Server
+  (command line)" with no IP. Entries can't be changed by the app.
+
+**Privacy (S11)**: Admins only (`manage_access`). Audited by contact id (never the
+address).
+- `POST /privacy/export` `{contact_id}` or `{email}` → 201 `PrivacyRequest`. The file:
+  the customer, every ticket with every message (internal notes too, kind `note`), file
+  names and ratings. `GET /privacy/requests/{id}/file` downloads it (JSON, signed in)
+  for 7 days; then 409.
+- `POST /privacy/erase` `{contact_id, confirm_email}` → 201 `PrivacyRequest` with
+  `counts`. Name and address become "Erased customer" / `erased-<id>@erased.invalid`;
+  every message, subject and field on their tickets, rating comments, task, approval and
+  notification texts, time notes and queued emails become `(erased)` (queued emails are
+  stopped); files and their exports are deleted from storage (download: 409 "This file
+  was erased ..."); portal sign-ins end; events not sent yet are stopped; the import
+  link is removed, so a later import makes a new contact. Ticket counts, reply times,
+  scores and time logged stay. `confirm_email` doesn't match: 422; already
+  erased: 409. If they write again they become a new contact. A chat kept in Cevanos must
+  be erased in Cevanos.
+- `GET /privacy/requests?limit=` → newest first: `{id, kind, contact_id, requested_by,
+  requested_by_name, requested_at, customer_erased, file_ready, size, expires_at, counts}`.
+- Files: new `scan_status` value `erased` (blocked like `infected`).
+
+**Sandbox (S10)**: the `settings` right. One sandbox per workspace.
+- `POST /sandbox` copies the live rules, macros and saved replies (409 if one exists);
+  `GET /sandbox` (404 if none) → `{rules, macros, saved_replies, created_at, updated_at,
+  updated_by_name}`; `DELETE /sandbox`.
+- `PUT /sandbox/{rules|macros|saved_replies}` `{items}`: the whole section in order,
+  checked as on the live pages (422 "Item 2: ..."). Keep `id` to change a live item,
+  leave it out to add, drop an item to remove it. Nothing live changes.
+- `GET /sandbox/compare` → per section `{added, changed: [{id, label, changes}], removed,
+  order_changed}` and `same`.
+- `POST /sandbox/try` → the live and the sandbox rules run on 5 sample new tickets, side
+  by side: `[{sample, text, channel, live, sandbox, same}]`, each result `{lines, type,
+  team, priority, status, tags}`. Nothing is saved.
+- `POST /sandbox/deploy`: all or nothing; each added, changed, removed or reordered item
+  gets its own audit entry, then "Sandbox deployed". Returns what changed; the sandbox
+  becomes a fresh copy. 422 when there's nothing to deploy or an item no longer fits
+  ("Nothing was deployed. Macros: ..."); 409 when two names would clash while saving.
 ## 2026-11-12: Imports from Intercom, Zendesk, Freshdesk, Gorgias and Help Scout (Phase 2, M1-M8)
 
 No new route: `POST /imports/connections` now accepts these five sources, and the rest of the

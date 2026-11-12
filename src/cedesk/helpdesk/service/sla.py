@@ -20,12 +20,15 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cedesk.db import workspace_session
+from cedesk.helpdesk.domain import audit as audit_rules
 from cedesk.helpdesk.domain import sla as clocks
 from cedesk.helpdesk.domain import sla_settings as defaults
+from cedesk.helpdesk.domain.audit import Area
 from cedesk.helpdesk.domain.auth import Caller
 from cedesk.helpdesk.domain.permissions import Action
 from cedesk.helpdesk.repo import auth as auth_repo
 from cedesk.helpdesk.repo import sla as repo
+from cedesk.helpdesk.service import audit
 from cedesk.helpdesk.service.auth import Sessionmaker
 from cedesk.helpdesk.service.errors import Conflict, Invalid, NotFound
 from cedesk.helpdesk.service.members import require
@@ -201,10 +204,13 @@ async def set_targets(
             raise Invalid(f"{priority.capitalize()}: {problem}")
     async with workspace_session(sm, caller.workspace_id) as s:
         await repo.lock_settings(s, caller.workspace_id)
+        before = await _settings(s)
         for priority, (first_reply, resolve) in targets.items():
             await repo.set_target(s, caller.workspace_id, priority, first_reply, resolve)
         await refresh(s, all_open=True)
-        return await _settings(s)
+        after = await _settings(s)
+        await _audit(s, caller, before, after)
+        return after
 
 
 async def _changed(
@@ -213,9 +219,27 @@ async def _changed(
     """Runs `change(s)` under the settings lock, then works out every open ticket again."""
     async with workspace_session(sm, caller.workspace_id) as s:
         await repo.lock_settings(s, caller.workspace_id)
+        before = await _settings(s)
         await change(s)
         await refresh(s, all_open=True)
-        return await _settings(s)
+        after = await _settings(s)
+        await _audit(s, caller, before, after)
+        return after
+
+
+def _audit_view(settings: Settings) -> dict[str, Any]:
+    return {
+        "targets": dict(settings.config.targets),
+        "policies": settings.config.policies,
+        "calendar": settings.config.calendar,
+        "holidays": [{"day": h.day, "name": h.name} for h in settings.holidays],
+    }
+
+
+async def _audit(s: AsyncSession, caller: Caller, before: Settings, after: Settings) -> None:
+    changed = audit_rules.changes(_audit_view(before), _audit_view(after))
+    if changed:
+        await audit.record(s, caller, Area.sla, "changed", "SLA", detail={"changes": changed})
 
 
 def _checked(check: Any, *args: Any) -> Any:

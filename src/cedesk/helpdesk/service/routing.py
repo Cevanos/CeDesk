@@ -8,6 +8,8 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cedesk.db import workspace_session
+from cedesk.helpdesk.domain import audit as audit_rules
+from cedesk.helpdesk.domain.audit import Area
 from cedesk.helpdesk.domain.auth import Caller
 from cedesk.helpdesk.domain.permissions import Action
 from cedesk.helpdesk.domain.routing import (
@@ -23,9 +25,12 @@ from cedesk.helpdesk.domain.triage import SKILL_FOR_LANGUAGE
 from cedesk.helpdesk.repo import catalog
 from cedesk.helpdesk.repo import routing as repo
 from cedesk.helpdesk.repo.routing import Row
+from cedesk.helpdesk.service import audit
 from cedesk.helpdesk.service.auth import Sessionmaker
 from cedesk.helpdesk.service.errors import Forbidden, Invalid, NotFound
 from cedesk.helpdesk.service.members import require
+
+ROUTING_FIELDS = ("status", "channels", "cap_email", "cap_chat", "cap_messaging", "skills")
 
 SKILL = re.compile(r"^[a-z0-9][a-z0-9 _-]{0,39}$")
 MAX_SKILLS = 30
@@ -141,7 +146,18 @@ async def set_routing(
             raise Invalid("This member's role takes no tickets, so it has no status.")
         await repo.save_state(s, caller.workspace_id, member_id, changes)
         row = await repo.agent(s, member_id)
-    assert row is not None
+        assert row is not None
+        changed = audit_rules.changes(target, row, fields=ROUTING_FIELDS)
+        if changed:
+            await audit.record(
+                s,
+                caller,
+                Area.routing,
+                "changed",
+                f"Routing for {row['name']}",
+                target_id=member_id,
+                detail={"changes": changed},
+            )
     return row
 
 
@@ -158,5 +174,14 @@ async def set_defaults(sm: Sessionmaker, caller: Caller, values: Mapping[str, in
     """Admin: the default capacity per channel for every agent without their own limit."""
     require(caller, Action.settings)
     async with workspace_session(sm, caller.workspace_id) as s:
+        before = await repo.defaults(s)
         await repo.save_defaults(s, caller.workspace_id, dict(values))
-        return await repo.defaults(s)
+        after = await repo.defaults(s)
+        changed = audit_rules.changes(
+            before, after, fields=("cap_email", "cap_chat", "cap_messaging")
+        )
+        if changed:
+            await audit.record(
+                s, caller, Area.routing, "changed", "Default capacity", detail={"changes": changed}
+            )
+        return after

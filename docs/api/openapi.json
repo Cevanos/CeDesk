@@ -995,6 +995,573 @@
         }
       }
     },
+    "/api/v1/audit": {
+      "get": {
+        "tags": [
+          "audit log"
+        ],
+        "summary": "Audit log, newest first",
+        "operationId": "list_audit_api_v1_audit_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "area",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/Area"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only this area (the filter on the audit page).",
+              "title": "Area"
+            },
+            "description": "Only this area (the filter on the audit page)."
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Before"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditPageOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/audit/verify": {
+      "post": {
+        "tags": [
+          "audit log"
+        ],
+        "summary": "Verify chain",
+        "operationId": "verify_api_v1_audit_verify_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VerifyOut"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/audit/export.csv": {
+      "get": {
+        "tags": [
+          "audit log"
+        ],
+        "summary": "Audit log as CSV (oldest first)",
+        "operationId": "export_csv_api_v1_audit_export_csv_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "area",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/Area"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only this area (the filter on the audit page).",
+              "title": "Area"
+            },
+            "description": "Only this area (the filter on the audit page)."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "text/csv": {}
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/privacy/export": {
+      "post": {
+        "tags": [
+          "privacy"
+        ],
+        "summary": "Export everything about one customer (Admin)",
+        "description": "Makes a JSON file: the customer, every ticket with every message (internal notes too, marked `note`), file names and ratings. Download it with GET /privacy/requests/{id}/file within 7 days. Audited.",
+        "operationId": "export_api_v1_privacy_export_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExportBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrivacyRequestOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/privacy/erase": {
+      "post": {
+        "tags": [
+          "privacy"
+        ],
+        "summary": "Erase one customer (Admin; can't be undone)",
+        "description": "Replaces the customer's name and address, every message, subject and field on their tickets, rating comments, task and approval texts and queued emails with `(erased)`; deletes their files and exports from storage; signs them out of the portal; stops events not yet sent. Ticket counts, reply times, scores and time logged stay. 422 when `confirm_email` doesn't match; 409 when already erased. A chat kept in Cevanos must be erased in Cevanos too. Audited.",
+        "operationId": "erase_api_v1_privacy_erase_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EraseBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrivacyRequestOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/privacy/requests": {
+      "get": {
+        "tags": [
+          "privacy"
+        ],
+        "summary": "Recent exports and erasures (Admin), newest first",
+        "operationId": "list_requests_api_v1_privacy_requests_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PrivacyRequestOut"
+                  },
+                  "title": "Response List Requests Api V1 Privacy Requests Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/privacy/requests/{request_id}/file": {
+      "get": {
+        "tags": [
+          "privacy"
+        ],
+        "summary": "Download an export (Admin, signed in)",
+        "description": "409 when the file was removed (after 7 days, or the customer was erased).",
+        "operationId": "export_file_api_v1_privacy_requests__request_id__file_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "request_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Request Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sandbox": {
+      "get": {
+        "tags": [
+          "sandbox"
+        ],
+        "summary": "The sandbox (404 when none)",
+        "operationId": "get_sandbox_api_v1_sandbox_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SandboxOut"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "sandbox"
+        ],
+        "summary": "Make a sandbox: a copy of the live rules, macros and saved replies",
+        "description": "409 when the workspace already has one.",
+        "operationId": "create_sandbox_api_v1_sandbox_post",
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SandboxOut"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "sandbox"
+        ],
+        "summary": "Delete the sandbox",
+        "operationId": "delete_sandbox_api_v1_sandbox_delete",
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/sandbox/{section}": {
+      "put": {
+        "tags": [
+          "sandbox"
+        ],
+        "summary": "Replace one section of the sandbox",
+        "description": "Each item is checked as on the live settings page (422 names the item). Nothing live changes until Deploy.",
+        "operationId": "set_section_api_v1_sandbox__section__put",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "section",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Section"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SectionBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SandboxOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sandbox/compare": {
+      "get": {
+        "tags": [
+          "sandbox"
+        ],
+        "summary": "What Deploy would change",
+        "operationId": "compare_api_v1_sandbox_compare_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompareOut"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/sandbox/try": {
+      "post": {
+        "tags": [
+          "sandbox"
+        ],
+        "summary": "Try the sandbox rules on sample tickets",
+        "description": "Runs the live rules and the sandbox rules on built-in sample new tickets (email refund, angry chat, web order question, phone invoice, portal thanks) and shows both results side by side. Nothing is saved.",
+        "operationId": "try_rules_api_v1_sandbox_try_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TriedOut"
+                  },
+                  "type": "array",
+                  "title": "Response Try Rules Api V1 Sandbox Try Post"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/sandbox/deploy": {
+      "post": {
+        "tags": [
+          "sandbox"
+        ],
+        "summary": "Deploy the sandbox over the live settings",
+        "description": "All or nothing: every added, changed and removed rule, macro and saved reply is saved in one go, each with its own audit entry. The sandbox then holds a fresh copy of the live settings. Returns what changed. 422 when there is nothing to deploy or an item no longer fits (e.g. its team was deleted).",
+        "operationId": "deploy_api_v1_sandbox_deploy_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompareOut"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/auth/2fa": {
       "post": {
         "tags": [
@@ -8546,6 +9113,33 @@
         ],
         "title": "ApprovalOut"
       },
+      "Area": {
+        "type": "string",
+        "enum": [
+          "members",
+          "roles",
+          "security",
+          "sso",
+          "two_factor",
+          "teams",
+          "ticket_types",
+          "routing",
+          "sla",
+          "rules",
+          "macros",
+          "saved_replies",
+          "email",
+          "portal",
+          "help_center",
+          "triage",
+          "cevanos",
+          "sandbox",
+          "privacy",
+          "imports"
+        ],
+        "title": "Area",
+        "description": "Filter on the audit page. Other teams' features add their own (api_keys,\nwebhooks, apps, retention): the column takes any lower-case name."
+      },
       "ArticleIn": {
         "properties": {
           "title": {
@@ -8897,6 +9491,132 @@
         ],
         "title": "AttachmentPageOut"
       },
+      "AuditEntryOut": {
+        "properties": {
+          "seq": {
+            "type": "integer",
+            "title": "Seq",
+            "description": "Position in the workspace's chain (1, 2, 3, ...)."
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "At"
+          },
+          "actor_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor Id",
+            "description": "Null for a change made on the server."
+          },
+          "actor_name": {
+            "type": "string",
+            "title": "Actor Name"
+          },
+          "ip": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ip"
+          },
+          "area": {
+            "type": "string",
+            "title": "Area"
+          },
+          "action": {
+            "type": "string",
+            "title": "Action",
+            "description": "created, changed, deleted, reordered, ..."
+          },
+          "target": {
+            "type": "string",
+            "title": "Target",
+            "description": "What changed, e.g. \"Macro Refund approved\"."
+          },
+          "target_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Id"
+          },
+          "detail": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Detail",
+            "description": "`changes`: {field: [before, after]}; secrets show \"(hidden)\"."
+          }
+        },
+        "type": "object",
+        "required": [
+          "seq",
+          "at",
+          "actor_id",
+          "actor_name",
+          "ip",
+          "area",
+          "action",
+          "target",
+          "target_id",
+          "detail"
+        ],
+        "title": "AuditEntryOut"
+      },
+      "AuditPageOut": {
+        "properties": {
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/AuditEntryOut"
+            },
+            "type": "array",
+            "title": "Entries"
+          },
+          "next_before": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Before",
+            "description": "Pass as `before` for the next page."
+          },
+          "areas": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Areas",
+            "description": "Every area, for the filter."
+          }
+        },
+        "type": "object",
+        "required": [
+          "entries",
+          "next_before",
+          "areas"
+        ],
+        "title": "AuditPageOut"
+      },
       "CalendarIn": {
         "properties": {
           "timezone": {
@@ -9178,6 +9898,35 @@
         ],
         "title": "ChangePasswordBody"
       },
+      "ChangedOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "changes": {
+            "additionalProperties": {
+              "items": {},
+              "type": "array"
+            },
+            "type": "object",
+            "title": "Changes",
+            "description": "{field: [live, sandbox]}"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "label",
+          "changes"
+        ],
+        "title": "ChangedOut"
+      },
       "Channel": {
         "type": "string",
         "enum": [
@@ -9253,6 +10002,32 @@
           "team_id"
         ],
         "title": "ChildIn"
+      },
+      "CompareOut": {
+        "properties": {
+          "rules": {
+            "$ref": "#/components/schemas/DiffOut"
+          },
+          "macros": {
+            "$ref": "#/components/schemas/DiffOut"
+          },
+          "saved_replies": {
+            "$ref": "#/components/schemas/DiffOut"
+          },
+          "same": {
+            "type": "boolean",
+            "title": "Same",
+            "description": "Nothing to deploy."
+          }
+        },
+        "type": "object",
+        "required": [
+          "rules",
+          "macros",
+          "saved_replies",
+          "same"
+        ],
+        "title": "CompareOut"
       },
       "ConnectIn": {
         "properties": {
@@ -9843,6 +10618,43 @@
         "type": "object",
         "title": "DefaultsPatch"
       },
+      "DiffOut": {
+        "properties": {
+          "added": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Added"
+          },
+          "changed": {
+            "items": {
+              "$ref": "#/components/schemas/ChangedOut"
+            },
+            "type": "array",
+            "title": "Changed"
+          },
+          "removed": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Removed"
+          },
+          "order_changed": {
+            "type": "boolean",
+            "title": "Order Changed"
+          }
+        },
+        "type": "object",
+        "required": [
+          "added",
+          "changed",
+          "removed",
+          "order_changed"
+        ],
+        "title": "DiffOut"
+      },
       "DiscoveryOut": {
         "properties": {
           "counts": {
@@ -10273,6 +11085,28 @@
         "type": "object",
         "title": "EmailAddressPatch"
       },
+      "EraseBody": {
+        "properties": {
+          "contact_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Contact Id"
+          },
+          "confirm_email": {
+            "type": "string",
+            "maxLength": 254,
+            "minLength": 3,
+            "title": "Confirm Email",
+            "description": "The customer's email typed again. Erasing can't be undone."
+          }
+        },
+        "type": "object",
+        "required": [
+          "contact_id",
+          "confirm_email"
+        ],
+        "title": "EraseBody"
+      },
       "EventOut": {
         "properties": {
           "outcome": {
@@ -10305,6 +11139,38 @@
           "ticket_id"
         ],
         "title": "EventOut"
+      },
+      "ExportBody": {
+        "properties": {
+          "contact_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact Id"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 254,
+                "minLength": 3
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email",
+            "description": "Instead of contact_id."
+          }
+        },
+        "type": "object",
+        "title": "ExportBody"
       },
       "FailedEmailOut": {
         "properties": {
@@ -12373,6 +13239,109 @@
         ],
         "title": "Priority"
       },
+      "PrivacyRequestOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind",
+            "description": "export or erase"
+          },
+          "contact_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Contact Id"
+          },
+          "requested_by": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Requested By"
+          },
+          "requested_by_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Requested By Name"
+          },
+          "requested_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Requested At"
+          },
+          "customer_erased": {
+            "type": "boolean",
+            "title": "Customer Erased",
+            "description": "The customer has been erased since."
+          },
+          "file_ready": {
+            "type": "boolean",
+            "title": "File Ready",
+            "description": "Export only: the file can be downloaded (GET .../file) until `expires_at`. False after 7 days or once the customer is erased."
+          },
+          "size": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Size"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Counts",
+            "description": "Export: tickets and messages in the file. Erase: how many of each thing were changed (tickets, messages, files, emails, notifications, tasks, approvals, time_notes, rating_comments, portal_sessions, portal_codes, events, exports). Counts only, never content."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "contact_id",
+          "requested_by",
+          "requested_by_name",
+          "requested_at",
+          "customer_erased",
+          "file_ready",
+          "size",
+          "expires_at",
+          "counts"
+        ],
+        "title": "PrivacyRequestOut"
+      },
       "PublicArticleOut": {
         "properties": {
           "id": {
@@ -12796,6 +13765,65 @@
           "new_password"
         ],
         "title": "ResetWithLinkBody"
+      },
+      "ResultOut": {
+        "properties": {
+          "lines": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Lines",
+            "description": "\"Rule applied: Refunds → Team Billing\", one per rule."
+          },
+          "type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Type"
+          },
+          "team": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Team"
+          },
+          "priority": {
+            "type": "string",
+            "title": "Priority"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Tags"
+          }
+        },
+        "type": "object",
+        "required": [
+          "lines",
+          "type",
+          "team",
+          "priority",
+          "status",
+          "tags"
+        ],
+        "title": "ResultOut"
       },
       "Role": {
         "type": "string",
@@ -13374,6 +14402,68 @@
         ],
         "title": "RunOut"
       },
+      "SandboxOut": {
+        "properties": {
+          "rules": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Rules",
+            "description": "In order. {id, name, enabled, event, conditions, actions}; `id` null for a rule added in the sandbox. Same shapes as /rules."
+          },
+          "macros": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Macros",
+            "description": "In order. {id, name, steps}."
+          },
+          "saved_replies": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Saved Replies",
+            "description": "{id, shortcut, body}."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "updated_by_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated By Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "rules",
+          "macros",
+          "saved_replies",
+          "created_at",
+          "updated_at",
+          "updated_by_name"
+        ],
+        "title": "SandboxOut"
+      },
       "SavedReplyIn": {
         "properties": {
           "shortcut": {
@@ -13544,6 +14634,33 @@
           "items"
         ],
         "title": "ScoreOut"
+      },
+      "Section": {
+        "type": "string",
+        "enum": [
+          "rules",
+          "macros",
+          "saved_replies"
+        ],
+        "title": "Section"
+      },
+      "SectionBody": {
+        "properties": {
+          "items": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Items",
+            "description": "The whole section, in order. Keep an item's `id` to change that live item, leave it out to add one, drop an item to remove it."
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "SectionBody"
       },
       "SecuritySettingsBody": {
         "properties": {
@@ -16229,6 +17346,42 @@
         ],
         "title": "TriageSettingsOut"
       },
+      "TriedOut": {
+        "properties": {
+          "sample": {
+            "type": "string",
+            "title": "Sample"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "channel": {
+            "type": "string",
+            "title": "Channel"
+          },
+          "live": {
+            "$ref": "#/components/schemas/ResultOut"
+          },
+          "sandbox": {
+            "$ref": "#/components/schemas/ResultOut"
+          },
+          "same": {
+            "type": "boolean",
+            "title": "Same"
+          }
+        },
+        "type": "object",
+        "required": [
+          "sample",
+          "text",
+          "channel",
+          "live",
+          "sandbox",
+          "same"
+        ],
+        "title": "TriedOut"
+      },
       "ValidationError": {
         "properties": {
           "loc": {
@@ -16283,6 +17436,43 @@
           "expires_at"
         ],
         "title": "VerifiedOut"
+      },
+      "VerifyOut": {
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "title": "Ok"
+          },
+          "checked": {
+            "type": "integer",
+            "title": "Checked",
+            "description": "Entries checked, oldest first."
+          },
+          "broken_at": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Broken At",
+            "description": "The first entry that doesn't match (seq)."
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ok",
+          "checked",
+          "broken_at",
+          "message"
+        ],
+        "title": "VerifyOut"
       },
       "VoteIn": {
         "properties": {
