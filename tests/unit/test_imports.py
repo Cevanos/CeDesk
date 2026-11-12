@@ -1,11 +1,13 @@
 """Import rules (md M1-M8): how a source's words map onto CeDesk's, the team suggested for a
 group, the run options, and the small helpers the framework leans on."""
 
+from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
 
 from cedesk.helpdesk.domain import imports as rules
+from cedesk.helpdesk.domain.imports import Message
 
 
 def test_status_maps_and_an_unknown_word_is_open() -> None:
@@ -113,3 +115,40 @@ def test_a_rate_limit_waits_for_retry_after_but_never_forever() -> None:
     assert rules.wait_seconds(None) == rules.DEFAULT_RATE_WAIT
     assert rules.wait_seconds(0) == rules.DEFAULT_RATE_WAIT
     assert rules.wait_seconds(10**9) == rules.MAX_RATE_WAIT
+
+
+# Files, syncing and history (M7, M9, M10): the rules that need no database
+
+
+def test_a_file_kept_as_a_link_says_what_and_why() -> None:
+    line = rules.link_line("movie.mp4", 31_457_280, "https://f.example/m", "over 25 MB")
+    assert (
+        line == "Attachment kept as a link (over 25 MB): movie.mp4 (30.0 MB) · https://f.example/m"
+    )
+    assert "MB)" not in rules.link_line("a.txt", None, "https://f.example/a", "gone")
+
+
+def test_a_result_is_what_an_admin_reads() -> None:
+    from cedesk.helpdesk.service.imports.framework import result_word
+
+    assert result_word("queued", False) == "running" == result_word("running", True)
+    assert result_word("done", False) == "finished" and result_word("done", True) == "syncing"
+    assert result_word("failed", True) == "failed"
+
+
+def test_a_message_is_new_by_its_source_id_else_by_kind_and_second() -> None:
+    from cedesk.helpdesk.service.imports.framework import _is_new
+
+    at = datetime(2025, 1, 1, 10, 0, 5, 700_000, tzinfo=UTC)
+    known = ({"m1"}, {("agent", int(at.timestamp()))})
+    assert _is_new(Message("agent", "x", at, "m1"), known) is False
+    assert _is_new(Message("agent", "x", at, "m2"), known) is True
+    assert _is_new(Message("agent", "x", at), known) is False  # no id: same kind and second
+    assert _is_new(Message("customer", "x", at), known) is True
+    assert _is_new(Message("agent", "x", at, "m1"), None) is True  # a ticket not here yet
+
+
+def test_syncing_is_offered_for_every_source_but_a_csv_file() -> None:
+    assert set(rules.SYNC_SOURCES) == set(rules.AVAILABLE_SOURCES)
+    assert "csv" not in rules.SYNC_SOURCES
+    assert rules.SYNC_EVERY_SECONDS == 300 and rules.FILE_MAX == 25 * 1024 * 1024

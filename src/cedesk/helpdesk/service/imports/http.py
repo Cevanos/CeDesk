@@ -21,7 +21,7 @@ import base64
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import Any
-from urllib.parse import quote
+from urllib.parse import quote, urljoin, urlsplit
 
 import httpx
 
@@ -31,6 +31,7 @@ from cedesk.helpdesk.domain.imports import RateLimited, SourceError
 TIMEOUT_SECONDS = 30
 USER_AGENT = "CeDesk/1 (+import)"
 MAX_RETRY_AFTER = 3600
+MAX_HOPS = 3  # redirects followed when fetching a file
 
 
 def basic(user: str, password: str) -> dict[str, str]:
@@ -129,6 +130,70 @@ class SourceHttp:
         if not path.rstrip("/").endswith("/oauth2/token"):
             raise ValueError("exchange_token is for an OAuth token path only")
         return await self._send("POST", path, params=None, form=form, missing_ok=False)
+
+    async def download(self, url: str, limit: int) -> bytes | None:
+        """The bytes of a file a source message points to, or None when it is gone, not
+        ours to read (401/403/404/410, an expired link) or bigger than `limit`.
+
+        The address came from the source's data, so it is not trusted: https on the default
+        port only, every host checked (public addresses only) before each request, and a
+        redirect (sources send files to their storage this way) followed at most
+        `MAX_HOPS` times by hand, each hop checked again. The account's credentials go only
+        to the account's own host, never to a storage host a redirect led to. The body is
+        read as a stream and dropped the moment it passes `limit`."""
+        headers = {"User-Agent": USER_AGENT, "Accept": "*/*"}
+        current = url
+        for hop in range(MAX_HOPS + 1):
+            parts = urlsplit(current)
+            host = (parts.hostname or "").lower()
+            if parts.scheme != "https" or not host or parts.port not in (None, 443):
+                return None
+            try:
+                await self._guard(host)
+            except BadAddress:
+                return None
+            own = host == self.host.lower()
+            sent = {**self._headers, **headers} if own else headers
+            sent["Accept"] = "*/*"
+            try:
+                async with (
+                    httpx.AsyncClient(
+                        timeout=TIMEOUT_SECONDS, follow_redirects=False, transport=self._transport
+                    ) as client,
+                    client.stream("GET", current, headers=sent) as response,
+                ):
+                    status = response.status_code
+                    if status in (301, 302, 303, 307, 308):
+                        where = response.headers.get("location", "")
+                        if not where or hop == MAX_HOPS:
+                            return None
+                        current = urljoin(current, where)
+                        continue
+                    if status == 429:
+                        raise RateLimited(retry_after(response.headers))
+                    if status in (401, 403, 404, 410):
+                        return None
+                    if status in (408, 425) or status >= 500:
+                        raise SourceError(
+                            f"{self._label} answered {status} for a file; will retry.",
+                            permanent=False,
+                        )
+                    if status >= 400:
+                        return None
+                    declared = response.headers.get("content-length", "")
+                    if declared.isdigit() and int(declared) > limit:
+                        return None
+                    data = bytearray()
+                    async for chunk in response.aiter_bytes():
+                        data += chunk
+                        if len(data) > limit:
+                            return None
+                    return bytes(data)
+            except httpx.HTTPError as exc:
+                raise SourceError(
+                    f"{self._label} can't be reached: {type(exc).__name__}", permanent=False
+                ) from None
+        return None
 
     async def _send(
         self,

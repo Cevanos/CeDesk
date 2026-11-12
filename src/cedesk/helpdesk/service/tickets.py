@@ -22,6 +22,7 @@ from cedesk.helpdesk.domain.limits import Kind as LimitKind
 from cedesk.helpdesk.domain.paging import CursorError
 from cedesk.helpdesk.domain.permissions import Action, Scope
 from cedesk.helpdesk.domain.portal import subject_from
+from cedesk.helpdesk.domain.reports import IMPORT_SOURCES
 from cedesk.helpdesk.domain.rules import Event as RuleEvent
 from cedesk.helpdesk.domain.sla import TicketSla
 from cedesk.helpdesk.domain.tickets import (
@@ -558,6 +559,7 @@ async def _page(
     sort: Sort,
     cursor: str | None,
     limit: int,
+    imported: Sequence[str] | None = None,
 ) -> tuple[Sequence[Row], str | None]:
     try:
         after = rules.decode_cursor(cursor, sort) if cursor else None
@@ -570,6 +572,7 @@ async def _page(
         priority=priority.value if priority else None,
         team=team_id,
         contact=contact_id,
+        imported=imported,
         visible_team=scope_rules.visible_team(caller),
         scope=scope,
         q_like=_like(q) if q else None,
@@ -603,9 +606,12 @@ async def list_tickets(
     sort: Sort = Sort.priority,
     cursor: str | None = None,
     limit: int = 50,
+    imported: str | None = None,
 ) -> TicketPage:
     """A page of tickets in `sort` order; pass `next_cursor` back as `cursor` for the
     next page (the same filters and sort must be sent again).
+
+    `imported`: only tickets brought from another help desk (M10): `any`, or one source.
 
     `counts` is per status and ignores the other filters, for the tabs.
     """
@@ -613,6 +619,14 @@ async def list_tickets(
     if scope not in SCOPES:
         raise Invalid("scope is everyone, mine or unassigned.")
     q = (q or "").strip() or None
+    sources: list[str] | None = None
+    if imported is not None:
+        if imported == "any":
+            sources = list(IMPORT_SOURCES)
+        elif imported in IMPORT_SOURCES:
+            sources = [imported]
+        else:
+            raise Invalid("imported is any, or one of: " + ", ".join(IMPORT_SOURCES) + ".")
     async with workspace_session(sm, caller.workspace_id) as s:
         rows, next_cursor = await _page(
             s,
@@ -626,6 +640,7 @@ async def list_tickets(
             sort=sort,
             cursor=cursor,
             limit=limit,
+            imported=sources,
         )
         counts = await repo.counts_by_status(s, scope_rules.visible_team(caller))
         cfg = await sla.config(s)

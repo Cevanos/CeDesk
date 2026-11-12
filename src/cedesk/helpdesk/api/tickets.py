@@ -188,6 +188,14 @@ async def list_tickets(
             "(most recently changed first)."
         ),
     ] = Sort.priority,
+    imported: Annotated[
+        str | None,
+        Query(
+            description="Only tickets brought from another help desk: `any`, or one source "
+            "(intercom, zendesk, freshdesk, gorgias, helpscout, csv). Each also has the tag "
+            "`imported-<source>`.",
+        ),
+    ] = None,
     cursor: Cursor = None,
     limit: Limit = 50,
 ) -> TicketListOut:
@@ -202,6 +210,7 @@ async def list_tickets(
         sort=sort,
         cursor=cursor,
         limit=limit,
+        imported=imported,
     )
     return TicketListOut(
         tickets=[TicketRowOut.model_validate(_row(r, page.sla.get(r["id"]))) for r in page.tickets],
