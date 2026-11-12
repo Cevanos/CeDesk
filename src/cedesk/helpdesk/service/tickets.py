@@ -171,7 +171,7 @@ def _invalid(exc: FieldError) -> Invalid:
 
 async def _who(s: AsyncSession, caller: Caller) -> str:
     me = await repo.member_brief(s, caller.member_id)
-    return str(me["name"]) if me else "someone"
+    return caller.acting(str(me["name"]) if me else "someone")
 
 
 async def _type_defs(s: AsyncSession, type_id: UUID | None) -> tuple[str | None, list[FieldDef]]:

@@ -47,7 +47,7 @@ def _invalid(exc: ToolError) -> Invalid:
 
 async def _who(s: AsyncSession, caller: Caller) -> str:
     me = await ticket_repo.member_brief(s, caller.member_id)
-    return str(me["name"]) if me else "someone"
+    return caller.acting(str(me["name"]) if me else "someone")
 
 
 async def _ticket(s: AsyncSession, ticket_id: UUID) -> Row:

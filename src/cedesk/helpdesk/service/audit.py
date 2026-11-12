@@ -52,7 +52,7 @@ async def record(
         caller.workspace_id,
         at=datetime.now(UTC),
         actor_id=caller.member_id,
-        actor_name=name or "Someone",
+        actor_name=caller.acting(name or "Someone"),
         ip=caller.ip,
         area=area.value,
         action=action,
