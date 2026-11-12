@@ -31,6 +31,7 @@ ACCOUNT_DOMAINS: Mapping[str, str] = {
     "freshdesk": "freshdesk.com",
     "gorgias": "gorgias.com",
     "shopify": "myshopify.com",  # the Shopify app (md PL7): <shop>.myshopify.com
+    "jira": "atlassian.net",  # the Jira app (md X10): <site>.atlassian.net
 }
 # sources whose host is fixed (nothing the Admin types reaches it)
 FIXED_HOSTS: Mapping[str, Mapping[str, str]] = {

@@ -195,6 +195,7 @@ def _worker(once: bool) -> int:
     from cedesk.cevanos_client import make_cevanos
     from cedesk.crypto import Sealer
     from cedesk.db import make_engine, make_sessionmaker
+    from cedesk.helpdesk.service.apps import slack_bound
     from cedesk.helpdesk.service.cevanos import CevanosHandler, ChatPoller
     from cedesk.helpdesk.service.csat import CsatHandler
     from cedesk.helpdesk.service.delivery import Handler, deliver_due
@@ -203,6 +204,7 @@ def _worker(once: bool) -> int:
     from cedesk.helpdesk.service.idempotency import sweep_everywhere
     from cedesk.helpdesk.service.imports.framework import make_importers
     from cedesk.helpdesk.service.imports.framework import run_due as run_imports
+    from cedesk.helpdesk.service.jira import make_post
     from cedesk.helpdesk.service.password_reset import Sender
     from cedesk.helpdesk.service.portal_notice import PortalNoticeHandler
     from cedesk.helpdesk.service.privacy import remove_expired_exports
@@ -210,6 +212,7 @@ def _worker(once: bool) -> int:
     from cedesk.helpdesk.service.security_alerts import SecurityAlertHandler
     from cedesk.helpdesk.service.sla import refresh_everywhere
     from cedesk.helpdesk.service.sla_alerts import alert_everywhere
+    from cedesk.helpdesk.service.slack_alerts import SlackAlertHandler
     from cedesk.helpdesk.service.stream import prune_everywhere as prune_stream
     from cedesk.helpdesk.service.task_alerts import alert_everywhere as alert_tasks
     from cedesk.helpdesk.service.webhooks import WebhookFanout
@@ -253,6 +256,10 @@ def _worker(once: bool) -> int:
             WebhookFanout(sm),  # queues one delivery per webhook; send_webhooks sends them
         ]
         sealer = Sealer(settings.secret_key.get_secret_value())
+        # Slack alerts for Urgent and High tickets, when the workspace installed the app.
+        handlers.append(
+            SlackAlertHandler(sm, sealer, make_post, slack_bound, app_url=settings.app_url)
+        )
         webhook_client = WebhookClient()
         chats = ChatPoller(sm, cevanos, batch=settings.cevanos_poll_batch)
         importers = make_importers(settings.secret_key.get_secret_value(), store)

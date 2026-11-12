@@ -1,8 +1,8 @@
 """Marketplace apps (md PL7) and the ticket sidebar's orders and payments cards (C12),
 the rules that need no database.
 
-- Apps here: Shopify (orders) and Stripe (payments), both read only. Jira and Slack alerts
-  come next; Calendly is on the cut line.
+- Apps here: Shopify (orders) and Stripe (payments), read only; Jira (issues from tickets)
+  and Slack alerts (Urgent and High tickets to a channel). Calendly is on the cut line.
 - An Admin installs an app with its credentials; CeDesk checks them with the provider,
   keeps them sealed (only the last 4 characters are shown), and audits install and
   uninstall. With Cevanos connected, orders and payments come from Cevanos's own
@@ -22,12 +22,14 @@ from typing import Any
 class App(StrEnum):
     shopify = "shopify"
     stripe = "stripe"
+    jira = "jira"
+    slack_alerts = "slack_alerts"
 
 
 @dataclass(frozen=True)
 class AppInfo:
     name: str
-    card: str  # what it shows in the ticket sidebar
+    card: str  # what it adds: orders, payments, jira (on tickets) or alerts
     settings: tuple[str, ...]  # what the Admin types that isn't secret
     credential: str  # its name
     credential_help: str
@@ -50,8 +52,24 @@ CATALOG: dict[App, AppInfo] = {
         credential_help="A restricted key (rk_...) with read access to Customers and Charges; "
         "a secret key (sk_...) works too but can do far more than CeDesk needs.",
     ),
+    App.jira: AppInfo(
+        name="Jira",
+        card="jira",
+        settings=("site", "email", "project"),
+        credential="api_token",
+        credential_help="An Atlassian API token of the account in `email` "
+        "(id.atlassian.com > Security > API tokens); `site` is acme for acme.atlassian.net, "
+        "`project` the key new issues go to (e.g. SUP).",
+    ),
+    App.slack_alerts: AppInfo(
+        name="Slack alerts",
+        card="alerts",
+        settings=(),
+        credential="webhook_url",
+        credential_help="A Slack Incoming Webhook URL (https://hooks.slack.com/services/...) "
+        "for the channel that gets Urgent and High tickets. Installing it posts a test line.",
+    ),
 }
-CARD_APP = {"orders": App.shopify, "payments": App.stripe}
 CARD_LIMIT = 5  # orders or payments shown per customer
 SECRET_MAX = 300
 SHOPIFY_API = "2024-10"
