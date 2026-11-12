@@ -149,6 +149,26 @@ async def next_number(session: AsyncSession, workspace_id: UUID) -> int:
     return int(result.scalar_one())
 
 
+async def reserve_numbers(session: AsyncSession, workspace_id: UUID, count: int) -> int:
+    """The first of `count` consecutive ticket numbers, taken in one short statement. An
+    import reserves a batch's numbers in their own transaction, so the counter's row lock
+    is not held while the batch is written and live ticket creation never waits for it.
+    `count` must be at least 1: zero would hand out a number twice and a negative count would
+    move the counter backwards."""
+    if count < 1:
+        raise ValueError("count must be at least 1")
+    result = await session.execute(
+        text(
+            "INSERT INTO hd_counter (workspace_id, next_ticket_number) "
+            "VALUES (:ws, 1001 + :n) ON CONFLICT (workspace_id) DO UPDATE "
+            "SET next_ticket_number = hd_counter.next_ticket_number + :n, updated_at = now() "
+            "RETURNING next_ticket_number - :n"
+        ),
+        {"ws": workspace_id, "n": count},
+    )
+    return int(result.scalar_one())
+
+
 async def upsert_contact(session: AsyncSession, workspace_id: UUID, email: str, name: str) -> UUID:
     """The contact with this email, created on first sight. An existing name is kept."""
     result = await session.execute(

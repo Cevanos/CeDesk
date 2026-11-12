@@ -179,18 +179,23 @@ async def set_due(
 # Breach alerts (W14)
 
 
-async def newly_breached(session: AsyncSession, now: datetime, limit: int) -> Sequence[Row]:
+async def newly_breached(
+    session: AsyncSession, now: datetime, limit: int, imported: Sequence[str] = ()
+) -> Sequence[Row]:
     """Open tickets whose current clock ran out and haven't been alerted for it. Locked
-    (SKIP LOCKED), so two workers never alert the same ticket."""
+    (SKIP LOCKED), so two workers never alert the same ticket. Tickets imported from another
+    help desk (`imported`: the import source names) are never alerted: their times come from
+    the old desk, as the team report already treats them."""
     result = await session.execute(
         text(
             "SELECT t.id, t.number, t.subject, t.sla_due_at, t.first_reply_at, t.assignee_id, "
             "t.team_id FROM hd_ticket t WHERE t.status <> 'resolved' "
             "AND t.merged_into_id IS NULL AND t.sla_due_at <= :now "
             "AND t.sla_alerted_due IS DISTINCT FROM t.sla_due_at "
+            "AND NOT coalesce(t.source = ANY(CAST(:imported AS text[])), false) "
             "ORDER BY t.sla_due_at LIMIT :limit FOR UPDATE OF t SKIP LOCKED"
         ),
-        {"now": now, "limit": limit},
+        {"now": now, "limit": limit, "imported": list(imported)},
     )
     return result.mappings().all()
 

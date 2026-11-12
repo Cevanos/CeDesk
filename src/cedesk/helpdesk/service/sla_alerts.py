@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from cedesk.db import workspace_session
 from cedesk.helpdesk.domain import events
+from cedesk.helpdesk.domain.reports import IMPORT_SOURCES
 from cedesk.helpdesk.domain.rules import Event as RuleEvent
 from cedesk.helpdesk.domain.sla_settings import breach_note
 from cedesk.helpdesk.domain.tickets import Status, label
@@ -86,7 +87,7 @@ async def alert_workspace(
     """One workspace, one transaction. Returns how many tickets were alerted."""
     now = now or datetime.now(UTC)
     async with workspace_session(sm, workspace_id) as s:
-        tickets = await repo.newly_breached(s, now, batch)
+        tickets = await repo.newly_breached(s, now, batch, IMPORT_SOURCES)
         if not tickets:
             return 0
         await repo.mark_alerted(s, [t["id"] for t in tickets])
