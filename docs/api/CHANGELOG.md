@@ -3,6 +3,30 @@
 `openapi.json` next to this file is the API as served (`uv run cedesk openapi`). Every
 route is under `/api/v1`. Breaking changes only come in v2 (md 2B). Newest first.
 
+## 2026-11-13: Imports: HubSpot and Zoho Desk (Phase 2, M1)
+
+New `source` values for `POST /imports/connections`: all 7 help desks of md M1 can now be
+connected (plus a CSV file). Everything else (dry run, run, team map, files, sync, history)
+works as for the other sources.
+
+- `hubspot`: `credentials: {"token": ...}`, a private app token with the scopes `tickets`,
+  `crm.objects.contacts.read`, `crm.objects.owners.read`, `sales-email-read` and `files`.
+  No settings. Groups are ticket pipelines. A stage marked closed -> resolved, a "waiting on
+  contact" stage -> pending, any other -> open. Emails and notes on a ticket become messages,
+  their files are copied. HubSpot has no knowledge base or saved replies in its API: the dry
+  run says so in `warnings`.
+- `zoho`: `settings: {"region": "us"|"eu"|"in"|"au"|"jp", "org_id": optional}`,
+  `credentials: {"client_id", "client_secret", "refresh_token"}` from a Zoho Self Client with
+  `Desk.tickets.READ`, `Desk.contacts.READ`, `Desk.basic.READ` and `Desk.articles.READ`.
+  `org_id` is needed only when the account has several organisations (the error lists them).
+  Groups are departments. Status by Zoho's status type: Open -> open, On Hold -> pending,
+  Closed -> resolved. Threads and comments become messages; help center articles are
+  imported; Zoho's email templates are not (the dry run says so).
+- Both read only (GET; the one POST is the token exchange or a HubSpot search), and only
+  from their own hosts. Credentials are never shown back.
+
+Not yet run against a real HubSpot or Zoho account: field shapes follow their API docs.
+
 ## 2026-11-12: Imports: keep syncing until go-live, import history, attachments (Phase 2, M7, M9, M10)
 
 New (Admin only, Settings): the three things that were left of the imports.

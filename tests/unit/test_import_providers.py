@@ -22,6 +22,11 @@ GOOD: dict[str, tuple[dict[str, str], dict[str, str]]] = {
     "freshdesk": ({"domain": "acme"}, {"api_key": "key-1234"}),
     "gorgias": ({"domain": "acme"}, {"email": "a@b.co", "api_key": "key-1234"}),
     "helpscout": ({}, {"app_id": "id-1", "app_secret": "secret-1234"}),
+    "hubspot": ({}, {"token": "pat-1234"}),
+    "zoho": (
+        {"region": "in"},
+        {"client_id": "id-1", "client_secret": "s-1", "refresh_token": "r-1"},
+    ),
 }
 
 

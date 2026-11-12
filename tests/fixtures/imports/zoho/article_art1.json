@@ -1,0 +1,10 @@
+{
+ "id": "art1",
+ "title": "Refunds",
+ "answer": "<p>Steps to get a refund</p>",
+ "status": "Published",
+ "category": {
+  "id": "k1",
+  "name": "Billing"
+ }
+}

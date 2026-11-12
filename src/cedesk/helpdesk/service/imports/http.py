@@ -121,12 +121,20 @@ class SourceHttp:
 
     async def exchange_token(self, path: str, form: Mapping[str, str]) -> Any:
         """OAuth's token exchange (`POST` of a form to the source's token path), for a source
-        that hands out a short-lived access token for an app id and secret. It is the only
-        request here that isn't a `GET`, it reads nothing of the customer's, and it is refused
-        for any path that doesn't end in `/oauth2/token`."""
-        if not path.rstrip("/").endswith("/oauth2/token"):
+        that hands out a short-lived access token for an app id and secret (or a refresh
+        token). It reads nothing of the customer's, and it is refused for any path that
+        doesn't end in `/oauth2/token` or `/oauth/v2/token` (Zoho's)."""
+        if not path.rstrip("/").endswith(("/oauth2/token", "/oauth/v2/token")):
             raise ValueError("exchange_token is for an OAuth token path only")
         return await self._send("POST", path, params=None, form=form, missing_ok=False)
+
+    async def read(self, path: str, body: Mapping[str, Any]) -> Any:
+        """A read that a source only offers as a `POST` of JSON (HubSpot's search and batch
+        reads). Refused for any path that doesn't end in `/search` or `/batch/read`, so it
+        can never write to the source."""
+        if not path.rstrip("/").endswith(("/search", "/batch/read")):
+            raise ValueError("read is for a search or batch-read path only")
+        return await self._send("POST", path, params=None, form=None, missing_ok=False, json=body)
 
     async def download(self, url: str, limit: int) -> bytes | None:
         """The bytes of a file a source message points to, or None when it is gone, not
@@ -200,6 +208,7 @@ class SourceHttp:
         params: Mapping[str, Any] | None,
         form: Mapping[str, str] | None,
         missing_ok: bool,
+        json: Mapping[str, Any] | None = None,
     ) -> Any:
         try:
             await self._guard(self.host)
@@ -214,6 +223,7 @@ class SourceHttp:
                     self._base + path,
                     params=_clean(params),
                     data=None if form is None else dict(form),
+                    json=None if json is None else dict(json),
                     headers=self._headers,
                 )
         except httpx.HTTPError as exc:
@@ -230,6 +240,8 @@ class SourceHttp:
             )
         if status == 404 and missing_ok:
             return None
+        if status == 204:
+            return None  # nothing to list (Zoho answers an empty page this way)
         if status == 404:
             raise SourceError(f"{self._label} has no such account or record.", permanent=True)
         if 300 <= status < 400:

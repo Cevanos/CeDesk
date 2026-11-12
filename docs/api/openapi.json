@@ -2292,10 +2292,10 @@
                   "type": "null"
                 }
               ],
-              "description": "Only tickets brought from another help desk: `any`, or one source (intercom, zendesk, freshdesk, gorgias, helpscout, csv). Each also has the tag `imported-<source>`.",
+              "description": "Only tickets brought from another help desk: `any`, or one source (intercom, zendesk, freshdesk, gorgias, helpscout, hubspot, zoho, csv). Each also has the tag `imported-<source>`.",
               "title": "Imported"
             },
-            "description": "Only tickets brought from another help desk: `any`, or one source (intercom, zendesk, freshdesk, gorgias, helpscout, csv). Each also has the tag `imported-<source>`."
+            "description": "Only tickets brought from another help desk: `any`, or one source (intercom, zendesk, freshdesk, gorgias, helpscout, hubspot, zoho, csv). Each also has the tag `imported-<source>`."
           },
           {
             "name": "cursor",
@@ -11142,7 +11142,9 @@
               "zendesk",
               "freshdesk",
               "gorgias",
-              "helpscout"
+              "helpscout",
+              "hubspot",
+              "zoho"
             ],
             "title": "Source"
           },
@@ -12915,7 +12917,7 @@
           "source": {
             "type": "string",
             "title": "Source",
-            "description": "intercom, zendesk, freshdesk, gorgias, helpscout or csv."
+            "description": "intercom, zendesk, freshdesk, gorgias, helpscout, hubspot, zoho or csv."
           },
           "account": {
             "type": "string",

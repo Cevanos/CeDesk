@@ -21,10 +21,11 @@ from uuid import UUID
 from cedesk.helpdesk.domain.reports import IMPORT_SOURCES
 
 SOURCES = IMPORT_SOURCES
-AVAILABLE_SOURCES: tuple[str, ...] = ("intercom", "zendesk", "freshdesk", "gorgias", "helpscout")
-"""Sources an Admin can connect to. HubSpot and Zoho Desk are Phase 3 (the cut line): their
-names stay in `SOURCES` (the database accepts them) but no connector is offered. A CSV file
-is uploaded, not connected."""
+AVAILABLE_SOURCES: tuple[str, ...] = (
+    "intercom", "zendesk", "freshdesk", "gorgias", "helpscout", "hubspot", "zoho",
+)  # fmt: skip
+"""Sources an Admin can connect to (md M1: all 8 with CSV). A CSV file is uploaded, not
+connected."""
 KINDS: tuple[str, ...] = ("contacts", "tickets", "articles", "replies")  # the order of a run
 PAGE_MAX = 100  # records written per transaction: a page is a commit
 BUDGET_SECONDS = 20.0  # one worker pass works on imports this long, then lets the rest run
