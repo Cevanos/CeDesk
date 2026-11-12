@@ -267,7 +267,7 @@ async def run_macro(
             raise Conflict(NOT_ACCEPTED)
 
         me = await ticket_repo.member_brief(s, caller.member_id)
-        who = str(me["name"]) if me else "someone"
+        who = caller.acting(str(me["name"]) if me else "someone")
         types = await rule_repo.names(s, "hd_ticket_type")
         teams = await rule_repo.names(s, "hd_team")
         state = rule_engine.State(

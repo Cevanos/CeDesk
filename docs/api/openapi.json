@@ -9033,6 +9033,269 @@
         }
       }
     },
+    "/api/v1/api-keys": {
+      "get": {
+        "tags": [
+          "api keys"
+        ],
+        "summary": "API keys (Admin)",
+        "description": "Live keys first, newest first; then revoked ones.",
+        "operationId": "list_keys_api_v1_api_keys_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/KeyOut"
+                  },
+                  "type": "array",
+                  "title": "Response List Keys Api V1 Api Keys Get"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Admins only, signed in (not with a key)"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "api keys"
+        ],
+        "summary": "Make an API key (Admin; the key is shown once)",
+        "description": "read: GET only. read_write: also tickets, customers, notes, tags, tasks, time and customer messages in (/inbound/tickets). admin: also teams, ticket types, saved replies, macros, rules and the help center. A key acts as the Admin who made it, within that level; it never reaches sign-in, members, roles, security, SSO, Cevanos, imports, privacy or API keys, and never approves. Audited (area api_keys, action created).",
+        "operationId": "create_key_api_v1_api_keys_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/KeyBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NewKeyOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Admins only, signed in (not with a key)"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/api-keys/{key_id}": {
+      "delete": {
+        "tags": [
+          "api keys"
+        ],
+        "summary": "Revoke an API key (Admin)",
+        "description": "The key answers 401 from now on. Revoking it again changes nothing. Audited (area api_keys, action revoked).",
+        "operationId": "revoke_key_api_v1_api_keys__key_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "key_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Key Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "No such key"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/inbound/tickets": {
+      "post": {
+        "tags": [
+          "inbound api"
+        ],
+        "summary": "A customer's new request from another system (API key)",
+        "description": "Makes a ticket on the `api` channel as the customer: triage, rules, SLA and routing run. 200 instead of 201 when `external_id` made a ticket before. Agents' replies stay in CeDesk: read them with `GET /tickets/{id}`.",
+        "operationId": "new_request_api_v1_inbound_tickets_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InboundTicketIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InboundTicketOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No API key, or a revoked one"
+          },
+          "403": {
+            "description": "Not an API key, or a read-only one"
+          },
+          "429": {
+            "description": "Over the workspace's API key budget (Retry-After)"
+          },
+          "200": {
+            "description": "This external_id made the ticket before"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/inbound/tickets/{ticket_id}/messages": {
+      "post": {
+        "tags": [
+          "inbound api"
+        ],
+        "summary": "The customer's next message from another system (API key)",
+        "description": "Only on a ticket that came in through the API. Works as the customer's reply: it reopens a resolved ticket, and reply rules run. 200 for a duplicate.",
+        "operationId": "customer_message_api_v1_inbound_tickets__ticket_id__messages_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "ticket_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Ticket Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InboundMessageIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InboundMessageOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No API key, or a revoked one"
+          },
+          "403": {
+            "description": "Not an API key, or a read-only one"
+          },
+          "429": {
+            "description": "Over the workspace's API key budget (Retry-After)"
+          },
+          "200": {
+            "description": "This external_id was saved before"
+          },
+          "404": {
+            "description": "No such ticket"
+          },
+          "409": {
+            "description": "The ticket came in another way, or was merged"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/healthz": {
       "get": {
         "tags": [
@@ -9657,7 +9920,8 @@
           "cevanos",
           "sandbox",
           "privacy",
-          "imports"
+          "imports",
+          "api_keys"
         ],
         "title": "Area",
         "description": "Filter on the audit page. Other teams' features add their own (api_keys,\nwebhooks, apps, retention): the column takes any lower-case name."
@@ -12501,6 +12765,191 @@
         "type": "object",
         "title": "HolidayPatch"
       },
+      "InboundMessageIn": {
+        "properties": {
+          "message": {
+            "type": "string",
+            "maxLength": 50000,
+            "minLength": 1,
+            "title": "Message"
+          },
+          "external_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200,
+                "minLength": 1,
+                "description": "Your system's own id for it. Sending it again changes nothing."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "message"
+        ],
+        "title": "InboundMessageIn"
+      },
+      "InboundMessageOut": {
+        "properties": {
+          "message_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Message Id"
+          },
+          "outcome": {
+            "$ref": "#/components/schemas/Outcome",
+            "description": "added, rules_ran, reopened (it was resolved), thanked (a thank-you on a resolved ticket: it stays resolved) or duplicate (this external_id was saved before; nothing changed)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "message_id",
+          "outcome"
+        ],
+        "title": "InboundMessageOut"
+      },
+      "InboundTicketIn": {
+        "properties": {
+          "contact": {
+            "$ref": "#/components/schemas/ContactIn",
+            "description": "The customer: a ticket is theirs by email."
+          },
+          "message": {
+            "type": "string",
+            "maxLength": 50000,
+            "minLength": 1,
+            "title": "Message",
+            "description": "What the customer wrote (card numbers are removed)."
+          },
+          "subject": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 250,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subject",
+            "description": "Default: the first 60 characters of the message."
+          },
+          "priority": {
+            "$ref": "#/components/schemas/Priority",
+            "default": "medium"
+          },
+          "type_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Type Id"
+          },
+          "team_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Team Id",
+            "description": "Default: the rules and routing."
+          },
+          "fields": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "object",
+            "maxProperties": 30,
+            "title": "Fields",
+            "default": {}
+          },
+          "tags": {
+            "items": {
+              "type": "string",
+              "maxLength": 60
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Tags",
+            "default": []
+          },
+          "external_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200,
+                "minLength": 1,
+                "description": "Your system's own id for it. Sending it again changes nothing."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "contact",
+          "message"
+        ],
+        "title": "InboundTicketIn"
+      },
+      "InboundTicketOut": {
+        "properties": {
+          "ticket_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Ticket Id"
+          },
+          "number": {
+            "type": "integer",
+            "title": "Number"
+          },
+          "created": {
+            "type": "boolean",
+            "title": "Created",
+            "description": "false: this external_id made the ticket before."
+          }
+        },
+        "type": "object",
+        "required": [
+          "ticket_id",
+          "number",
+          "created"
+        ],
+        "title": "InboundTicketOut"
+      },
       "InboxOut": {
         "properties": {
           "notifications": {
@@ -12535,6 +12984,36 @@
         ],
         "title": "InboxOut"
       },
+      "KeyAccess": {
+        "type": "string",
+        "enum": [
+          "read",
+          "read_write",
+          "admin"
+        ],
+        "title": "KeyAccess"
+      },
+      "KeyBody": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "access": {
+            "$ref": "#/components/schemas/KeyAccess",
+            "description": "read: GET only. read_write: also tickets, customers, notes, tags, tasks, time and customer messages in (/inbound/tickets). admin: also teams, ticket types, saved replies, macros, rules and the help center. A key acts as the Admin who made it, within that level; it never reaches sign-in, members, roles, security, SSO, Cevanos, imports, privacy or API keys, and never approves."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "access"
+        ],
+        "title": "KeyBody"
+      },
       "KeyCheckOut": {
         "properties": {
           "ok": {
@@ -12560,6 +13039,92 @@
           "message"
         ],
         "title": "KeyCheckOut"
+      },
+      "KeyOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "access": {
+            "$ref": "#/components/schemas/KeyAccess"
+          },
+          "hint": {
+            "type": "string",
+            "title": "Hint",
+            "description": "cdk_… and the key's last 4 characters."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "created_by": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Created By",
+            "description": "The member the key acts as."
+          },
+          "created_by_name": {
+            "type": "string",
+            "title": "Created By Name"
+          },
+          "last_used_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Used At",
+            "description": "To the minute."
+          },
+          "revoked_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revoked At"
+          },
+          "revoked_by_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revoked By Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "access",
+          "hint",
+          "created_at",
+          "created_by",
+          "created_by_name",
+          "last_used_at",
+          "revoked_at",
+          "revoked_by_name"
+        ],
+        "title": "KeyOut"
       },
       "LinkIn": {
         "properties": {
@@ -13265,6 +13830,98 @@
         ],
         "title": "MetricsSummaryOut"
       },
+      "NewKeyOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "access": {
+            "$ref": "#/components/schemas/KeyAccess"
+          },
+          "hint": {
+            "type": "string",
+            "title": "Hint",
+            "description": "cdk_… and the key's last 4 characters."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "created_by": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Created By",
+            "description": "The member the key acts as."
+          },
+          "created_by_name": {
+            "type": "string",
+            "title": "Created By Name"
+          },
+          "last_used_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Used At",
+            "description": "To the minute."
+          },
+          "revoked_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revoked At"
+          },
+          "revoked_by_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revoked By Name"
+          },
+          "key": {
+            "type": "string",
+            "title": "Key",
+            "description": "The key. Shown this once: CeDesk keeps only its hash."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "access",
+          "hint",
+          "created_at",
+          "created_by",
+          "created_by_name",
+          "last_used_at",
+          "revoked_at",
+          "revoked_by_name",
+          "key"
+        ],
+        "title": "NewKeyOut"
+      },
       "NewPortalTicketIn": {
         "properties": {
           "message": {
@@ -13429,6 +14086,17 @@
         "additionalProperties": false,
         "type": "object",
         "title": "OptionsIn"
+      },
+      "Outcome": {
+        "type": "string",
+        "enum": [
+          "added",
+          "rules_ran",
+          "reopened",
+          "thanked",
+          "duplicate"
+        ],
+        "title": "Outcome"
       },
       "PoliciesIn": {
         "properties": {
@@ -18578,7 +19246,7 @@
     "securitySchemes": {
       "HTTPBearer": {
         "type": "http",
-        "description": "The token from POST /api/v1/portal/{workspace}/session.",
+        "description": "The token from POST /api/v1/auth/sign-in, or an API key (`cdk_...`).",
         "scheme": "bearer"
       }
     }
