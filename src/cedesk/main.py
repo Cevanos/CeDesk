@@ -48,6 +48,7 @@ from cedesk.helpdesk.api import rules as rules_api
 from cedesk.helpdesk.api import sandbox as sandbox_api
 from cedesk.helpdesk.api import saved_replies as saved_replies_api
 from cedesk.helpdesk.api import security as security_api
+from cedesk.helpdesk.api import side_conversations as side_conversations_api
 from cedesk.helpdesk.api import sla as sla_api
 from cedesk.helpdesk.api import sso as sso_api
 from cedesk.helpdesk.api import stream as stream_api
@@ -302,6 +303,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(webhooks_api.router, prefix="/api/v1")
     app.include_router(apps_api.router, prefix="/api/v1")
     app.include_router(jira_api.router, prefix="/api/v1")
+    app.include_router(side_conversations_api.router, prefix="/api/v1")
 
     @app.get("/healthz", tags=["health"], summary="The process is up")
     async def healthz() -> dict[str, str]:

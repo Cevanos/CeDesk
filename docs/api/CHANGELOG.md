@@ -3,6 +3,31 @@
 `openapi.json` next to this file is the API as served (`uv run cedesk openapi`). Every
 route is under `/api/v1`. Breaking changes only come in v2 (md 2B). Newest first.
 
+## 2026-11-12: Side conversations by email (Phase 3, X5)
+
+- New: `POST /tickets/{id}/side-conversations` `{to: [emails], subject?, body}` → 201: an
+  email to another team or a supplier (warehouse@, the courier), from the ticket's support
+  address (the one the customer wrote to, else the default). Subject: the agent's, or
+  "About <ticket subject>", with the ticket's label `[T-1042]`. Needs the right to reply
+  and to change the ticket (team scope); light agents can't (403). Not to the ticket's
+  customer nor to one of the desk's own addresses (422); 409 without a support address,
+  or with 20 already. The worker sends it with the usual retries; if it can't, the ticket
+  gets a line.
+- New: `POST /side-conversations/{id}/messages` `{body}` → 201: writes again, to the same
+  addresses, threaded under the earlier emails (In-Reply-To, References).
+- New: `GET /tickets/{id}/side-conversations` (anyone who can read the ticket): each with
+  `messages` (`direction` out or in, `body`, `author_name`, `from_address`,
+  `created_at`).
+- Their reply: email in recognises it by its reply headers before it looks for a ticket,
+  saves it on the side conversation (once, however often it arrives), writes a line on
+  the ticket ("warehouse@acme.com replied in a side conversation") and tells the
+  assignee (notification kind `side_reply`, new). It is never a customer message: the
+  portal and the customer's emails never show any of it.
+- Slack side conversations (#warehouse) need a Slack bot to bring replies back; they
+  are a follow-up (md X5's other half).
+- Migration 0046: `hd_side_conversation`, `hd_side_message` (forced RLS); notification
+  kind `side_reply`.
+
 ## 2026-11-12: Apps: Jira issues from tickets and Slack alerts (Phase 3, X10, W20, PL7)
 
 - `GET /apps` now also lists `jira` and `slack_alerts`; install them with `PUT /apps/{app}`
