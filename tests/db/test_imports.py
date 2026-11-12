@@ -204,7 +204,9 @@ async def test_a_csv_import_end_to_end(im: AsyncClient, app_sessionmaker: Sm) ->
     await work(im, sm)
     run = await run_state(im, w, started["id"])
     assert run["state"] == "done", run
-    assert run["counts"]["tickets"] == {"created": 2, "skipped": 0, "unknown_agent_messages": 1}
+    tickets = run["counts"]["tickets"]
+    assert (tickets["created"], tickets["skipped"], tickets["unknown_agent_messages"]) == (2, 0, 1)
+    assert tickets["files"] == 0 and tickets["updated"] == 0
     assert run["counts"]["rows_left_out"] == 1
 
     t = {
@@ -259,9 +261,10 @@ async def test_a_csv_import_end_to_end(im: AsyncClient, app_sessionmaker: Sm) ->
         for e in await sql(sm, w["ws"], "SELECT kind FROM hd_import_event ORDER BY created_at, id")
     ]
     assert kinds == ["connected", "started", "finished", "credentials_deleted"]
-    # The Admin's steps are in the audit log too (S9).
+    # The Admin's steps are in the audit log too (S9), and so is the worker's finish.
     logged = ok(await im.get("/api/v1/audit", headers=w["admin"], params={"area": "imports"}))
     assert [(e["action"], e["target"]) for e in logged["entries"]] == [
+        ("finished", "Import from CSV file"),
         ("started", "Import from CSV file"),
         ("connected", "Import from a CSV file"),
     ]
