@@ -23,7 +23,7 @@ from cedesk.helpdesk.repo import catalog
 from cedesk.helpdesk.repo import rules as repo
 from cedesk.helpdesk.repo import tickets as ticket_repo
 from cedesk.helpdesk.repo.rules import Row
-from cedesk.helpdesk.service import sla
+from cedesk.helpdesk.service import children, sla
 from cedesk.helpdesk.service.auth import Sessionmaker
 from cedesk.helpdesk.service.catalog import field_defs
 from cedesk.helpdesk.service.errors import Conflict, Invalid, NotFound
@@ -298,8 +298,19 @@ async def apply(
     lines += cleared
     if before["status"] == Status.resolved.value and final.status is not Status.resolved:
         after["reopen_count"] += 1
+    resolving = final.status is Status.resolved and before["status"] != Status.resolved.value
+    if resolving:
+        # A rule can't resolve a parent with an open child (X4): the other steps still run.
+        try:
+            await children.refuse_open_children(s, ticket_id)
+        except Conflict as exc:
+            after["status"] = before["status"]
+            lines.append(f"Status not changed: {exc}")
+            resolving = False
 
     await ticket_repo.update_ticket(s, ticket_id, after)
+    if resolving:
+        await children.child_resolved(s, workspace_id, before, "a rule", None)
     for body in lines:
         await ticket_repo.insert_message(
             s,
