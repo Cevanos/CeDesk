@@ -1,0 +1,1 @@
+{"_embedded": {"customers": [{"id": 7, "firstName": "Ann", "lastName": "Lee", "_embedded": {"emails": [{"id": 1, "value": "Ann@Example.org", "type": "work"}]}}, {"id": 8, "firstName": "Bo", "lastName": "", "_embedded": {"emails": []}}]}, "page": {"size": 50, "totalElements": 2, "totalPages": 1, "number": 1}}
