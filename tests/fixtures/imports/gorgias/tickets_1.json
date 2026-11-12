@@ -1,0 +1,14 @@
+{"data": [
+ {"id": 100, "subject": "Where is my order", "status": "open", "priority": "high", "channel": "email", "spam": false, "trashed_datetime": null, "snooze_datetime": null,
+  "created_datetime": "2025-03-01T10:00:00+00:00", "updated_datetime": "2025-03-02T10:00:00+00:00", "closed_datetime": null,
+  "customer": {"id": 1, "email": "ann@example.com", "name": "Ann Lee"},
+  "assignee_user": {"id": 5, "email": "agent@acme.com", "name": "Agent A"}, "assignee_team": {"id": 10, "name": "Billing"},
+  "tags": [{"id": 1, "name": "VIP Order"}, {"id": 2, "name": "refund"}],
+  "custom_fields": {"77": {"id": 77, "name": "Order Number", "value": "A-1"}},
+  "satisfaction_survey": {"score": 4, "body_text": "Good", "scored_datetime": "2025-03-03T09:00:00+00:00"}},
+ {"id": 101, "subject": "Snoozed one", "status": "open", "snooze_datetime": "2025-04-01T00:00:00+00:00", "spam": false, "trashed_datetime": null,
+  "created_datetime": "2025-03-05T10:00:00+00:00", "updated_datetime": "2025-03-06T10:00:00+00:00",
+  "customer": {"id": 2, "email": null, "name": null}, "tags": [], "channel": "chat", "priority": "low"},
+ {"id": 102, "subject": "Spam", "status": "open", "spam": true, "created_datetime": "2025-03-05T10:00:00+00:00", "customer": {"id": 2}},
+ {"id": 103, "subject": "Trashed", "status": "closed", "spam": false, "trashed_datetime": "2025-03-05T10:00:00+00:00", "created_datetime": "2025-03-05T10:00:00+00:00", "customer": {"id": 2}}
+], "meta": {"next_cursor": "t2", "total_resources": 5}}

@@ -1,0 +1,1 @@
+{"data": [{"id": 1, "email": "ann@example.com", "name": "Ann Lee"}, {"id": 2, "email": null, "name": null}], "meta": {"next_cursor": "c2", "total_resources": 3}}

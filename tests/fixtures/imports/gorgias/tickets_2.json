@@ -1,0 +1,5 @@
+{"data": [
+ {"id": 104, "subject": "Done", "status": "closed", "spam": false, "trashed_datetime": null, "channel": "help-center", "priority": "urgent",
+  "created_datetime": "2025-03-07T10:00:00+00:00", "updated_datetime": "2025-03-08T10:00:00+00:00", "closed_datetime": "2025-03-08T10:00:00+00:00",
+  "customer": {"id": 3, "email": "bo@example.com", "name": "Bo Kay"}, "tags": [], "custom_fields": {}}
+], "meta": {"next_cursor": null, "total_resources": 5}}

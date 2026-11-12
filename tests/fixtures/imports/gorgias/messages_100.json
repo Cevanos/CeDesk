@@ -1,0 +1,6 @@
+{"data": [
+ {"id": 1, "public": true, "from_agent": false, "sender": {"email": "ann@example.com", "name": "Ann Lee"}, "body_text": "Where is it?", "body_html": "<p>Where is it?</p>", "created_datetime": "2025-03-01T10:00:00+00:00"},
+ {"id": 2, "public": true, "from_agent": true, "sender": {"email": "agent@acme.com", "name": "Agent A"}, "body_text": null, "body_html": "<p>Hello<br>It ships <b>today</b>.</p><style>p{}</style>", "created_datetime": "2025-03-01T11:00:00+00:00"},
+ {"id": 3, "public": false, "from_agent": true, "sender": {"email": "agent@acme.com", "name": "Agent A"}, "body_text": "internal note", "created_datetime": "2025-03-01T12:00:00+00:00"},
+ {"id": 4, "public": true, "from_agent": false, "sender": {"email": "ann@example.com"}, "body_text": "gone", "deleted_datetime": "2025-03-01T13:00:00+00:00", "created_datetime": "2025-03-01T13:00:00+00:00"}
+], "meta": {"next_cursor": null}}
