@@ -185,3 +185,71 @@ async def test_only_get_requests() -> None:
     for kind in rules.KINDS:
         await c.page(kind, None)
     assert mock.requests and {r.method for r in mock.requests} == {"GET"}
+
+
+FILE_URL = "https://downloads.intercomcdn.com/i/o/1/screen.png"
+
+
+class Changes(Mock):
+    def __call__(self, request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/conversations":
+            self.requests.append(request)
+            return httpx.Response(200, json=fx("conversations_changed"))
+        if request.url.path == "/conversations/503":
+            self.requests.append(request)
+            return httpx.Response(200, json=fx("conversation_503"))
+        return super().__call__(request)
+
+
+async def test_changed_tickets_stop_at_older_and_parse_attachments() -> None:
+    mock = Changes()
+    c = connector(mock)
+    assert isinstance(c, rules.ChangeSource)
+    since = datetime.fromtimestamp(1740850000, tz=UTC)
+    page = await c.changed_tickets(since, {"after": "cursor-1"})  # type: ignore[attr-defined]
+    assert [t.external_id for t in page.items] == ["503"]
+    assert page.cursor is None
+    assert mock.requests[0].url.params["starting_after"] == "cursor-1"
+    assert {r.method for r in mock.requests} == {"GET"}
+    assert not any(
+        r.url.path in ("/conversations/501", "/conversations/502") for r in mock.requests
+    )
+    first, second = page.items[0].messages
+    assert list(first.attachments) == [
+        rules.Attachment("screen.png", FILE_URL, 2048, "image/png")
+    ]  # the http:// one is skipped
+    assert second.body == "(attachment)"
+    assert list(second.attachments) == [
+        rules.Attachment(
+            "invoice.pdf",
+            "https://downloads.intercomcdn.com/i/o/2/invoice.pdf",
+            5000,
+            "application/pdf",
+        )
+    ]
+
+
+async def test_changed_tickets_keeps_paging_when_all_are_new() -> None:
+    c = connector(Changes())
+    since = datetime.fromtimestamp(1, tz=UTC)
+    page = await c.changed_tickets(since, None)  # type: ignore[attr-defined]
+    assert page.cursor == {"after": "cursor-x"}
+
+
+async def test_fetch_returns_bytes_or_none() -> None:
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        if request.url.path.endswith("gone.png"):
+            return httpx.Response(404)
+        return httpx.Response(200, content=b"PNGDATA")
+
+    c = intercom.make({}, {"token": TOKEN}, transport=httpx.MockTransport(handler), guard=allow)
+    assert isinstance(c, rules.FileSource)
+    ok = await c.fetch(rules.Attachment("screen.png", FILE_URL), 1000)  # type: ignore[attr-defined]
+    assert ok == b"PNGDATA"
+    assert "Authorization" not in seen[0].headers  # not the account's host
+    gone = rules.Attachment("gone.png", "https://downloads.intercomcdn.com/gone.png")
+    assert await c.fetch(gone, 1000) is None  # type: ignore[attr-defined]
+    assert await c.fetch(rules.Attachment("screen.png", FILE_URL), 3) is None  # type: ignore[attr-defined]

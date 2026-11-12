@@ -3,6 +3,51 @@
 `openapi.json` next to this file is the API as served (`uv run cedesk openapi`). Every
 route is under `/api/v1`. Breaking changes only come in v2 (md 2B). Newest first.
 
+## 2026-11-12: Imports: keep syncing until go-live, import history, attachments (Phase 2, M7, M9, M10)
+
+New (Admin only, Settings): the three things that were left of the imports.
+
+**Keep syncing until go-live (M9).**
+- `POST /imports/connections/{id}/run` takes `sync: true`. After the first import the run stays
+  `done` with `sync_on: true` and the credentials are kept. Every 5 minutes the worker asks
+  the source what changed since the last look (a little before it, so nothing is missed): a new
+  ticket is imported; a ticket already imported gets only its new messages (matched by the
+  source's message ids, so nothing is made twice) and the source's current status. Intercom,
+  Zendesk, Freshdesk, Gorgias and Help Scout; 422 for a CSV file. A look the source can't
+  answer (a revoked key) does not end the sync: `last_error` says why, the history shows it
+  once, and it is tried again in an hour. 409 when starting a run on a connection that is
+  syncing: stop the sync first.
+- `POST /imports/runs/{id}/sync-now` -> 202: the next look is due at once. 409 when the run
+  isn't syncing or its first import is still running.
+- `POST /imports/runs/{id}/sync-stop` -> the run, with `sync_on: false`: go-live. Syncing stops
+  and the stored credentials are deleted, so CeDesk keeps no access to the old help desk (while
+  the first import is still running, only the sync is turned off and the credentials go when
+  it ends). 409 when the run isn't syncing.
+- `GET /imports/runs/{id}` and the run in the other answers have `last_sync_at`.
+
+**Import history (M10).**
+- `GET /imports/history?limit=&cursor=` -> `{runs, next_cursor}`, newest first. A run:
+  `id`, `connection_id`, `source`, `account` (or the file's name), `result` (`running`,
+  `finished`, `syncing` or `failed`), `started_by_id`, `started_by`, `started_at`,
+  `finished_at`, `kinds`, `counts`, `sync_on`, `last_sync_at`, `last_error`.
+- `GET /tickets` has `imported`: `any` for every imported ticket, or one source (`intercom`,
+  `zendesk`, `freshdesk`, `gorgias`, `helpscout`, `csv`). 422 for anything else. Imported
+  tickets also carry the tag `imported-<source>`.
+- Finish, failure and sync stop are now in the audit log too (area `imports`), as well as
+  connect and start.
+
+**Attachments (M7).** A message's files are copied into storage and shown on the message
+like any other attachment (scanned for viruses the same way). A file over 25 MB, or one the
+source no longer serves, is kept as a link in a system line under its message ("Attachment
+kept as a link (over 25 MB): ..."). At most 20 files are copied per message. A message that
+is only files is kept (its text is "(attachment)"). `counts.tickets` has `files` and
+`files_linked`; during a sync, `counts.sync` has `created`, `updated`, `new_messages`, `files`
+and `files_linked`. Files are read from the source over https only, every address checked
+(public only), a redirect followed at most 3 times and the account's key sent only to the
+account's own host.
+
+No migration: nothing in the database changes.
+
 ## 2026-11-12: Fix: notifications failed after live updates (C11, P7)
 
 - Since live updates (migration 0040), any change that notifies an agent (auto-assignment,

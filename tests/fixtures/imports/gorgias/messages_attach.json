@@ -1,0 +1,12 @@
+{"data": [
+ {"id": 11, "public": true, "from_agent": false, "sender": {"email": "ann@example.com", "name": "Ann Lee"}, "body_text": "See photo", "created_datetime": "2025-06-10T10:00:00+00:00",
+  "attachments": [
+   {"name": "photo.png", "url": "https://files.example.com/a/photo.png", "content_type": "image/png", "size": 2048},
+   {"name": "plain-http.txt", "url": "http://files.example.com/a/x.txt", "content_type": "text/plain", "size": 3},
+   {"name": "no-url.txt", "content_type": "text/plain"},
+   {"url": "https://files.example.com/a/bare", "size": "big"}
+  ]},
+ {"id": 12, "public": true, "from_agent": false, "sender": {"email": "ann@example.com"}, "body_text": "", "created_datetime": "2025-06-10T11:00:00+00:00",
+  "attachments": [{"name": "doc.pdf", "url": "https://files.example.com/a/doc.pdf", "content_type": "application/pdf", "size": 10}]},
+ {"id": 13, "public": true, "from_agent": false, "sender": {"email": "ann@example.com"}, "body_text": "", "created_datetime": "2025-06-10T12:00:00+00:00", "attachments": []}
+], "meta": {"next_cursor": null}}

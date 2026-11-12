@@ -58,9 +58,13 @@ class Desk:
             users = [u for u in fx("users_show_many")["users"] if str(u["id"]) in ids]
             return httpx.Response(200, json={"users": users})
         if path == "/api/v2/incremental/tickets/cursor.json":
+            if q.get("start_time") not in (None, "1"):
+                return httpx.Response(200, json=fx("incremental_changed"))
             return httpx.Response(
                 200, json=fx("incremental_2" if "cursor" in q else "incremental_1")
             )
+        if path == "/api/v2/tickets/105/comments.json":
+            return httpx.Response(200, json=fx("comments_105"))
         if path == "/api/v2/tickets/101/comments.json":
             return httpx.Response(200, json=fx("comments_101_2" if after else "comments_101"))
         if path == "/api/v2/tickets/104/comments.json":
@@ -258,3 +262,45 @@ def test_every_request_is_a_get_to_the_account_host() -> None:
         run(c.page(kind, None))
     assert desk.requests and {r.method for r in desk.requests} == {"GET"}
     assert {r.url.host for r in desk.requests} == {"acme.zendesk.com"}
+
+
+def test_attachments_are_parsed_and_unusable_ones_skipped() -> None:
+    since = datetime(2025, 5, 1, tzinfo=UTC)
+    page = run(connector().changed_tickets(since, None))  # type: ignore[attr-defined]
+    (msg,) = page.items[0].messages
+    assert [(a.name, a.url, a.size, a.mime) for a in msg.attachments] == [
+        (
+            "receipt.pdf",
+            "https://acme.zendesk.com/attachments/token/abc/?name=receipt.pdf",
+            2048,
+            "application/pdf",
+        )
+    ]
+
+
+def test_fetch_returns_bytes_and_none_when_gone() -> None:
+    def files(r: httpx.Request) -> httpx.Response | None:
+        if r.url.path == "/attachments/ok":
+            return httpx.Response(200, content=b"hello")
+        if r.url.path == "/attachments/gone":
+            return httpx.Response(404)
+        return None
+
+    c = connector(Desk(files))
+    ok = rules.Attachment("a", "https://acme.zendesk.com/attachments/ok")
+    gone = rules.Attachment("b", "https://acme.zendesk.com/attachments/gone")
+    assert isinstance(c, rules.FileSource)
+    assert run(c.fetch(ok, 1000)) == b"hello"  # type: ignore[attr-defined]
+    assert run(c.fetch(gone, 1000)) is None  # type: ignore[attr-defined]
+
+
+def test_changed_tickets_start_at_since_and_parse_the_page() -> None:
+    desk = Desk()
+    c = connector(desk)
+    assert isinstance(c, rules.ChangeSource)
+    since = datetime(2025, 5, 1, 9, 0, tzinfo=UTC)
+    page = run(c.changed_tickets(since, None))  # type: ignore[attr-defined]
+    assert page.cursor is None and [t.external_id for t in page.items] == ["105"]
+    inc = [r for r in desk.requests if "incremental" in r.url.path]
+    assert inc[0].url.params["start_time"] == str(int(since.timestamp()))
+    assert {r.method for r in desk.requests} == {"GET"}

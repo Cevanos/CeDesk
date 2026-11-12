@@ -107,7 +107,12 @@ async def sql(sm: Sm, ws: UUID, query: str, **params: Any) -> list[Mapping[str, 
 
 async def end_runs(sm: Sm, ws: UUID) -> None:
     """So a run left paused by a test is never picked up by another test's `run_due`."""
-    await sql(sm, ws, "UPDATE hd_import_run SET state = 'failed' WHERE state <> 'done'")
+    await sql(
+        sm,
+        ws,
+        "UPDATE hd_import_run SET state = 'failed', sync_on = false "
+        "WHERE state <> 'done' OR sync_on",
+    )
 
 
 async def upload(c: AsyncClient, w: dict[str, Any], data: str = CSV) -> dict[str, Any]:
