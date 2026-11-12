@@ -51,7 +51,11 @@ function makeClient() {
             return;
           }
           toast.error(error.userMessage);
+          return;
         }
+        // Thrown before a request went out (a bug or an unsupported browser API):
+        // never leave the user with a click that does nothing.
+        toast.error("Couldn't send. Please try again.");
       },
     }),
     defaultOptions: {
