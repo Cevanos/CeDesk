@@ -28,7 +28,8 @@ agent messages, everyone else customer. CSAT: good -> 5, bad -> 1, offered/unoff
 
 Docs used:
 - https://developer.zendesk.com/api-reference/ticketing/ticket-management/incremental_exports/
-- https://developer.zendesk.com/api-reference/ticketing/tickets/ticket_comments/
+- https://developer.zendesk.com/api-reference/ticketing/tickets/ticket_comments/ (each
+  comment's `attachments`: `file_name`, `content_url`, `content_type`, `size`)
 - https://developer.zendesk.com/api-reference/ticketing/users/users/
 - https://developer.zendesk.com/api-reference/help_center/help-center-api/articles/
 - https://developer.zendesk.com/api-reference/ticketing/business-rules/macros/
@@ -38,12 +39,16 @@ Not verified against a live account. Unsure of: the `role=end-user` filter on `u
 cursor responses always carry `meta.has_more`/`meta.after_cursor` (the legacy `next_page` is
 followed too); whether `start_time=1` is accepted for "from the beginning"; the exact shape of
 `comment_value` in macros (a string, or a list whose last item is the text; both are read);
+whether `content_url` always needs the account's credentials (it may redirect to signed
+storage; `SourceHttp.download` handles both); `changed_tickets` relies on `start_time` being
+the "updated at or after" time of the export (Zendesk says it returns tickets changed since);
 that the incremental export is limited to 10 requests per minute (each page is 100 tickets).
 """
 
 import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
 
 import httpx
@@ -54,6 +59,7 @@ from cedesk.helpdesk.domain import imports as rules
 from cedesk.helpdesk.domain.imports import (
     AccountInfo,
     Article,
+    Attachment,
     Category,
     Contact,
     Counts,
@@ -275,10 +281,22 @@ class ZendeskConnector:
     async def _tickets(self, cursor: Mapping[str, Any] | None) -> Page[Ticket]:
         """One page of the incremental export; the cursor is `{"cursor": <after_cursor>}`,
         None once `end_of_stream` is true."""
+        return await self._export({"start_time": 1}, cursor)
+
+    async def changed_tickets(
+        self, since: datetime, cursor: Mapping[str, Any] | None
+    ) -> Page[Ticket]:
+        """Tickets created or updated at or after `since`: the same incremental export,
+        started at `since` (Unix seconds) instead of the beginning."""
+        return await self._export({"start_time": int(since.timestamp())}, cursor)
+
+    async def _export(
+        self, first: Mapping[str, Any], cursor: Mapping[str, Any] | None
+    ) -> Page[Ticket]:
         if cursor and cursor.get("cursor"):
             params: dict[str, Any] = {"cursor": str(cursor["cursor"])}
         else:
-            params = {"start_time": 1}
+            params = dict(first)
         data = await self._http.get(
             "/api/v2/incremental/tickets/cursor.json", {**params, "per_page": _SIZE}
         )
@@ -378,7 +396,31 @@ class ZendeskConnector:
             external_id=str(raw["id"]) if raw.get("id") is not None else None,
             author_name=(author.name or None) if author else None,
             author_email=author.email if author else None,
+            attachments=self._attachments(raw.get("attachments")),
         )
+
+    @staticmethod
+    def _attachments(raw: Any) -> list[Attachment]:
+        out: list[Attachment] = []
+        for item in raw if isinstance(raw, list) else []:
+            if not isinstance(item, Mapping):
+                continue
+            url = str(item.get("content_url") or "")
+            if not url.startswith("https://"):
+                continue
+            size = item.get("size")
+            out.append(
+                Attachment(
+                    name=str(item.get("file_name") or "file"),
+                    url=url,
+                    size=size if isinstance(size, int) and not isinstance(size, bool) else None,
+                    mime=str(item["content_type"]) if item.get("content_type") else None,
+                )
+            )
+        return out
+
+    async def fetch(self, attachment: Attachment, limit: int) -> bytes | None:
+        return await self._http.download(attachment.url, limit)
 
     @staticmethod
     def _csat(raw: Any) -> Csat | None:

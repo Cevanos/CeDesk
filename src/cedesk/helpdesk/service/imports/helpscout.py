@@ -25,7 +25,15 @@ conversations are not imported** (counted in `warnings()`). A mailbox is a group
 are skipped. HTML is reduced to plain text. No satisfaction rating: the conversation list
 does not carry one (ratings are a separate endpoint, not read).
 
+Attachments: a thread holds `_embedded.attachments: [{id, filename, mimeType, size, _links}]`.
+`Attachment.url` is the API path `/v2/conversations/{cid}/threads/{tid}/attachments/{aid}/data`
+(built from the ids, not taken from `_links`); `fetch` reads it with the authenticated `get`
+(it answers JSON `{"data": "<base64>"}`), decodes it, and returns None when missing (404),
+undecodable, or over the limit (`size` is checked before the call). Changes since a time:
+`changed_tickets` adds `modifiedSince=<ISO 8601 UTC>` to the same conversations list.
+
 Docs: https://developer.helpscout.com/mailbox-api/overview/authentication/ ,
+/mailbox-api/endpoints/conversations/attachments/ (attachment data) ,
 /mailbox-api/endpoints/conversations/list/ , /mailbox-api/endpoints/conversations/threads/list/ ,
 /mailbox-api/endpoints/customers/list/ , /mailbox-api/endpoints/inboxes/saved_Replies/
 saved-replies-list/ and -get/ , /mailbox-api/overview/rate-limiting/ ,
@@ -35,12 +43,18 @@ Not verified against a live account. Unsure of: the exact shape of `_embedded.em
 customer list (also handled when absent); the Docs `/v1/collections/{id}/categories` path and
 `categories.items` shape; the Docs auth form (key as Basic user, password "X"); whether
 `status=all` includes spam; the thread `page` parameter (assumed 1-based like the others);
-the saved-reply list may be a bare array or `_embedded.savedReplies` (both read). Help Scout
-sends `X-RateLimit-Retry-After` on a 429, which the shared `retry_after` does not read.
+the exact doc page of the attachment data endpoint and that `_links.data.href` matches the
+built path; whether `modifiedSince` is inclusive and combines with `sortField=modifiedAt`
+(the list `userUpdatedAt` vs `modifiedAt` distinction); the thread `_embedded.attachments`
+key on every thread type; the saved-reply list may be a bare array or
+`_embedded.savedReplies` (both read). Help Scout sends `X-RateLimit-Retry-After` on a
+429 (the shared `retry_after` reads it).
 """
 
+import base64
 import time
 from collections.abc import Mapping, Sequence
+from datetime import UTC, datetime
 from html import unescape
 from html.parser import HTMLParser
 from typing import Any, ClassVar
@@ -52,6 +66,7 @@ from cedesk.helpdesk.domain import imports as rules
 from cedesk.helpdesk.domain.imports import (
     AccountInfo,
     Article,
+    Attachment,
     Category,
     Contact,
     Counts,
@@ -328,11 +343,44 @@ class HelpScoutConnector:
 
     # Tickets
 
-    async def _tickets(self, cursor: Mapping[str, Any] | None) -> Page[Ticket]:
+    async def changed_tickets(
+        self, since: datetime, cursor: Mapping[str, Any] | None
+    ) -> Page[Ticket]:
+        """Conversations modified at or after `since` (`modifiedSince`, ISO 8601 UTC)."""
+        stamp = since.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+        return await self._tickets(cursor, {"modifiedSince": stamp})
+
+    async def fetch(self, attachment: Attachment, limit: int) -> bytes | None:
+        """The file's bytes: the `data` endpoint answers JSON `{"data": "<base64>"}`, which is
+        decoded here. None when it is gone, not an API path of ours, or bigger than `limit`
+        (the size the source gave is checked before downloading)."""
+        if attachment.size is not None and attachment.size > limit:
+            return None
+        if not attachment.url.startswith("/v2/"):
+            return None
+        data = await self._get(attachment.url, missing_ok=True)
+        encoded = data.get("data") if isinstance(data, dict) else None
+        if not isinstance(encoded, str) or len(encoded) * 3 // 4 > limit + 3:
+            return None
+        try:
+            raw = base64.b64decode(encoded, validate=True)
+        except ValueError:
+            return None
+        return raw if len(raw) <= limit else None
+
+    async def _tickets(
+        self, cursor: Mapping[str, Any] | None, extra: Mapping[str, Any] | None = None
+    ) -> Page[Ticket]:
         number = _page_no(cursor)
         data = await self._get(
             "/v2/conversations",
-            {"status": "all", "sortField": "modifiedAt", "sortOrder": "asc", "page": number},
+            {
+                "status": "all",
+                "sortField": "modifiedAt",
+                "sortOrder": "asc",
+                "page": number,
+                **(extra or {}),
+            },
         )
         raws = _items(data, "conversations")
         out: list[Ticket] = []
@@ -391,7 +439,7 @@ class HelpScoutConnector:
             data = await self._get(f"/v2/conversations/{segment(cid)}/threads", {"page": number})
             pages = _total_pages(data)
             for raw in _items(data, "threads"):
-                message = _message(raw)
+                message = _message(raw, cid)
                 if message is not None:
                     out.append(message)
             number += 1
@@ -550,7 +598,7 @@ def _requester(raw: Mapping[str, Any], cid: str) -> Contact:
     return Contact(external, email, name)
 
 
-def _message(raw: Any) -> Message | None:
+def _message(raw: Any, cid: str) -> Message | None:
     if not isinstance(raw, dict):
         return None
     kind = str(raw.get("type", "")).lower()
@@ -577,7 +625,36 @@ def _message(raw: Any) -> Message | None:
         external_id=str(thread_id) if thread_id is not None else None,
         author_name=_name(author.get("first"), author.get("last")) or None,
         author_email=str(email) if email else None,
+        attachments=_attachments(raw, cid),
     )
+
+
+def _attachments(thread: Mapping[str, Any], cid: str) -> list[Attachment]:
+    """`_embedded.attachments` of a thread. `url` is the API path of the file's `data`
+    endpoint (built from the ids, so it always stays on the account's API host). An entry
+    without an id, or on a thread without one, is skipped."""
+    thread_id = thread.get("id")
+    out: list[Attachment] = []
+    if thread_id is None:
+        return out
+    for item in _items(thread, "attachments"):
+        if not isinstance(item, dict) or item.get("id") is None:
+            continue
+        name = str(item.get("filename") or "").strip() or f"attachment-{item['id']}"
+        size = item.get("size")
+        mime = item.get("mimeType")
+        out.append(
+            Attachment(
+                name=name,
+                url=(
+                    f"/v2/conversations/{segment(cid)}/threads/{segment(thread_id)}"
+                    f"/attachments/{segment(item['id'])}/data"
+                ),
+                size=size if isinstance(size, int) and not isinstance(size, bool) else None,
+                mime=str(mime) if mime else None,
+            )
+        )
+    return out
 
 
 def _reply(ref: Mapping[str, Any], detail: Any) -> Reply | None:

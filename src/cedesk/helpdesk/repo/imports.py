@@ -84,15 +84,17 @@ async def insert_run(
     source: str,
     options: Mapping[str, Any],
     started_by: UUID,
+    sync_on: bool = False,
 ) -> UUID:
     result = await session.execute(
         text(
             "INSERT INTO hd_import_run (workspace_id, connection_id, source, options, "
-            "started_by) VALUES (:ws, :conn, :source, CAST(:options AS jsonb), :by) RETURNING id"
+            "started_by, sync_on) VALUES (:ws, :conn, :source, CAST(:options AS jsonb), :by, "
+            ":sync) RETURNING id"
         ),
         {
             "ws": workspace_id, "conn": connection_id, "source": source,
-            "options": json.dumps(dict(options)), "by": started_by,
+            "options": json.dumps(dict(options)), "by": started_by, "sync": sync_on,
         },
     )  # fmt: skip
     return UUID(str(result.scalar_one()))
@@ -127,6 +129,108 @@ async def claim_due(session: AsyncSession, now: datetime, lease_until: datetime)
         {"now": now, "lease": lease_until},
     )
     return result.mappings().first()
+
+
+async def syncing_run(session: AsyncSession, connection_id: UUID) -> Row | None:
+    """The finished run of this connection that is still syncing (M9), if any."""
+    result = await session.execute(
+        text(_RUN + " WHERE connection_id = :c AND state = 'done' AND sync_on LIMIT 1"),
+        {"c": connection_id},
+    )
+    return result.mappings().first()
+
+
+async def claim_sync(session: AsyncSession, now: datetime, lease_until: datetime) -> Row | None:
+    """Takes the syncing run that is due, leases it and leaves its state alone (`done`). Same
+    locking as `claim_due`."""
+    result = await session.execute(
+        text(
+            "UPDATE hd_import_run SET lease_until = :lease "
+            "WHERE id = (SELECT id FROM hd_import_run WHERE state = 'done' AND sync_on "
+            "AND next_run_at <= :now AND (lease_until IS NULL OR lease_until <= :now) "
+            "ORDER BY next_run_at LIMIT 1 FOR UPDATE SKIP LOCKED) "
+            "RETURNING id, workspace_id, connection_id, source, state, options, cursor, counts, "
+            "sync_on, last_sync_at, next_run_at, lease_until, last_error, started_by, "
+            "started_at, finished_at"
+        ),
+        {"now": now, "lease": lease_until},
+    )
+    return result.mappings().first()
+
+
+async def finish_to_sync(
+    session: AsyncSession,
+    run_id: UUID,
+    *,
+    last_sync_at: datetime,
+    next_run_at: datetime,
+    counts: Mapping[str, Any],
+) -> None:
+    """The first import is done and the run goes on syncing: it is `done`, the credentials
+    stay, and the next look at the source is `next_run_at`."""
+    await session.execute(
+        text(
+            "UPDATE hd_import_run SET state = 'done', lease_until = NULL, finished_at = now(), "
+            "last_error = NULL, cursor = '{}'::jsonb, counts = CAST(:counts AS jsonb), "
+            "last_sync_at = :last, next_run_at = :next WHERE id = :id"
+        ),
+        {
+            "id": run_id, "last": last_sync_at, "next": next_run_at,
+            "counts": json.dumps(dict(counts)),
+        },
+    )  # fmt: skip
+
+
+async def sync_pass_done(
+    session: AsyncSession,
+    run_id: UUID,
+    *,
+    last_sync_at: datetime,
+    next_run_at: datetime,
+    counts: Mapping[str, Any],
+) -> None:
+    await session.execute(
+        text(
+            "UPDATE hd_import_run SET lease_until = NULL, last_error = NULL, "
+            "cursor = '{}'::jsonb, counts = CAST(:counts AS jsonb), last_sync_at = :last, "
+            "next_run_at = :next WHERE id = :id"
+        ),
+        {
+            "id": run_id, "last": last_sync_at, "next": next_run_at,
+            "counts": json.dumps(dict(counts)),
+        },
+    )  # fmt: skip
+
+
+async def sync_error(
+    session: AsyncSession, run_id: UUID, *, next_run_at: datetime, error: str
+) -> None:
+    """A sync pass that could not finish: the run stays syncing and is tried again later."""
+    await release(session, run_id, next_run_at=next_run_at, error=error)
+
+
+async def sync_now(session: AsyncSession, run_id: UUID) -> bool:
+    """Makes a syncing run due now. False when the run isn't syncing."""
+    result = await session.execute(
+        text(
+            "UPDATE hd_import_run SET next_run_at = now() "
+            "WHERE id = :id AND state = 'done' AND sync_on RETURNING id"
+        ),
+        {"id": run_id},
+    )
+    return result.first() is not None
+
+
+async def stop_sync(session: AsyncSession, run_id: UUID) -> bool:
+    """Turns syncing off. False when it was already off."""
+    result = await session.execute(
+        text(
+            "UPDATE hd_import_run SET sync_on = false, lease_until = NULL "
+            "WHERE id = :id AND sync_on RETURNING id"
+        ),
+        {"id": run_id},
+    )
+    return result.first() is not None
 
 
 async def save_progress(
@@ -231,6 +335,42 @@ async def existing_ticket_source_ids(
     return {str(v) for v in result.scalars().all()}
 
 
+async def ticket_ids_by_source(
+    session: AsyncSession, source: str, external_ids: Sequence[str]
+) -> dict[str, UUID]:
+    """The CeDesk ticket for each source id that is already here."""
+    if not external_ids:
+        return {}
+    result = await session.execute(
+        text("SELECT source_id, id FROM hd_ticket WHERE source = :s AND source_id = ANY(:ids)"),
+        {"s": source, "ids": list(external_ids)},
+    )
+    return {str(r[0]): UUID(str(r[1])) for r in result.all()}
+
+
+async def message_keys(
+    session: AsyncSession, ticket_ids: Sequence[UUID]
+) -> dict[UUID, tuple[set[str], set[tuple[str, int]]]]:
+    """Per ticket, which messages it already has: the source ids kept as `channel_message_id`,
+    and (kind, whole second) for every message, to tell apart those that had no source id."""
+    out: dict[UUID, tuple[set[str], set[tuple[str, int]]]] = {t: (set(), set()) for t in ticket_ids}
+    if not ticket_ids:
+        return out
+    result = await session.execute(
+        text(
+            "SELECT ticket_id, channel_message_id, kind, created_at FROM hd_message "
+            "WHERE ticket_id = ANY(:ids)"
+        ),
+        {"ids": list(ticket_ids)},
+    )
+    for ticket_id, channel_id, kind, created in result.all():
+        ids, stamps = out[UUID(str(ticket_id))]
+        if channel_id:
+            ids.add(str(channel_id))
+        stamps.add((str(kind), int(created.timestamp())))
+    return out
+
+
 async def ticket_count(session: AsyncSession, source: str) -> int:
     result = await session.execute(
         text("SELECT count(*) FROM hd_ticket WHERE source = :s"), {"s": source}
@@ -254,11 +394,13 @@ async def insert_ticket(session: AsyncSession, values: Mapping[str, Any]) -> UUI
     create path: no rules, no routing, no events (md 8.2 step 5)."""
     params = dict(values)
     params["fields"] = json.dumps(params["fields"])
+    params.setdefault("id", None)  # None: the database picks one
     result = await session.execute(
         text(
-            "INSERT INTO hd_ticket (workspace_id, number, subject, status, priority, team_id, "
-            "assignee_id, contact_id, channel, fields, tags, first_reply_at, resolved_at, "
-            "created_at, updated_at, source, source_id) VALUES (:workspace_id, :number, "
+            "INSERT INTO hd_ticket (id, workspace_id, number, subject, status, priority, "
+            "team_id, assignee_id, contact_id, channel, fields, tags, first_reply_at, "
+            "resolved_at, created_at, updated_at, source, source_id) VALUES "
+            "(coalesce(CAST(:id AS uuid), gen_random_uuid()), :workspace_id, :number, "
             ":subject, :status, :priority, :team_id, :assignee_id, :contact_id, :channel, "
             "CAST(:fields AS jsonb), :tags, :first_reply_at, :resolved_at, :created_at, "
             ":updated_at, :source, :source_id) RETURNING id"
@@ -279,17 +421,43 @@ async def insert_message(
     author_member_id: UUID | None,
     author_name: str | None,
     channel_message_id: str | None,
-) -> None:
-    await session.execute(
+) -> UUID:
+    result = await session.execute(
         text(
             "INSERT INTO hd_message (workspace_id, ticket_id, kind, body, author_member_id, "
             "author_name, channel_message_id, created_at) VALUES (:ws, :ticket, :kind, :body, "
-            ":author, :name, :channel_id, :at)"
+            ":author, :name, :channel_id, :at) RETURNING id"
         ),
         {
             "ws": workspace_id, "ticket": ticket_id, "kind": kind, "body": body,
             "author": author_member_id, "name": author_name, "channel_id": channel_message_id,
             "at": created_at,
+        },
+    )  # fmt: skip
+    return UUID(str(result.scalar_one()))
+
+
+async def refresh_ticket(
+    session: AsyncSession,
+    ticket_id: UUID,
+    *,
+    status: str,
+    priority: str,
+    resolved_at: datetime | None,
+    first_reply_at: datetime | None,
+    updated_at: datetime,
+) -> None:
+    """What a later look at the source changed on a ticket already imported (M9). The
+    time only moves forward; the first reply is only filled, never replaced."""
+    await session.execute(
+        text(
+            "UPDATE hd_ticket SET status = :status, priority = :priority, "
+            "resolved_at = :resolved, first_reply_at = coalesce(first_reply_at, :first), "
+            "updated_at = GREATEST(updated_at, :updated) WHERE id = :id"
+        ),
+        {
+            "id": ticket_id, "status": status, "priority": priority, "resolved": resolved_at,
+            "first": first_reply_at, "updated": updated_at,
         },
     )  # fmt: skip
 
@@ -383,6 +551,31 @@ async def insert_article(
     )  # fmt: skip
     value = result.scalar_one_or_none()
     return None if value is None else UUID(str(value))
+
+
+# History (M10)
+
+
+async def history(
+    session: AsyncSession, *, before: tuple[datetime, UUID] | None, limit: int
+) -> Sequence[Row]:
+    """Every import run, newest first, with where it came from and who started it."""
+    at, row_id = before if before else (None, None)
+    result = await session.execute(
+        text(
+            "SELECT r.id, r.connection_id, r.source, c.label, r.state, r.sync_on, r.counts, "
+            "r.last_error, r.last_sync_at, r.started_by, m.name AS started_by_name, "
+            "r.started_at, r.started_at AS created_at, r.finished_at, r.options "
+            "FROM hd_import_run r JOIN hd_import_connection c "
+            "ON c.workspace_id = r.workspace_id AND c.id = r.connection_id "
+            "LEFT JOIN member m ON m.workspace_id = r.workspace_id AND m.id = r.started_by "
+            "WHERE (CAST(:at AS timestamptz) IS NULL "
+            "       OR (r.started_at, r.id) < (CAST(:at AS timestamptz), CAST(:row AS uuid))) "
+            "ORDER BY r.started_at DESC, r.id DESC LIMIT :limit"
+        ),
+        {"at": at, "row": row_id, "limit": limit},
+    )
+    return result.mappings().all()
 
 
 # Events: the history and audit of imports

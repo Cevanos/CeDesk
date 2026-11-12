@@ -456,3 +456,67 @@ async def test_archived_tickets_are_not_walked_unless_asked_for() -> None:
     assert "NOT imported" in connector.warnings()[0]
     assert "include_archived" in connector.warnings()[0]
     assert "included" in connect(desk, archived=True).warnings()[0]
+
+
+def attachment_routes() -> dict[str, Any]:
+    return {
+        **base_routes(),
+        "/api/v2/tickets": ticket_list([fixture("ticket_2_attachments.json")]),
+        "/api/v2/tickets/2/conversations": fixture("conversations_2_attachments.json"),
+    }
+
+
+async def test_attachments_are_read_from_the_ticket_and_conversations() -> None:
+    items, _ = await drain(connect(Desk(attachment_routes())), "tickets")
+    first, second = items[0].messages
+    assert list(first.attachments) == [
+        rules.Attachment("photo.png", "https://s3.example.com/files/photo.png", 2048, "image/png")
+    ]  # the http and the url-less entries are skipped
+    assert list(second.attachments) == [
+        rules.Attachment("log.txt", "https://s3.example.com/files/log.txt", 10, "text/plain")
+    ]
+
+
+async def test_fetch_returns_bytes_or_none_when_the_file_is_gone() -> None:
+    desk = Desk({"/files/a.bin": lambda r: httpx.Response(200, content=b"data")})
+    connector = connect(desk)
+    assert isinstance(connector, rules.FileSource)
+    ok = await connector.fetch(rules.Attachment("a", "https://s3.example.com/files/a.bin"), 100)
+    gone = await connector.fetch(rules.Attachment("b", "https://s3.example.com/files/b.bin"), 100)
+    big = await connector.fetch(rules.Attachment("a", "https://s3.example.com/files/a.bin"), 2)
+    assert ok == b"data" and gone is None and big is None
+
+
+async def test_changed_tickets_sends_updated_since_and_parses_the_page() -> None:
+    desk = Desk(attachment_routes())
+    connector = connect(desk)
+    assert isinstance(connector, rules.ChangeSource)
+    since = datetime(2025, 3, 15, 8, 30, tzinfo=UTC)
+    page = await connector.changed_tickets(since, None)
+    assert [t.external_id for t in page.items] == ["2"] and page.cursor is None
+    sent = next(r for r in desk.seen if r.url.path == "/api/v2/tickets")
+    assert sent.url.params["updated_since"] == "2025-03-15T08:30:00Z"
+    assert {r.method for r in desk.seen} == {"GET"}
+    assert not [p for p in desk.paths() if "/archived/" in p]
+
+
+async def test_changed_tickets_pages_with_a_json_cursor() -> None:
+    rows = [
+        {
+            "id": i,
+            "subject": f"T{i}",
+            "status": 2,
+            "requester": {"id": 1, "name": "A"},
+            "created_at": "2025-01-01T00:00:00Z",
+            "updated_at": "2025-06-01T00:00:00Z",
+        }
+        for i in range(1, 131)
+    ]
+    desk = Desk(base_routes() | {"/api/v2/tickets": ticket_list(rows)})
+    connector = connect(desk)
+    since = datetime(2025, 5, 1, tzinfo=UTC)
+    first = await connector.changed_tickets(since, None)  # type: ignore[attr-defined]
+    assert len(first.items) == 100 and first.cursor is not None
+    json.dumps(first.cursor)
+    second = await connector.changed_tickets(since, first.cursor)  # type: ignore[attr-defined]
+    assert len(second.items) == 30 and second.cursor is not None  # 30 may have a next page

@@ -56,7 +56,19 @@ folders -> responses; the shortcut is the slug of the title.
 `discover` counts exactly where it can (contacts, articles, replies by finding the last
 page) and estimates tickets from the filter API's `total`, which excludes archived tickets.
 
-Not verified against a live account. Unsure of: the satisfaction scale beyond the values in
+Attachments: a ticket's `attachments` (first message) and each conversation's `attachments`
+are lists of `{name, content_type, size, attachment_url}` (/api/#ticket_attributes and
+/api/#conversations). Entries without an https `attachment_url` are skipped. `fetch` downloads
+the (signed, short lived) `attachment_url` through `SourceHttp.download`.
+
+Changes since a time (`changed_tickets`, for the sync until go-live): the same `/tickets` list
+with `updated_since` set to that time, oldest update first, same parsing. Archived tickets are
+NOT looked at (no archive walk), so a ticket archived since is not reported.
+
+Not verified against a live account. Unsure of: whether the ticket list (not only the single
+ticket view) carries `attachments`; whether `attachment_url` needs the API key (it is a signed
+storage link in the docs' examples); the time format `updated_since` accepts beyond
+`YYYY-MM-DDTHH:MM:SSZ`; the satisfaction scale beyond the values in
 Freshdesk's examples; whether `per_page` is honoured on conversations, solutions and canned
 responses (the code carries on while a page has 30 or more rows, so it works with either 30
 or 100); field names of solution articles (`description`, `description_text`, `status`) and
@@ -79,6 +91,7 @@ from cedesk.helpdesk.domain import imports as rules
 from cedesk.helpdesk.domain.imports import (
     AccountInfo,
     Article,
+    Attachment,
     Category,
     Contact,
     Counts,
@@ -395,6 +408,39 @@ class FreshdeskConnector:
             {**nxt, "since": since, "page": 1, "skip": [] if stuck else edge_ids},
         )
 
+    async def changed_tickets(
+        self, since: datetime, cursor: Mapping[str, Any] | None
+    ) -> Page[Ticket]:
+        """Tickets updated at or after `since` (the live list only, never the archive)."""
+        c: dict[str, Any] = (
+            dict(cursor)
+            if cursor
+            else {"since": since.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"), "page": 1}
+        )
+        data = await self._http.get(
+            "/api/v2/tickets",
+            {
+                "updated_since": c["since"],
+                "order_by": "updated_at",
+                "order_type": "asc",
+                "per_page": PER_PAGE,
+                "page": c["page"],
+                "include": "requester,stats,description",
+            },
+        )
+        rows = [r for r in _rows(data) if isinstance(r, dict) and "id" in r]
+        items = [await self._ticket(raw, archived=False) for raw in rows]
+        if len(_rows(data)) < FULL_PAGE:
+            return Page(items, None)
+        if c["page"] < LIST_PAGE_CAP:
+            return Page(items, {**c, "page": c["page"] + 1})
+        # At the cap the window moves to the last update seen (a tie may repeat a ticket).
+        last = _stamp(rows[-1].get("updated_at")) if rows else ""
+        return Page(items, {"since": last or c["since"], "page": 1})
+
+    async def fetch(self, attachment: Attachment, limit: int) -> bytes | None:
+        return await self._http.download(attachment.url, limit)
+
     async def _archived_page(self, cursor: Mapping[str, Any]) -> Page[Any]:
         first, last = int(cursor["next_id"]), int(cursor["max_id"])
         end = min(first + rules.PAGE_MAX - 1, last)
@@ -425,7 +471,8 @@ class FreshdeskConnector:
             requester = Contact(f"ticket-{ticket_id}", None, "Unknown requester")
         messages: list[Message] = []
         first = str(raw.get("description_text") or "") or html_to_text(raw.get("description"))
-        if first.strip():
+        first_files = _attachments(raw)
+        if first.strip() or first_files:
             messages.append(
                 Message(
                     "customer",
@@ -433,6 +480,7 @@ class FreshdeskConnector:
                     created,
                     author_name=requester.name,
                     author_email=requester.email,
+                    attachments=first_files,
                 )
             )
         base = "/api/v2/tickets/archived" if archived else "/api/v2/tickets"
@@ -465,7 +513,8 @@ class FreshdeskConnector:
 
     async def _message(self, conv: Mapping[str, Any], requester: Contact) -> Message | None:
         text = str(conv.get("body_text") or "") or html_to_text(conv.get("body"))
-        if not text.strip():
+        files = _attachments(conv)
+        if not text.strip() and not files:
             return None
         created = when(conv.get("created_at")) or _EPOCH
         external_id = None if conv.get("id") is None else str(conv["id"])
@@ -478,10 +527,16 @@ class FreshdeskConnector:
         if kind == "customer":
             sender = normalise_email(parseaddr(str(conv.get("from_email") or ""))[1])
             return Message(
-                kind, text, created, external_id, requester.name, sender or requester.email
+                kind,
+                text,
+                created,
+                external_id,
+                requester.name,
+                sender or requester.email,
+                files,
             )
         email, name = (await self._agent_book()).get(str(conv.get("user_id")), (None, None))
-        return Message(kind, text, created, external_id, name, email)
+        return Message(kind, text, created, external_id, name, email, files)
 
     async def _csat(self, ticket_id: str) -> Csat | None:
         if not self._csat_ok:
@@ -562,6 +617,27 @@ class FreshdeskConnector:
         text = html_to_text(raw.get("content_html")) or html_to_text(raw.get("content"))
         title = str(raw.get("title") or "")
         return Reply(str(raw["id"]), slug(title) or f"reply-{raw['id']}", text)
+
+
+def _attachments(raw: Mapping[str, Any]) -> list[Attachment]:
+    out: list[Attachment] = []
+    rows = raw.get("attachments")
+    for item in rows if isinstance(rows, list) else []:
+        if not isinstance(item, dict):
+            continue
+        url = str(item.get("attachment_url") or "")
+        if not url.lower().startswith("https://"):
+            continue
+        size = item.get("size")
+        out.append(
+            Attachment(
+                str(item.get("name") or "file"),
+                url,
+                size if isinstance(size, int) else None,
+                str(item["content_type"]) if item.get("content_type") else None,
+            )
+        )
+    return out
 
 
 def _int(value: object) -> int:
