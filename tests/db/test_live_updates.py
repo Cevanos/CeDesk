@@ -50,6 +50,13 @@ async def make_ticket(c: AsyncClient, w: dict[str, Any], name: str, **extra: Any
     return str(ok(await c.post(T, headers=w["admin"], json={**body, **extra}), 201)["id"])
 
 
+async def mention_neha(c: AsyncClient, w: dict[str, Any], ticket: str) -> None:
+    """A note that @mentions Neha: she gets a notification. (Assigning a ticket by hand
+    sends none; only auto-assignment does.)"""
+    note = {"kind": "note", "body": "@Neha please look", "mention_ids": [w["neha"]]}
+    ok(await c.post(f"{T}/{ticket}/messages", headers=w["admin"], json=note), 201)
+
+
 async def rows(sm: Sm, w: dict[str, Any], where: str = "true", **params: Any) -> list[Any]:
     """Events of this workspace matching `where` (our own fixed text), oldest first."""
     sql = (
@@ -124,10 +131,11 @@ async def test_a_notification_is_published_to_the_one_it_is_for(
     client: AsyncClient, app_sessionmaker: Sm
 ) -> None:
     w = await desk(client, app_sessionmaker)
-    ticket = await make_ticket(client, w, "Assigned", assignee_id=w["neha"])
+    ticket = await make_ticket(client, w, "Mentioned")
+    await mention_neha(client, w, ticket)
     found = await rows(app_sessionmaker, w, "kind = 'notification' AND ticket_id = :t", t=ticket)
     assert [str(r["target_member_id"]) for r in found] == [w["neha"]]
-    assert found[0]["payload"]["notification"] == "assigned"
+    assert found[0]["payload"]["notification"] == "mention"
 
 
 async def test_an_event_kind_that_is_not_listed_cannot_be_written(
@@ -176,7 +184,8 @@ async def test_a_role_limited_to_a_team_reads_that_teams_events_and_their_own_no
     billing, shipping = w["teams"]["Billing"], w["teams"]["Shipping"]
     mine = await make_ticket(client, w, "Billingone", team_id=billing)
     theirs = await make_ticket(client, w, "Shippingone", team_id=shipping)
-    told = await make_ticket(client, w, "Told", team_id=shipping, assignee_id=w["neha"])
+    told = await make_ticket(client, w, "Told", team_id=shipping)
+    await mention_neha(client, w, told)
 
     async def ticket_ids(team_only: UUID | None) -> set[str]:
         async with workspace_session(sm, w["ws"]) as s:
