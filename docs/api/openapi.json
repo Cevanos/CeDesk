@@ -10369,6 +10369,104 @@
         }
       }
     },
+    "/api/v1/usage": {
+      "get": {
+        "tags": [
+          "usage and retention"
+        ],
+        "summary": "Usage and plan limits (Settings)",
+        "description": "Over a limit, adding a member, uploading a file, or an agent or API key opening a ticket answers 402. A customer's own email, chat or portal request is never refused.",
+        "operationId": "get_usage_api_v1_usage_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UsageOut"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/retention": {
+      "get": {
+        "tags": [
+          "usage and retention"
+        ],
+        "summary": "Retention (Settings)",
+        "operationId": "get_retention_api_v1_retention_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RetentionOut"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "usage and retention"
+        ],
+        "summary": "Set retention (Settings; audited)",
+        "description": "The worker deletes once a day; each run is in the audit log (area retention). Deleted tickets can't be brought back.",
+        "operationId": "set_retention_api_v1_retention_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RetentionIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RetentionOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/healthz": {
       "get": {
         "tags": [
@@ -11127,7 +11225,9 @@
           "imports",
           "api_keys",
           "webhooks",
-          "apps"
+          "apps",
+          "retention",
+          "plan"
         ],
         "title": "Area",
         "description": "Filter on the audit page. Other teams' features add their own (api_keys,\nwebhooks, apps, retention): the column takes any lower-case name."
@@ -17129,6 +17229,101 @@
         ],
         "title": "ResultOut"
       },
+      "RetentionIn": {
+        "properties": {
+          "closed_ticket_days": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 3650.0,
+                "minimum": 30.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closed Ticket Days",
+            "description": "Delete resolved tickets (and their files) this many days after they were resolved; null keeps them for good. A cloud plan may cap it."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "closed_ticket_days"
+        ],
+        "title": "RetentionIn"
+      },
+      "RetentionOut": {
+        "properties": {
+          "closed_ticket_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closed Ticket Days"
+          },
+          "plan_history_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plan History Days",
+            "description": "The cloud plan's cap, if any."
+          },
+          "effective_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective Days",
+            "description": "What the nightly job uses."
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "updated_by_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated By Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "closed_ticket_days",
+          "plan_history_days",
+          "effective_days",
+          "updated_at",
+          "updated_by_name"
+        ],
+        "title": "RetentionOut"
+      },
       "Role": {
         "type": "string",
         "enum": [
@@ -20851,6 +21046,74 @@
           "same"
         ],
         "title": "TriedOut"
+      },
+      "UsageOut": {
+        "properties": {
+          "plan": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plan",
+            "description": "The cloud plan; null: no limits (self-hosted, or none set)."
+          },
+          "agents": {
+            "type": "integer",
+            "title": "Agents",
+            "description": "Active members who take tickets (light agents are free)."
+          },
+          "tickets_this_month": {
+            "type": "integer",
+            "title": "Tickets This Month",
+            "description": "Made this calendar month (UTC), not imported."
+          },
+          "storage_bytes": {
+            "type": "integer",
+            "title": "Storage Bytes",
+            "description": "Files on tickets."
+          },
+          "limits": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "object",
+            "title": "Limits",
+            "description": "agents, tickets_month, storage_bytes; null: no limit."
+          },
+          "retention_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retention Days",
+            "description": "Resolved tickets are deleted this many days after resolving; null: kept."
+          }
+        },
+        "type": "object",
+        "required": [
+          "plan",
+          "agents",
+          "tickets_this_month",
+          "storage_bytes",
+          "limits",
+          "retention_days"
+        ],
+        "title": "UsageOut"
       },
       "ValidationError": {
         "properties": {

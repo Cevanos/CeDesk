@@ -3,6 +3,30 @@
 `openapi.json` next to this file is the API as served (`uv run cedesk openapi`). Every
 route is under `/api/v1`. Breaking changes only come in v2 (md 2B). Newest first.
 
+## 2026-11-12: Usage, cloud plan limits and retention (Phase 3, O2, O4, O5)
+
+- New (Settings): `GET /usage` → `{plan, agents, tickets_this_month, storage_bytes,
+  limits: {agents, tickets_month, storage_bytes}, retention_days}`. Agents are active
+  members who take tickets (light agents are free seats); tickets are this calendar month
+  (UTC), not imported; storage is the files on tickets.
+- Cloud plan limits (O4): only on the cloud edition (`CEDESK_EDITION=cloud`) and only for
+  a workspace given a plan with `cedesk set-plan --workspace <slug> --plan
+  free|growth|enterprise|none` (audited, area `plan`). A self-hosted install, or a
+  workspace with no plan, has no limits. Over a limit, these answer 402 with a clear
+  message: adding a member who takes tickets (or reactivating one, or making a light agent
+  an agent), uploading a file, and an agent or API key opening a ticket. A customer's own
+  email, chat, portal or inbound-API request is never refused. Plans come from
+  `CEDESK_PLANS` (JSON); empty = the md D6 proposal (Free: 3 agents, 1,000 tickets a
+  month, 1 GB, 1 year; Growth: 50 GB, 3 years; Enterprise: none).
+- New (Settings): `GET /retention`, `PUT /retention` `{closed_ticket_days}` (30 to 3650,
+  or null to keep for good; audited, area `retention`) → `{closed_ticket_days,
+  plan_history_days, effective_days, ...}`. The worker deletes resolved tickets older
+  than `effective_days` (the setting, capped by the plan's history), with their messages,
+  files (from storage too) and the rest, once a day; each run is audited as a server
+  change. Open and Pending tickets are never deleted.
+- Not in this change (md cut line): the archive tier (O3) and exporting before deleting.
+- Migration 0047: `hd_workspace_plan`, `hd_retention` (forced RLS).
+
 ## 2026-11-12: Side conversations by email (Phase 3, X5)
 
 - New: `POST /tickets/{id}/side-conversations` `{to: [emails], subject?, body}` → 201: an

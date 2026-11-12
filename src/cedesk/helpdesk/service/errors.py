@@ -57,6 +57,12 @@ class Invalid(ServiceError):
     status = 422
 
 
+class OverPlan(ServiceError):
+    """Over a cloud plan limit (md O4): agents, tickets this month or storage."""
+
+    status = 402
+
+
 class TooManyAttempts(ServiceError):
     status = 429
 

@@ -85,6 +85,13 @@ class Settings(BaseSettings):
         "rating page and the help center (votes and the web form have their own).",
     )
     public_window_seconds: int = Field(default=600, ge=1)
+    plans: str = Field(
+        default="",
+        description="Cloud plan limits as JSON (md O4), e.g. "
+        '{"free": {"agents": 3, "tickets_month": 1000, "storage_gb": 1, "history_days": 365}}. '
+        "Empty: the md D6 proposal. Only on the cloud edition, and only for a workspace "
+        "given a plan (cedesk set-plan).",
+    )
     api_key_limit: int = Field(
         default=700,
         ge=1,
