@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import { buildCsp, makeNonce } from "@/lib/csp";
+import { isPublicPage } from "@/lib/public-routes";
 import { safeNext } from "@/lib/safe-next";
 
 /**
@@ -32,6 +33,15 @@ export function proxy(req: NextRequest) {
 
   // Reset links are opened from email and must work even while signed in.
   const isReset = pathname.startsWith("/reset-password");
+
+  // Customer pages (CSAT rating, portal, web form, help center) have no agent login,
+  // and must stay reachable for someone who happens to be signed in as an agent too.
+  if (isPublicPage(pathname)) {
+    const headers = new Headers(req.headers);
+    headers.set("x-nonce", nonce);
+    headers.set("Content-Security-Policy", csp);
+    return withCsp(NextResponse.next({ request: { headers } }));
+  }
 
   if (!hasSession && !isAuthPage) {
     const url = req.nextUrl.clone();
