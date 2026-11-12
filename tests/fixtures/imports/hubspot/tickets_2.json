@@ -1,0 +1,17 @@
+{
+ "results": [
+  {
+   "id": "103",
+   "properties": {
+    "subject": "  Card   charged twice ",
+    "content": "Charged twice on 1 March",
+    "hs_pipeline": "77",
+    "hs_pipeline_stage": "b1",
+    "hs_ticket_priority": "URGENT",
+    "source_type": "FORM",
+    "createdate": "2025-03-05T12:00:00Z",
+    "hs_lastmodifieddate": "2025-03-05T12:00:00Z"
+   }
+  }
+ ]
+}

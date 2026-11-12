@@ -1,0 +1,25 @@
+{
+ "results": [
+  {
+   "id": "501",
+   "properties": {
+    "email": "priya@example.org",
+    "firstname": "Priya",
+    "lastname": "Sharma"
+   }
+  },
+  {
+   "id": "502",
+   "properties": {
+    "email": "sam@example.org",
+    "firstname": null,
+    "lastname": null
+   }
+  }
+ ],
+ "paging": {
+  "next": {
+   "after": "502"
+  }
+ }
+}

@@ -1,0 +1,40 @@
+{
+ "results": [
+  {
+   "id": "101",
+   "properties": {
+    "subject": "Order 1042 not delivered",
+    "content": "Where is my order?",
+    "hs_pipeline": "0",
+    "hs_pipeline_stage": "2",
+    "hs_ticket_priority": "HIGH",
+    "source_type": "EMAIL",
+    "hubspot_owner_id": "o1",
+    "hs_ticket_category": "PRODUCT_ISSUE",
+    "createdate": "2025-03-01T10:00:00Z",
+    "hs_lastmodifieddate": "2025-03-02T09:00:00.000Z",
+    "closed_date": null
+   }
+  },
+  {
+   "id": "102",
+   "properties": {
+    "subject": "Refund please",
+    "content": "I want a refund for order 1043",
+    "hs_pipeline": "0",
+    "hs_pipeline_stage": "4",
+    "hs_ticket_priority": "LOW",
+    "source_type": "CHAT",
+    "hubspot_owner_id": "o9",
+    "createdate": "2025-02-01T08:00:00Z",
+    "hs_lastmodifieddate": "2025-02-03T08:00:00Z",
+    "closed_date": "2025-02-03T08:00:00Z"
+   }
+  }
+ ],
+ "paging": {
+  "next": {
+   "after": "102"
+  }
+ }
+}
