@@ -10,6 +10,7 @@ dependencies = [
     "alembic>=1.20.1",
     "argon2-cffi>=25.1.0",
     "asyncpg>=0.32.0",
+    "azure-storage-blob>=12.19",
     "boto3>=1.40",
     "cryptography>=46",
     "dnspython>=2.6",
