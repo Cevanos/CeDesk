@@ -17,7 +17,7 @@ from cedesk.helpdesk.domain import reports as rules
 from cedesk.helpdesk.domain.auth import Caller
 from cedesk.helpdesk.domain.permissions import Action
 from cedesk.helpdesk.repo import reports as repo
-from cedesk.helpdesk.service import sla
+from cedesk.helpdesk.service import scope, sla
 from cedesk.helpdesk.service.auth import Sessionmaker
 from cedesk.helpdesk.service.errors import Invalid, NotFound
 from cedesk.helpdesk.service.members import require
@@ -120,6 +120,12 @@ async def team_report(
     team_id: UUID | None = None,
 ) -> TeamReport:
     require(caller, Action.reports)
+    only = scope.visible_team(caller)
+    if only is not None:
+        # A `team_only` role reports on its own team (md A3).
+        if team_id not in (None, only):
+            raise NotFound("Team not found.")
+        team_id = only
     now = datetime.now(UTC)
     try:
         start, end = rules.period(start, end, now)

@@ -236,3 +236,26 @@ async def test_files_come_a_page_at_a_time(client: AsyncClient, app_sessionmaker
     assert second["next_cursor"] is None
     bad = await client.get(w["url"], params={"cursor": "nonsense"}, headers=w["admin"])
     assert bad.status_code == 422
+
+
+async def test_files_can_require_sign_in(client: AsyncClient, app_sessionmaker: Sm) -> None:
+    """S5: with the setting on, the link is an API path that needs the Bearer token."""
+    w = await setup(client, app_sessionmaker)
+    file = ok(await upload(client, w, b"%PDF-1.7 secret"), 201)
+    link = ok(await client.get(f"/api/v1/attachments/{file['id']}", headers=w["admin"]))
+    assert (link["needs_sign_in"], "/files/" in link["url"]) == (False, True)
+
+    ok(
+        await client.put(
+            "/api/v1/security-settings", headers=w["admin"], json={"attachments_need_sign_in": True}
+        )
+    )
+    link = ok(await client.get(f"/api/v1/attachments/{file['id']}", headers=w["admin"]))
+    assert link["needs_sign_in"] is True
+    assert link["url"] == f"http://t/api/v1/attachments/{file['id']}/content"
+    assert (await client.get(link["url"])).status_code == 401
+    got = await client.get(link["url"], headers=w["light"])
+    assert (got.status_code, got.content) == (200, b"%PDF-1.7 secret")
+    assert got.headers["content-type"] == "application/pdf"
+    assert got.headers["x-content-type-options"] == "nosniff"
+    assert "Report Q3.pdf" in got.headers["content-disposition"]

@@ -265,6 +265,14 @@ class MessageOut(BaseModel):
 
 
 class TicketOut(TicketRowOut):
+    can_edit: bool = Field(
+        default=True,
+        description="False: show the ticket read-only (notes still allowed), with "
+        "`view_only_reason` in the banner (md A5).",
+    )
+    view_only_reason: str | None = Field(
+        default=None, description='e.g. "Your role Billing desk can edit Billing tickets only."'
+    )
     fields: dict[str, Any]
     csat: CsatOut | None = Field(
         default=None, description="The customer's rating of this ticket, if any."

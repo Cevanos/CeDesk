@@ -8,9 +8,10 @@ from datetime import datetime
 from typing import Annotated, Any
 from uuid import UUID
 
-from fastapi import APIRouter, Query, Request, status
+from fastapi import APIRouter, Query, Request, Response, status
 from pydantic import BaseModel, Field, StringConstraints
 
+from cedesk.helpdesk.api.attachments import file_response
 from cedesk.helpdesk.api.deps import (
     AttemptLimit,
     CallerDep,
@@ -262,8 +263,13 @@ class PortalReplyIn(Body):
 
 
 class PortalDownloadOut(BaseModel):
-    url: str = Field(description="Opens the file without signing in, until `expires_at`.")
+    url: str = Field(
+        description="Opens the file without signing in, until `expires_at`. With "
+        "`needs_sign_in` it is GET /portal/attachments/{id}/content: fetch it with the "
+        "portal token."
+    )
     expires_at: datetime
+    needs_sign_in: bool = False
     file: PortalFileOut
 
 
@@ -399,8 +405,28 @@ async def download(
     return PortalDownloadOut(
         url=url,
         expires_at=found.expires_at,
+        needs_sign_in=found.needs_sign_in,
         file=PortalFileOut.model_validate(dict(found.attachment)),
     )
+
+
+@router.get(
+    "/portal/attachments/{attachment_id}/content",
+    response_class=Response,
+    summary="Download a file on my ticket, signed in (customer)",
+    responses={200: {"content": {"application/octet-stream": {}}}},
+)
+async def file_content(
+    attachment_id: UUID,
+    request: Request,
+    customer: CustomerDep,
+    sm: SessionmakerDep,
+    store: StoreDep,
+) -> Response:
+    scanning = _settings(request).scan_backend is not ScanBackend.none
+    found = await portal_tickets.file_content(sm, store, customer, attachment_id, scanning=scanning)
+    row = found.attachment
+    return file_response(found.data, str(row["name"]), str(row["mime"]))
 
 
 # CSAT (md P5): 1-5 with an optional comment, from the portal or the emailed link.

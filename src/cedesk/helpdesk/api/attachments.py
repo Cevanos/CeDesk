@@ -52,9 +52,28 @@ class AttachmentPageOut(BaseModel):
 
 
 class DownloadOut(BaseModel):
-    url: str = Field(description="Opens the file without signing in, until `expires_at`.")
+    url: str = Field(
+        description="Opens the file without signing in, until `expires_at`. With "
+        "`needs_sign_in` it is GET /attachments/{id}/content instead: fetch it with the "
+        "Bearer token (the workspace turned on Attachments need sign-in)."
+    )
     expires_at: datetime
+    needs_sign_in: bool = False
     attachment: AttachmentOut
+
+
+def file_response(data: bytes, name: str, mime: str) -> Response:
+    """A file's bytes, never sniffed or run as a page here."""
+    return Response(
+        data,
+        media_type=mime,
+        headers={
+            "Content-Disposition": content_disposition(name),
+            "X-Content-Type-Options": "nosniff",
+            "Content-Security-Policy": "default-src 'none'; sandbox",
+            "Cache-Control": "private, no-store",
+        },
+    )
 
 
 async def _read_file(request: Request, max_bytes: int) -> bytes:
@@ -169,8 +188,30 @@ async def download_link(
     return DownloadOut(
         url=url,
         expires_at=found.expires_at,
+        needs_sign_in=found.needs_sign_in,
         attachment=AttachmentOut.model_validate(dict(found.attachment)),
     )
+
+
+@router.get(
+    "/attachments/{attachment_id}/content",
+    response_class=Response,
+    summary="Download a file, signed in",
+    description="Works whether or not the workspace requires sign-in for files; it is the "
+    "only way when it does (S5). 409 as for the link.",
+    responses={200: {"content": {"application/octet-stream": {}}}},
+)
+async def file_content(
+    attachment_id: UUID,
+    request: Request,
+    caller: CallerDep,
+    sm: SessionmakerDep,
+    store: StoreDep,
+) -> Response:
+    scanning = request.app.state.settings.scan_backend is not ScanBackend.none
+    found = await attachments.file_content(sm, store, caller, attachment_id, scanning=scanning)
+    row = found.attachment
+    return file_response(found.data, str(row["name"]), str(row["mime"]))
 
 
 @router.get(

@@ -63,7 +63,9 @@ async def rows(sm: Sm, ws: UUID) -> list[Any]:
     async with workspace_session(sm, ws) as s:
         sql = (
             "SELECT id, event, payload->'ticket'->>'subject' AS subject, attempts, "
-            "published_at, failed_at, last_error FROM hd_outbox ORDER BY seq"
+            "published_at, failed_at, last_error FROM hd_outbox "
+            # Adding the desk's members queued Admin alerts (S6); these tests are about tickets.
+            "WHERE event <> 'security.alert' ORDER BY seq"
         )
         result = await s.execute(text(sql))
         return list(result.mappings().all())

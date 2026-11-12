@@ -109,6 +109,12 @@ class Settings(BaseSettings):
         default="http://localhost:3000",
         description="The agent app's address, for links in emails (password reset).",
     )
+    api_url: str = Field(
+        default="",
+        description="This API's public address (https://...), for single sign-on: the "
+        "identity provider sends people back to `<api_url>/api/v1/sso/<workspace>/acs`. "
+        "Empty: the address the request came in on.",
+    )
     portal_url: str = Field(
         default="",
         description="The customer portal's address, for links in emails (the CSAT survey "

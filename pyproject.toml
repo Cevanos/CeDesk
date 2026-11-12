@@ -16,6 +16,7 @@ dependencies = [
     "fastapi>=0.162.0",
     "httpx>=0.28.1",
     "pydantic-settings>=2.16.2",
+    "python3-saml>=1.16",
     "sqlalchemy[asyncio]>=2.1.8",
     "tzdata>=2026.6",
     "uvicorn[standard]>=0.54.0",
@@ -60,7 +61,7 @@ plugins = ["pydantic.mypy"]
 
 # boto3 ships no type hints; the S3 store keeps its client as `Any` behind a typed port.
 [[tool.mypy.overrides]]
-module = ["boto3", "boto3.*", "botocore", "botocore.*"]
+module = ["boto3", "boto3.*", "botocore", "botocore.*", "onelogin", "onelogin.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
@@ -68,6 +69,8 @@ testpaths = ["tests"]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 markers = ["db: needs the test Postgres (docker compose up -d db)"]
+# python3-saml still calls datetime.utcnow(); nothing for us to change.
+filterwarnings = ["ignore::DeprecationWarning:onelogin.*"]
 
 # Layer rules from the plan: api -> service -> (domain, repo, events); domain touches no database.
 [tool.importlinter]

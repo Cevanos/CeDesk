@@ -19,6 +19,7 @@ from cedesk.helpdesk.domain import auth as rules
 from cedesk.helpdesk.domain.email import new_message_id
 from cedesk.helpdesk.repo import auth as repo
 from cedesk.helpdesk.repo import email as email_repo
+from cedesk.helpdesk.repo import security as security_repo
 from cedesk.helpdesk.service import passwords
 from cedesk.helpdesk.service.auth import Sessionmaker
 from cedesk.helpdesk.service.errors import Gone, Invalid
@@ -99,12 +100,14 @@ async def forgot_password(
 
 
 async def reset_with_link(sm: Sessionmaker, *, token: str, new_password: str) -> None:
-    problem = rules.password_problem(new_password)
-    if problem:
-        raise Invalid(problem)
     workspace_id = rules.token_workspace(token)
     if workspace_id is None:
         raise Gone(BAD_LINK)
+    async with workspace_session(sm, workspace_id) as s:
+        minimum = (await security_repo.current(s)).password_min
+    problem = rules.password_problem(new_password, minimum)
+    if problem:
+        raise Invalid(problem)
     # Slow (Argon2): hashed before any row is locked.
     new_hash = await asyncio.to_thread(passwords.hash_password, new_password)
     async with workspace_session(sm, workspace_id) as s:

@@ -3,6 +3,88 @@
 `openapi.json` next to this file is the API as served (`uv run cedesk openapi`). Every
 route is under `/api/v1`. Breaking changes only come in v2 (md 2B). Newest first.
 
+## 2026-11-12: Custom roles, security settings, 2FA and SAML single sign-on (Phase 3, A3-A5, S1-S6, S8)
+
+New error codes (all 403, `error.code`): `IpNotAllowed`, `PasswordExpired`,
+`TwoFactorRequired`, `TwoFactorSetupRequired`, `SsoRequired`. Members, roles and every
+security setting below are for Admins only (new right `manage_access`); a custom role
+with the settings right never gets them.
+
+**Custom roles (A3-A5)**
+- `GET/POST /roles`, `PUT/DELETE /roles/{id}`: `{name, reply, assign_any, reports,
+  settings, approve, scope, team_id}`. Every custom role reads tickets, adds notes, edits
+  fields and lists members; `reply` adds replying, creating tickets and taking tickets
+  (routing and assigning skip a role without it); `assign_any` assigns to anyone.
+  `scope`: `all`, `team_edit` (edit the team's tickets, view the rest) or `team_only`
+  (other teams' tickets are hidden). A scoped role needs `team_id`. Name taken: 409. A
+  role in use can't be deleted (409), nor a team a role works on.
+- Give one: `PATCH /members/{id}` (or `POST /members`) `{role: "custom", role_id}`.
+  Members now have `role_id`, `role_name` and `two_factor`. Changes apply on the next
+  request, no new sign-in.
+- `GET /me` has `access`: `{role, role_name, actions, scope, team_id, team_name}`.
+- A scoped role is never routed or assigned another team's tickets (422 "Ravi's role
+  works on Shipping's tickets only ..."), and opens tickets for its own team only (its
+  team is used when none is sent; 422 for another). A child ticket can go to any team.
+- `team_only`: other teams' tickets are 404 everywhere (ticket, messages, files, tools,
+  Related card) and missing from lists, tab counts and the customer's tickets; the team
+  report shows its own team only. `team_edit`: other tickets can be read and noted, every
+  change is 403 with the reason.
+- Ticket detail has `can_edit` and `view_only_reason` ("Your role Billing desk can edit
+  Billing tickets only.", or "... can read tickets and add notes only." for light agents).
+
+**Security settings (S3-S6)**: `GET/PUT /security-settings` (only the fields sent change;
+the rest keep their saved values)
+- `password_min` 8-64 (default 10): new passwords only. `password_expiry_days` null, 90
+  or 180: sign-in then has `password_expired: true` and only `GET /me`,
+  `POST /me/password` and sign-out work (403 `PasswordExpired`).
+- `session_length`: `1h_idle`, `8h`, `12h` (default) or `7d`. A shorter setting also ends
+  longer open sessions. `1h_idle` ends a session after an hour without use (at most 7 days).
+- `ip_allowlist`: CIDR blocks or addresses (up to 100), checked at sign-in and on every
+  signed-in request (403 `IpNotAllowed`). Saving a list without your own address is 422.
+  `POST /security/test-my-ip` `{ip_allowlist?}` → `{ip, allowed}`.
+- `attachments_need_sign_in`: download links become `GET /attachments/{id}/content` (and
+  `GET /portal/attachments/{id}/content`), which need the Bearer token; the link answers
+  have `needs_sign_in: true`. These content routes always work for signed-in callers.
+- Locked out by the IP list (every Admin)? On the server: `uv run cedesk
+  clear-ip-allowlist --workspace <slug>` (the Admins are emailed).
+- `admin_alerts` (default on): every Admin is emailed when a member is added, deactivated
+  or reactivated, a member's role changes, the IP list, 2FA rule or SSO setup changes, a member's 2FA is reset, or
+  the alerts are turned off (outbox event `security.alert`, sent by the worker).
+- Score (S8): `GET /security/score` → `{score, level, items}`: SSO enforced 20, 2FA
+  required 25, IP list 15, passwords 12+ characters 10, card redaction 10, and 5 each for
+  sign-out not 7 days, files need sign-in, Admin alerts, portal email domains. Level
+  healthy 80+, recommended 50-79, critical under 50; each item healthy / critical (big
+  items off) / recommended.
+
+**Two-step sign-in (S2)**, authenticator app (TOTP) with 10 recovery codes
+- Set up: `POST /me/2fa/setup` → `{secret, otpauth_uri}` (show the QR); `POST
+  /me/2fa/confirm` `{code}` → `{recovery_codes}` (shown once; your other sessions end).
+  `GET /me/2fa` → `{enabled, required, recovery_codes_left}`. `POST
+  /me/2fa/recovery-codes` `{code}` → a new set. `POST /me/2fa/disable` `{code}` (403 when
+  the workspace requires it).
+- Sign-in with 2FA on: the answer has `two_factor_required: true` and a token that only
+  works for `POST /auth/2fa` `{code}` (6 digits or a recovery code) for 10 minutes;
+  everything else is 403 `TwoFactorRequired`. Wrong codes count toward the 10-try lockout;
+  a code works once.
+- `require_2fa` in the security settings (turn it on for yourself first): members without
+  2FA can only set it up (403 `TwoFactorSetupRequired`); `GET /me` has
+  `two_factor_setup_required`.
+- Admin: `POST /members/{id}/2fa/reset` → 204 (turns it off, signs them out everywhere).
+
+**SAML single sign-on (S1)**
+- Admin: `GET/PUT /sso-settings` `{enabled, enforced, idp_entity_id, idp_sso_url,
+  idp_cert}`; the answer also has `sp_entity_id`, `acs_url`, `metadata_url` to give the
+  identity provider. `enforced`: password sign-in is 403 `SsoRequired` for everyone except
+  Admins.
+- Sign-in page: `GET /sso/{workspace}` → `{enabled, enforced, start_url}` (no sign-in).
+  Open `start_url` (optionally `?next=/tickets/...`) in the browser. After the identity
+  provider, the browser lands on `<app_url>/sso/callback#token=...&expires_at=...&next=...`
+  or `#error=...`. Members must already exist (matched by email). The start sets a
+  short cookie (`cedesk_sso`, only for the ACS URL); an answer posted from a browser
+  without it is refused, so nobody can sign you into their account.
+- `GET /sso/{workspace}/metadata`: our SP metadata XML.
+- New setting `CEDESK_API_URL`: the API's public address for the ACS URL.
+
 ## 2026-11-12: Ticket tools: merge, links, child tickets, approvals, tasks, time (Phase 3, X1-X4, X6, X8, X9)
 
 Light agents read all of these but change none (403). Every change writes a grey line.
