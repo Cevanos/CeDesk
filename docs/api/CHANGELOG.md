@@ -3,6 +3,59 @@
 `openapi.json` next to this file is the API as served (`uv run cedesk openapi`). Every
 route is under `/api/v1`. Breaking changes only come in v2 (md 2B). Newest first.
 
+## 2026-11-12: Imports from other help desks: framework and CSV (Phase 2, M1-M8)
+
+All routes are Admin only (Settings). The first source is a CSV file; Intercom, Zendesk,
+Freshdesk, Gorgias and Help Scout follow on the same routes (`connect` answers 422 "isn't
+available yet" until then; HubSpot and Zoho Desk come in Phase 3 and aren't offered). The flow is connect (or upload) → discover → dry run → run.
+
+- New (Admin): `POST /imports/csv?filename=` with the CSV file as the request body (not a
+  form). 201 `{id, source, label, state, credentials_hint, created_at}`; 422 for a file that
+  isn't UTF-8 or lacks a required column; 413 over 25 MB. One row per message, grouped by
+  `ticket_id`. Required: `ticket_id`, `subject`, `requester_email`, `message_from`
+  (customer, agent, note), `message_body`, `message_created_at` (ISO 8601). Optional: `status`,
+  `priority`, `channel`, `team`, `tags` (`;`), `ticket_created_at`, `resolved_at`,
+  `requester_name`, `assignee_email`, `csat_score`, `csat_comment`, `message_id`,
+  `author_name`, `author_email`, `field.<key>`. A row that can't be read is listed in
+  `warnings` and left out. The file is deleted when the run ends.
+- New (Admin): `POST /imports/connections` `{source, settings, credentials}`: checks the
+  credentials with the source and keeps them encrypted (only the last 4 characters are
+  ever shown). 201; 422 when the source refuses them; 503 when it can't be reached.
+- New (Admin): `GET /imports/connections/{id}/discover` → counts, the source's groups with
+  the team each probably maps to (by name, only a team that exists), the status map, and
+  `warnings`. 409 when the connection was closed.
+- New (Admin): `POST /imports/connections/{id}/dry-run` `{kinds?, team_map?}` → what a run
+  would add (`will_create`), what this source brought before (`already_imported`) and
+  `warnings` such as "No team picked for 'Shipping'.". Saves nothing. 422 for an unknown
+  kind or team.
+- New (Admin): `POST /imports/connections/{id}/run` `{kinds?, team_map?}` → 202 with the run
+  (`state` queued → running → done or failed). The worker does it in the background, in
+  slices, resuming at the page it was on after a crash or a pause (a source's 429 pauses
+  it for Retry-After). 409 when this connection already has a run in progress. Start a
+  failed run again: records already imported are skipped.
+- New (Admin): `GET /imports/runs/{id}` → `{state, kinds, counts, sync_on, last_error, ...}`;
+  `counts` per kind has `created` and `skipped` (tickets also `unknown_agent_messages`;
+  a CSV also `rows_left_out`).
+- New (Admin): `POST /imports/connections/{id}/close` (204): deletes the stored credentials
+  or file now. The history stays. 409 while a run is in progress.
+- What an imported ticket is: its own dates, status, tags, custom fields and CSAT; source
+  `csv` (etc.) and `source_id` so running again makes no duplicates; the tag
+  `imported-<source>`; a first system line "Imported from … with full history · group ·
+  source ID … · was …". It is not routed, no rule runs, and it sends no notification,
+  outbox event or webhook. Triage runs and card numbers are removed from customer text.
+  Agents are matched by email; one who isn't in CeDesk keeps their name on their messages
+  ("Sana K. (CSV file, not in CeDesk)") and the ticket stays unassigned. Imported tickets
+  stay out of the report's time metrics; their CSAT counts. Ticket numbers are new
+  (T-numbers); the old id is `source_id`.
+- Changed: `hd_csat.source` (see `csat` on a ticket) can now be an import source.
+- `Idempotency-Key` is accepted on `POST /imports/csv`, `POST /imports/connections` and
+  `POST /imports/connections/{id}/run`: a repeat returns what the first made (header
+  `Idempotent-Replayed: true`), the same key with a different request is 422. Without a key,
+  a repeated connect makes a second connection, and a run can't be started twice on one
+  connection (409).
+- Imported tickets are never alerted for an SLA breach (their times come from the old desk,
+  as in the team report). This shipped with the foundation (migration 0038).
+
 ## 2026-11-12: Custom roles, security settings, 2FA and SAML single sign-on (Phase 3, A3-A5, S1-S6, S8)
 
 New error codes (all 403, `error.code`): `IpNotAllowed`, `PasswordExpired`,
