@@ -7,6 +7,7 @@ from uuid import UUID
 from sqlalchemy import RowMapping, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from cedesk.helpdesk.repo import stream as stream_repo
 from cedesk.helpdesk.repo.attachments import MESSAGE_FILES
 
 Row = RowMapping
@@ -63,6 +64,7 @@ async def notify(
             "text": body,
         },
     )
+    await stream_repo.publish_notifications(session, workspace_id, member_ids, ticket_id, kind)
 
 
 async def get_message(session: AsyncSession, message_id: UUID) -> Row | None:

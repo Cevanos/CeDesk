@@ -7,6 +7,8 @@ from uuid import UUID
 from sqlalchemy import RowMapping, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from cedesk.helpdesk.repo import stream as stream_repo
+
 Row = RowMapping
 
 _CONNECTION = (
@@ -142,6 +144,16 @@ async def update_chat(session: AsyncSession, ticket_id: UUID, **values: Any) -> 
         text(f"UPDATE hd_cevanos_chat SET {sets} WHERE ticket_id = :ticket_id"),  # noqa: S608
         {**values, "ticket_id": ticket_id},
     )
+    # The state of the chat, for the live streams (P7): taken over, closed, or reopened.
+    state = None
+    if values.get("taken_over_at") is not None:
+        state = "chat.taken_over"
+    elif "closed_at" in values:
+        state = "chat.reopened" if values["closed_at"] is None else "chat.closed"
+    if state is not None:
+        await stream_repo.publish_for_ticket(
+            session, ticket_id, agent=(state, {"ticket_id": str(ticket_id)})
+        )
 
 
 async def claim_due(session: AsyncSession, limit: int, lease_seconds: int) -> Sequence[Row]:
