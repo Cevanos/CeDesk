@@ -3,6 +3,55 @@
 `openapi.json` next to this file is the API as served (`uv run cedesk openapi`). Every
 route is under `/api/v1`. Breaking changes only come in v2 (md 2B). Newest first.
 
+## 2026-11-12: Live updates: a stream of changes for agents and portal customers (Phase 2, C11, P7)
+
+New (agents): `POST /stream/ticket` -> 201 `{ticket, expires_in: 60}`, then `GET /stream?ticket=...`
+opens a Server-Sent Events stream (`text/event-stream`). A browser's EventSource can't send an
+Authorization header, so the ticket stands in for it: it is random, lasts a minute and works once,
+so the session token never goes in an address. A client that can send headers may use it the same
+way. 401 when the ticket is unknown, used, expired or its sign-in ended; 429 with `Retry-After`
+when the person already has 5 streams open.
+
+New (portal customers): `POST /portal/stream/ticket` (portal token) and `GET /portal/stream?ticket=...`.
+
+What a stream sends is that something changed, never what it says: an event carries ids and the
+names of what changed, never a subject, a message text, an address or a name. Fetch the ticket
+through the normal API; it applies the same permissions as always.
+
+- Frame: `id: <n>`, `event: <kind>`, `data: <json>`. Send the last `id` back as the `Last-Event-ID`
+  header (an EventSource does it by itself on reconnect) or as `?last_event_id=` to carry on
+  without losing one. An id may repeat after a reconnect: ignore one you have seen. A first
+  line `retry: 3000` tells the browser how long to wait before it reconnects.
+- `event: reset`: your last id is older than the 24 hours kept (or isn't one): refetch what you
+  show, then go on. `event: end` with `{"reason": "signed_out"}`: the sign-in ended; don't
+  reconnect. A line starting with `:` is a heartbeat, every 15 seconds.
+- A role limited to one team's tickets only gets that team's events (and their own
+  notifications); a role change applies within a minute. A stream looks for new events about
+  once a second.
+
+Agent kinds (`data` has `ticket_id`, and `number` where the ticket's is known):
+
+| `event` | `data` besides the ticket |
+|---|---|
+| `ticket.created` | |
+| `ticket.updated` | `changes`: the fields that changed (`status`, `priority`, `team_id`, ...) |
+| `ticket.resolved` | |
+| `message.created` | `message_id`, `message_kind` (customer, agent, ai, note, system) |
+| `assignment.changed` | `from`, `to`, `by`: member ids, or null |
+| `chat.accepted` | `by`: an agent clicked Accept on a Cevanos chat |
+| `chat.taken_over`, `chat.closed`, `chat.reopened` | the state of a Cevanos chat (P7) |
+| `notification` | `notification`: its kind (assigned, mention, customer_reply, ...) |
+
+Portal customers only get, for their own tickets: `message.created` for a customer, agent or AI
+message (never a note or a system line), `ticket.updated` with `changes: ["status"]`, and
+`ticket.resolved`.
+
+- Not sent to anyone: `security.alert` (the email to the Admins) and contact changes.
+- Events are kept 24 hours; the worker removes older ones. New migration 0040 (`hd_event_log`,
+  `hd_stream_ticket`, both with row-level security).
+- Deploy: Caddy sends `/api/v1/stream` and `/api/v1/portal/stream` unbuffered and uncompressed;
+  CORS allows the `Last-Event-ID` header.
+
 ## 2026-11-12: Audit log, privacy export and erase, sandbox (Phase 3, S9-S11)
 
 **Audit log (S9)**: every settings change is recorded with who, when, from which IP
