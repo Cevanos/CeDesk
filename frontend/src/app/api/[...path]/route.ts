@@ -4,9 +4,11 @@ import {
   ALLOWED_AREAS,
   AUTH_RATE_WINDOW_MS,
   authRateLimit,
-  RATE_LIMITED_PATHS,
   MAX_UPLOAD_BYTES,
-  PUBLIC_PATHS,
+  PORTAL_COOKIE,
+  isPortalPath,
+  isPublicPath,
+  isRateLimitedPath,
   SESSION_COOKIE,
   SESSION_HINT_COOKIE,
   UPSTREAM_TIMEOUT_MS,
@@ -77,7 +79,7 @@ async function handle(req: NextRequest, { params }: Ctx) {
     return errorBody("Forbidden", "Cross-site request blocked.", 403);
   }
 
-  if (RATE_LIMITED_PATHS.has(path)) {
+  if (isRateLimitedPath(path)) {
     const verdict = limiter().hit(`${path}:${clientKey(req.headers, trustedProxyHops())}`);
     if (!verdict.ok) {
       const res = errorBody("RateLimited", "Too many tries. Please wait a moment.", 429);
@@ -92,10 +94,14 @@ async function handle(req: NextRequest, { params }: Ctx) {
     return errorBody("Unavailable", "The service is not configured.", 503);
   }
 
-  const isPublic = PUBLIC_PATHS.has(path);
-  const token = req.cookies.get(SESSION_COOKIE)?.value;
+  const isPublic = isPublicPath(path);
+  const portal = isPortalPath(path);
+  // Each token only ever goes to its own area: portal calls carry the customer's
+  // token, everything else the agent's.
+  const token = req.cookies.get(portal ? PORTAL_COOKIE : SESSION_COOKIE)?.value;
   if (!isPublic && !token) {
-    return clearSession(errorBody("NotSignedIn", "Please sign in.", 401));
+    const res = errorBody("NotSignedIn", "Please sign in.", 401);
+    return portal ? res : clearSession(res);
   }
 
   const headers = new Headers();
@@ -146,6 +152,33 @@ async function handle(req: NextRequest, { params }: Ctx) {
   }
   out.set("cache-control", "no-store");
 
+  // Portal sign-in: same idea with the customer's own cookie.
+  if (/^portal\/[^/]+\/session$/.test(path) && req.method === "POST" && upstream.ok) {
+    const data = (await upstream.json().catch(() => null)) as {
+      token?: string;
+      expires_at?: string;
+      [k: string]: unknown;
+    } | null;
+    if (!data?.token) {
+      return errorBody("Internal", "Unexpected response from the service.", 502);
+    }
+    const { token: portalToken, ...rest } = data;
+    const expires = data.expires_at ? new Date(data.expires_at) : undefined;
+    const res = NextResponse.json(rest, {
+      headers: upstream.headers.get("x-request-id")
+        ? { "x-request-id": upstream.headers.get("x-request-id")! }
+        : undefined,
+    });
+    res.cookies.set(PORTAL_COOKIE, portalToken, {
+      path: "/",
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production" && process.env.ALLOW_INSECURE_HTTP !== "1",
+      httpOnly: true,
+      ...(expires && !Number.isNaN(expires.valueOf()) ? { expires } : {}),
+    });
+    return res;
+  }
+
   // Sign-in: move the token into an httpOnly cookie and drop it from the body.
   if (path === "auth/sign-in" && req.method === "POST" && upstream.ok) {
     const data = (await upstream.json().catch(() => null)) as {
@@ -183,7 +216,11 @@ async function handle(req: NextRequest, { params }: Ctx) {
   const res = new NextResponse(payload, { status: upstream.status, headers: out });
 
   // Sign-out always ends the local session; a 401 means the token is dead.
-  if (path === "auth/sign-out" || (upstream.status === 401 && !isPublic)) {
+  if (portal) {
+    if (path === "portal/sign-out" || (upstream.status === 401 && !isPublic)) {
+      res.cookies.set(PORTAL_COOKIE, "", { path: "/", maxAge: 0 });
+    }
+  } else if (path === "auth/sign-out" || (upstream.status === 401 && !isPublic)) {
     clearSession(res);
   }
   return res;

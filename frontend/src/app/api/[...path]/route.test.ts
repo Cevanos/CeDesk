@@ -184,3 +184,105 @@ describe("failure handling", () => {
     expect(res.status).toBe(413);
   });
 });
+
+describe("customer portal and public areas", () => {
+  const portalCookie = { cookie: "cdesk_portal=portal-tok" };
+  const post = (path: string[], headers: Record<string, string> = {}, body = "{}") =>
+    call(POST, path, {
+      method: "POST",
+      headers: { origin: ORIGIN, "content-type": "application/json", ...freshIp(), ...headers },
+      body,
+    });
+
+  it("sends the portal cookie to /portal and never the agent token", async () => {
+    let auth: string | null = null;
+    server.use(
+      http.get(`${BACKEND}/portal/tickets`, ({ request }) => {
+        auth = request.headers.get("authorization");
+        return HttpResponse.json({ items: [] });
+      }),
+    );
+    const res = await call(GET, ["portal", "tickets"], {
+      headers: { cookie: "cdesk_session=agent-tok; cdesk_portal=portal-tok" },
+    });
+    expect(res.status).toBe(200);
+    expect(auth).toBe("Bearer portal-tok");
+  });
+
+  it("does not let an agent session open portal routes", async () => {
+    const res = await call(GET, ["portal", "tickets"], { headers: session });
+    expect(res.status).toBe(401);
+    // a portal 401 never clears the agent cookie
+    expect(res.headers.get("set-cookie") ?? "").not.toContain("cdesk_session");
+  });
+
+  it("does not send the portal token to agent routes", async () => {
+    const res = await call(GET, ["me"], { headers: portalCookie });
+    expect(res.status).toBe(401);
+  });
+
+  it("calls public routes without any token", async () => {
+    let auth: string | null = "unset";
+    server.use(
+      http.get(`${BACKEND}/public/acme/articles`, ({ request }) => {
+        auth = request.headers.get("authorization");
+        return HttpResponse.json({ articles: [] });
+      }),
+    );
+    const res = await call(GET, ["public", "acme", "articles"], {
+      headers: { cookie: "cdesk_session=agent-tok; cdesk_portal=portal-tok" },
+    });
+    expect(res.status).toBe(200);
+    expect(auth).toBeNull();
+  });
+
+  it("moves the portal token into an httpOnly cookie and out of the body", async () => {
+    server.use(
+      http.post(`${BACKEND}/portal/acme/session`, () =>
+        HttpResponse.json({
+          token: "portal-secret",
+          email: "a@b.c",
+          expires_at: "2099-01-01T00:00:00Z",
+        }),
+      ),
+    );
+    const res = await post(["portal", "acme", "session"]);
+    const body = await res.text();
+    const cookie = res.headers.get("set-cookie") ?? "";
+    expect(res.status).toBe(200);
+    expect(body).not.toContain("portal-secret");
+    expect(JSON.parse(body)).toMatchObject({ email: "a@b.c" });
+    expect(cookie).toContain("cdesk_portal=portal-secret");
+    expect(cookie.toLowerCase()).toContain("httponly");
+    expect(cookie).not.toContain("cdesk_session");
+  });
+
+  it("clears only the portal cookie on portal sign-out", async () => {
+    server.use(
+      http.post(`${BACKEND}/portal/sign-out`, () => new HttpResponse(null, { status: 204 })),
+    );
+    const res = await post(["portal", "sign-out"], portalCookie);
+    const cookie = res.headers.get("set-cookie") ?? "";
+    expect(res.status).toBe(204);
+    expect(cookie).toContain("cdesk_portal=;");
+    expect(cookie).not.toContain("cdesk_session");
+  });
+
+  it("clears the portal cookie when the backend says the portal token is dead", async () => {
+    server.use(http.get(`${BACKEND}/portal/tickets`, () => HttpResponse.json({}, { status: 401 })));
+    const res = await call(GET, ["portal", "tickets"], { headers: portalCookie });
+    expect(res.status).toBe(401);
+    expect(res.headers.get("set-cookie")).toContain("cdesk_portal=;");
+  });
+
+  it("rate limits asking for sign-in codes per client", async () => {
+    server.use(
+      http.post(`${BACKEND}/portal/acme/code`, () => new HttpResponse(null, { status: 204 })),
+    );
+    const ip = freshIp();
+    for (let i = 0; i < 10; i++) {
+      expect((await post(["portal", "acme", "code"], ip)).status).toBe(204);
+    }
+    expect((await post(["portal", "acme", "code"], ip)).status).toBe(429);
+  });
+});
