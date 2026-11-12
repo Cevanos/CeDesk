@@ -30,7 +30,19 @@ Decisions:
   has none, records are counted by paging (100 per page) up to `COUNT_PAGES_MAX` pages and the
   count is then a lower bound. Ticket totals include trashed ones only if the source does.
 
-Not verified against a live account. Unsure of: the `satisfaction_survey` field on a ticket
+- Attachments: each message's `attachments` list (`name`, `url`, `content_type`, `size`) is
+  read as given (ticket message object, https://developers.gorgias.com/reference/list-messages);
+  entries without an https URL are skipped. A message with files but no text is kept with the
+  body "(attachment only)". `fetch` downloads the URL through `SourceHttp.download`.
+- Changes since a time (`changed_tickets`): `GET /tickets` with `order_by=updated_datetime:desc`;
+  there is no documented "updated since" filter, so paging stops (cursor None) at the first
+  ticket whose `updated_datetime` (else `created_datetime`) is older than `since`.
+
+Not verified against a live account. Unsure of: whether Gorgias attachment URLs are signed
+public links or need the account's credentials (`download` sends them only to the account's
+own host); that `size` is always present; the `updated_datetime:desc` order on `/tickets`
+(`:asc` is what the full import uses; `:desc` is assumed to work the same way);
+the `satisfaction_survey` field on a ticket
 (`score` 1-5, `body_text`, `scored_datetime` assumed; the list reference does not show it);
 the shape of `custom_fields` (a mapping of id -> {name?, value} or a list of such objects is
 handled); `total_resources` being filled on every list; whether `/account` needs a
@@ -50,6 +62,7 @@ from cedesk.egress import Guard
 from cedesk.helpdesk.domain import imports as rules
 from cedesk.helpdesk.domain.imports import (
     AccountInfo,
+    Attachment,
     Contact,
     Counts,
     Csat,
@@ -269,8 +282,10 @@ class GorgiasConnector:
         if row.get("deleted_datetime"):
             return None
         text = rules.body(_text(row.get("body_text"), row.get("body_html")))
-        if not text:
+        files = GorgiasConnector._attachments(row.get("attachments"))
+        if not text and not files:
             return None
+        text = text or "(attachment only)"
         raw_sender = row.get("sender")
         sender: Mapping[str, Any] = raw_sender if isinstance(raw_sender, dict) else {}
         kind = (
@@ -288,7 +303,62 @@ class GorgiasConnector:
             external_id=_id(row.get("id")),
             author_name=str(sender["name"]) if sender.get("name") else None,
             author_email=email if isinstance(email, str) and email else None,
+            attachments=files,
         )
+
+    @staticmethod
+    def _attachments(raw: object) -> list[Attachment]:
+        """`attachments: [{name, url, content_type, size}]`; entries without an https URL
+        are skipped."""
+        out: list[Attachment] = []
+        if not isinstance(raw, list):
+            return out
+        for item in raw:
+            if not isinstance(item, dict):
+                continue
+            url = item.get("url")
+            if not isinstance(url, str) or not url.lower().startswith("https://"):
+                continue
+            size = item.get("size")
+            mime = item.get("content_type")
+            name = item.get("name")
+            out.append(
+                Attachment(
+                    name=name.strip() if isinstance(name, str) and name.strip() else "file",
+                    url=url,
+                    size=size if isinstance(size, int) and not isinstance(size, bool) else None,
+                    mime=mime if isinstance(mime, str) and mime else None,
+                )
+            )
+        return out
+
+    async def fetch(self, attachment: Attachment, limit: int) -> bytes | None:
+        return await self._http.download(attachment.url, limit)
+
+    async def changed_tickets(
+        self, since: datetime, cursor: Mapping[str, Any] | None
+    ) -> Page[Ticket]:
+        """Newest-updated first; paging stops at the first ticket older than `since`."""
+        after = str(cursor["cursor"]) if cursor and cursor.get("cursor") else None
+        rows, nxt = await self._list(
+            "/tickets",
+            {
+                "limit": LIMIT,
+                "cursor": after,
+                "order_by": "updated_datetime:desc",
+                "trashed": "false",
+            },
+        )
+        items: list[Ticket] = []
+        for row in rows:
+            changed = when(row.get("updated_datetime")) or when(row.get("created_datetime"))
+            if changed is not None and changed < since:
+                nxt = None  # ordered by update time: everything after is older still
+                break
+            if row.get("id") is None or row.get("spam") or row.get("trashed_datetime"):
+                continue
+            items.append(await self._ticket(row))
+        return Page(items, {"cursor": nxt} if nxt else None)
 
     @staticmethod
     def _fields(raw: object) -> dict[str, Any]:

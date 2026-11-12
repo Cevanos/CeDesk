@@ -101,6 +101,7 @@ _FILTERS = """
       AND (CAST(:team AS uuid) IS NULL OR t.team_id = CAST(:team AS uuid))
       AND (CAST(:vt AS uuid) IS NULL OR t.team_id = CAST(:vt AS uuid))
       AND (CAST(:contact AS uuid) IS NULL OR t.contact_id = CAST(:contact AS uuid))
+      AND (CAST(:imported AS text[]) IS NULL OR t.source = ANY(CAST(:imported AS text[])))
       AND (CAST(:scope AS text) = 'everyone'
            OR (CAST(:scope AS text) = 'mine' AND t.assignee_id = CAST(:me AS uuid))
            OR (CAST(:scope AS text) = 'unassigned' AND t.assignee_id IS NULL))
@@ -262,6 +263,7 @@ async def list_tickets(
     priority: str | None,
     team: UUID | None,
     contact: UUID | None = None,
+    imported: Sequence[str] | None = None,
     visible_team: UUID | None = None,
     scope: str,
     q_like: str | None,
@@ -282,6 +284,7 @@ async def list_tickets(
             "priority": priority,
             "team": team,
             "contact": contact,
+            "imported": list(imported) if imported else None,
             "vt": visible_team,
             "scope": scope,
             "q_like": q_like,

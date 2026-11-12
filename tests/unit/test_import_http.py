@@ -162,3 +162,106 @@ def test_only_the_oauth_token_exchange_may_post() -> None:
         with pytest.raises(ValueError, match="OAuth token path"):
             asyncio.run(c.exchange_token(path, {}))
     assert len(seen) == 1  # nothing else was sent
+
+
+# Files a source message points to (`download`)
+
+
+def fetch(c: http.SourceHttp, url: str, limit: int = 1000) -> bytes | None:
+    return asyncio.run(c.download(url, limit))
+
+
+def test_a_download_returns_the_bytes_and_sends_credentials_only_to_the_account_host() -> None:
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, content=b"data")
+
+    c = client(handler)
+    assert fetch(c, "https://acme.zendesk.com/attachments/1") == b"data"
+    assert fetch(c, "https://files.cdn.example/attachments/1") == b"data"
+    assert seen[0].headers["authorization"] == "Bearer tok"
+    assert "authorization" not in seen[1].headers  # a storage host never gets the key
+
+
+def test_a_download_follows_a_redirect_by_hand_and_drops_the_credentials() -> None:
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        if request.url.host == "acme.zendesk.com":
+            return httpx.Response(302, headers={"location": "https://s3.example.com/f?sig=1"})
+        return httpx.Response(200, content=b"stored")
+
+    assert fetch(client(handler), "https://acme.zendesk.com/attachments/token/x") == b"stored"
+    assert [r.url.host for r in seen] == ["acme.zendesk.com", "s3.example.com"]
+    assert "authorization" not in seen[1].headers
+
+
+def test_a_download_checks_every_hop_and_stops_after_three() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(302, headers={"location": "https://s3.example.com/again"})
+
+    assert fetch(client(handler), "https://s3.example.com/start") is None
+
+    checked: list[str] = []
+
+    async def guard(host: str) -> None:
+        checked.append(host)
+        if host == "evil.internal":
+            raise BadAddress("not public")
+
+    def to_internal(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(302, headers={"location": "https://evil.internal/x"})
+
+    assert fetch(client(to_internal, guard=guard), "https://acme.zendesk.com/a") is None
+    assert checked == ["acme.zendesk.com", "evil.internal"]
+
+
+def test_a_download_refuses_what_is_not_plain_https() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise AssertionError("no request should be made")
+
+    c = client(handler)
+    for url in (
+        "http://acme.zendesk.com/a",
+        "https://acme.zendesk.com:8443/a",
+        "file:///etc/passwd",
+        "https:///nohost",
+        "ftp://acme.zendesk.com/a",
+    ):
+        assert fetch(c, url) is None
+    assert fetch(client(handler, guard=refuse), "https://acme.zendesk.com/a") is None
+
+
+def test_a_download_is_none_for_a_missing_file_and_for_one_over_the_limit() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/gone"):
+            return httpx.Response(404)
+        if request.url.path.endswith("/denied"):
+            return httpx.Response(403)
+        if request.url.path.endswith("/declared"):
+            return httpx.Response(200, headers={"content-length": "5000"}, content=b"x" * 5000)
+        return httpx.Response(200, content=b"x" * 2000)
+
+    c = client(handler)
+    for name in ("gone", "denied", "declared", "streamed"):
+        assert fetch(c, f"https://acme.zendesk.com/{name}", 1000) is None
+    assert len(fetch(c, "https://acme.zendesk.com/streamed", 2000) or b"") == 2000
+
+
+def test_a_download_pauses_on_429_and_retries_on_a_server_error() -> None:
+    def limited(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(429, headers={"retry-after": "30"})
+
+    with pytest.raises(RateLimited) as caught:
+        fetch(client(limited), "https://acme.zendesk.com/a")
+    assert caught.value.retry_after == 30
+
+    def down(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(503)
+
+    with pytest.raises(SourceError) as err:
+        fetch(client(down), "https://acme.zendesk.com/a")
+    assert err.value.permanent is False

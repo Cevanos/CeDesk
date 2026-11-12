@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -37,9 +38,13 @@ def route(request: httpx.Request) -> httpx.Response:
     if path == "/api/macros":
         return httpx.Response(200, json=fixture("macros"))
     if path == "/api/tickets":
+        if query.get("order_by") == "updated_datetime:desc":
+            return httpx.Response(200, json=fixture("tickets_changed"))
         return httpx.Response(200, json=fixture("tickets_2" if cursor else "tickets_1"))
     if path == "/api/messages":
-        name = "messages_100" if query.get("ticket_id") == "100" else "messages_empty"
+        name = {"100": "messages_100", "200": "messages_attach"}.get(
+            query.get("ticket_id", ""), "messages_empty"
+        )
         return httpx.Response(200, json=fixture(name))
     return httpx.Response(404, json={})
 
@@ -195,6 +200,55 @@ def test_a_server_error_is_temporary_and_clean() -> None:
 def test_a_bad_domain_is_refused(domain: str) -> None:
     with pytest.raises(egress.BadAddress):
         gorgias.make({"domain": domain}, {"email": "e", "api_key": "k"})
+
+
+SINCE = datetime(2025, 6, 5, tzinfo=UTC)
+
+
+def test_changed_tickets_ask_newest_first_and_stop_at_an_older_one() -> None:
+    seen: list[httpx.Request] = []
+    c = connector(seen=seen)
+    assert isinstance(c, rules.ChangeSource)
+    page = run(c.changed_tickets(SINCE, None))
+    assert seen[0].url.path == "/api/tickets"
+    assert seen[0].url.params["order_by"] == "updated_datetime:desc"
+    assert [t.external_id for t in page.items] == ["200"]  # spam skipped, 202 and 203 too old
+    assert page.cursor is None  # the stop: "t9" is not followed
+    assert {r.method for r in seen} == {"GET"}
+
+
+def test_changed_tickets_continue_when_all_are_new_enough() -> None:
+    page = run(connector().changed_tickets(datetime(2025, 1, 1, tzinfo=UTC), {"cursor": "t5"}))
+    assert [t.external_id for t in page.items] == ["200", "202", "203"]
+    assert page.cursor == {"cursor": "t9"}
+
+
+def test_attachments_are_parsed_and_unusable_ones_skipped() -> None:
+    page = run(connector().changed_tickets(SINCE, None))
+    first, second = page.items[0].messages  # the third message has no text and no files
+    assert first.attachments == [
+        rules.Attachment("photo.png", "https://files.example.com/a/photo.png", 2048, "image/png"),
+        rules.Attachment("file", "https://files.example.com/a/bare", None, None),
+    ]
+    assert second.body == "(attachment only)"
+    assert second.attachments[0].name == "doc.pdf" and second.attachments[0].mime == (
+        "application/pdf"
+    )
+
+
+def test_fetch_returns_bytes_and_none_when_gone() -> None:
+    def files(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/a/photo.png":
+            return httpx.Response(200, content=b"PNGDATA")
+        return httpx.Response(404)
+
+    c = connector(files)
+    assert isinstance(c, rules.FileSource)
+    here = rules.Attachment("p", "https://files.example.com/a/photo.png")
+    gone = rules.Attachment("g", "https://files.example.com/a/missing.png")
+    assert run(c.fetch(here, 1000)) == b"PNGDATA"
+    assert run(c.fetch(here, 3)) is None  # bigger than the limit
+    assert run(c.fetch(gone, 1000)) is None
 
 
 def test_every_request_is_a_get() -> None:

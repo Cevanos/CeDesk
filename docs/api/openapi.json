@@ -2280,6 +2280,24 @@
             "description": "priority (default): Open and Pending most urgent first, then oldest; Resolved last, newest first. sla: Open and Pending by SLA time left, soonest due first; Resolved last, newest first. newest, oldest, or updated (most recently changed first)."
           },
           {
+            "name": "imported",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only tickets brought from another help desk: `any`, or one source (intercom, zendesk, freshdesk, gorgias, helpscout, csv). Each also has the tag `imported-<source>`.",
+              "title": "Imported"
+            },
+            "description": "Only tickets brought from another help desk: `any`, or one source (intercom, zendesk, freshdesk, gorgias, helpscout, csv). Each also has the tag `imported-<source>`."
+          },
+          {
             "name": "cursor",
             "in": "query",
             "required": false,
@@ -8653,7 +8671,7 @@
           "imports"
         ],
         "summary": "Start importing (Admin)",
-        "description": "The worker does the run in the background. 409 when this connection already has a run in progress or was closed. Poll `GET /imports/runs/{id}`. Accepts `Idempotency-Key`: a repeat returns the run the first one queued.",
+        "description": "The worker does the run in the background. 409 when this connection already has a run in progress, is syncing (stop it first) or was closed. 422 for `sync` on a CSV file. Poll `GET /imports/runs/{id}`. Accepts `Idempotency-Key`: a repeat returns the run the first one queued.",
         "operationId": "start_run_api_v1_imports_connections__connection_id__run_post",
         "security": [
           {
@@ -8797,6 +8815,174 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/RunOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/imports/runs/{run_id}/sync-now": {
+      "post": {
+        "tags": [
+          "imports"
+        ],
+        "summary": "Ask the source for changes now instead of in 5 minutes (Admin)",
+        "description": "Only for a run that is syncing (`sync_on`, state `done`); the worker does the look within its next pass. 409 when the run isn't syncing or its first import is still running.",
+        "operationId": "sync_now_api_v1_imports_runs__run_id__sync_now_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Run Id"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/imports/runs/{run_id}/sync-stop": {
+      "post": {
+        "tags": [
+          "imports"
+        ],
+        "summary": "Go-live: stop syncing and delete the stored credentials (Admin)",
+        "description": "CeDesk stops asking the source and keeps no access to it. The import history stays. 409 when the run isn't syncing.",
+        "operationId": "sync_stop_api_v1_imports_runs__run_id__sync_stop_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Run Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/imports/history": {
+      "get": {
+        "tags": [
+          "imports"
+        ],
+        "summary": "Every import: when, from where, by whom, how it went (Admin)",
+        "description": "Newest first, cursor pages. `result` is running, finished, syncing (the import is done and still asking for changes) or failed (with `last_error`). To see the tickets an import brought, filter the ticket list with `imported`.",
+        "operationId": "history_api_v1_imports_history_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "`next_cursor` from the previous page.",
+              "title": "Cursor"
+            },
+            "description": "`next_cursor` from the previous page."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HistoryOut"
                 }
               }
             }
@@ -12686,6 +12872,168 @@
         ],
         "title": "HelpCenterOut"
       },
+      "HistoryOut": {
+        "properties": {
+          "runs": {
+            "items": {
+              "$ref": "#/components/schemas/HistoryRunOut"
+            },
+            "type": "array",
+            "title": "Runs"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "runs",
+          "next_cursor"
+        ],
+        "title": "HistoryOut"
+      },
+      "HistoryRunOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "connection_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Connection Id"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source",
+            "description": "intercom, zendesk, freshdesk, gorgias, helpscout or csv."
+          },
+          "account": {
+            "type": "string",
+            "title": "Account",
+            "description": "The account, or the file's name."
+          },
+          "result": {
+            "type": "string",
+            "enum": [
+              "running",
+              "finished",
+              "syncing",
+              "failed"
+            ],
+            "title": "Result"
+          },
+          "started_by_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started By Id"
+          },
+          "started_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started By",
+            "description": "The Admin who started it (null if removed)."
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Started At"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "kinds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Kinds"
+          },
+          "counts": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Counts",
+            "description": "What it brought: per kind created and skipped; tickets also `files` copied and `files_linked`; `sync` has what the syncing looks added."
+          },
+          "sync_on": {
+            "type": "boolean",
+            "title": "Sync On"
+          },
+          "last_sync_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Sync At"
+          },
+          "last_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error",
+            "description": "Why it failed or last paused, in words."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "connection_id",
+          "source",
+          "account",
+          "result",
+          "started_by_id",
+          "started_by",
+          "started_at",
+          "finished_at",
+          "kinds",
+          "counts",
+          "sync_on",
+          "last_sync_at",
+          "last_error"
+        ],
+        "title": "HistoryRunOut"
+      },
       "HolidayIn": {
         "properties": {
           "day": {
@@ -14081,6 +14429,12 @@
             "type": "object",
             "title": "Team Map",
             "description": "A source group's id -> the CeDesk team its tickets go to (null: no team)."
+          },
+          "sync": {
+            "type": "boolean",
+            "title": "Sync",
+            "description": "Keep syncing until go-live: after the import, the worker asks the source every 5 minutes for new tickets and new replies, and the credentials are kept until `sync-stop`. Not for a CSV file.",
+            "default": false
           }
         },
         "additionalProperties": false,
@@ -15912,6 +16266,19 @@
             ],
             "title": "Last Error",
             "description": "Why it paused or failed, in words."
+          },
+          "last_sync_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Sync At",
+            "description": "When the source was last asked for changes (sync on)."
           }
         },
         "type": "object",
