@@ -9,11 +9,13 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from cedesk import logs
 from cedesk.crypto import Sealer
 from cedesk.dnscheck import TxtLookup
+from cedesk.helpdesk.domain import api_keys as api_key_rules
 from cedesk.helpdesk.domain import idempotency as idempotency_rules
 from cedesk.helpdesk.domain.auth import Caller
-from cedesk.helpdesk.service import auth, portal
+from cedesk.helpdesk.service import api_keys, auth, portal
 from cedesk.helpdesk.service.auth import Sessionmaker
 from cedesk.helpdesk.service.errors import (
+    Forbidden,
     Invalid,
     NotSignedIn,
     PasswordExpired,
@@ -25,7 +27,10 @@ from cedesk.helpdesk.service.idempotency import Idempotency
 from cedesk.settings import Settings
 from cedesk.storage import ObjectStore
 
-_bearer = HTTPBearer(auto_error=False, description="The token from POST /api/v1/auth/sign-in.")
+_bearer = HTTPBearer(
+    auto_error=False,
+    description="The token from POST /api/v1/auth/sign-in, or an API key (`cdk_...`).",
+)
 
 
 def get_sessionmaker(request: Request) -> Sessionmaker:
@@ -85,7 +90,10 @@ async def get_caller(
     if credentials is None or not credentials.credentials:
         raise NotSignedIn("Sign in first.")
     ip = client_ip(request)
-    caller = replace(await auth.resolve(sm, credentials.credentials.strip(), ip or ""), ip=ip)
+    token = credentials.credentials.strip()
+    if api_key_rules.is_key(token):
+        return await _key_caller(request, sm, token, ip)
+    caller = replace(await auth.resolve(sm, token, ip or ""), ip=ip)
     logs.bind(workspace_id=caller.workspace_id, member_id=caller.member_id)
     path = request.url.path
     if caller.second_factor_pending:
@@ -97,6 +105,23 @@ async def get_caller(
         )
     elif caller.password_expired and path not in _EXPIRED_PASSWORD_ALLOWS:
         raise PasswordExpired("Your password has expired. Choose a new one to continue.")
+    return caller
+
+
+async def _key_caller(request: Request, sm: Sessionmaker, key: str, ip: str | None) -> Caller:
+    """An API key (md PL1, PL2): who it acts as, the workspace's request budget, and
+    whether its level and the route allow this request."""
+    caller = replace(await api_keys.resolve(sm, key, ip or ""), ip=ip)
+    logs.bind(workspace_id=caller.workspace_id, member_id=caller.member_id)
+    wait = request.app.state.api_key_requests.hit(str(caller.workspace_id))
+    if wait is not None:
+        raise TooManyAttempts(
+            "Too many requests with this workspace's API keys. Wait and try again.", wait
+        )
+    level = api_key_rules.KeyAccess(str(caller.api_key_access))
+    reason = api_key_rules.refusal(level, request.method, request.url.path)
+    if reason is not None:
+        raise Forbidden(reason)
     return caller
 
 
