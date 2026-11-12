@@ -273,3 +273,16 @@ async def retry(session: AsyncSession, delivery_id: UUID) -> bool:
         {"id": delivery_id},
     )
     return result.first() is not None
+
+
+async def prune(session: AsyncSession, days: int) -> int:
+    """Deletes delivered and failed deliveries older than `days` (their tries go with them):
+    the log is for recent trouble, and each body names a ticket."""
+    result = await session.execute(
+        text(
+            "DELETE FROM hd_webhook_delivery WHERE state <> 'pending' "
+            "AND created_at < now() - make_interval(days => :days)"
+        ),
+        {"days": days},
+    )
+    return int(getattr(result, "rowcount", 0) or 0)

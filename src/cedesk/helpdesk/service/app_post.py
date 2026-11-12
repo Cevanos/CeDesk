@@ -12,7 +12,7 @@ from typing import Any
 
 import httpx
 
-from cedesk.egress import BadAddress, Guard, check_public
+from cedesk.egress import BadAddress, Guard, check_public, pinned
 
 TIMEOUT_SECONDS = 10.0
 USER_AGENT = "CeDesk/1 (+apps)"
@@ -55,7 +55,7 @@ class AppPost:
             raise AppCallError(str(exc), permanent=True) from None
         try:
             async with httpx.AsyncClient(
-                timeout=TIMEOUT_SECONDS, follow_redirects=False, transport=self._transport
+                timeout=TIMEOUT_SECONDS, follow_redirects=False, transport=pinned(self._transport)
             ) as client:
                 response = await client.request(
                     method, f"https://{self.host}{path}", json=body, headers=self._headers

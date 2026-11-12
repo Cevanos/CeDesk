@@ -75,3 +75,14 @@ def test_credentials_are_checked_for_shape() -> None:
         with pytest.raises(rules.BadCredentials):
             rules.check_secret(app, bad)
     assert rules.secret_hint("rk_live_abcd1234") == "…1234"
+
+
+def test_shopify_cards_keep_only_the_customers_own() -> None:
+    """Whatever Shopify answers, a card never shows another customer's order."""
+    data = {"orders": [{"id": 1, "email": "Priya@Example.org"}, {"id": 2, "email": "x@y.org"},
+                       {"id": 3}]}  # fmt: skip
+    assert [o.id for o in rules.shopify_orders(data, "acme", "priya@example.org")] == ["1"]
+    found = {"customers": [{"id": 7, "email": "priya@example.org"}, {"id": 8, "email": "a@b.c"},
+                           {"id": 9}, "odd"]}  # fmt: skip
+    assert rules.shopify_customer_ids(found, "PRIYA@example.org") == ["7"]
+    assert rules.shopify_customer_ids({"customers": "odd"}, "a@b.c") == []

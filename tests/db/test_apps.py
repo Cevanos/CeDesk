@@ -44,11 +44,18 @@ class Providers:
                 return httpx.Response(401)
             if path.endswith("/shop.json"):
                 return httpx.Response(200, json={"shop": {"name": "Acme"}})
-            if path.endswith("/orders.json"):
-                order = {"id": 11, "name": "#1001", "total_price": "1299.00", "currency": "INR",
+            if path.endswith("/customers/search.json"):  # loose: a near match comes back too
+                found = [{"id": 7, "email": "Priya@Example.org"}, {"id": 8, "email": "p@x.org"}]
+                hit = "priya" in q["query"]
+                return httpx.Response(200, json={"customers": found if hit else []})
+            if path.endswith("/customers/7/orders.json"):
+                order = {"id": 11, "email": "priya@example.org", "name": "#1001",
+                         "total_price": "1299.00", "currency": "INR",
                          "financial_status": "paid", "line_items": [{"quantity": 2}]}  # fmt: skip
-                mine = q["email"] == "priya@example.org"
-                return httpx.Response(200, json={"orders": [order] if mine else []})
+                other = {**order, "id": 12, "email": "someone@else.org", "name": "#1002"}
+                return httpx.Response(200, json={"orders": [order, other]})
+            if path.endswith("/orders.json"):
+                return httpx.Response(500)  # any other order list: never asked
         if request.url.host == "api.stripe.com":
             if request.headers.get("Authorization") != f"Bearer {STRIPE_KEY}":
                 return httpx.Response(401)
@@ -166,8 +173,10 @@ async def test_the_sidebar_reads_orders_and_payments(
     assert (orders["source"], orders["available"]) == ("shopify", True)
     assert [(o["number"], o["total"], o["currency"], o["items"]) for o in orders["orders"]] == [
         ("#1001", "1299.00", "INR", 2)]  # fmt: skip
-    sent = fake.seen[-1]
-    assert sent.url.host == "acme.myshopify.com" and sent.url.params["email"] == "priya@example.org"
+    # Only customer 7 (the exact email, any case) is read; another's order is left out.
+    asked = [r.url.path.rsplit("/", 2)[-2:] for r in fake.seen[-2:]]
+    assert asked == [["customers", "search.json"], ["7", "orders.json"]]
+    assert fake.seen[-2].url.params["query"] == "email:priya@example.org"
     pays = ok(await client.get(payments_url, headers=w["neha"]))
     assert [(p["amount"], p["currency"], p["status"]) for p in pays["payments"]] == [
         ("499.00", "INR", "succeeded")]  # fmt: skip

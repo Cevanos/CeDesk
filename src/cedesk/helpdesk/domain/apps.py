@@ -138,12 +138,31 @@ def _text(value: Any, limit: int = 200) -> str | None:
     return str(value)[:limit] if value not in (None, "") else None
 
 
-def shopify_orders(data: Any, shop: str) -> list[Order]:
-    """From `GET /admin/api/<v>/orders.json`; anything unexpected is left out."""
+def _same_email(value: Any, email: str) -> bool:
+    return isinstance(value, str) and value.strip().lower() == email.strip().lower()
+
+
+def shopify_customer_ids(data: Any, email: str) -> list[str]:
+    """From `GET /admin/api/<v>/customers/search.json?query=email:<email>`: the customers
+    whose email is exactly this one (the search is loose, so it is checked here), at most 3."""
+    customers = data.get("customers") if isinstance(data, dict) else None
+    out = []
+    for c in customers if isinstance(customers, list) else []:
+        if isinstance(c, dict) and c.get("id") is not None and _same_email(c.get("email"), email):
+            out.append(str(c["id"]))
+    return out[:3]
+
+
+def shopify_orders(data: Any, shop: str, email: str | None = None) -> list[Order]:
+    """From `GET /admin/api/<v>/customers/<id>/orders.json`; anything unexpected is left
+    out. With `email`, so is an order whose email isn't the customer's: the card never
+    shows another customer's order, whatever Shopify answers."""
     orders = data.get("orders") if isinstance(data, dict) else None
     out = []
     for o in orders if isinstance(orders, list) else []:
         if not isinstance(o, dict) or o.get("id") is None:
+            continue
+        if email is not None and not _same_email(o.get("email"), email):
             continue
         items = o.get("line_items")
         out.append(

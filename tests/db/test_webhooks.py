@@ -17,7 +17,7 @@ from cedesk.db import workspace_session
 from cedesk.egress import BadAddress
 from cedesk.helpdesk.domain import webhooks as rules
 from cedesk.helpdesk.service.delivery import deliver_due
-from cedesk.helpdesk.service.webhooks import WebhookFanout, send_due
+from cedesk.helpdesk.service.webhooks import WebhookFanout, prune_everywhere, send_due
 from cedesk.settings import Settings
 from cedesk.webhook_client import WebhookClient
 from tests.db.helpers import Sm, add, bearer, new_workspace, ok, sign_in
@@ -72,8 +72,11 @@ async def hook(client: AsyncClient, w: dict[str, Any], events: list[str], url: s
     return ok(await client.post(W, headers=w["h"], json={"url": url, "events": events}), 201)
 
 
-async def ticket(client: AsyncClient, w: dict[str, Any], subject: str = "Order late") -> Any:
-    body = {"subject": subject, "contact": {"email": "priya@example.org", "name": "Priya"}}
+async def ticket(
+    client: AsyncClient, w: dict[str, Any], subject: str = "Order late",
+    email: str = "priya@example.org",
+) -> Any:  # fmt: skip
+    body = {"subject": subject, "contact": {"email": email, "name": "Priya"}}
     return ok(await client.post(T, headers=w["h"], json=body), 201)
 
 
@@ -296,3 +299,68 @@ async def test_another_workspace_events_never_reach_a_url(
     assert their_ticket["id"] not in json.dumps(receiver.bodies())
     assert ok(await client.get(D, headers=mine["h"]))["deliveries"] == []
     assert ok(await client.get(D, headers=theirs["h"]))["deliveries"] == []
+
+
+async def test_erasing_a_customer_clears_their_deliveries(
+    client: AsyncClient, app_sessionmaker: Sm
+) -> None:
+    """md S11 with PL5: a delivery body has the ticket's subject (the customer's words).
+    Erasing the customer clears it; one not sent yet is stopped, never sent."""
+    receiver, fake = install(client)
+    w = await desk(client, app_sessionmaker)
+    await hook(client, w, ["ticket.created", "ticket.updated"], "https://down.example.com/x")
+    receiver.status["down.example.com"] = 500
+    t = await ticket(client, w, "Refund for Priya, order 1042")
+    await ticket(client, w, "Someone else", "sam@example.org")
+    await run(app_sessionmaker, fake)  # tried once each, failed: waiting to try again
+    contact = t["contact"]["id"]
+    erase = {"contact_id": contact, "confirm_email": "priya@example.org"}
+    done = ok(await client.post("/api/v1/privacy/erase", headers=w["h"], json=erase), 201)
+    assert done["counts"]["webhook_deliveries"] == 1
+
+    rows = ok(await client.get(D, headers=w["h"]))["deliveries"]
+    mine = [d for d in rows if d["body"] == {"erased": True}]
+    assert len(mine) == 1 and mine[0]["state"] == "failed"
+    assert mine[0]["last_error"] == "Stopped: the customer was erased."
+    assert all(a["response"] is None for a in mine[0]["attempts"])
+    assert "Refund for Priya" not in json.dumps(rows)
+    assert any(d["body"].get("ticket", {}).get("subject") == "Someone else" for d in rows)
+
+    sent = len(receiver.bodies("down.example.com"))
+    await make_due(app_sessionmaker, w["ws"])
+    await send_due(app_sessionmaker, SEALER, fake)
+    later = receiver.bodies("down.example.com")[sent:]
+    assert later and all("Refund for Priya" not in json.dumps(b) for b in later)
+
+
+async def test_the_log_keeps_thirty_days(client: AsyncClient, app_sessionmaker: Sm) -> None:
+    """md PL6: delivered and failed deliveries (and their tries) go after 30 days; one
+    still being tried stays, however old."""
+    receiver, fake = install(client)
+    w = await desk(client, app_sessionmaker)
+    await hook(client, w, ["ticket.created"])
+    await hook(client, w, ["ticket.created"], "https://down.example.com/x")
+    receiver.status["down.example.com"] = 500
+    await ticket(client, w)
+    await ticket(client, w, "Newer")
+    await run(app_sessionmaker, fake)
+    async with workspace_session(app_sessionmaker, w["ws"]) as s:
+        await s.execute(
+            text(
+                "UPDATE hd_webhook_delivery SET created_at = now() - interval "
+                "'31 days' WHERE body->'ticket'->>'subject' = 'Order late'"
+            )
+        )
+    await prune_everywhere(app_sessionmaker)
+    async with workspace_session(app_sessionmaker, w["ws"]) as s:
+        left = (
+            await s.execute(
+                text("SELECT body->'ticket'->>'subject', state FROM hd_webhook_delivery")
+            )
+        ).all()
+        tries = (await s.execute(text(
+            "SELECT count(*) FROM hd_webhook_attempt a LEFT JOIN hd_webhook_delivery d "
+            "ON d.id = a.delivery_id WHERE d.id IS NULL"))).scalar_one()  # fmt: skip
+    assert sorted(left) == [("Newer", "delivered"), ("Newer", "pending"),
+                            ("Order late", "pending")]  # fmt: skip
+    assert tries == 0

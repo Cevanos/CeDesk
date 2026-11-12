@@ -80,12 +80,20 @@ async def save_retention(
 async def resolved_before(
     session: AsyncSession, cutoff: datetime, limit: int
 ) -> Sequence[RowMapping]:
-    """Resolved tickets older than the cutoff, with their files' storage keys."""
+    """Resolved tickets older than the cutoff, with their files' storage keys.
+
+    An imported ticket keeps its old help desk's dates, so it counts from when it came in
+    (the latest time an import of its source ran), not from when it was resolved there:
+    importing years of history never has it deleted the next day."""
     result = await session.execute(
         text(
+            "WITH imported AS (SELECT source, max(greatest(started_at, "
+            "coalesce(finished_at, started_at), coalesce(last_sync_at, started_at))) AS at "
+            "FROM hd_import_run GROUP BY source) "
             "SELECT t.id, coalesce(array_agg(a.object_key) FILTER (WHERE a.object_key IS NOT "
-            "NULL), '{}') AS keys FROM hd_ticket t LEFT JOIN hd_attachment a ON "
-            "a.ticket_id = t.id WHERE t.status = 'resolved' AND t.resolved_at < :cutoff "
+            "NULL), '{}') AS keys FROM hd_ticket t LEFT JOIN imported i ON i.source = t.source "
+            "LEFT JOIN hd_attachment a ON a.ticket_id = t.id "
+            "WHERE t.status = 'resolved' AND greatest(t.resolved_at, i.at) < :cutoff "
             "GROUP BY t.id ORDER BY min(t.resolved_at) LIMIT :limit"
         ),
         {"cutoff": cutoff, "limit": limit},
@@ -94,7 +102,16 @@ async def resolved_before(
 
 
 async def delete_tickets(session: AsyncSession, ticket_ids: Sequence[UUID]) -> int:
-    """Their messages, files' rows, tasks and the rest go with them (ON DELETE CASCADE)."""
+    """Their messages, files' rows, tasks and the rest go with them (ON DELETE CASCADE).
+    Their events and webhook deliveries name the ticket (with its subject) without a
+    foreign key, so they are deleted here too."""
+    ids = {"ids": list(ticket_ids), "texts": [str(i) for i in ticket_ids]}
+    await session.execute(
+        text("DELETE FROM hd_webhook_delivery WHERE body->'ticket'->>'id' = ANY(:texts)"), ids
+    )
+    await session.execute(
+        text("DELETE FROM hd_outbox WHERE ticket_id = ANY(CAST(:ids AS uuid[]))"), ids
+    )
     result = await session.execute(
         text("DELETE FROM hd_ticket WHERE id = ANY(CAST(:ids AS uuid[]))"),
         {"ids": list(ticket_ids)},
