@@ -3,6 +3,46 @@
 `openapi.json` next to this file is the API as served (`uv run cedesk openapi`). Every
 route is under `/api/v1`. Breaking changes only come in v2 (md 2B). Newest first.
 
+## 2026-11-12: Reports: more metrics, Governance link, article votes, CSV (Phase 3, R3-R5, R7, R8)
+
+Who: Supervisors, Admins and custom roles with `reports` (as the team report). A
+`team_only` role sees its own team in the ticket reports (another team is 404) and every
+article in the article report. Every report takes `from` and `to` (default: the 30 days up
+to now; with a time zone; at most 366 days; 422 otherwise).
+
+- New: `GET /reports/metrics?from&to&team_id` (R3, R4, R5):
+  - `summary`: `open` (the backlog now); `one_touch`, `one_touch_measured`,
+    `one_touch_percent` (resolved in the period with exactly one reply from a team member
+    and never reopened; chat history copied in from Cevanos is not a reply);
+    `reopened`, `reopen_measured`, `reopen_rate_percent` (created in the period and resolved
+    at least once: the share reopened); `time_logged_minutes`, `billable_minutes` (logged in
+    the period, by anyone). Imported tickets are left out of one-touch and reopen; merged
+    tickets are left out everywhere. A `%` is `null` when there is nothing to measure.
+  - `backlog_by_age`: Open or Pending now, `under_1h`, `1h_4h`, `4h_24h`, `over_1d` (each
+    bucket from its lower bound, inclusive, to its upper bound).
+  - `channels`, `topics`, `sentiment`: `{value, label, created, open}` per bar; every
+    channel and keyword topic is listed (zeros included, fixed order); `value: null` with
+    label "Not set" is last when some tickets have none.
+  - `agents`: per active member who takes tickets (light agents not listed; with `team_id`,
+    that team's members): `logged_minutes`, `billable_minutes`, `open_tasks`,
+    `overdue_tasks` (now).
+  - `governance_url`: the Governance report in Cevanos, only when this workspace has
+    connected Cevanos; else `null`. CeDesk only links to it (R5). AI numbers (AI7) come
+    with the Cevanos AI features.
+- New: `GET /reports/articles?from&to` (R8): votes cast or changed in the period (a visitor
+  has one vote per article; their latest answer counts): `votes`, `helpful`,
+  `not_helpful`, `helpful_percent`, `articles_voted`, and `articles` (most votes first, at
+  most 500; `truncated` when more had votes): `{article_id, title, category, status,
+  votes, helpful, not_helpful, helpful_percent}`.
+- New on all three reports (`/reports/team`, `/reports/metrics`, `/reports/articles`):
+  `?format=csv` (R7) answers the same report as a CSV attachment
+  (`cedesk-<report>-report-<from>-to-<to>.csv`, UTF-8 with a byte order mark): the name and
+  period at the top, then one section per table (title row, header row, blank row
+  between). Text that a spreadsheet would run as a formula (starting with `=`, `+`, `-`,
+  `@`) is written with a `'` in front. Any other `format` is 422.
+- Server setting: `CEDESK_CEVANOS_APP_URL` (default `https://cevanos.ai`), the Cevanos web
+  app the Governance link points into; https outside development.
+
 ## 2026-11-12: Live updates: a stream of changes for agents and portal customers (Phase 2, C11, P7)
 
 New (agents): `POST /stream/ticket` -> 201 `{ticket, expires_in: 60}`, then `GET /stream?ticket=...`
@@ -51,6 +91,7 @@ message (never a note or a system line), `ticket.updated` with `changes: ["statu
   `hd_stream_ticket`, both with row-level security).
 - Deploy: Caddy sends `/api/v1/stream` and `/api/v1/portal/stream` unbuffered and uncompressed;
   CORS allows the `Last-Event-ID` header.
+
 
 ## 2026-11-12: Audit log, privacy export and erase, sandbox (Phase 3, S9-S11)
 
@@ -145,6 +186,7 @@ What `POST /imports/connections` `{source, settings, credentials}` needs per sou
 - Rate limits: a 429 pauses the run for the source's Retry-After and goes on from the same page.
 - Not in this change: attachments (files on source messages are not copied yet), and keeping a
   source in sync until go-live.
+
 
 ## 2026-11-12: Imports from other help desks: framework and CSV (Phase 2, M1-M8)
 

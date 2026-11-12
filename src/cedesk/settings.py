@@ -163,6 +163,11 @@ class Settings(BaseSettings):
         default="https://api.cevanos.ai",
         description="Cevanos's API address. https, except on a developer's machine.",
     )
+    cevanos_app_url: str = Field(
+        default="https://cevanos.ai",
+        description="Cevanos's web app, for links into it (the Governance report, md R5). "
+        "https, except on a developer's machine.",
+    )
     cevanos_poll_batch: int = Field(
         default=20, ge=1, le=60, description="Chats read per worker pass, per workspace."
     )
@@ -187,6 +192,8 @@ class Settings(BaseSettings):
             problems.append("CEDESK_CORS_ORIGINS: list the sites, not *")
         if not self.cevanos_url.startswith("https://"):
             problems.append("CEDESK_CEVANOS_URL: use https")
+        if not self.cevanos_app_url.startswith("https://"):
+            problems.append("CEDESK_CEVANOS_APP_URL: use https")
         token = self.inbound_email_token
         if token is not None and len(token.get_secret_value()) < 32:
             problems.append("CEDESK_INBOUND_EMAIL_TOKEN: use a random value of 32+ characters")

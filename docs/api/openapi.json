@@ -8130,28 +8130,259 @@
                   "type": "null"
                 }
               ],
-              "description": "Only this team.",
+              "description": "Only this team's tickets.",
               "title": "Team Id"
             },
-            "description": "Only this team."
+            "description": "Only this team's tickets."
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "json",
+                "csv"
+              ],
+              "type": "string",
+              "description": "`csv`: the same report as a CSV file (md R7).",
+              "default": "json",
+              "title": "Format"
+            },
+            "description": "`csv`: the same report as a CSV file (md R7)."
           }
         ],
         "responses": {
           "200": {
-            "description": "Successful Response",
+            "description": "The report; with `format=csv`, a CSV file (UTF-8 with a byte order mark, one section per table) sent as an attachment.",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/TeamReportOut"
                 }
+              },
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
               }
             }
           },
           "403": {
-            "description": "Supervisors and Admins only"
+            "description": "Not allowed to see reports"
+          },
+          "422": {
+            "description": "from after to, no time zone, or over 366 days"
           },
           "404": {
             "description": "No such team"
+          }
+        }
+      }
+    },
+    "/api/v1/reports/metrics": {
+      "get": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "More metrics (Supervisor, Admin)",
+        "description": "One-touch resolution, reopen rate, backlog by age, tickets by channel, topic and sentiment, time logged and open tasks per agent, and the link to Cevanos's Governance report when connected. Created and resolved count within [from, to); the backlog, open counts and open tasks are as of now. Merged tickets are left out; imported tickets are left out of one-touch and reopen.",
+        "operationId": "metrics_report_api_v1_reports_metrics_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Default: 30 days before `to`. With a time zone.",
+              "title": "From"
+            },
+            "description": "Default: 30 days before `to`. With a time zone."
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Default: now.",
+              "title": "To"
+            },
+            "description": "Default: now."
+          },
+          {
+            "name": "team_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only this team's tickets.",
+              "title": "Team Id"
+            },
+            "description": "Only this team's tickets."
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "json",
+                "csv"
+              ],
+              "type": "string",
+              "description": "`csv`: the same report as a CSV file (md R7).",
+              "default": "json",
+              "title": "Format"
+            },
+            "description": "`csv`: the same report as a CSV file (md R7)."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The report; with `format=csv`, a CSV file (UTF-8 with a byte order mark, one section per table) sent as an attachment.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MetricsReportOut"
+                }
+              },
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed to see reports"
+          },
+          "422": {
+            "description": "from after to, no time zone, or over 366 days"
+          },
+          "404": {
+            "description": "No such team"
+          }
+        }
+      }
+    },
+    "/api/v1/reports/articles": {
+      "get": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "Help-article votes (Supervisor, Admin)",
+        "description": "\"Was this helpful?\" answers given (or changed) within [from, to). A visitor has one vote per article: their latest answer counts.",
+        "operationId": "article_report_api_v1_reports_articles_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Default: 30 days before `to`. With a time zone.",
+              "title": "From"
+            },
+            "description": "Default: 30 days before `to`. With a time zone."
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Default: now.",
+              "title": "To"
+            },
+            "description": "Default: now."
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "json",
+                "csv"
+              ],
+              "type": "string",
+              "description": "`csv`: the same report as a CSV file (md R7).",
+              "default": "json",
+              "title": "Format"
+            },
+            "description": "`csv`: the same report as a CSV file (md R7)."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The report; with `format=csv`, a CSV file (UTF-8 with a byte order mark, one section per table) sent as an attachment.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArticleReportOut"
+                }
+              },
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed to see reports"
           },
           "422": {
             "description": "from after to, no time zone, or over 366 days"
@@ -8976,6 +9207,31 @@
         ],
         "title": "AddMemberBody"
       },
+      "AgeRowOut": {
+        "properties": {
+          "bucket": {
+            "type": "string",
+            "title": "Bucket",
+            "description": "under_1h, 1h_4h, 4h_24h or over_1d"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "open": {
+            "type": "integer",
+            "title": "Open",
+            "description": "Open or Pending now, created that long ago."
+          }
+        },
+        "type": "object",
+        "required": [
+          "bucket",
+          "label",
+          "open"
+        ],
+        "title": "AgeRowOut"
+      },
       "AgentOut": {
         "properties": {
           "id": {
@@ -9149,6 +9405,53 @@
           "offline"
         ],
         "title": "AgentStatus"
+      },
+      "AgentTimeOut": {
+        "properties": {
+          "member_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Member Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "role": {
+            "type": "string",
+            "title": "Role"
+          },
+          "logged_minutes": {
+            "type": "integer",
+            "title": "Logged Minutes",
+            "description": "Logged in the period."
+          },
+          "billable_minutes": {
+            "type": "integer",
+            "title": "Billable Minutes"
+          },
+          "open_tasks": {
+            "type": "integer",
+            "title": "Open Tasks",
+            "description": "Owned and not done, now."
+          },
+          "overdue_tasks": {
+            "type": "integer",
+            "title": "Overdue Tasks",
+            "description": "Of those, past their due time."
+          }
+        },
+        "type": "object",
+        "required": [
+          "member_id",
+          "name",
+          "role",
+          "logged_minutes",
+          "billable_minutes",
+          "open_tasks",
+          "overdue_tasks"
+        ],
+        "title": "AgentTimeOut"
       },
       "ApprovalIn": {
         "properties": {
@@ -9566,6 +9869,138 @@
         "additionalProperties": false,
         "type": "object",
         "title": "ArticlePatch"
+      },
+      "ArticleReportOut": {
+        "properties": {
+          "from": {
+            "type": "string",
+            "format": "date-time",
+            "title": "From"
+          },
+          "to": {
+            "type": "string",
+            "format": "date-time",
+            "title": "To"
+          },
+          "votes": {
+            "type": "integer",
+            "title": "Votes",
+            "description": "Votes cast or changed in the period, every article."
+          },
+          "helpful": {
+            "type": "integer",
+            "title": "Helpful"
+          },
+          "not_helpful": {
+            "type": "integer",
+            "title": "Not Helpful"
+          },
+          "helpful_percent": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Helpful Percent"
+          },
+          "articles_voted": {
+            "type": "integer",
+            "title": "Articles Voted"
+          },
+          "articles": {
+            "items": {
+              "$ref": "#/components/schemas/ArticleRowOut"
+            },
+            "type": "array",
+            "title": "Articles",
+            "description": "Articles with a vote in the period, most votes first; at most 500."
+          },
+          "truncated": {
+            "type": "boolean",
+            "title": "Truncated",
+            "description": "More articles had votes than are listed."
+          }
+        },
+        "type": "object",
+        "required": [
+          "from",
+          "to",
+          "votes",
+          "helpful",
+          "not_helpful",
+          "helpful_percent",
+          "articles_voted",
+          "articles",
+          "truncated"
+        ],
+        "title": "ArticleReportOut"
+      },
+      "ArticleRowOut": {
+        "properties": {
+          "article_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Article Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "description": "draft or published (now)"
+          },
+          "votes": {
+            "type": "integer",
+            "title": "Votes"
+          },
+          "helpful": {
+            "type": "integer",
+            "title": "Helpful"
+          },
+          "not_helpful": {
+            "type": "integer",
+            "title": "Not Helpful"
+          },
+          "helpful_percent": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Helpful Percent"
+          }
+        },
+        "type": "object",
+        "required": [
+          "article_id",
+          "title",
+          "category",
+          "status",
+          "votes",
+          "helpful",
+          "not_helpful",
+          "helpful_percent"
+        ],
+        "title": "ArticleRowOut"
       },
       "ArticleStatus": {
         "type": "string",
@@ -10554,6 +10989,44 @@
           "next_cursor"
         ],
         "title": "ContactTicketsOut"
+      },
+      "CountRowOut": {
+        "properties": {
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value",
+            "description": "The channel, topic or sentiment; null: not set."
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "created": {
+            "type": "integer",
+            "title": "Created",
+            "description": "Created in the period."
+          },
+          "open": {
+            "type": "integer",
+            "title": "Open",
+            "description": "Open or Pending now."
+          }
+        },
+        "type": "object",
+        "required": [
+          "value",
+          "label",
+          "created",
+          "open"
+        ],
+        "title": "CountRowOut"
       },
       "Counts": {
         "properties": {
@@ -12624,6 +13097,173 @@
           "next_cursor"
         ],
         "title": "MessagePageOut"
+      },
+      "MetricsReportOut": {
+        "properties": {
+          "from": {
+            "type": "string",
+            "format": "date-time",
+            "title": "From"
+          },
+          "to": {
+            "type": "string",
+            "format": "date-time",
+            "title": "To"
+          },
+          "team_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Team Id"
+          },
+          "governance_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Governance Url",
+            "description": "The Governance report in Cevanos (md R5), when this workspace has connected Cevanos; null otherwise. CeDesk only links to it."
+          },
+          "summary": {
+            "$ref": "#/components/schemas/MetricsSummaryOut"
+          },
+          "backlog_by_age": {
+            "items": {
+              "$ref": "#/components/schemas/AgeRowOut"
+            },
+            "type": "array",
+            "title": "Backlog By Age"
+          },
+          "channels": {
+            "items": {
+              "$ref": "#/components/schemas/CountRowOut"
+            },
+            "type": "array",
+            "title": "Channels",
+            "description": "Every channel, zeros included."
+          },
+          "topics": {
+            "items": {
+              "$ref": "#/components/schemas/CountRowOut"
+            },
+            "type": "array",
+            "title": "Topics",
+            "description": "The keyword topics, then \"General question\"; \"Not set\" last when some tickets have no topic."
+          },
+          "sentiment": {
+            "items": {
+              "$ref": "#/components/schemas/CountRowOut"
+            },
+            "type": "array",
+            "title": "Sentiment"
+          },
+          "agents": {
+            "items": {
+              "$ref": "#/components/schemas/AgentTimeOut"
+            },
+            "type": "array",
+            "title": "Agents",
+            "description": "Active members except light agents."
+          }
+        },
+        "type": "object",
+        "required": [
+          "from",
+          "to",
+          "team_id",
+          "governance_url",
+          "summary",
+          "backlog_by_age",
+          "channels",
+          "topics",
+          "sentiment",
+          "agents"
+        ],
+        "title": "MetricsReportOut"
+      },
+      "MetricsSummaryOut": {
+        "properties": {
+          "open": {
+            "type": "integer",
+            "title": "Open",
+            "description": "The backlog: Open or Pending now."
+          },
+          "one_touch": {
+            "type": "integer",
+            "title": "One Touch",
+            "description": "Resolved in the period with exactly one reply from a team member, never reopened."
+          },
+          "one_touch_measured": {
+            "type": "integer",
+            "title": "One Touch Measured",
+            "description": "Tickets resolved in the period (not imported): what one-touch is out of."
+          },
+          "one_touch_percent": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "One Touch Percent"
+          },
+          "reopened": {
+            "type": "integer",
+            "title": "Reopened",
+            "description": "Of `reopen_measured`, reopened at least once."
+          },
+          "reopen_measured": {
+            "type": "integer",
+            "title": "Reopen Measured",
+            "description": "Created in the period (not imported) and resolved at least once."
+          },
+          "reopen_rate_percent": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reopen Rate Percent"
+          },
+          "time_logged_minutes": {
+            "type": "integer",
+            "title": "Time Logged Minutes",
+            "description": "Logged in the period, by anyone."
+          },
+          "billable_minutes": {
+            "type": "integer",
+            "title": "Billable Minutes",
+            "description": "Of that, billable."
+          }
+        },
+        "type": "object",
+        "required": [
+          "open",
+          "one_touch",
+          "one_touch_measured",
+          "one_touch_percent",
+          "reopened",
+          "reopen_measured",
+          "reopen_rate_percent",
+          "time_logged_minutes",
+          "billable_minutes"
+        ],
+        "title": "MetricsSummaryOut"
       },
       "NewPortalTicketIn": {
         "properties": {
