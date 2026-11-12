@@ -1,6 +1,6 @@
 "use client";
 
-import { Inbox, Menu, Plus, Search, Settings, UsersRound, X } from "lucide-react";
+import { BarChart3, Inbox, Menu, Plus, Search, Settings, UsersRound, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
@@ -21,6 +21,7 @@ import { cn, initials } from "@/lib/utils";
 const NAV = [
   { href: "/tickets", label: "Tickets", icon: Inbox },
   { href: "/agents", label: "Agents", icon: UsersRound },
+  { href: "/reports/team", label: "Reports", icon: BarChart3, reports: true, match: "/reports" },
   { href: "/settings/members", label: "Settings", icon: Settings, admin: true, match: "/settings" },
 ] as const;
 
@@ -37,7 +38,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   useFocusTrap(drawerRef, open);
   useEscape(open, () => setOpenFor(null));
 
-  const items = NAV.filter((n) => !("admin" in n && n.admin) || perms.manageSettings);
+  const items = NAV.filter(
+    (n) =>
+      (!("admin" in n && n.admin) || perms.manageSettings) &&
+      (!("reports" in n && n.reports) || perms.viewReports),
+  );
 
   const nav = (
     <nav aria-label="Primary" className="flex flex-col gap-0.5">

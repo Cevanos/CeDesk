@@ -22,6 +22,7 @@ export function can(role: Role | undefined) {
     assignOthers: atLeast(role, "supervisor"),
     setOwnStatus: atLeast(role, "agent"),
     manageSettings: role === "admin",
+    viewReports: atLeast(role, "supervisor"),
   };
 }
 
