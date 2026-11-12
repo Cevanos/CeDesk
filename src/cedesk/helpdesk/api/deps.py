@@ -6,12 +6,20 @@ from fastapi import Depends, Header, Request, Response
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from cedesk import logs
+from cedesk.crypto import Sealer
 from cedesk.dnscheck import TxtLookup
 from cedesk.helpdesk.domain import idempotency as idempotency_rules
 from cedesk.helpdesk.domain.auth import Caller
 from cedesk.helpdesk.service import auth, portal
 from cedesk.helpdesk.service.auth import Sessionmaker
-from cedesk.helpdesk.service.errors import Invalid, NotSignedIn, TooManyAttempts
+from cedesk.helpdesk.service.errors import (
+    Invalid,
+    NotSignedIn,
+    PasswordExpired,
+    TooManyAttempts,
+    TwoFactorRequired,
+    TwoFactorSetupRequired,
+)
 from cedesk.helpdesk.service.idempotency import Idempotency
 from cedesk.settings import Settings
 from cedesk.storage import ObjectStore
@@ -51,15 +59,55 @@ def get_settings(request: Request) -> Settings:
 SettingsDep = Annotated[Settings, Depends(get_settings)]
 
 
+def client_ip(request: Request) -> str | None:
+    """The caller's address. Behind the proxy, uvicorn's --proxy-headers puts the
+    X-Forwarded-For address here (the API port is only reachable through the proxy)."""
+    return request.client.host if request.client else None
+
+
+# With an expired password (S3) a member may only see who they are, change the password
+# or sign out. Waiting for the 2FA code, only the code or sign-out; without the 2FA the
+# workspace requires, only setting it up (S2).
+_SIGN_OUT = "/api/v1/auth/sign-out"
+_EXPIRED_PASSWORD_ALLOWS = frozenset({"/api/v1/me", "/api/v1/me/password", _SIGN_OUT})
+_PENDING_CODE_ALLOWS = frozenset({"/api/v1/auth/2fa", _SIGN_OUT})
+_SETUP_2FA_ALLOWS = frozenset(
+    {"/api/v1/me", "/api/v1/me/2fa", "/api/v1/me/2fa/setup", "/api/v1/me/2fa/confirm", _SIGN_OUT}
+)
+
+
 async def get_caller(
+    request: Request,
     sm: SessionmakerDep,
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
 ) -> Caller:
     if credentials is None or not credentials.credentials:
         raise NotSignedIn("Sign in first.")
-    caller = await auth.resolve(sm, credentials.credentials.strip())
+    caller = await auth.resolve(sm, credentials.credentials.strip(), client_ip(request) or "")
     logs.bind(workspace_id=caller.workspace_id, member_id=caller.member_id)
+    path = request.url.path
+    if caller.second_factor_pending:
+        if path not in _PENDING_CODE_ALLOWS:
+            raise TwoFactorRequired("Enter the code from your authenticator app first.")
+    elif caller.two_factor_setup_required and path not in _SETUP_2FA_ALLOWS:
+        raise TwoFactorSetupRequired(
+            "Your workspace requires two-step sign-in. Set it up to continue."
+        )
+    elif caller.password_expired and path not in _EXPIRED_PASSWORD_ALLOWS:
+        raise PasswordExpired("Your password has expired. Choose a new one to continue.")
     return caller
+
+
+def get_sealer(request: Request) -> Sealer:
+    """Opens secrets kept in the database (2FA secrets)."""
+    sealer: Sealer | None = getattr(request.app.state, "sealer", None)
+    if sealer is None:
+        sealer = Sealer(request.app.state.settings.secret_key.get_secret_value())
+        request.app.state.sealer = sealer
+    return sealer
+
+
+SealerDep = Annotated[Sealer, Depends(get_sealer)]
 
 
 CallerDep = Annotated[Caller, Depends(get_caller)]

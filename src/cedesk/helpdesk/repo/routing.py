@@ -8,6 +8,7 @@ from sqlalchemy import RowMapping, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cedesk.helpdesk.domain.routing import DEFAULT_CAPS, ChannelGroup
+from cedesk.helpdesk.repo.auth import TAKES_TICKETS
 
 Row = RowMapping
 CAP_COLUMNS = ("cap_email", "cap_chat", "cap_messaging")
@@ -41,6 +42,11 @@ _JOINS = (
 )
 _TEAM_AGENTS = (
     "SELECT m.id, m.name, m.role, m.is_active, "  # noqa: S608
+    + TAKES_TICKETS
+    + " AS takes_tickets, "
+    # A custom role scoped to another team can't work on this team's tickets (A3).
+    "(m.role <> 'custom' OR EXISTS (SELECT 1 FROM hd_role sr WHERE sr.id = m.role_id "
+    "AND (sr.scope = 'all' OR sr.team_id = :team))) AS fits_team, "
     + _STATE
     + " FROM hd_team_member tm JOIN member m ON m.id = tm.member_id"
     + _JOINS
@@ -48,6 +54,8 @@ _TEAM_AGENTS = (
 )
 _AGENTS = (
     "SELECT m.id, m.name, m.role, m.is_active, "  # noqa: S608
+    + TAKES_TICKETS
+    + " AS takes_tickets, "
     + _STATE
     + " FROM member m"
     + _JOINS

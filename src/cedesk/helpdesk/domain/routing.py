@@ -61,6 +61,8 @@ class Agent:
     caps: Mapping[ChannelGroup, int]
     skills: frozenset[str]
     open_by_group: Mapping[ChannelGroup, int]
+    # A custom role scoped to another team (A3): never routed this team's tickets.
+    outside_scope: bool = False
 
     @property
     def open_total(self) -> int:
@@ -87,6 +89,8 @@ def _why_not(agent: Agent, team: Team, group: ChannelGroup) -> str | None:
         return f"{agent.name} is deactivated"
     if agent.is_light:
         return f"{agent.name} is a light agent"
+    if agent.outside_scope:
+        return f"{agent.name}'s role works on another team's tickets"
     if agent.status is not AgentStatus.available:
         return f"{agent.name} is {STATUS_LABEL[agent.status]}"
     if group not in agent.channels:

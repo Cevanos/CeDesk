@@ -2,17 +2,21 @@
 
 import asyncio
 import logging
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from cedesk.db import workspace_session
 from cedesk.helpdesk.domain import auth as rules
 from cedesk.helpdesk.domain.auth import Caller
-from cedesk.helpdesk.domain.permissions import Action, Role, can
+from cedesk.helpdesk.domain.permissions import Action, Role
 from cedesk.helpdesk.repo import auth as repo
+from cedesk.helpdesk.repo import roles as role_repo
+from cedesk.helpdesk.repo import security as security_repo
 from cedesk.helpdesk.repo.auth import Row
 from cedesk.helpdesk.service import passwords
 from cedesk.helpdesk.service.auth import Sessionmaker
@@ -24,8 +28,13 @@ WRONG_CURRENT = "Your current password is not right."
 TOO_MANY_TRIES = "Too many wrong passwords. Try again in 15 minutes."
 
 
+async def _password_min(sm: Sessionmaker, caller: Caller) -> int:
+    async with workspace_session(sm, caller.workspace_id) as s:
+        return (await security_repo.current(s)).password_min
+
+
 def require(caller: Caller, action: Action) -> None:
-    if not can(caller.role, action):
+    if not caller.can(action):
         raise Forbidden("Your role can't do this.")
 
 
@@ -46,25 +55,56 @@ async def list_members(
         return await repo.list_members(s, after, limit)
 
 
+async def _check_role(s: AsyncSession, role: Role, role_id: UUID | None) -> None:
+    """A custom role names an existing `hd_role`; a built-in role has no role_id (A4)."""
+    if role is Role.custom:
+        if role_id is None:
+            raise Invalid("Pick which custom role (role_id).")
+        if await role_repo.get_role(s, role_id) is None:
+            raise Invalid("That custom role doesn't exist.")
+    elif role_id is not None:
+        raise Invalid("role_id is only for role custom.")
+
+
 async def add_member(
-    sm: Sessionmaker, caller: Caller, *, email: str, name: str, role: Role, password: str
+    sm: Sessionmaker,
+    caller: Caller,
+    *,
+    email: str,
+    name: str,
+    role: Role,
+    password: str,
+    role_id: UUID | None = None,
 ) -> Row:
-    require(caller, Action.settings)
-    problem = rules.password_problem(password)
+    require(caller, Action.manage_access)
+    problem = rules.password_problem(password, await _password_min(sm, caller))
     if problem:
         raise Invalid(problem)
     try:
         async with workspace_session(sm, caller.workspace_id) as s:
-            return await repo.insert_member(
+            await _check_role(s, role, role_id)
+            added = await repo.insert_member(
                 s,
                 workspace_id=caller.workspace_id,
                 email=rules.normalise_email(email),
                 name=name,
                 role=role.value,
+                role_id=role_id,
                 password_hash=passwords.hash_password(password),
             )
+            await security_repo.queue_alert(
+                s,
+                caller.workspace_id,
+                f"Member added: {added['name']} <{added['email']}>, role {_role_label(added)}.",
+                caller.member_id,
+            )
+            return added
     except IntegrityError as exc:
         raise Conflict("Someone in this workspace already uses that email.") from exc
+
+
+def _role_label(member: Mapping[Any, Any]) -> str:
+    return str(member["role_name"] or str(member["role"]).replace("_", " ").capitalize())
 
 
 async def change_member(
@@ -75,8 +115,11 @@ async def change_member(
     name: str | None,
     role: Role | None,
     is_active: bool | None,
+    role_id: UUID | None = None,
 ) -> Row:
-    require(caller, Action.settings)
+    require(caller, Action.manage_access)
+    if role is None and role_id is not None:
+        raise Invalid("Send role custom with role_id.")
     if member_id == caller.member_id and (role is not None or is_active is False):
         raise Forbidden("You can't change your own role or deactivate yourself.")
     async with workspace_session(sm, caller.workspace_id) as s:
@@ -95,15 +138,35 @@ async def change_member(
         )
         if loses_admin and len(admins) <= 1:
             raise Conflict("A workspace needs at least one active Admin.")
+        if role is not None:
+            await _check_role(s, role, role_id)
         updated = await repo.update_member(
             s,
             member_id,
             name=name,
             role=role.value if role else None,
+            role_id=role_id,
             is_active=is_active,
         )
         if is_active is False:
             await repo.revoke_member_sessions(s, member_id)
+        if _role_label(updated) != _role_label(current):
+            # Someone made an Admin is the alert that matters most after a takeover (S6).
+            await security_repo.queue_alert(
+                s,
+                caller.workspace_id,
+                f"Role changed for {updated['name']} <{updated['email']}>: "
+                f"{_role_label(current)} to {_role_label(updated)}.",
+                caller.member_id,
+            )
+        if is_active is not None and is_active != current["is_active"]:
+            what = "deactivated" if is_active is False else "reactivated"
+            await security_repo.queue_alert(
+                s,
+                caller.workspace_id,
+                f"Member {what}: {updated['name']} <{updated['email']}>.",
+                caller.member_id,
+            )
         return updated
 
 
@@ -114,7 +177,7 @@ async def change_own_password(
 
     A wrong current password counts as a failed sign-in, so guessing it from a stolen
     session hits the same lockout as the sign-in page."""
-    problem = rules.password_problem(new_password)
+    problem = rules.password_problem(new_password, await _password_min(sm, caller))
     if problem:
         raise Invalid(problem)
     if new_password == current_password:
@@ -157,10 +220,10 @@ async def reset_password(
 ) -> None:
     """An Admin gives a member a new password: it also unlocks them and ends every
     session they have, so whoever had the old password is signed out."""
-    require(caller, Action.settings)
+    require(caller, Action.manage_access)
     if member_id == caller.member_id:
         raise Forbidden("Change your own password from your profile, with your current one.")
-    problem = rules.password_problem(new_password)
+    problem = rules.password_problem(new_password, await _password_min(sm, caller))
     if problem:
         raise Invalid(problem)
     new_hash = await asyncio.to_thread(passwords.hash_password, new_password)

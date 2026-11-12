@@ -19,6 +19,7 @@ class Event(StrEnum):
     assignment_changed = "assignment.changed"
     contact_updated = "contact.updated"
     handover_accepted = "handover.accepted"  # Accept on a Cevanos chat: take it over there
+    security_alert = "security.alert"  # emails the Admins (S6); not a ticket event
 
 
 # Changes that make a `ticket.updated` (PL4): status (other than resolving), priority,

@@ -38,7 +38,13 @@ async def list_members(
 )
 async def add_member(body: AddMemberBody, caller: CallerDep, sm: SessionmakerDep) -> MemberOut:
     row = await members.add_member(
-        sm, caller, email=body.email, name=body.name, role=body.role, password=body.password
+        sm,
+        caller,
+        email=body.email,
+        name=body.name,
+        role=body.role,
+        password=body.password,
+        role_id=body.role_id,
     )
     return MemberOut.model_validate(dict(row))
 
@@ -52,7 +58,13 @@ async def change_member(
     member_id: UUID, body: ChangeMemberBody, caller: CallerDep, sm: SessionmakerDep
 ) -> MemberOut:
     row = await members.change_member(
-        sm, caller, member_id, name=body.name, role=body.role, is_active=body.is_active
+        sm,
+        caller,
+        member_id,
+        name=body.name,
+        role=body.role,
+        is_active=body.is_active,
+        role_id=body.role_id,
     )
     return MemberOut.model_validate(dict(row))
 

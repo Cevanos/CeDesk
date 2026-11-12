@@ -31,12 +31,26 @@ async def test_members_from_before_0012_stay_available(
 
     from sqlalchemy import text
 
-    from tests.db.helpers import new_workspace
-
     cfg = alembic_config()
     try:
         await asyncio.to_thread(command.downgrade, cfg, "0011")
-        await new_workspace(app_sessionmaker)  # its Admin has no routing row yet
+        # A member as 0011 stored them (plain SQL: today's code expects today's columns).
+        # It has no routing row yet.
+        async with owner_engine.begin() as conn:
+            for table in ("workspace", "member"):
+                await conn.execute(text(f"ALTER TABLE {table} NO FORCE ROW LEVEL SECURITY"))
+            ws = await conn.scalar(
+                text("INSERT INTO workspace (name) VALUES ('Before 0012') RETURNING id")
+            )
+            await conn.execute(
+                text(
+                    "INSERT INTO member (workspace_id, email, name, role, password_hash) "
+                    "VALUES (:ws, 'old@example.com', 'Old', 'agent', 'x')"
+                ),
+                {"ws": ws},
+            )
+            for table in ("workspace", "member"):
+                await conn.execute(text(f"ALTER TABLE {table} FORCE ROW LEVEL SECURITY"))
         await asyncio.to_thread(command.upgrade, cfg, "head")
     finally:
         await asyncio.to_thread(command.upgrade, cfg, "head")

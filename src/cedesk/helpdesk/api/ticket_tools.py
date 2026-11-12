@@ -86,7 +86,7 @@ async def merge(
     ticket_id: UUID, body: MergeIn, caller: CallerDep, sm: SessionmakerDep, response: Response
 ) -> TicketOut:
     view = await ticket_tools.merge(sm, caller, ticket_id, body.into)
-    return detail_response(view, response)
+    return detail_response(view, response, caller)
 
 
 @router.get(
@@ -160,7 +160,7 @@ async def create_child(
         idem=idem,
     )
     mark_replayed(idem, response)
-    return detail_response(view, response)
+    return detail_response(view, response, caller)
 
 
 # --- Approvals ---

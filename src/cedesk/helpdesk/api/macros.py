@@ -87,4 +87,4 @@ async def run_macro(
     idem = idempotency(idempotency_key, f"POST /tickets/{ticket_id}/macros/{macro_id}")
     view = await macros.run_macro(sm, caller, ticket_id, macro_id, if_match=if_match, idem=idem)
     mark_replayed(idem, response)
-    return detail_response(view, response)
+    return detail_response(view, response, caller)

@@ -9,6 +9,8 @@ from uuid import UUID
 from sqlalchemy import RowMapping, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from cedesk.helpdesk.repo.auth import TAKES_TICKETS
+
 _TEAM = "(CAST(:team AS uuid) IS NULL OR t.team_id = CAST(:team AS uuid))"
 _LIVE = "t.merged_into_id IS NULL"
 _IMPORTED = "coalesce(t.source = ANY(CAST(:imported AS text[])), false)"
@@ -95,9 +97,9 @@ async def agents(session: AsyncSession, team_id: UUID | None) -> Sequence[RowMap
     """Active members who can take tickets (not light agents); with a team, its members."""
     result = await session.execute(
         text(
-            "SELECT m.id, m.name, m.role, coalesce(st.status, 'offline') AS status "
+            "SELECT m.id, m.name, m.role, coalesce(st.status, 'offline') AS status "  # noqa: S608
             "FROM member m LEFT JOIN hd_agent_state st ON st.member_id = m.id "
-            "WHERE m.is_active AND m.role <> 'light_agent' "
+            "WHERE m.is_active AND " + TAKES_TICKETS + " "
             "AND (CAST(:team AS uuid) IS NULL OR EXISTS (SELECT 1 FROM hd_team_member tm "
             "     WHERE tm.member_id = m.id AND tm.team_id = CAST(:team AS uuid))) "
             "ORDER BY lower(m.name), m.id"
