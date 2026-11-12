@@ -11,3 +11,7 @@ export * from "./workspace/rules";
 export * from "./workspace/macros";
 export * from "./workspace/email";
 export * from "./workspace/cevanos";
+export * from "./workspace/reports";
+export * from "./workspace/triage";
+export * from "./workspace/portal-settings";
+export * from "./workspace/help-center";
