@@ -46,12 +46,14 @@ from cedesk.helpdesk.api import saved_replies as saved_replies_api
 from cedesk.helpdesk.api import security as security_api
 from cedesk.helpdesk.api import sla as sla_api
 from cedesk.helpdesk.api import sso as sso_api
+from cedesk.helpdesk.api import stream as stream_api
 from cedesk.helpdesk.api import ticket_tools as ticket_tools_api
 from cedesk.helpdesk.api import tickets as tickets_api
 from cedesk.helpdesk.api import triage as triage_api
 from cedesk.helpdesk.api import two_factor as two_factor_api
 from cedesk.helpdesk.service.errors import ServiceError, TooManyAttempts
 from cedesk.helpdesk.service.imports.framework import make_importers
+from cedesk.helpdesk.service.stream import Slots
 from cedesk.ratelimit import SlidingWindowLimiter
 from cedesk.settings import Settings, get_settings
 from cedesk.storage import make_store
@@ -137,6 +139,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.store = make_store(settings)
     app.state.cevanos = make_cevanos(settings)  # the connector; each workspace's key is in the db
     app.state.dns = DnsLookup()  # the support address DNS check (md C10)
+    app.state.stream_slots = Slots()  # open live streams per person (md C11)
     # Imports from other help desks (md section 8); tests replace `build` with a fake source.
     app.state.importers = make_importers(settings.secret_key.get_secret_value(), app.state.store)
     app.state.attempts = SlidingWindowLimiter(
@@ -240,6 +243,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "Content-Type",
                 "If-Match",
                 "Idempotency-Key",
+                "Last-Event-ID",
                 "X-Request-ID",
             ],
             expose_headers=["ETag", "X-Request-ID", "Retry-After", "Idempotent-Replayed"],
@@ -276,6 +280,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(triage_api.router, prefix="/api/v1")
     app.include_router(reports_api.router, prefix="/api/v1")
     app.include_router(imports_api.router, prefix="/api/v1")
+    app.include_router(stream_api.router, prefix="/api/v1")
 
     @app.get("/healthz", tags=["health"], summary="The process is up")
     async def healthz() -> dict[str, str]:
