@@ -202,13 +202,15 @@ async def test_password_check_holds_no_lock_and_does_not_block(
     token = await sign_in(client, slug, "admin@example.com")
     workspace_id = UUID(token.split(".")[0])
     me = (await client.get("/api/v1/me", headers=bearer(token))).json()["member"]["id"]
+    # The app's first /healthz pays a one-time setup cost; keep it out of the timing below.
+    assert (await client.get("/healthz")).status_code == 200
 
     real_verify = passwords.verify
     started = threading.Event()
 
     def slow_verify(password_hash: str | None, password: str) -> tuple[bool, str | None]:
         started.set()
-        time.sleep(0.6)
+        time.sleep(1.5)
         return real_verify(password_hash, password)
 
     monkeypatch.setattr(passwords, "verify", slow_verify)
@@ -221,6 +223,6 @@ async def test_password_check_holds_no_lock_and_does_not_block(
     async with workspace_session(app_sessionmaker, workspace_id) as s:
         await s.execute(text("SET LOCAL lock_timeout = '200ms'"))
         await s.execute(text("SELECT 1 FROM member WHERE id = :id FOR UPDATE"), {"id": me})
-    assert time.perf_counter() - t0 < 0.4  # neither waited for the password check
+    assert time.perf_counter() - t0 < 1.0  # neither waited for the 1.5 s password check
     assert not attempt.done()  # ... which is still running
     assert (await attempt).status_code == 401

@@ -27,7 +27,9 @@ from tests.db.helpers import Sm, bearer, new_workspace, ok, sign_in
 pytestmark = pytest.mark.db
 
 T = "/api/v1/tickets"
-EICAR = b"X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*"
+# Not the real EICAR test file: the fake scanner below only looks for the word, and a real
+# antivirus on the test machine (Windows Defender) would delete the stored file mid-test.
+EICAR = b"cedesk test: pretend virus, EICAR marker only"
 
 
 @pytest.fixture
