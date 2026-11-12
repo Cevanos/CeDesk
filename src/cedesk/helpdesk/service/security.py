@@ -14,15 +14,28 @@ from sqlalchemy.engine import RowMapping
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cedesk.db import workspace_session
+from cedesk.helpdesk.domain import audit as audit_rules
 from cedesk.helpdesk.domain import security as rules
+from cedesk.helpdesk.domain.audit import Area
 from cedesk.helpdesk.domain.auth import Caller
 from cedesk.helpdesk.domain.permissions import Action
 from cedesk.helpdesk.domain.security import SessionLength
 from cedesk.helpdesk.repo import auth as auth_repo
 from cedesk.helpdesk.repo import security as repo
+from cedesk.helpdesk.service import audit
 from cedesk.helpdesk.service.auth import Sessionmaker
 from cedesk.helpdesk.service.errors import Invalid, NotFound
 from cedesk.helpdesk.service.members import require
+
+SETTINGS_FIELDS = (
+    "password_min",
+    "password_expiry_days",
+    "session_length",
+    "ip_allowlist",
+    "attachments_need_sign_in",
+    "admin_alerts",
+    "require_2fa",
+)
 
 
 @dataclass(frozen=True)
@@ -128,6 +141,7 @@ async def _save(
         await repo.queue_alert(
             s, caller.workspace_id, "Admin security alerts were turned off.", caller.member_id
         )
+    before = await repo.settings_row(s)
     await repo.save(
         s,
         {
@@ -143,7 +157,13 @@ async def _save(
     )
     if new.session_length is not old.session_length:
         await repo.shorten_sessions(s, repo.SHORTEN[new.session_length.value])
-    return await repo.settings_row(s)
+    after = await repo.settings_row(s)
+    changed = audit_rules.changes(before, after, fields=SETTINGS_FIELDS)
+    if changed:
+        await audit.record(
+            s, caller, Area.security, "changed", "Security settings", detail={"changes": changed}
+        )
+    return after
 
 
 async def test_ip(
@@ -186,6 +206,9 @@ async def clear_ip_allowlist(sm: Sessionmaker, slug: str) -> bool:
     async with workspace_session(sm, workspace_id) as s:
         cleared = await repo.clear_ip_allowlist(s)
         if cleared:
+            await audit.record_server(
+                s, workspace_id, Area.security, "changed", "IP allowlist cleared from the server"
+            )
             await repo.queue_alert(
                 s,
                 workspace_id,

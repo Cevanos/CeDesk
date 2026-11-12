@@ -23,10 +23,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from cedesk.db import workspace_session
 from cedesk.dnscheck import LookupFailed, TxtLookup
+from cedesk.helpdesk.domain import audit as audit_rules
 from cedesk.helpdesk.domain import email as rules
 from cedesk.helpdesk.domain import email_verify as verify
 from cedesk.helpdesk.domain import paging
 from cedesk.helpdesk.domain.attachments import BLOCKED, ready
+from cedesk.helpdesk.domain.audit import Area
 from cedesk.helpdesk.domain.auth import Caller
 from cedesk.helpdesk.domain.permissions import Action
 from cedesk.helpdesk.domain.placeholders import render
@@ -36,11 +38,14 @@ from cedesk.helpdesk.repo import auth as auth_repo
 from cedesk.helpdesk.repo import email as repo
 from cedesk.helpdesk.repo import tickets as ticket_repo
 from cedesk.helpdesk.repo.email import Row
+from cedesk.helpdesk.service import audit
 from cedesk.helpdesk.service.auth import Sessionmaker
 from cedesk.helpdesk.service.errors import Conflict, Invalid, NotFound
 from cedesk.helpdesk.service.members import require
 from cedesk.mail import Mailer, MailFile, OutgoingEmail, SendError
 from cedesk.storage import ObjectMissing, ObjectStore
+
+ADDRESS_FIELDS = ("name", "signature", "is_default", "dkim_selector")
 
 logger = logging.getLogger("cedesk.email")
 
@@ -110,6 +115,15 @@ async def create_address(
                 is_default=make_default,
             )
             row = await repo.get_address(s, address_id)
+            await audit.record(
+                s,
+                caller,
+                Area.email,
+                "created",
+                f"Email address {value}",
+                target_id=address_id,
+                detail=audit_rules.snapshot(row, ADDRESS_FIELDS),
+            )
     except IntegrityError as exc:
         raise Conflict(TAKEN) from exc
     assert row is not None
@@ -135,7 +149,8 @@ async def update_address(
     sig = None if signature is None else _signature(signature)
     async with workspace_session(sm, caller.workspace_id) as s:
         await repo.lock_addresses(s)
-        if await repo.get_address(s, address_id) is None:
+        before = await repo.get_address(s, address_id)
+        if before is None:
             raise NotFound("Email address not found.")
         await repo.update_address(s, address_id, name=shown, signature=sig)
         if dkim_selector is not None:
@@ -144,7 +159,18 @@ async def update_address(
             await repo.clear_default(s)
             await repo.make_default(s, address_id)
         row = await repo.get_address(s, address_id)
-    assert row is not None
+        assert row is not None
+        changed = audit_rules.changes(before, row, fields=ADDRESS_FIELDS)
+        if changed:
+            await audit.record(
+                s,
+                caller,
+                Area.email,
+                "changed",
+                f"Email address {row['address']}",
+                target_id=address_id,
+                detail={"changes": changed},
+            )
     return row
 
 
@@ -157,6 +183,15 @@ async def delete_address(sm: Sessionmaker, caller: Caller, address_id: UUID) -> 
         row = await repo.get_address(s, address_id)
         if row is None or not await repo.delete_address(s, address_id):
             raise NotFound("Email address not found.")
+        await audit.record(
+            s,
+            caller,
+            Area.email,
+            "deleted",
+            f"Email address {row['address']}",
+            target_id=address_id,
+            detail=audit_rules.snapshot(row, ADDRESS_FIELDS),
+        )
         if row["is_default"]:
             oldest = await repo.oldest_address(s)
             if oldest is not None:

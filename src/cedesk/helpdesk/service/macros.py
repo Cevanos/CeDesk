@@ -15,10 +15,12 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cedesk.db import workspace_session
+from cedesk.helpdesk.domain import audit as audit_rules
 from cedesk.helpdesk.domain import events
 from cedesk.helpdesk.domain import macros as engine
 from cedesk.helpdesk.domain import rules as rule_engine
 from cedesk.helpdesk.domain import tickets as ticket_rules
+from cedesk.helpdesk.domain.audit import Area
 from cedesk.helpdesk.domain.auth import Caller
 from cedesk.helpdesk.domain.permissions import Action
 from cedesk.helpdesk.domain.tickets import FieldError, Priority, Status
@@ -28,7 +30,7 @@ from cedesk.helpdesk.repo import outbox
 from cedesk.helpdesk.repo import rules as rule_repo
 from cedesk.helpdesk.repo import tickets as ticket_repo
 from cedesk.helpdesk.repo.macros import Row
-from cedesk.helpdesk.service import children, idempotency, routing, scope, sla, tickets
+from cedesk.helpdesk.service import audit, children, idempotency, routing, scope, sla, tickets
 from cedesk.helpdesk.service import rules as automation
 from cedesk.helpdesk.service.auth import Sessionmaker
 from cedesk.helpdesk.service.errors import Conflict, Invalid, NotFound
@@ -47,7 +49,8 @@ class MacroView:
     problems: list[str]
 
 
-def _parse(name: str, steps: Sequence[Any]) -> tuple[str, tuple[engine.Step, ...]]:
+def parse(name: str, steps: Sequence[Any]) -> tuple[str, tuple[engine.Step, ...]]:
+    """A macro as an Admin sent it, checked (also used by the sandbox)."""
     name = " ".join(name.split())
     if not 1 <= len(name) <= engine.NAME_MAX:
         raise Invalid(f"A macro name is 1-{engine.NAME_MAX} characters.")
@@ -89,26 +92,43 @@ async def create_macro(
     sm: Sessionmaker, caller: Caller, *, name: str, steps: Sequence[Any]
 ) -> MacroView:
     require(caller, Action.settings)
-    name, parsed = _parse(name, steps)
+    name, parsed = parse(name, steps)
     try:
         async with workspace_session(sm, caller.workspace_id) as s:
-            # A soft cap: two Admins adding at the same moment can pass it by one each.
-            if await repo.count(s) >= engine.MAX_MACROS:
-                raise Invalid(f"A workspace can have at most {engine.MAX_MACROS} macros.")
-            await _check_team(s, parsed)
-            macro_id = await repo.insert_macro(
-                s,
-                caller.workspace_id,
-                name=name,
-                steps=[engine.stored_step(x) for x in parsed],
-                created_by=caller.member_id,
-            )
-            assert macro_id is not None
-            row = await repo.get_macro(s, macro_id)
-            assert row is not None
-            return (await _views(s, [row]))[0]
+            return (await _views(s, [await create_in(s, caller, name, parsed)]))[0]
     except IntegrityError as exc:
         raise Conflict(TAKEN) from exc
+
+
+async def create_in(
+    s: AsyncSession, caller: Caller, name: str, parsed: Sequence[engine.Step]
+) -> Row:
+    """Adds a checked macro (last in order) and its audit entry, in the caller's
+    transaction."""
+    # A soft cap: two Admins adding at the same moment can pass it by one each.
+    if await repo.count(s) >= engine.MAX_MACROS:
+        raise Invalid(f"A workspace can have at most {engine.MAX_MACROS} macros.")
+    await _check_team(s, parsed)
+    macro_id = await repo.insert_macro(
+        s,
+        caller.workspace_id,
+        name=name,
+        steps=[engine.stored_step(x) for x in parsed],
+        created_by=caller.member_id,
+    )
+    assert macro_id is not None
+    row = await repo.get_macro(s, macro_id)
+    assert row is not None
+    await audit.record(
+        s,
+        caller,
+        Area.macros,
+        "created",
+        f"Macro {name}",
+        target_id=macro_id,
+        detail={"steps": audit_rules.snapshot(row, ["steps"])["steps"]},
+    )
+    return row
 
 
 async def change_macro(
@@ -125,27 +145,69 @@ async def change_macro(
             current = await repo.get_macro(s, macro_id)
             if current is None:
                 raise NotFound("Macro not found.")
-            new_name, parsed = _parse(
+            new_name, parsed = parse(
                 current["name"] if name is None else name,
                 current["steps"] if steps is None else steps,
             )
-            if steps is not None:
-                await _check_team(s, parsed)
-            await repo.update_macro(
-                s, macro_id, name=new_name, steps=[engine.stored_step(x) for x in parsed]
+            row = await change_in(
+                s, caller, current, new_name, parsed, check_team=steps is not None
             )
-            row = await repo.get_macro(s, macro_id)
-            assert row is not None
             return (await _views(s, [row]))[0]
     except IntegrityError as exc:
         raise Conflict(TAKEN) from exc
 
 
+async def change_in(
+    s: AsyncSession,
+    caller: Caller,
+    current: Row,
+    name: str,
+    parsed: Sequence[engine.Step],
+    *,
+    check_team: bool = True,
+) -> Row:
+    """Saves a checked macro over `current` and its audit entry, in the caller's
+    transaction."""
+    if check_team:
+        await _check_team(s, parsed)
+    await repo.update_macro(
+        s, current["id"], name=name, steps=[engine.stored_step(x) for x in parsed]
+    )
+    row = await repo.get_macro(s, current["id"])
+    assert row is not None
+    await audit.record(
+        s,
+        caller,
+        Area.macros,
+        "changed",
+        f"Macro {name}",
+        target_id=current["id"],
+        detail={"changes": audit_rules.changes(current, row, fields=("name", "steps"))},
+    )
+    return row
+
+
 async def delete_macro(sm: Sessionmaker, caller: Caller, macro_id: UUID) -> None:
     require(caller, Action.settings)
     async with workspace_session(sm, caller.workspace_id) as s:
-        if not await repo.delete_macro(s, macro_id):
+        current = await repo.get_macro(s, macro_id)
+        if current is None:
             raise NotFound("Macro not found.")
+        await delete_in(s, caller, current)
+
+
+async def delete_in(s: AsyncSession, caller: Caller, current: Row) -> None:
+    if not await repo.delete_macro(s, current["id"]):
+        raise NotFound("Macro not found.")
+    await audit.record(
+        s,
+        caller,
+        Area.macros,
+        "deleted",
+        f"Macro {current['name']}",
+        target_id=current["id"],
+        detail=audit_rules.snapshot(current, ["steps"]),
+    )
 
 
 async def reorder_macros(
@@ -157,6 +219,7 @@ async def reorder_macros(
         if set(macro_ids) != current or len(macro_ids) != len(current):
             raise Invalid("Send every macro id exactly once, in the new order.")
         await repo.reorder_macros(s, macro_ids)
+        await audit.record(s, caller, Area.macros, "reordered", "Macro order")
         return await _views(s, await repo.list_macros(s))
 
 

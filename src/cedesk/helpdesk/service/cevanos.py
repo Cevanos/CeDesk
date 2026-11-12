@@ -30,8 +30,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from cedesk.cevanos_client import Cevanos, CevanosApi, CevanosError
 from cedesk.crypto import CannotOpen
 from cedesk.db import workspace_session
+from cedesk.helpdesk.domain import audit as audit_rules
 from cedesk.helpdesk.domain import cevanos as rules
 from cedesk.helpdesk.domain import events
+from cedesk.helpdesk.domain.audit import Area
 from cedesk.helpdesk.domain.auth import Caller
 from cedesk.helpdesk.domain.permissions import Action
 from cedesk.helpdesk.domain.tickets import Channel, Status, label
@@ -39,7 +41,7 @@ from cedesk.helpdesk.repo import auth as auth_repo
 from cedesk.helpdesk.repo import cevanos as repo
 from cedesk.helpdesk.repo import outbox
 from cedesk.helpdesk.repo import tickets as ticket_repo
-from cedesk.helpdesk.service import customer_replies, tickets
+from cedesk.helpdesk.service import audit, customer_replies, tickets
 from cedesk.helpdesk.service.auth import Sessionmaker
 from cedesk.helpdesk.service.delivery import Event, HandlerError
 from cedesk.helpdesk.service.errors import (
@@ -163,6 +165,20 @@ async def save_connection(
             team_id=team_id, updated_by=caller.member_id,
         )  # fmt: skip
         row = await repo.connection(s)
+        changed = audit_rules.changes(
+            current, row, fields=("api_key_hint", "close_on_resolve", "team_id")
+        )
+        if current is not None and secret is not None:
+            changed["webhook_secret"] = [audit_rules.HIDDEN, audit_rules.HIDDEN]
+        if current is None or changed:
+            await audit.record(
+                s,
+                caller,
+                Area.cevanos,
+                "connected" if current is None else "changed",
+                "Cevanos connection",
+                detail={"changes": changed},
+            )
     return _view(cevanos, ws, row)
 
 
@@ -172,6 +188,7 @@ async def remove_connection(sm: Sessionmaker, caller: Caller) -> None:
     async with workspace_session(sm, caller.workspace_id) as s:
         if not await repo.delete_connection(s):
             raise NotFound(NOT_CONNECTED)
+        await audit.record(s, caller, Area.cevanos, "disconnected", "Cevanos connection")
 
 
 async def check_key(sm: Sessionmaker, cevanos: Cevanos, caller: Caller) -> KeyCheck:

@@ -19,11 +19,13 @@ from cedesk.db import workspace_session
 from cedesk.helpdesk.domain import auth as auth_rules
 from cedesk.helpdesk.domain import security as security_rules
 from cedesk.helpdesk.domain import two_factor as rules
+from cedesk.helpdesk.domain.audit import Area
 from cedesk.helpdesk.domain.auth import Caller
 from cedesk.helpdesk.domain.permissions import Action
 from cedesk.helpdesk.repo import auth as auth_repo
 from cedesk.helpdesk.repo import security as security_repo
 from cedesk.helpdesk.repo import two_factor as repo
+from cedesk.helpdesk.service import audit
 from cedesk.helpdesk.service.auth import Sessionmaker
 from cedesk.helpdesk.service.errors import Conflict, Forbidden, Invalid, NotFound
 from cedesk.helpdesk.service.members import TOO_MANY_TRIES, require
@@ -198,6 +200,14 @@ async def admin_reset(sm: Sessionmaker, caller: Caller, member_id: UUID) -> None
         if not await repo.remove(s, member_id):
             raise Conflict("This member doesn't use two-step sign-in.")
         await auth_repo.revoke_member_sessions(s, member_id)
+        await audit.record(
+            s,
+            caller,
+            Area.two_factor,
+            "reset",
+            f"Two-step sign-in reset for {target['name']} <{target['email']}>",
+            target_id=member_id,
+        )
         await security_repo.queue_alert(
             s,
             caller.workspace_id,

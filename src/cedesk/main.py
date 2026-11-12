@@ -23,6 +23,7 @@ from cedesk.db import make_engine, make_sessionmaker
 from cedesk.dnscheck import DnsLookup
 from cedesk.helpdesk.api import articles as articles_api
 from cedesk.helpdesk.api import attachments as attachments_api
+from cedesk.helpdesk.api import audit as audit_api
 from cedesk.helpdesk.api import auth as auth_api
 from cedesk.helpdesk.api import catalog as catalog_api
 from cedesk.helpdesk.api import cevanos as cevanos_api
@@ -34,11 +35,13 @@ from cedesk.helpdesk.api import members as members_api
 from cedesk.helpdesk.api import messages as messages_api
 from cedesk.helpdesk.api import outbox as outbox_api
 from cedesk.helpdesk.api import portal as portal_api
+from cedesk.helpdesk.api import privacy as privacy_api
 from cedesk.helpdesk.api import public as public_api
 from cedesk.helpdesk.api import reports as reports_api
 from cedesk.helpdesk.api import roles as roles_api
 from cedesk.helpdesk.api import routing as routing_api
 from cedesk.helpdesk.api import rules as rules_api
+from cedesk.helpdesk.api import sandbox as sandbox_api
 from cedesk.helpdesk.api import saved_replies as saved_replies_api
 from cedesk.helpdesk.api import security as security_api
 from cedesk.helpdesk.api import sla as sla_api
@@ -248,6 +251,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(roles_api.router, prefix="/api/v1")
     app.include_router(security_api.router, prefix="/api/v1")
     app.include_router(sso_api.router, prefix="/api/v1")
+    app.include_router(audit_api.router, prefix="/api/v1")
+    app.include_router(privacy_api.router, prefix="/api/v1")
+    app.include_router(sandbox_api.router, prefix="/api/v1")
     app.include_router(two_factor_api.router, prefix="/api/v1")
     # Before tickets: `/tickets/from-conversation/{id}` must not be read as a ticket id.
     app.include_router(cevanos_api.router, prefix="/api/v1")

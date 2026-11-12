@@ -36,6 +36,7 @@ from cedesk.crypto import CannotOpen, Sealer
 from cedesk.db import workspace_session
 from cedesk.helpdesk.domain import imports as rules
 from cedesk.helpdesk.domain import saved_replies as reply_rules
+from cedesk.helpdesk.domain.audit import Area
 from cedesk.helpdesk.domain.auth import Caller
 from cedesk.helpdesk.domain.imports import (
     Article,
@@ -52,7 +53,7 @@ from cedesk.helpdesk.repo import auth as auth_repo
 from cedesk.helpdesk.repo import imports as repo
 from cedesk.helpdesk.repo import saved_replies as reply_repo
 from cedesk.helpdesk.repo import tickets as ticket_repo
-from cedesk.helpdesk.service import sla, triage
+from cedesk.helpdesk.service import audit, sla, triage
 from cedesk.helpdesk.service.auth import Sessionmaker
 from cedesk.helpdesk.service.errors import Conflict, Invalid, NotFound, TooLarge, Unavailable
 from cedesk.helpdesk.service.idempotency import Idempotency, begin, remember
@@ -255,6 +256,10 @@ async def connect(
                 s, ws, connection_id, "connected", member_id=caller.member_id,
                 detail={"source": source, "account": info.name[:200]},
             )  # fmt: skip
+            await audit.record(
+                s, caller, Area.imports, "connected", f"Import from {rules.label(source)}",
+                target_id=connection_id, detail={"account": info.name[:200]},
+            )  # fmt: skip
             await remember(s, caller, idem, connection_id)
             row = await repo.connection(s, connection_id)
     assert row is not None
@@ -305,6 +310,10 @@ async def upload_csv(
                         "rows_left_out": len(connector.bad_rows),
                     },
                 )  # fmt: skip
+                await audit.record(
+                    s, caller, Area.imports, "connected", "Import from a CSV file",
+                    target_id=connection_id, detail={"tickets": counts.tickets},
+                )  # fmt: skip
                 await remember(s, caller, idem, connection_id)
                 row = await repo.connection(s, connection_id)
     except Exception:
@@ -338,6 +347,10 @@ async def close_connection(
             await repo.add_event(
                 s, ws, connection_id, "credentials_deleted", member_id=caller.member_id
             )
+            await audit.record(
+                s, caller, Area.imports, "closed", f"Import from {rules.label(row['source'])}",
+                target_id=connection_id,
+            )  # fmt: skip
     if file_key:
         await importers.store.delete(str(file_key))
 
@@ -480,6 +493,10 @@ async def start_run(
         await repo.add_event(
             s, ws, connection_id, "started", run_id=run_id, member_id=caller.member_id,
             detail={"kinds": list(chosen.kinds)},
+        )  # fmt: skip
+        await audit.record(
+            s, caller, Area.imports, "started", f"Import from {rules.label(row['source'])}",
+            target_id=run_id, detail={"kinds": list(chosen.kinds)},
         )  # fmt: skip
         await remember(s, caller, idem, run_id)
         found = await repo.run(s, run_id)

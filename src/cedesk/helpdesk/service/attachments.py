@@ -145,7 +145,7 @@ async def attach_to_message(
         if row["message_id"] is not None:
             raise Invalid(f"{row['name']} was already sent. Upload it again to send it again.")
         if row["scan_status"] in BLOCKED:
-            raise Invalid(f"{row['name']} failed the virus scan and can't be sent.")
+            raise Invalid(f"{row['name']} is blocked (virus scan or erased) and can't be sent.")
     if emailed and sum(int(r["size"]) for r in rows.values()) > EMAIL_TOTAL_MAX:
         mb = EMAIL_TOTAL_MAX // (1024 * 1024)
         raise Invalid(f"Files on an emailed reply can be at most {mb} MB together.")
@@ -304,6 +304,8 @@ async def link_for(
 
 
 def _check_scan(row: Row, scanning: bool) -> None:
+    if row["scan_status"] == ScanStatus.erased:
+        raise Conflict("This file was erased at the customer's request.")
     if row["scan_status"] == ScanStatus.infected:
         raise Conflict("This file failed the virus scan, so it can't be downloaded.")
     if row["scan_status"] == ScanStatus.scan_failed:
