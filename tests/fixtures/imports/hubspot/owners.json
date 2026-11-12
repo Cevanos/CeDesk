@@ -1,0 +1,13 @@
+{
+ "results": [
+  {
+   "id": "o1",
+   "email": "neha@acme.com",
+   "firstName": "Neha"
+  },
+  {
+   "id": "o2",
+   "email": null
+  }
+ ]
+}

@@ -234,6 +234,34 @@ wheels = [
 ]
 
 [[package]]
+name = "azure-core"
+version = "1.41.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "requests" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/a6/f3/b416179e408990df5db0d516283022dde0f5d0111d98c1a848e41853e81c/azure_core-1.41.0.tar.gz", hash = "sha256:f46ff5dfcd230f25cf1c19e8a34b8dc08a337b2503e268bb600a16c00db8ad5a", size = 381042, upload-time = "2026-05-07T23:30:54.302Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/5b/db/325c6d7312d2200251c52323878281045aaffcb5586612296484e4280eaa/azure_core-1.41.0-py3-none-any.whl", hash = "sha256:522b4011e8180b1a3dcd2024396a4e7fe9ac37fb8597db47163d230b5efe892d", size = 220920, upload-time = "2026-05-07T23:30:56.357Z" },
+]
+
+[[package]]
+name = "azure-storage-blob"
+version = "12.31.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "azure-core" },
+    { name = "cryptography" },
+    { name = "isodate" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/6f/18/eb2ade6eede419d33493016ec3243ca9860f67d0bc71aa0461cda2cad0c4/azure_storage_blob-12.31.1.tar.gz", hash = "sha256:0d6e5b860a1357efc602db04cfa7c9950ac86126edcf7db89320cde281555fe5", size = 672417, upload-time = "2026-10-29T23:34:05.69Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/1a/93/b9f0dc477827887aef64012946bdba65e9aad67084ad38044661a72fe47d/azure_storage_blob-12.31.1-py3-none-any.whl", hash = "sha256:9e012d5f4ab658b7cb8a4581329d7a7aa2bf5f39b4d63baeefaae7f9e90fe6f0", size = 455904, upload-time = "2026-10-29T23:34:07.459Z" },
+]
+
+[[package]]
 name = "boto3"
 version = "1.43.126"
 source = { registry = "https://pypi.org/simple" }
@@ -269,6 +297,7 @@ dependencies = [
     { name = "alembic" },
     { name = "argon2-cffi" },
     { name = "asyncpg" },
+    { name = "azure-storage-blob" },
     { name = "boto3" },
     { name = "cryptography" },
     { name = "dnspython" },
@@ -297,6 +326,7 @@ requires-dist = [
     { name = "alembic", specifier = ">=1.20.1" },
     { name = "argon2-cffi", specifier = ">=25.1.0" },
     { name = "asyncpg", specifier = ">=0.32.0" },
+    { name = "azure-storage-blob", specifier = ">=12.19" },
     { name = "boto3", specifier = ">=1.40" },
     { name = "cryptography", specifier = ">=46" },
     { name = "dnspython", specifier = ">=2.6" },

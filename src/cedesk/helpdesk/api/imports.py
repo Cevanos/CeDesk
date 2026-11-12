@@ -28,7 +28,7 @@ from cedesk.helpdesk.service.imports.csv_source import MAX_BYTES
 
 router = APIRouter(tags=["imports"])
 
-Source = Literal["intercom", "zendesk", "freshdesk", "gorgias", "helpscout"]
+Source = Literal["intercom", "zendesk", "freshdesk", "gorgias", "helpscout", "hubspot", "zoho"]
 Kind = Literal["contacts", "tickets", "articles", "replies"]
 Cursor = Annotated[
     str | None, Query(max_length=200, description="`next_cursor` from the previous page.")
@@ -133,7 +133,9 @@ class RunOut(BaseModel):
 class HistoryRunOut(BaseModel):
     id: UUID
     connection_id: UUID
-    source: str = Field(description="intercom, zendesk, freshdesk, gorgias, helpscout or csv.")
+    source: str = Field(
+        description="intercom, zendesk, freshdesk, gorgias, helpscout, hubspot, zoho or csv."
+    )
     account: str = Field(description="The account, or the file's name.")
     result: Literal["running", "finished", "syncing", "failed"]
     started_by_id: UUID | None

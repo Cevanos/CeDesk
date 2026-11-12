@@ -1,0 +1,16 @@
+{
+ "data": [
+  {
+   "id": "c1",
+   "email": "priya@example.org",
+   "firstName": "Priya",
+   "lastName": "Sharma"
+  },
+  {
+   "id": "c2",
+   "email": null,
+   "firstName": "Ravi",
+   "lastName": null
+  }
+ ]
+}

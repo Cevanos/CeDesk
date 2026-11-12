@@ -1,0 +1,10 @@
+{
+ "id": "t3",
+ "direction": "out",
+ "visibility": "private",
+ "content": "Checked with the courier",
+ "createdTime": "2025-03-01T10:30:00.000Z",
+ "author": {
+  "name": "Neha"
+ }
+}

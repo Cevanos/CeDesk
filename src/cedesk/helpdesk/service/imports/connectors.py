@@ -6,7 +6,8 @@ Admin gave what that source needs, and hands them to the source's module. A bad 
 name or a missing credential is a permanent `SourceError`, which the API turns into a 422
 and a running import into a failed run.
 
-Each source module (`intercom`, `zendesk`, `freshdesk`, `gorgias`, `helpscout`) offers
+Each source module (`intercom`, `zendesk`, `freshdesk`, `gorgias`, `helpscout`, `hubspot`,
+`zoho`) offers
 `make(settings, credentials, *, transport=None, guard=None) -> SourceConnector`.
 """
 
@@ -27,6 +28,8 @@ REQUIRED: Mapping[str, tuple[tuple[str, ...], str | None]] = {
     "freshdesk": (("api_key",), "domain"),
     "gorgias": (("email", "api_key"), "domain"),
     "helpscout": (("app_id", "app_secret"), None),
+    "hubspot": (("token",), None),
+    "zoho": (("client_id", "client_secret", "refresh_token"), "region"),
 }
 # what the key in the Settings screen asks for, so the message can name it
 WHERE = {
@@ -35,6 +38,16 @@ WHERE = {
     "freshdesk": "your API key (Profile settings)",
     "gorgias": "your email and an API key (Settings > REST API)",
     "helpscout": "an app id and secret (Your Profile > My Apps)",
+    "hubspot": (
+        "a private app's access token (Settings > Integrations > Private apps) with the "
+        "scopes tickets, crm.objects.contacts.read, crm.objects.owners.read, "
+        "sales-email-read and files"
+    ),
+    "zoho": (
+        "a Self Client's client id and secret and a refresh token (api-console.zoho.com) "
+        "with the scopes Desk.tickets.READ, Desk.contacts.READ, Desk.basic.READ and "
+        "Desk.articles.READ"
+    ),
 }
 
 

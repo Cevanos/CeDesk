@@ -1,0 +1,35 @@
+{
+ "results": [
+  {
+   "id": "e1",
+   "properties": {
+    "hs_email_text": "Hi, my order 1042 hasn't come.",
+    "hs_email_direction": "INCOMING_EMAIL",
+    "hs_timestamp": "2025-03-01T10:00:00Z",
+    "hs_email_from_email": "priya@example.org",
+    "hs_email_from_firstname": "Priya",
+    "hs_email_from_lastname": "Sharma"
+   }
+  },
+  {
+   "id": "e2",
+   "properties": {
+    "hs_email_text": null,
+    "hs_email_html": "<p>Sorry!</p><p>It ships today.</p>",
+    "hs_email_direction": "EMAIL",
+    "hs_timestamp": "2025-03-01T11:00:00Z",
+    "hs_email_from_email": "neha@acme.com",
+    "hs_email_from_firstname": "Neha",
+    "hs_attachment_ids": "9001;9002"
+   }
+  },
+  {
+   "id": "e3",
+   "properties": {
+    "hs_email_text": "  ",
+    "hs_email_direction": "INCOMING_EMAIL",
+    "hs_timestamp": "2025-03-05T12:00:00Z"
+   }
+  }
+ ]
+}
