@@ -1,0 +1,6 @@
+{"articles":[
+{"id":301,"title":"Reset password","body":"<p>Click reset</p>","section_id":201,"draft":false},
+{"id":302,"title":"Upcoming","body":"<p>soon</p>","section_id":201,"draft":true}],
+"sections":[{"id":201,"name":"Accounts","category_id":101}],
+"categories":[{"id":101,"name":"Getting started"}],
+"count":2,"meta":{"has_more":false}}

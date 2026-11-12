@@ -1,0 +1,1 @@
+{"users":[{"id":1,"name":"Ann Customer","email":"Ann@Example.org","role":"end-user"},{"id":2,"name":"Bo","email":null,"role":"end-user"}],"meta":{"has_more":true,"after_cursor":"u2"}}
