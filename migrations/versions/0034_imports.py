@@ -128,7 +128,11 @@ def upgrade() -> None:
             -- clock_timestamp, not now(): events written in one transaction keep their order.
             created_at     timestamptz NOT NULL DEFAULT clock_timestamp(),
             FOREIGN KEY (workspace_id, connection_id)
-                REFERENCES hd_import_connection (workspace_id, id) ON DELETE CASCADE
+                REFERENCES hd_import_connection (workspace_id, id) ON DELETE CASCADE,
+            FOREIGN KEY (workspace_id, run_id)
+                REFERENCES hd_import_run (workspace_id, id) ON DELETE SET NULL (run_id),
+            FOREIGN KEY (workspace_id, member_id)
+                REFERENCES member (workspace_id, id) ON DELETE SET NULL (member_id)
         )
         """
     )

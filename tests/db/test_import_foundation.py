@@ -50,7 +50,7 @@ async def test_an_imported_ticket_is_never_alerted_but_a_live_one_is(
 ) -> None:
     w = await desk(client, app_sessionmaker)
     live = await ticket(client, w, "Live", None, "Neha")
-    imported = await ticket(client, w, "Old desk", None, "Neha")
+    imported = await ticket(client, w, "Olddesk", None, "Neha")
     await mark_imported(app_sessionmaker, w, imported, "zendesk")
     # Both are made 90 minutes ago, so both clocks ran out while "nobody was looking":
     # the case a recent import hits (an old one is marked alerted when it is saved).
@@ -59,7 +59,7 @@ async def test_an_imported_ticket_is_never_alerted_but_a_live_one_is(
 
     assert await alert_workspace(app_sessionmaker, w["ws"]) == 1  # the live one only
     texts = await inbox(client, w, "Neha")
-    assert len(texts) == 1 and "Live" in texts[0] and "Old desk" not in texts[0]
+    assert len(texts) == 1 and "Live" in texts[0] and "Olddesk" not in texts[0]
     async with workspace_session(app_sessionmaker, w["ws"]) as s:
         alerted = await s.scalar(
             text("SELECT sla_alerted_due IS NOT NULL FROM hd_ticket WHERE id = :id"),

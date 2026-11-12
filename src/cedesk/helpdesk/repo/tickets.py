@@ -152,7 +152,11 @@ async def next_number(session: AsyncSession, workspace_id: UUID) -> int:
 async def reserve_numbers(session: AsyncSession, workspace_id: UUID, count: int) -> int:
     """The first of `count` consecutive ticket numbers, taken in one short statement. An
     import reserves a batch's numbers in their own transaction, so the counter's row lock
-    is not held while the batch is written and live ticket creation never waits for it."""
+    is not held while the batch is written and live ticket creation never waits for it.
+    `count` must be at least 1: zero would hand out a number twice and a negative count would
+    move the counter backwards."""
+    if count < 1:
+        raise ValueError("count must be at least 1")
     result = await session.execute(
         text(
             "INSERT INTO hd_counter (workspace_id, next_ticket_number) "
