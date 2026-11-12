@@ -1,9 +1,21 @@
 # CEDESK_SITE is a domain (api.example.com: Caddy gets an HTTPS certificate by itself)
 # or :80 (plain HTTP on the server's IP, for a short test only).
 {$CEDESK_SITE} {
-	encode gzip
 	request_body {
 		max_size 30MB
 	}
-	reverse_proxy api:8100
+
+	# Live updates (Server-Sent Events) stay open for a long time and are sent as they happen:
+	# not compressed (gzip would hold the frames back) and not buffered.
+	@live path /api/v1/stream /api/v1/portal/stream
+	handle @live {
+		reverse_proxy api:8100 {
+			flush_interval -1
+		}
+	}
+
+	handle {
+		encode gzip
+		reverse_proxy api:8100
+	}
 }

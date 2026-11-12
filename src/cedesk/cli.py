@@ -209,6 +209,7 @@ def _worker(once: bool) -> int:
     from cedesk.helpdesk.service.security_alerts import SecurityAlertHandler
     from cedesk.helpdesk.service.sla import refresh_everywhere
     from cedesk.helpdesk.service.sla_alerts import alert_everywhere
+    from cedesk.helpdesk.service.stream import prune_everywhere as prune_stream
     from cedesk.helpdesk.service.task_alerts import alert_everywhere as alert_tasks
     from cedesk.mail import MailboxError, make_mailbox, make_mailer
     from cedesk.scanning import make_scanner
@@ -329,6 +330,10 @@ def _worker(once: bool) -> int:
                         await remove_expired_exports(sm, store)
                     except Exception:
                         logger.exception("Removing old privacy exports failed")
+                    try:  # live-update events past their 24 hours, and old stream tickets (C11)
+                        await prune_stream(sm)
+                    except Exception:
+                        logger.exception("Pruning the live-update events failed")
                     swept_at = time.monotonic()
                 if once:
                     return

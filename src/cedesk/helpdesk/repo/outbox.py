@@ -10,6 +10,9 @@ from uuid import UUID
 from sqlalchemy import RowMapping, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from cedesk.helpdesk.domain import stream as stream_rules
+from cedesk.helpdesk.repo import stream as stream_repo
+
 
 async def add(
     session: AsyncSession,
@@ -18,7 +21,11 @@ async def add(
     ticket_id: UUID | None,
     payload: Mapping[str, Any],
 ) -> UUID:
-    """Stores the event; its `id` and `occurred_at` go into the payload too (PL5)."""
+    """Stores the event; its `id` and `occurred_at` go into the payload too (PL5).
+
+    An event about a ticket is also published to the live streams (md C11), in the same
+    transaction: ids only, and only the kinds `domain.stream` lists, so an event that isn't a
+    ticket event (`security.alert`) never reaches a stream."""
     result = await session.execute(
         text(
             "WITH v AS (SELECT gen_random_uuid() AS id, clock_timestamp() AS at) "
@@ -34,6 +41,18 @@ async def add(
             "payload": json.dumps(payload),
         },
     )
+    published = stream_rules.from_outbox(event, payload) if ticket_id is not None else None
+    if published is not None and ticket_id is not None:
+        await stream_repo.publish_for_ticket(
+            session,
+            ticket_id,
+            agent=(published.agent_kind, published.agent_payload) if published.agent_kind else None,
+            customer=(
+                (published.customer_kind, published.customer_payload)
+                if published.customer_kind and published.customer_payload is not None
+                else None
+            ),
+        )
     return UUID(str(result.scalar_one()))
 
 
