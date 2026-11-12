@@ -92,6 +92,33 @@ def _seed_workflow(slug: str) -> int:
     return 0
 
 
+def _clear_ip_allowlist(slug: str) -> int:
+    """When the IP allowlist locks every Admin out; the Admins are emailed."""
+    from cedesk.db import make_engine, make_sessionmaker
+    from cedesk.helpdesk.service.errors import ServiceError
+    from cedesk.helpdesk.service.security import clear_ip_allowlist
+    from cedesk.settings import get_settings
+
+    async def run() -> bool:
+        engine = make_engine(get_settings().database_url)
+        try:
+            return await clear_ip_allowlist(make_sessionmaker(engine), slug)
+        finally:
+            await engine.dispose()
+
+    try:
+        cleared = asyncio.run(run())
+    except ServiceError as exc:
+        print(exc.message, file=sys.stderr)
+        return 1
+    print(
+        f"IP allowlist of {slug} cleared; every address can sign in again."
+        if cleared
+        else f"{slug} has no IP allowlist; nothing changed."
+    )
+    return 0
+
+
 def _sla_refresh() -> int:
     from cedesk.db import make_engine, make_sessionmaker
     from cedesk.helpdesk.service.sla import refresh_everywhere
@@ -176,6 +203,7 @@ def _worker(once: bool) -> int:
     from cedesk.helpdesk.service.password_reset import Sender
     from cedesk.helpdesk.service.portal_notice import PortalNoticeHandler
     from cedesk.helpdesk.service.scanning import scan_due
+    from cedesk.helpdesk.service.security_alerts import SecurityAlertHandler
     from cedesk.helpdesk.service.sla import refresh_everywhere
     from cedesk.helpdesk.service.sla_alerts import alert_everywhere
     from cedesk.helpdesk.service.task_alerts import alert_everywhere as alert_tasks
@@ -213,6 +241,7 @@ def _worker(once: bool) -> int:
             CevanosHandler(sm, cevanos),
             CsatHandler(sm, base_url=portal_url, fallback=fallback),
             PortalNoticeHandler(sm, base_url=portal_url, fallback=fallback),
+            SecurityAlertHandler(sm, fallback=fallback),
         ]
         chats = ChatPoller(sm, cevanos, batch=settings.cevanos_poll_batch)
         swept_at = 0.0
@@ -350,6 +379,11 @@ def main(argv: list[str] | None = None) -> int:
         help="Add the default saved replies, rules and macros to an existing workspace",
     )
     workflow.add_argument("--workspace", required=True, help="Sign-in address, e.g. 'acme-store'")
+    clear_ips = sub.add_parser(
+        "clear-ip-allowlist",
+        help="Empty a workspace's IP allowlist when it locks every Admin out",
+    )
+    clear_ips.add_argument("--workspace", required=True, help="Sign-in address, e.g. 'acme-store'")
     sub.add_parser(
         "sla-refresh",
         help="Work out the SLA of every open ticket again (once, after migration 0019)",
@@ -384,6 +418,8 @@ def main(argv: list[str] | None = None) -> int:
         return _seed_demo(args)
     if args.command == "seed-workflow":
         return _seed_workflow(args.workspace)
+    if args.command == "clear-ip-allowlist":
+        return _clear_ip_allowlist(args.workspace)
     if args.command == "sla-refresh":
         return _sla_refresh()
     if args.command == "openapi":

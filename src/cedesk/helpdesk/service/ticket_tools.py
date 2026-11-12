@@ -22,15 +22,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from cedesk.db import workspace_session
 from cedesk.helpdesk.domain import ticket_tools as rules
 from cedesk.helpdesk.domain.auth import Caller
-from cedesk.helpdesk.domain.permissions import Action, Role, can
+from cedesk.helpdesk.domain.permissions import Action
 from cedesk.helpdesk.domain.ticket_tools import Decision, DueIn, ToolError
 from cedesk.helpdesk.domain.tickets import Channel, Status, label
 from cedesk.helpdesk.repo import messages as message_repo
 from cedesk.helpdesk.repo import ticket_tools as repo
 from cedesk.helpdesk.repo import tickets as ticket_repo
 from cedesk.helpdesk.repo.ticket_tools import Row
-from cedesk.helpdesk.service import children, sla, tickets
-from cedesk.helpdesk.service.auth import Sessionmaker
+from cedesk.helpdesk.service import children, scope, sla, tickets
+from cedesk.helpdesk.service.auth import Sessionmaker, member_access
 from cedesk.helpdesk.service.errors import Conflict, Forbidden, Invalid, NotFound
 from cedesk.helpdesk.service.idempotency import Idempotency
 from cedesk.helpdesk.service.members import require
@@ -88,7 +88,7 @@ async def _notify(
 async def _member_who_can(s: AsyncSession, member_id: UUID, action: Action, problem: str) -> str:
     """The member's name, when they are active and their role may do `action`."""
     member = await ticket_repo.member_brief(s, member_id)
-    if member is None or not member["is_active"] or not can(Role(member["role"]), action):
+    if member is None or not member["is_active"] or not member_access(member).can(action):
         raise Invalid(problem)
     return str(member["name"])
 
@@ -106,6 +106,8 @@ async def merge(sm: Sessionmaker, caller: Caller, ticket_id: UUID, into_id: UUID
     if ticket_id == into_id:
         raise Invalid("A ticket can't be merged into itself.")
     async with workspace_session(sm, caller.workspace_id) as s:
+        await scope.check(s, caller, ticket_id, edit=True)
+        await scope.check(s, caller, into_id, edit=True)
         found = await repo.lock(s, [ticket_id, into_id])
         source, target = found.get(ticket_id), found.get(into_id)
         if source is None:
@@ -158,11 +160,13 @@ class Related:
 async def related(sm: Sessionmaker, caller: Caller, ticket_id: UUID) -> Related:
     require(caller, Action.read_ticket)
     async with workspace_session(sm, caller.workspace_id) as s:
+        await scope.check(s, caller, ticket_id, edit=False)
         ticket = await _ticket(s, ticket_id)
-        lists = await repo.related(s, ticket_id, RELATED_LIMIT)
+        vt = scope.visible_team(caller)
+        lists = await repo.related(s, ticket_id, RELATED_LIMIT, vt)
         return Related(
-            parent=await repo.related_one(s, ticket["parent_id"]),
-            merged_into=await repo.related_one(s, ticket["merged_into_id"]),
+            parent=await repo.related_one(s, ticket["parent_id"], vt),
+            merged_into=await repo.related_one(s, ticket["merged_into_id"], vt),
             children=lists["children"],
             links=lists["links"],
             merged_from=lists["merged_from"],
@@ -177,6 +181,8 @@ async def link(sm: Sessionmaker, caller: Caller, ticket_id: UUID, other_id: UUID
     except ToolError as exc:
         raise _invalid(exc) from exc
     async with workspace_session(sm, caller.workspace_id) as s:
+        await scope.check(s, caller, ticket_id, edit=True)
+        await scope.check(s, caller, other_id, edit=False)
         ticket = await _ticket(s, ticket_id)
         other = await repo.brief(s, other_id)
         if other is None:
@@ -199,6 +205,7 @@ async def unlink(sm: Sessionmaker, caller: Caller, ticket_id: UUID, other_id: UU
     except ToolError as exc:
         raise _invalid(exc) from exc
     async with workspace_session(sm, caller.workspace_id) as s:
+        await scope.check(s, caller, ticket_id, edit=True)
         ticket = await _ticket(s, ticket_id)
         other = await repo.brief(s, other_id)
         if other is None or not await repo.remove_link(s, a, b):
@@ -236,6 +243,7 @@ async def create_child(
     except ToolError as exc:
         raise _invalid(exc) from exc
     async with workspace_session(sm, caller.workspace_id) as s:
+        await scope.check(s, caller, parent_id, edit=True)
         parent = await _ticket(s, parent_id)
     if parent["merged_into_id"] is not None:
         raise Conflict("This ticket was merged. Make the child ticket from the one it went into.")
@@ -254,7 +262,7 @@ async def create_child(
         parent_id=parent_id,
         note=text_note or default_note[: rules.TEXT_MAX],
     )
-    return await tickets.create_ticket(sm, caller, new, idem=idem)
+    return await tickets.create_ticket(sm, caller, new, idem=idem, handoff=True)
 
 
 # --- Approvals (X6) ---
@@ -281,6 +289,7 @@ async def request_approval(
     if approver_id == caller.member_id:
         raise Invalid("Ask someone else to approve it.")
     async with workspace_session(sm, caller.workspace_id) as s:
+        await scope.check(s, caller, ticket_id, edit=True)
         ticket = await _ticket(s, ticket_id)
         text_what = text_what or rules.default_what(value, code, ticket["fields"].get("order_id"))
         if text_what is None:
@@ -334,7 +343,7 @@ async def decide_approval(
             raise NotFound("Approval request not found.")
         if approval["requester_id"] == caller.member_id:
             raise Forbidden("You can't decide your own request.")
-        if approval["approver_id"] != caller.member_id and not can(caller.role, Action.settings):
+        if approval["approver_id"] != caller.member_id and not caller.can(Action.settings):
             raise Forbidden(f"Only {approval['approver_name']} or an Admin can decide this.")
         if approval["state"] != "pending":
             raise Conflict(
@@ -365,6 +374,7 @@ async def decide_approval(
 async def ticket_approvals(sm: Sessionmaker, caller: Caller, ticket_id: UUID) -> Sequence[Row]:
     require(caller, Action.read_ticket)
     async with workspace_session(sm, caller.workspace_id) as s:
+        await scope.check(s, caller, ticket_id, edit=False)
         await _ticket(s, ticket_id)
         return await repo.ticket_approvals(s, ticket_id)
 
@@ -410,6 +420,7 @@ async def add_task(
     assert body is not None
     owner = owner_id or caller.member_id
     async with workspace_session(sm, caller.workspace_id) as s:
+        await scope.check(s, caller, ticket_id, edit=True)
         ticket = await _ticket(s, ticket_id)
         owner_name = await _member_who_can(s, owner, Action.reply, "That person can't own tasks.")
         when = _due(due_in, due_at, (await sla.config(s)).calendar.timezone)
@@ -451,7 +462,7 @@ async def change_task(
         if task is None:
             raise NotFound("Task not found.")
         mine = caller.member_id in (task["owner_id"], task["created_by"])
-        if not mine and not can(caller.role, Action.assign_others):
+        if not mine and not caller.can(Action.assign_others):
             raise Forbidden("Only the task's owner or the person who added it can change it.")
         ticket = await _ticket(s, task["ticket_id"])
         who = await _who(s, caller)
@@ -503,6 +514,7 @@ async def change_task(
 async def ticket_tasks(sm: Sessionmaker, caller: Caller, ticket_id: UUID) -> Sequence[Row]:
     require(caller, Action.read_ticket)
     async with workspace_session(sm, caller.workspace_id) as s:
+        await scope.check(s, caller, ticket_id, edit=False)
         await _ticket(s, ticket_id)
         return await repo.ticket_tasks(s, ticket_id)
 
@@ -539,6 +551,7 @@ async def log_time(
     except ToolError as exc:
         raise _invalid(exc) from exc
     async with workspace_session(sm, caller.workspace_id) as s:
+        await scope.check(s, caller, ticket_id, edit=True)
         await _ticket(s, ticket_id)
         entry_id = await repo.insert_time(
             s,
@@ -557,6 +570,7 @@ async def log_time(
 async def time_log(sm: Sessionmaker, caller: Caller, ticket_id: UUID) -> TimeLog:
     require(caller, Action.read_ticket)
     async with workspace_session(sm, caller.workspace_id) as s:
+        await scope.check(s, caller, ticket_id, edit=False)
         await _ticket(s, ticket_id)
         total, billable = await repo.time_totals(s, ticket_id)
         return TimeLog(await repo.ticket_time(s, ticket_id), total, billable)
@@ -569,6 +583,6 @@ async def delete_time(sm: Sessionmaker, caller: Caller, entry_id: UUID) -> None:
         entry = await repo.get_time(s, entry_id)
         if entry is None:
             raise NotFound("Time entry not found.")
-        if entry["member_id"] != caller.member_id and not can(caller.role, Action.settings):
+        if entry["member_id"] != caller.member_id and not caller.can(Action.settings):
             raise Forbidden("You can remove only your own time entries.")
         await repo.delete_time(s, entry_id)

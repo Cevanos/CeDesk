@@ -37,6 +37,9 @@
           "401": {
             "description": "The details did not match (same answer for every reason)"
           },
+          "403": {
+            "description": "This address isn't on the workspace's IP list"
+          },
           "429": {
             "description": "Too many attempts from this address; see Retry-After"
           },
@@ -418,6 +421,836 @@
             }
           }
         },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/roles": {
+      "get": {
+        "tags": [
+          "roles"
+        ],
+        "summary": "Custom roles (Admin)",
+        "operationId": "list_roles_api_v1_roles_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RoleOut"
+                  },
+                  "type": "array",
+                  "title": "Response List Roles Api V1 Roles Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "roles"
+        ],
+        "summary": "Add a custom role (Admin)",
+        "operationId": "create_role_api_v1_roles_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RoleBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoleOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/roles/{role_id}": {
+      "put": {
+        "tags": [
+          "roles"
+        ],
+        "summary": "Change a custom role (Admin; the whole role is sent; members get it at once)",
+        "operationId": "change_role_api_v1_roles__role_id__put",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "role_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Role Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RoleBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoleOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "roles"
+        ],
+        "summary": "Delete a custom role nobody has (Admin; 409 while members have it)",
+        "operationId": "delete_role_api_v1_roles__role_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "role_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Role Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/security-settings": {
+      "get": {
+        "tags": [
+          "security"
+        ],
+        "summary": "Security settings (Admin)",
+        "operationId": "get_settings_api_v1_security_settings_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SecuritySettingsOut"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "security"
+        ],
+        "summary": "Save security settings (Admin; applies at once)",
+        "description": "Only the fields sent change; a field left out keeps its saved value.",
+        "operationId": "save_settings_api_v1_security_settings_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SecuritySettingsBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SecuritySettingsOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/security/test-my-ip": {
+      "post": {
+        "tags": [
+          "security"
+        ],
+        "summary": "Test my IP against a list, or the saved one (Admin)",
+        "operationId": "test_my_ip_api_v1_security_test_my_ip_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TestIpBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TestIpOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/security/score": {
+      "get": {
+        "tags": [
+          "security"
+        ],
+        "summary": "Security score (Admin)",
+        "operationId": "score_api_v1_security_score_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScoreOut"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/sso-settings": {
+      "get": {
+        "tags": [
+          "single sign-on"
+        ],
+        "summary": "Single sign-on settings (Admin)",
+        "operationId": "get_settings_api_v1_sso_settings_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SsoOut"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "single sign-on"
+        ],
+        "summary": "Save single sign-on (Admin)",
+        "operationId": "save_settings_api_v1_sso_settings_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SsoBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SsoOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/sso/{workspace}": {
+      "get": {
+        "tags": [
+          "single sign-on"
+        ],
+        "summary": "Does this workspace use SSO?",
+        "operationId": "sso_status_api_v1_sso__workspace__get",
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 40,
+              "title": "Workspace"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SsoStatusOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sso/{workspace}/start": {
+      "get": {
+        "tags": [
+          "single sign-on"
+        ],
+        "summary": "Start signing in: redirects to the identity provider",
+        "description": "`next`: the app page to open after signing in (a path like /tickets).",
+        "operationId": "start_api_v1_sso__workspace__start_get",
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 40,
+              "title": "Workspace"
+            }
+          },
+          {
+            "name": "next",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 500
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Next"
+            }
+          }
+        ],
+        "responses": {
+          "302": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sso/{workspace}/acs": {
+      "post": {
+        "tags": [
+          "single sign-on"
+        ],
+        "summary": "The identity provider's answer (ACS URL)",
+        "description": "Redirects to `<app_url>/sso/callback#token=...&expires_at=...&next=...`, or `#error=...` when the answer is refused. The token is in the fragment, so it never reaches a server log.",
+        "operationId": "acs_api_v1_sso__workspace__acs_post",
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 40,
+              "title": "Workspace"
+            }
+          }
+        ],
+        "responses": {
+          "303": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sso/{workspace}/metadata": {
+      "get": {
+        "tags": [
+          "single sign-on"
+        ],
+        "summary": "Our SAML service provider metadata (for the IdP's setup screen)",
+        "operationId": "metadata_api_v1_sso__workspace__metadata_get",
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 40,
+              "title": "Workspace"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/samlmetadata+xml": {}
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/2fa": {
+      "post": {
+        "tags": [
+          "two-step sign-in"
+        ],
+        "summary": "Second step of signing in: the code from the app, or a recovery code",
+        "description": "Called with the token sign-in gave when `two_factor_required` was true. Wrong codes count toward the 10-try lockout.",
+        "operationId": "verify_api_v1_auth_2fa_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/cedesk__helpdesk__api__two_factor__CodeBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VerifiedOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/me/2fa": {
+      "get": {
+        "tags": [
+          "two-step sign-in"
+        ],
+        "summary": "My two-step sign-in",
+        "operationId": "my_status_api_v1_me_2fa_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusOut"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/me/2fa/setup": {
+      "post": {
+        "tags": [
+          "two-step sign-in"
+        ],
+        "summary": "Start setting up the app (a new secret each time until confirmed)",
+        "operationId": "setup_api_v1_me_2fa_setup_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetupOut"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/me/2fa/confirm": {
+      "post": {
+        "tags": [
+          "two-step sign-in"
+        ],
+        "summary": "Confirm with the first code: 2FA is on; returns the recovery codes",
+        "description": "Your other sessions end.",
+        "operationId": "confirm_api_v1_me_2fa_confirm_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/cedesk__helpdesk__api__two_factor__CodeBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecoveryCodesOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/me/2fa/recovery-codes": {
+      "post": {
+        "tags": [
+          "two-step sign-in"
+        ],
+        "summary": "New recovery codes (the old ones stop working); needs a code from the app",
+        "operationId": "new_codes_api_v1_me_2fa_recovery_codes_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/cedesk__helpdesk__api__two_factor__CodeBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecoveryCodesOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/me/2fa/disable": {
+      "post": {
+        "tags": [
+          "two-step sign-in"
+        ],
+        "summary": "Turn my two-step sign-in off (403 when the workspace requires it)",
+        "operationId": "disable_api_v1_me_2fa_disable_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/cedesk__helpdesk__api__two_factor__CodeBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/members/{member_id}/2fa/reset": {
+      "post": {
+        "tags": [
+          "two-step sign-in"
+        ],
+        "summary": "Reset a member's two-step sign-in (Admin; lost phone)",
+        "description": "Turns it off and signs them out everywhere; the Admins are emailed. If the workspace requires 2FA they set it up again at their next sign-in.",
+        "operationId": "admin_reset_api_v1_members__member_id__2fa_reset_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "member_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Member Id"
+            }
+          }
+        ],
         "responses": {
           "204": {
             "description": "Successful Response"
@@ -3281,6 +4114,51 @@
         }
       }
     },
+    "/api/v1/attachments/{attachment_id}/content": {
+      "get": {
+        "tags": [
+          "attachments"
+        ],
+        "summary": "Download a file, signed in",
+        "description": "Works whether or not the workspace requires sign-in for files; it is the only way when it does (S5). 409 as for the link.",
+        "operationId": "file_content_api_v1_attachments__attachment_id__content_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "attachment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Attachment Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/octet-stream": {}
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/files/{token}": {
       "get": {
         "tags": [
@@ -4968,7 +5846,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/CodeBody"
+                "$ref": "#/components/schemas/cedesk__helpdesk__api__portal__CodeBody"
               }
             }
           }
@@ -5489,6 +6367,50 @@
           },
           "404": {
             "description": "Not found, or not on this customer's messages"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/portal/attachments/{attachment_id}/content": {
+      "get": {
+        "tags": [
+          "portal"
+        ],
+        "summary": "Download a file on my ticket, signed in (customer)",
+        "operationId": "file_content_api_v1_portal_attachments__attachment_id__content_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "attachment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Attachment Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/octet-stream": {}
+            }
           },
           "422": {
             "description": "Validation Error",
@@ -6720,6 +7642,81 @@
   },
   "components": {
     "schemas": {
+      "AccessOut": {
+        "properties": {
+          "role": {
+            "$ref": "#/components/schemas/Role"
+          },
+          "role_name": {
+            "type": "string",
+            "title": "Role Name",
+            "description": "For display: Admin, Agent, or the custom role's name."
+          },
+          "actions": {
+            "items": {
+              "$ref": "#/components/schemas/Action"
+            },
+            "type": "array",
+            "title": "Actions"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/Scope",
+            "description": "all; team_edit (edits its team's tickets, views the rest); team_only (sees its team's tickets only)."
+          },
+          "team_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Team Id"
+          },
+          "team_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Team Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "role",
+          "role_name",
+          "actions",
+          "scope",
+          "team_id",
+          "team_name"
+        ],
+        "title": "AccessOut",
+        "description": "What the signed-in member may do: hide what they can't."
+      },
+      "Action": {
+        "type": "string",
+        "enum": [
+          "read_ticket",
+          "create_ticket",
+          "reply",
+          "private_note",
+          "change_fields",
+          "assign_self",
+          "assign_others",
+          "approve",
+          "reports",
+          "settings",
+          "list_members",
+          "manage_access"
+        ],
+        "title": "Action"
+      },
       "AddMemberBody": {
         "properties": {
           "email": {
@@ -6737,6 +7734,19 @@
           },
           "role": {
             "$ref": "#/components/schemas/Role"
+          },
+          "role_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role Id",
+            "description": "With role custom: which role."
           },
           "password": {
             "type": "string",
@@ -7691,6 +8701,19 @@
               }
             ]
           },
+          "role_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role Id",
+            "description": "With role custom: which role."
+          },
           "is_active": {
             "anyOf": [
               {
@@ -7806,23 +8829,6 @@
           "team_id"
         ],
         "title": "ChildIn"
-      },
-      "CodeBody": {
-        "properties": {
-          "email": {
-            "type": "string",
-            "maxLength": 254,
-            "minLength": 3,
-            "pattern": "^[^@\\s]+@[^@\\s]+$",
-            "title": "Email"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "email"
-        ],
-        "title": "CodeBody"
       },
       "ConnectionIn": {
         "properties": {
@@ -8496,12 +9502,17 @@
           "url": {
             "type": "string",
             "title": "Url",
-            "description": "Opens the file without signing in, until `expires_at`."
+            "description": "Opens the file without signing in, until `expires_at`. With `needs_sign_in` it is GET /attachments/{id}/content instead: fetch it with the Bearer token (the workspace turned on Attachments need sign-in)."
           },
           "expires_at": {
             "type": "string",
             "format": "date-time",
             "title": "Expires At"
+          },
+          "needs_sign_in": {
+            "type": "boolean",
+            "title": "Needs Sign In",
+            "default": false
           },
           "attachment": {
             "$ref": "#/components/schemas/AttachmentOut"
@@ -9618,12 +10629,28 @@
           },
           "workspace": {
             "$ref": "#/components/schemas/WorkspaceOut"
+          },
+          "access": {
+            "$ref": "#/components/schemas/AccessOut"
+          },
+          "password_expired": {
+            "type": "boolean",
+            "title": "Password Expired",
+            "description": "True: only POST /me/password and sign-out work until then.",
+            "default": false
+          },
+          "two_factor_setup_required": {
+            "type": "boolean",
+            "title": "Two Factor Setup Required",
+            "description": "True: the workspace requires two-step sign-in and you haven't set it up; only /me, /me/2fa, /me/2fa/setup, /me/2fa/confirm and sign-out work until then.",
+            "default": false
           }
         },
         "type": "object",
         "required": [
           "member",
-          "workspace"
+          "workspace",
+          "access"
         ],
         "title": "MeOut"
       },
@@ -9645,9 +10672,40 @@
           "role": {
             "$ref": "#/components/schemas/Role"
           },
+          "role_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role Id",
+            "description": "Set when `role` is custom."
+          },
+          "role_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role Name",
+            "description": "The custom role's name."
+          },
           "is_active": {
             "type": "boolean",
             "title": "Is Active"
+          },
+          "two_factor": {
+            "type": "boolean",
+            "title": "Two Factor",
+            "description": "Uses two-step sign-in.",
+            "default": false
           },
           "created_at": {
             "type": "string",
@@ -10250,12 +11308,17 @@
           "url": {
             "type": "string",
             "title": "Url",
-            "description": "Opens the file without signing in, until `expires_at`."
+            "description": "Opens the file without signing in, until `expires_at`. With `needs_sign_in` it is GET /portal/attachments/{id}/content: fetch it with the portal token."
           },
           "expires_at": {
             "type": "string",
             "format": "date-time",
             "title": "Expires At"
+          },
+          "needs_sign_in": {
+            "type": "boolean",
+            "title": "Needs Sign In",
+            "default": false
           },
           "file": {
             "$ref": "#/components/schemas/PortalFileOut"
@@ -10963,6 +12026,23 @@
         ],
         "title": "ReceivedOut"
       },
+      "RecoveryCodesOut": {
+        "properties": {
+          "recovery_codes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Recovery Codes",
+            "description": "10 one-time codes, shown only now. Each works once instead of the app."
+          }
+        },
+        "type": "object",
+        "required": [
+          "recovery_codes"
+        ],
+        "title": "RecoveryCodesOut"
+      },
       "RelatedOut": {
         "properties": {
           "parent": {
@@ -11141,9 +12221,163 @@
           "admin",
           "supervisor",
           "agent",
-          "light_agent"
+          "light_agent",
+          "custom"
         ],
         "title": "Role"
+      },
+      "RoleBody": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 60,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "reply": {
+            "type": "boolean",
+            "title": "Reply",
+            "description": "Reply, run macros, accept chats, resolve, create tickets, assign to self.",
+            "default": true
+          },
+          "assign_any": {
+            "type": "boolean",
+            "title": "Assign Any",
+            "description": "Assign tickets to anyone.",
+            "default": false
+          },
+          "reports": {
+            "type": "boolean",
+            "title": "Reports",
+            "default": false
+          },
+          "settings": {
+            "type": "boolean",
+            "title": "Settings",
+            "description": "Workspace settings (teams, types, rules, macros, SLA, email...). Never members, roles or security: those stay with Admins.",
+            "default": false
+          },
+          "approve": {
+            "type": "boolean",
+            "title": "Approve",
+            "description": "Can be asked to approve, and decide.",
+            "default": false
+          },
+          "scope": {
+            "$ref": "#/components/schemas/Scope",
+            "description": "all tickets; team_edit: edit the team's tickets, view the rest; team_only: the team's tickets only, the rest are hidden.",
+            "default": "all"
+          },
+          "team_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Team Id",
+            "description": "Required unless scope is all."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "RoleBody"
+      },
+      "RoleOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "reply": {
+            "type": "boolean",
+            "title": "Reply"
+          },
+          "assign_any": {
+            "type": "boolean",
+            "title": "Assign Any"
+          },
+          "reports": {
+            "type": "boolean",
+            "title": "Reports"
+          },
+          "settings": {
+            "type": "boolean",
+            "title": "Settings"
+          },
+          "approve": {
+            "type": "boolean",
+            "title": "Approve"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/Scope"
+          },
+          "team_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Team Id"
+          },
+          "team_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Team Name"
+          },
+          "member_count": {
+            "type": "integer",
+            "title": "Member Count"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "reply",
+          "assign_any",
+          "reports",
+          "settings",
+          "approve",
+          "scope",
+          "team_id",
+          "team_name",
+          "member_count",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "RoleOut"
       },
       "RoutingPatch": {
         "properties": {
@@ -11573,6 +12807,222 @@
         "type": "object",
         "title": "SavedReplyPatch"
       },
+      "Scope": {
+        "type": "string",
+        "enum": [
+          "all",
+          "team_edit",
+          "team_only"
+        ],
+        "title": "Scope",
+        "description": "Which tickets a role sees and edits (md A3)."
+      },
+      "ScoreItemOut": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key",
+            "description": "sso, two_factor, ip_allowlist, passwords (minimum 12+), redaction, session_length (not 7 days), attachments_sign_in, admin_alerts, portal_domains"
+          },
+          "points": {
+            "type": "integer",
+            "title": "Points"
+          },
+          "on": {
+            "type": "boolean",
+            "title": "On"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "description": "healthy, critical or recommended"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "points",
+          "on",
+          "status"
+        ],
+        "title": "ScoreItemOut"
+      },
+      "ScoreOut": {
+        "properties": {
+          "score": {
+            "type": "integer",
+            "title": "Score",
+            "description": "0-100"
+          },
+          "level": {
+            "type": "string",
+            "title": "Level",
+            "description": "healthy (80+), recommended (50-79), critical (under 50)"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ScoreItemOut"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "score",
+          "level",
+          "items"
+        ],
+        "title": "ScoreOut"
+      },
+      "SecuritySettingsBody": {
+        "properties": {
+          "password_min": {
+            "type": "integer",
+            "maximum": 64.0,
+            "minimum": 8.0,
+            "title": "Password Min",
+            "description": "Minimum password length.",
+            "default": 10
+          },
+          "password_expiry_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Password Expiry Days",
+            "description": "null (never), 90 or 180. An expired password must be changed at the next sign-in (403 `PasswordExpired` on other routes until then)."
+          },
+          "session_length": {
+            "$ref": "#/components/schemas/SessionLength",
+            "description": "Sign-out after: 1h_idle (an hour without use), 8h, 12h or 7d. A shorter setting also ends longer sessions already open.",
+            "default": "12h"
+          },
+          "ip_allowlist": {
+            "items": {
+              "type": "string",
+              "maxLength": 50,
+              "minLength": 1
+            },
+            "type": "array",
+            "maxItems": 100,
+            "title": "Ip Allowlist",
+            "description": "CIDR blocks or addresses; empty = every address. Checked on sign-in and every signed-in request (403 `IpNotAllowed`). Must include your own address."
+          },
+          "attachments_need_sign_in": {
+            "type": "boolean",
+            "title": "Attachments Need Sign In",
+            "description": "Download links become GET /attachments/{id}/content, which needs the Bearer token, instead of links anyone holding them can open.",
+            "default": false
+          },
+          "admin_alerts": {
+            "type": "boolean",
+            "title": "Admin Alerts",
+            "description": "Email every Admin when a member is added, deactivated or reactivated, the IP list or the 2FA rule changes, or a member's 2FA is reset.",
+            "default": true
+          },
+          "require_2fa": {
+            "type": "boolean",
+            "title": "Require 2Fa",
+            "description": "Every member must use two-step sign-in. Members without it can only set it up (403 `TwoFactorSetupRequired` elsewhere). Turn it on for yourself first.",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "SecuritySettingsBody"
+      },
+      "SecuritySettingsOut": {
+        "properties": {
+          "password_min": {
+            "type": "integer",
+            "title": "Password Min"
+          },
+          "password_expiry_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Password Expiry Days"
+          },
+          "session_length": {
+            "$ref": "#/components/schemas/SessionLength"
+          },
+          "ip_allowlist": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Ip Allowlist"
+          },
+          "attachments_need_sign_in": {
+            "type": "boolean",
+            "title": "Attachments Need Sign In"
+          },
+          "admin_alerts": {
+            "type": "boolean",
+            "title": "Admin Alerts"
+          },
+          "require_2fa": {
+            "type": "boolean",
+            "title": "Require 2Fa"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "updated_by": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated By"
+          },
+          "updated_by_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated By Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "password_min",
+          "password_expiry_days",
+          "session_length",
+          "ip_allowlist",
+          "attachments_need_sign_in",
+          "admin_alerts",
+          "require_2fa"
+        ],
+        "title": "SecuritySettingsOut"
+      },
       "Sentiment": {
         "type": "string",
         "enum": [
@@ -11607,6 +13057,36 @@
           "code"
         ],
         "title": "SessionBody"
+      },
+      "SessionLength": {
+        "type": "string",
+        "enum": [
+          "1h_idle",
+          "8h",
+          "12h",
+          "7d"
+        ],
+        "title": "SessionLength"
+      },
+      "SetupOut": {
+        "properties": {
+          "secret": {
+            "type": "string",
+            "title": "Secret",
+            "description": "For typing into the app by hand."
+          },
+          "otpauth_uri": {
+            "type": "string",
+            "title": "Otpauth Uri",
+            "description": "Show as a QR code for the app to scan."
+          }
+        },
+        "type": "object",
+        "required": [
+          "secret",
+          "otpauth_uri"
+        ],
+        "title": "SetupOut"
       },
       "SignInBody": {
         "properties": {
@@ -11657,6 +13137,18 @@
           },
           "role": {
             "$ref": "#/components/schemas/Role"
+          },
+          "password_expired": {
+            "type": "boolean",
+            "title": "Password Expired",
+            "description": "True: show the change-password screen. Until the password is changed, every route except GET /me, POST /me/password and sign-out answers 403 `PasswordExpired`.",
+            "default": false
+          },
+          "two_factor_required": {
+            "type": "boolean",
+            "title": "Two Factor Required",
+            "description": "True: ask for the code from the authenticator app and send it to POST /auth/2fa with this token within 10 minutes. Until then every other route answers 403 `TwoFactorRequired`.",
+            "default": false
           }
         },
         "type": "object",
@@ -11822,6 +13314,200 @@
         "title": "Sort",
         "description": "Ticket list orders. `priority`: Open and Pending most urgent first, then oldest;\nResolved after them, newest resolved first. `sla`: Open and Pending by SLA time left,\nsoonest due (or most overdue) first; Resolved after them, newest resolved first (T9)."
       },
+      "SsoBody": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "default": false
+          },
+          "enforced": {
+            "type": "boolean",
+            "title": "Enforced",
+            "description": "Password sign-in is refused (403 `SsoRequired`) for everyone except Admins, who keep it so a broken setup can be fixed.",
+            "default": false
+          },
+          "idp_entity_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1024
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Idp Entity Id"
+          },
+          "idp_sso_url": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2048
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Idp Sso Url",
+            "description": "The IdP's SAML sign-in URL (https)."
+          },
+          "idp_cert": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 20000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Idp Cert",
+            "description": "The IdP's signing certificate (PEM)."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "SsoBody"
+      },
+      "SsoOut": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled"
+          },
+          "enforced": {
+            "type": "boolean",
+            "title": "Enforced"
+          },
+          "idp_entity_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Idp Entity Id"
+          },
+          "idp_sso_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Idp Sso Url"
+          },
+          "idp_cert": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Idp Cert"
+          },
+          "sp_entity_id": {
+            "type": "string",
+            "title": "Sp Entity Id",
+            "description": "Give these three to the identity provider."
+          },
+          "acs_url": {
+            "type": "string",
+            "title": "Acs Url"
+          },
+          "metadata_url": {
+            "type": "string",
+            "title": "Metadata Url"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "updated_by": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated By"
+          },
+          "updated_by_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated By Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "enabled",
+          "enforced",
+          "idp_entity_id",
+          "idp_sso_url",
+          "idp_cert",
+          "sp_entity_id",
+          "acs_url",
+          "metadata_url"
+        ],
+        "title": "SsoOut"
+      },
+      "SsoStatusOut": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "description": "Show \"Sign in with SSO\"."
+          },
+          "enforced": {
+            "type": "boolean",
+            "title": "Enforced",
+            "description": "Hide the password form (Admins can still use it)."
+          },
+          "start_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Url",
+            "description": "Open this in the browser to sign in."
+          }
+        },
+        "type": "object",
+        "required": [
+          "enabled",
+          "enforced",
+          "start_url"
+        ],
+        "title": "SsoStatusOut"
+      },
       "Status": {
         "type": "string",
         "enum": [
@@ -11843,6 +13529,30 @@
           "status"
         ],
         "title": "StatusIn"
+      },
+      "StatusOut": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled"
+          },
+          "required": {
+            "type": "boolean",
+            "title": "Required",
+            "description": "The workspace requires it for every member."
+          },
+          "recovery_codes_left": {
+            "type": "integer",
+            "title": "Recovery Codes Left"
+          }
+        },
+        "type": "object",
+        "required": [
+          "enabled",
+          "required",
+          "recovery_codes_left"
+        ],
+        "title": "StatusOut"
       },
       "SummaryOut": {
         "properties": {
@@ -12499,6 +14209,57 @@
         ],
         "title": "TestEmailOut"
       },
+      "TestIpBody": {
+        "properties": {
+          "ip_allowlist": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string",
+                  "maxLength": 50,
+                  "minLength": 1
+                },
+                "type": "array",
+                "maxItems": 100
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ip Allowlist",
+            "description": "The list to test (before saving it); leave out for the saved list."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "TestIpBody"
+      },
+      "TestIpOut": {
+        "properties": {
+          "ip": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ip",
+            "description": "Your address as CeDesk sees it."
+          },
+          "allowed": {
+            "type": "boolean",
+            "title": "Allowed"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ip",
+          "allowed"
+        ],
+        "title": "TestIpOut"
+      },
       "TicketIn": {
         "properties": {
           "subject": {
@@ -12859,6 +14620,24 @@
                 "type": "null"
               }
             ]
+          },
+          "can_edit": {
+            "type": "boolean",
+            "title": "Can Edit",
+            "description": "False: show the ticket read-only (notes still allowed), with `view_only_reason` in the banner (md A5).",
+            "default": true
+          },
+          "view_only_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "View Only Reason",
+            "description": "e.g. \"Your role Billing desk can edit Billing tickets only.\""
           },
           "fields": {
             "additionalProperties": true,
@@ -13820,6 +15599,21 @@
         ],
         "title": "ValidationError"
       },
+      "VerifiedOut": {
+        "properties": {
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expires At",
+            "description": "When this session now ends."
+          }
+        },
+        "type": "object",
+        "required": [
+          "expires_at"
+        ],
+        "title": "VerifiedOut"
+      },
       "VoteIn": {
         "properties": {
           "helpful": {
@@ -13872,6 +15666,40 @@
           "slug"
         ],
         "title": "WorkspaceOut"
+      },
+      "cedesk__helpdesk__api__portal__CodeBody": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "maxLength": 254,
+            "minLength": 3,
+            "pattern": "^[^@\\s]+@[^@\\s]+$",
+            "title": "Email"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "email"
+        ],
+        "title": "CodeBody"
+      },
+      "cedesk__helpdesk__api__two_factor__CodeBody": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "maxLength": 20,
+            "minLength": 6,
+            "title": "Code",
+            "description": "6 digits from the app, or (where allowed) a recovery code."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "code"
+        ],
+        "title": "CodeBody"
       }
     },
     "securitySchemes": {

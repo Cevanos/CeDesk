@@ -3,8 +3,10 @@
 import asyncio
 import logging
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID, uuid4
 
 from sqlalchemy.exc import IntegrityError
@@ -12,11 +14,21 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from cedesk.db import workspace_session
 from cedesk.helpdesk.domain import auth as rules
+from cedesk.helpdesk.domain import security as security_rules
+from cedesk.helpdesk.domain import two_factor as two_factor_rules
 from cedesk.helpdesk.domain.auth import Caller
-from cedesk.helpdesk.domain.permissions import Role
+from cedesk.helpdesk.domain.permissions import Access, Role, access_of
 from cedesk.helpdesk.repo import auth as repo
+from cedesk.helpdesk.repo import security as security_repo
+from cedesk.helpdesk.repo import sso as sso_repo
 from cedesk.helpdesk.service import passwords, seeds
-from cedesk.helpdesk.service.errors import Conflict, Invalid, NotSignedIn
+from cedesk.helpdesk.service.errors import (
+    Conflict,
+    Invalid,
+    IpNotAllowed,
+    NotSignedIn,
+    SsoRequired,
+)
 
 logger = logging.getLogger("cedesk.auth")
 
@@ -33,13 +45,24 @@ class SignedIn:
     token: str
     expires_at: datetime
     caller: Caller
+    password_expired: bool = False
+    two_factor_required: bool = False
 
 
 def _now() -> datetime:
     return datetime.now(UTC)
 
 
-async def sign_in(sm: Sessionmaker, *, workspace: str, email: str, password: str) -> SignedIn:
+def member_access(row: Mapping[Any, Any]) -> Access:
+    """From a row with `role` and `repo.auth.ROLE_COLUMNS`."""
+    role = Role(row["role"])
+    return access_of(role, row if role is Role.custom else None)
+
+
+async def sign_in(
+    sm: Sessionmaker, *, workspace: str, email: str, password: str, ip: str | None = None
+) -> SignedIn:
+    """`ip`: the caller's address, checked against the workspace's IP list (S4)."""
     slug, email = workspace.strip().lower(), rules.normalise_email(email)
     async with sm() as s, s.begin():
         workspace_id = await repo.workspace_for_slug(s, slug)
@@ -51,7 +74,11 @@ async def sign_in(sm: Sessionmaker, *, workspace: str, email: str, password: str
     # locked, so wrong-password attempts never hold up the member's other writes or the
     # event loop. The row is locked afterwards only to save the result.
     async with workspace_session(sm, workspace_id) as s:
+        security = await security_repo.current(s)
+        sso_enforced = await sso_repo.enforced(s)
         member = await repo.member_for_login(s, email)
+    if not security_rules.ip_allowed(ip, security.ip_allowlist):
+        raise IpNotAllowed(security_rules.ip_refused(ip))
     if member is None or not member["is_active"] or rules.is_locked(member["locked_until"], _now()):
         await asyncio.to_thread(passwords.verify, None, password)
         raise NotSignedIn(SIGN_IN_FAILED)
@@ -76,36 +103,94 @@ async def sign_in(sm: Sessionmaker, *, workspace: str, email: str, password: str
             if locked_until is not None:
                 logger.warning("member locked after repeated failures: %s", member["id"])
             failed_sign_in = True
+        elif sso_enforced and member["role"] != Role.admin.value:
+            # The password was right, but this workspace signs in through its identity
+            # provider (S1). Admins keep their password, so SSO trouble can be fixed.
+            raise SsoRequired("Your workspace signs in with SSO. Use Sign in with SSO.")
         else:
             failed_sign_in = False
             await repo.record_login_success(s, member["id"], new_hash)
             # Each sign-in tidies this member's long-ended sessions.
             await repo.prune_sessions(s, now - rules.ENDED_SESSION_KEPT, member["id"])
             token = rules.new_token(workspace_id)
-            expires_at = now + rules.SESSION_LIFETIME
+            # With 2FA on, this session only waits for the code (S2), and not for long.
+            pending = bool(member["two_factor_on"])
+            expires_at = (
+                now + two_factor_rules.PENDING_LIFETIME
+                if pending
+                else security_rules.session_ends(security.session_length, now, now)
+            )
             session_id = await repo.insert_session(
                 s,
                 workspace_id=workspace_id,
                 member_id=member["id"],
                 token_hash=rules.token_hash(token),
                 expires_at=expires_at,
+                second_factor_pending=pending,
             )
     # Raised after the commit, so the failure count is saved.
     if failed_sign_in:
         raise NotSignedIn(SIGN_IN_FAILED)
-    caller = Caller(workspace_id, member["id"], Role(member["role"]), session_id)
-    return SignedIn(token=token, expires_at=expires_at, caller=caller)
+    expired = security_rules.password_expired(
+        member["password_changed_at"], security.password_expiry_days, now
+    )
+    role = Role(member["role"])
+    caller = Caller(
+        workspace_id,
+        member["id"],
+        role,
+        session_id,
+        member_access(member),
+        expired,
+        second_factor_pending=pending,
+        two_factor_setup_required=security.require_2fa and not pending,
+    )
+    return SignedIn(
+        token=token,
+        expires_at=expires_at,
+        caller=caller,
+        password_expired=expired,
+        two_factor_required=pending,
+    )
 
 
-async def resolve(sm: Sessionmaker, token: str) -> Caller:
+async def resolve(sm: Sessionmaker, token: str, ip: str | None = None) -> Caller:
+    """The caller behind a token, on every signed-in request: also where the IP list (S4)
+    and the idle sign-out (S3) are enforced. `ip` None skips the IP check (internal use)."""
     workspace_id = rules.token_workspace(token)
     if workspace_id is None:
         raise NotSignedIn("Sign in again.")
+    now = _now()
     async with workspace_session(sm, workspace_id) as s:
         row = await repo.live_session(s, rules.token_hash(token))
-    if row is None:
-        raise NotSignedIn("Sign in again.")
-    return Caller(workspace_id, row["member_id"], Role(row["role"]), row["session_id"])
+        if row is None:
+            raise NotSignedIn("Sign in again.")
+        networks = security_rules.parse_networks(row["ip_allowlist"] or ())
+        if ip is not None and not security_rules.ip_allowed(ip, networks):
+            raise IpNotAllowed(security_rules.ip_refused(ip))
+        if now - row["last_used_at"] >= security_rules.TOUCH_EVERY:
+            length = security_rules.SessionLength(row["session_length"] or "12h")
+            expires_at = row["expires_at"]
+            # A session waiting for the 2FA code keeps its short end time.
+            if length is security_rules.SessionLength.idle_1h and not row["second_factor_pending"]:
+                expires_at = security_rules.session_ends(length, row["signed_in_at"], now)
+            await security_repo.touch_session(s, row["session_id"], expires_at)
+    expired = not row["via_sso"] and security_rules.password_expired(
+        row["password_changed_at"], row["password_expiry_days"], now
+    )
+    return Caller(
+        workspace_id,
+        row["member_id"],
+        Role(row["role"]),
+        row["session_id"],
+        member_access(row),
+        expired,
+        second_factor_pending=bool(row["second_factor_pending"]),
+        # Signed in through the identity provider: its own MFA applies, not ours.
+        two_factor_setup_required=(
+            bool(row["require_2fa"]) and not row["two_factor_on"] and not row["via_sso"]
+        ),
+    )
 
 
 async def sign_out(sm: Sessionmaker, caller: Caller) -> None:

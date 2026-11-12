@@ -54,21 +54,56 @@ async def insert_member(
     name: str,
     role: str,
     password_hash: str,
+    role_id: UUID | None = None,
 ) -> Row:
     result = await session.execute(
         text(
-            "INSERT INTO member (workspace_id, email, name, role, password_hash) "
-            "VALUES (:ws, :email, :name, :role, :hash) "
-            "RETURNING id, workspace_id, email, name, role, is_active, created_at, updated_at"
+            "INSERT INTO member (workspace_id, email, name, role, role_id, password_hash) "
+            "VALUES (:ws, :email, :name, :role, :role_id, :hash) "
+            "RETURNING id, workspace_id, email, name, role, role_id, "
+            "(SELECT r.name FROM hd_role r WHERE r.id = member.role_id) AS role_name, "
+            "EXISTS (SELECT 1 FROM hd_member_2fa f WHERE f.member_id = member.id "
+            "AND f.confirmed_at IS NOT NULL) AS two_factor, "
+            "is_active, created_at, updated_at"
         ),
-        {"ws": workspace_id, "email": email, "name": name, "role": role, "hash": password_hash},
+        {
+            "ws": workspace_id,
+            "email": email,
+            "name": name,
+            "role": role,
+            "role_id": role_id,
+            "hash": password_hash,
+        },
     )
     return result.mappings().one()
 
 
+# A custom role's rights, scope and team, for building a member's `Access` (all NULL for
+# a built-in role). Needs `member m`.
+ROLE_COLUMNS = (
+    "r.name AS role_name, r.reply, r.assign_any, r.reports, r.settings, r.approve, r.scope, "
+    "r.team_id, rt.name AS team_name"
+)
+ROLE_JOIN = "LEFT JOIN hd_role r ON r.id = m.role_id LEFT JOIN hd_team rt ON rt.id = r.team_id "
+# Can be assigned tickets and routed to (md A2, A3): not a light agent, and a custom role
+# only with the `reply` right. Needs `member m`.
+TAKES_TICKETS = (
+    "(m.role <> 'light_agent' AND (m.role <> 'custom' OR EXISTS "
+    "(SELECT 1 FROM hd_role tr WHERE tr.id = m.role_id AND tr.reply)))"
+)
+
+# The member has confirmed an authenticator app (S2).
+TWO_FACTOR_ON = (
+    "EXISTS (SELECT 1 FROM hd_member_2fa f WHERE f.member_id = m.id "
+    "AND f.confirmed_at IS NOT NULL) AS two_factor_on"
+)
+
 _LOGIN = (
-    "SELECT id, role, password_hash, is_active, failed_logins, locked_until "
-    "FROM member WHERE email = :email"
+    "SELECT m.id, m.role, m.password_hash, m.is_active, m.failed_logins, m.locked_until, "  # noqa: S608
+    + ROLE_COLUMNS
+    + " FROM member m "
+    + ROLE_JOIN
+    + "WHERE m.email = :email"
 )
 
 
@@ -82,8 +117,14 @@ async def lock_member_for_login(session: AsyncSession, member_id: UUID) -> Row |
     """The same row, locked, only to save the result of a sign-in."""
     result = await session.execute(
         text(
-            "SELECT id, role, password_hash, is_active, failed_logins, locked_until "
-            "FROM member WHERE id = :id FOR UPDATE"
+            "SELECT m.id, m.role, m.password_hash, m.is_active, m.failed_logins, "  # noqa: S608
+            "m.locked_until, m.password_changed_at, "
+            + TWO_FACTOR_ON
+            + ", "
+            + ROLE_COLUMNS
+            + " FROM member m "
+            + ROLE_JOIN
+            + "WHERE m.id = :id FOR UPDATE OF m"
         ),
         {"id": member_id},
     )
@@ -121,13 +162,23 @@ async def insert_session(
     member_id: UUID,
     token_hash: bytes,
     expires_at: datetime,
+    second_factor_pending: bool = False,
+    via_sso: bool = False,
 ) -> UUID:
     result = await session.execute(
         text(
-            "INSERT INTO auth_session (workspace_id, member_id, token_hash, expires_at) "
-            "VALUES (:ws, :member, :hash, :expires) RETURNING id"
+            "INSERT INTO auth_session (workspace_id, member_id, token_hash, expires_at, "
+            "second_factor_pending, via_sso) "
+            "VALUES (:ws, :member, :hash, :expires, :pending, :sso) RETURNING id"
         ),
-        {"ws": workspace_id, "member": member_id, "hash": token_hash, "expires": expires_at},
+        {
+            "ws": workspace_id,
+            "member": member_id,
+            "hash": token_hash,
+            "expires": expires_at,
+            "pending": second_factor_pending,
+            "sso": via_sso,
+        },
     )
     return UUID(str(result.scalar_one()))
 
@@ -136,8 +187,17 @@ async def live_session(session: AsyncSession, token_hash: bytes) -> Row | None:
     """The session and its member, only if unexpired, not revoked and the member is active."""
     result = await session.execute(
         text(
-            "SELECT s.id AS session_id, m.id AS member_id, m.role "
-            "FROM auth_session s JOIN member m ON m.id = s.member_id "
+            "SELECT s.id AS session_id, m.id AS member_id, m.role, "  # noqa: S608
+            "s.created_at AS signed_in_at, s.last_used_at, s.expires_at, "
+            "m.password_changed_at, ss.password_expiry_days, ss.session_length, "
+            "s.second_factor_pending, s.via_sso, COALESCE(ss.require_2fa, false) AS require_2fa, "
+            + TWO_FACTOR_ON
+            + ", "
+            "CAST(ss.ip_allowlist AS text[]) AS ip_allowlist, "
+            + ROLE_COLUMNS
+            + " FROM auth_session s JOIN member m ON m.id = s.member_id "
+            + ROLE_JOIN
+            + "LEFT JOIN hd_security_settings ss ON ss.workspace_id = s.workspace_id "
             "WHERE s.token_hash = :hash AND s.revoked_at IS NULL "
             "AND s.expires_at > now() AND m.is_active"
         ),
@@ -181,7 +241,7 @@ async def set_password(session: AsyncSession, member_id: UUID, password_hash: st
     await session.execute(
         text(
             "UPDATE member SET password_hash = :hash, failed_logins = 0, locked_until = NULL, "
-            "updated_at = now() WHERE id = :id"
+            "password_changed_at = now(), updated_at = now() WHERE id = :id"
         ),
         {"id": member_id, "hash": password_hash},
     )
@@ -212,7 +272,11 @@ async def all_workspace_ids(session: AsyncSession) -> list[UUID]:
 async def list_members(session: AsyncSession, after: UUID | None, limit: int) -> Sequence[Row]:
     result = await session.execute(
         text(
-            "SELECT id, workspace_id, email, name, role, is_active, created_at, updated_at "
+            "SELECT id, workspace_id, email, name, role, role_id, "
+            "(SELECT r.name FROM hd_role r WHERE r.id = member.role_id) AS role_name, "
+            "EXISTS (SELECT 1 FROM hd_member_2fa f WHERE f.member_id = member.id "
+            "AND f.confirmed_at IS NOT NULL) AS two_factor, "
+            "is_active, created_at, updated_at "
             "FROM member "
             "WHERE (CAST(:after AS uuid) IS NULL OR id > CAST(:after AS uuid)) "
             "ORDER BY id LIMIT :limit"
@@ -224,7 +288,11 @@ async def list_members(session: AsyncSession, after: UUID | None, limit: int) ->
 
 async def get_member(session: AsyncSession, member_id: UUID, *, lock: bool = False) -> Row | None:
     sql = (
-        "SELECT id, workspace_id, email, name, role, is_active, created_at, updated_at "
+        "SELECT id, workspace_id, email, name, role, role_id, "
+        "(SELECT r.name FROM hd_role r WHERE r.id = member.role_id) AS role_name, "
+        "EXISTS (SELECT 1 FROM hd_member_2fa f WHERE f.member_id = member.id "
+        "AND f.confirmed_at IS NOT NULL) AS two_factor, "
+        "is_active, created_at, updated_at "
         "FROM member WHERE id = :id"
     )
     result = await session.execute(text(sql + " FOR UPDATE" if lock else sql), {"id": member_id})
@@ -242,7 +310,11 @@ async def lock_admins_and_member(
     and two demotions can't both see a second Admin."""
     result = await session.execute(
         text(
-            "SELECT id, workspace_id, email, name, role, is_active, created_at, updated_at "
+            "SELECT id, workspace_id, email, name, role, role_id, "
+            "(SELECT r.name FROM hd_role r WHERE r.id = member.role_id) AS role_name, "
+            "EXISTS (SELECT 1 FROM hd_member_2fa f WHERE f.member_id = member.id "
+            "AND f.confirmed_at IS NOT NULL) AS two_factor, "
+            "is_active, created_at, updated_at "
             "FROM member WHERE (role = 'admin' AND is_active) OR id = :id "
             "ORDER BY id FOR UPDATE"
         ),
@@ -261,15 +333,23 @@ async def update_member(
     name: str | None,
     role: str | None,
     is_active: bool | None,
+    role_id: UUID | None = None,
 ) -> Row:
+    """`role_id` is saved with `role` (None unless the role is custom)."""
     result = await session.execute(
         text(
             "UPDATE member SET name = COALESCE(:name, name), role = COALESCE(:role, role), "
+            "role_id = CASE WHEN CAST(:role AS text) IS NULL THEN role_id "
+            "ELSE CAST(:role_id AS uuid) END, "
             "is_active = COALESCE(:active, is_active), updated_at = now() "
             "WHERE id = :id "
-            "RETURNING id, workspace_id, email, name, role, is_active, created_at, updated_at"
+            "RETURNING id, workspace_id, email, name, role, role_id, "
+            "(SELECT r.name FROM hd_role r WHERE r.id = member.role_id) AS role_name, "
+            "EXISTS (SELECT 1 FROM hd_member_2fa f WHERE f.member_id = member.id "
+            "AND f.confirmed_at IS NOT NULL) AS two_factor, "
+            "is_active, created_at, updated_at"
         ),
-        {"id": member_id, "name": name, "role": role, "active": is_active},
+        {"id": member_id, "name": name, "role": role, "role_id": role_id, "active": is_active},
     )
     return result.mappings().one()
 

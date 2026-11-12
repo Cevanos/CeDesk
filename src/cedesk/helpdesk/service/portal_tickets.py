@@ -28,6 +28,7 @@ from cedesk.helpdesk.domain.tickets import Channel
 from cedesk.helpdesk.repo import auth as auth_repo
 from cedesk.helpdesk.repo import catalog as catalog_repo
 from cedesk.helpdesk.repo import portal as repo
+from cedesk.helpdesk.repo import security as security_repo
 from cedesk.helpdesk.service import attachments, customer_replies, tickets
 from cedesk.helpdesk.service.attachments import Download
 from cedesk.helpdesk.service.auth import Sessionmaker
@@ -191,9 +192,29 @@ async def download(
     """A file on a message the customer can see (never one only on a note)."""
     async with workspace_session(sm, customer.workspace_id) as s:
         row = await repo.visible_attachment(s, customer.contact_id, attachment_id)
+        need_sign_in = (await security_repo.current(s)).attachments_need_sign_in
     if row is None:
         raise NotFound("File not found.")
-    return await attachments.link_for(store, row, seconds=seconds, scanning=scanning)
+    return await attachments.link_for(
+        store,
+        row,
+        seconds=seconds,
+        scanning=scanning,
+        sign_in_url=(
+            f"/api/v1/portal/attachments/{attachment_id}/content" if need_sign_in else None
+        ),
+    )
+
+
+async def file_content(
+    sm: Sessionmaker, store: ObjectStore, customer: Customer, attachment_id: UUID, *, scanning: bool
+) -> attachments.FileContent:
+    """The file itself, for the signed-in customer (S5); same rule as `download`."""
+    async with workspace_session(sm, customer.workspace_id) as s:
+        row = await repo.visible_attachment(s, customer.contact_id, attachment_id)
+    if row is None:
+        raise NotFound("File not found.")
+    return await attachments.content_of(store, row, scanning=scanning)
 
 
 def status_label(status: str) -> str:

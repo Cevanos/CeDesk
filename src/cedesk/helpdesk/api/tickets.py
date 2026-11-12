@@ -34,6 +34,8 @@ from cedesk.helpdesk.api.ticket_schemas import (
     TicketRowOut,
 )
 from cedesk.helpdesk.api.workflow_schemas import CustomerReplyBody
+from cedesk.helpdesk.domain.auth import Caller
+from cedesk.helpdesk.domain.permissions import view_only_reason
 from cedesk.helpdesk.domain.sla import Clock, TicketSla
 from cedesk.helpdesk.domain.tickets import Priority, Sort, Status, etag, label
 from cedesk.helpdesk.service import customer_replies, tickets
@@ -92,9 +94,11 @@ def _row(r: Mapping[Any, Any], sla: TicketSla | None = None) -> dict[str, Any]:
     }
 
 
-def detail_response(view: TicketView, response: Response) -> TicketOut:
+def detail_response(view: TicketView, response: Response, caller: Caller) -> TicketOut:
     response.headers["ETag"] = etag(view.ticket["updated_at"])
-    return _ticket_out(view)
+    out = _ticket_out(view)
+    reason = view_only_reason(caller.access, view.ticket["team_id"])
+    return out.model_copy(update={"can_edit": reason is None, "view_only_reason": reason})
 
 
 def _ticket_out(view: TicketView) -> TicketOut:
@@ -152,7 +156,7 @@ async def create_ticket(
         idem=idem,
     )
     mark_replayed(idem, response)
-    return detail_response(view, response)
+    return detail_response(view, response, caller)
 
 
 @router.get(
@@ -210,7 +214,7 @@ async def list_tickets(
 async def get_ticket(
     ticket_id: UUID, caller: CallerDep, sm: SessionmakerDep, response: Response
 ) -> TicketOut:
-    return detail_response(await tickets.get_ticket(sm, caller, ticket_id), response)
+    return detail_response(await tickets.get_ticket(sm, caller, ticket_id), response, caller)
 
 
 @router.patch(
@@ -227,7 +231,7 @@ async def change_ticket(
     if_match: IfMatch = None,
 ) -> TicketOut:
     view = await tickets.change_ticket(sm, caller, ticket_id, body.changes(), if_match=if_match)
-    return detail_response(view, response)
+    return detail_response(view, response, caller)
 
 
 @router.post(
@@ -243,7 +247,7 @@ async def resolve_ticket(
     if_match: IfMatch = None,
 ) -> TicketOut:
     view = await tickets.resolve_ticket(sm, caller, ticket_id, if_match=if_match)
-    return detail_response(view, response)
+    return detail_response(view, response, caller)
 
 
 @router.get(
@@ -298,4 +302,4 @@ async def simulate_customer_reply(
 ) -> TicketOut:
     allowed = request.app.state.settings.env.value != "production"
     await customer_replies.simulate(sm, caller, ticket_id, body.body, allowed=allowed)
-    return detail_response(await tickets.get_ticket(sm, caller, ticket_id), response)
+    return detail_response(await tickets.get_ticket(sm, caller, ticket_id), response, caller)
