@@ -24,6 +24,8 @@ def test_priority_and_channel_fall_back_sensibly() -> None:
     assert rules.channel("WhatsApp") == "chat"
     assert rules.channel("live chat") == "chat"
     assert rules.channel("Voice") == "phone"
+    assert rules.channel("contact_form") == "web"  # Gorgias
+    assert rules.channel("help-center") == "web"
     assert rules.channel("carrier pigeon") == "api"
 
 

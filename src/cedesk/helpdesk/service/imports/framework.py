@@ -56,6 +56,7 @@ from cedesk.helpdesk.service import sla, triage
 from cedesk.helpdesk.service.auth import Sessionmaker
 from cedesk.helpdesk.service.errors import Conflict, Invalid, NotFound, TooLarge, Unavailable
 from cedesk.helpdesk.service.idempotency import Idempotency, begin, remember
+from cedesk.helpdesk.service.imports.connectors import build_connector
 from cedesk.helpdesk.service.imports.csv_source import MAX_BYTES, BadFile, CsvConnector
 from cedesk.helpdesk.service.members import require
 from cedesk.storage import ObjectMissing, ObjectStore
@@ -82,7 +83,7 @@ def make_importers(secret_key: str, store: ObjectStore, build: Build | None = No
     ) -> SourceConnector:
         if source == "csv":
             return await CsvConnector.load(store, settings)
-        raise Invalid(f"Importing from {rules.label(source)} isn't available yet.")
+        return await build_connector(source, settings, secret)
 
     return Importers(Sealer(secret_key), store, build or default)
 
@@ -209,7 +210,9 @@ async def _open(
 
 
 def _hint(credentials: Mapping[str, Any]) -> str | None:
-    for value in credentials.values():
+    """The last 4 characters of the secret (never of an email address), to tell keys apart."""
+    for name in ("token", "api_key", "app_secret"):
+        value = credentials.get(name)
         if isinstance(value, str) and value:
             return value[-4:]
     return None
