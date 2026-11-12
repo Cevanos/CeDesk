@@ -10197,6 +10197,178 @@
         }
       }
     },
+    "/api/v1/tickets/{ticket_id}/side-conversations": {
+      "get": {
+        "tags": [
+          "side conversations"
+        ],
+        "summary": "Side conversations on a ticket (agents only; never shown to the customer)",
+        "operationId": "list_sides_api_v1_tickets__ticket_id__side_conversations_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "ticket_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Ticket Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SideOut"
+                  },
+                  "title": "Response List Sides Api V1 Tickets  Ticket Id  Side Conversations Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "side conversations"
+        ],
+        "summary": "Start a side conversation by email",
+        "description": "Sent from the ticket's support address by the worker. Their reply comes back here (matched by the email's reply headers), the assignee is told (notification side_reply), and the customer sees none of it. The ticket gets a system line.",
+        "operationId": "start_side_api_v1_tickets__ticket_id__side_conversations_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "ticket_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Ticket Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SideOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Can't reply, or the ticket is another team's (view only)"
+          },
+          "404": {
+            "description": "No such ticket or side conversation"
+          },
+          "409": {
+            "description": "No support address yet, or 20 side conversations already"
+          },
+          "422": {
+            "description": "Not an address, the customer, one of our own addresses, empty"
+          }
+        }
+      }
+    },
+    "/api/v1/side-conversations/{side_id}/messages": {
+      "post": {
+        "tags": [
+          "side conversations"
+        ],
+        "summary": "Write again in a side conversation",
+        "description": "Threaded under the earlier emails, to the same addresses.",
+        "operationId": "write_again_api_v1_side_conversations__side_id__messages_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "side_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Side Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgainIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SideOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Can't reply, or the ticket is another team's (view only)"
+          },
+          "404": {
+            "description": "No such ticket or side conversation"
+          },
+          "409": {
+            "description": "No support address yet, or 20 side conversations already"
+          },
+          "422": {
+            "description": "Not an address, the customer, one of our own addresses, empty"
+          }
+        }
+      }
+    },
     "/healthz": {
       "get": {
         "tags": [
@@ -10370,6 +10542,22 @@
           "password"
         ],
         "title": "AddMemberBody"
+      },
+      "AgainIn": {
+        "properties": {
+          "body": {
+            "type": "string",
+            "maxLength": 20000,
+            "minLength": 1,
+            "title": "Body"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "body"
+        ],
+        "title": "AgainIn"
       },
       "AgeRowOut": {
         "properties": {
@@ -17991,6 +18179,112 @@
         ],
         "title": "SetupOut"
       },
+      "SideMessageOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "direction": {
+            "type": "string",
+            "title": "Direction",
+            "description": "out: sent from CeDesk; in: their reply."
+          },
+          "body": {
+            "type": "string",
+            "title": "Body"
+          },
+          "author_name": {
+            "type": "string",
+            "title": "Author Name"
+          },
+          "from_address": {
+            "type": "string",
+            "title": "From Address"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "direction",
+          "body",
+          "author_name",
+          "from_address",
+          "created_at"
+        ],
+        "title": "SideMessageOut"
+      },
+      "SideOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "subject": {
+            "type": "string",
+            "title": "Subject"
+          },
+          "to": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "To"
+          },
+          "from_address": {
+            "type": "string",
+            "title": "From Address",
+            "description": "The support address it goes out from."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "last_message_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Last Message At"
+          },
+          "created_by_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By Name"
+          },
+          "messages": {
+            "items": {
+              "$ref": "#/components/schemas/SideMessageOut"
+            },
+            "type": "array",
+            "title": "Messages"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "subject",
+          "to",
+          "from_address",
+          "created_at",
+          "last_message_at",
+          "created_by_name",
+          "messages"
+        ],
+        "title": "SideOut"
+      },
       "SignInBody": {
         "properties": {
           "workspace": {
@@ -18410,6 +18704,46 @@
           "start_url"
         ],
         "title": "SsoStatusOut"
+      },
+      "StartIn": {
+        "properties": {
+          "to": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 10,
+            "minItems": 1,
+            "title": "To",
+            "description": "Email addresses."
+          },
+          "subject": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subject",
+            "description": "Default: \"About <ticket subject>\". The ticket's label is added."
+          },
+          "body": {
+            "type": "string",
+            "maxLength": 20000,
+            "minLength": 1,
+            "title": "Body"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "to",
+          "body"
+        ],
+        "title": "StartIn"
       },
       "Status": {
         "type": "string",
