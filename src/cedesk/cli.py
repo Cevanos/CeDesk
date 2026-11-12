@@ -204,6 +204,7 @@ def _worker(once: bool) -> int:
     from cedesk.helpdesk.service.imports.framework import run_due as run_imports
     from cedesk.helpdesk.service.password_reset import Sender
     from cedesk.helpdesk.service.portal_notice import PortalNoticeHandler
+    from cedesk.helpdesk.service.privacy import remove_expired_exports
     from cedesk.helpdesk.service.scanning import scan_due
     from cedesk.helpdesk.service.security_alerts import SecurityAlertHandler
     from cedesk.helpdesk.service.sla import refresh_everywhere
@@ -324,6 +325,10 @@ def _worker(once: bool) -> int:
                     alerted_at = time.monotonic()
                 if time.monotonic() - swept_at > SWEEP_EVERY_SECONDS:
                     await sweep_everywhere(sm)
+                    try:  # customer exports past their 7 days (S11)
+                        await remove_expired_exports(sm, store)
+                    except Exception:
+                        logger.exception("Removing old privacy exports failed")
                     swept_at = time.monotonic()
                 if once:
                     return

@@ -11,14 +11,16 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cedesk.db import workspace_session
+from cedesk.helpdesk.domain import audit as audit_rules
 from cedesk.helpdesk.domain import auth as rules
+from cedesk.helpdesk.domain.audit import Area
 from cedesk.helpdesk.domain.auth import Caller
 from cedesk.helpdesk.domain.permissions import Action, Role
 from cedesk.helpdesk.repo import auth as repo
 from cedesk.helpdesk.repo import roles as role_repo
 from cedesk.helpdesk.repo import security as security_repo
 from cedesk.helpdesk.repo.auth import Row
-from cedesk.helpdesk.service import passwords
+from cedesk.helpdesk.service import audit, passwords
 from cedesk.helpdesk.service.auth import Sessionmaker
 from cedesk.helpdesk.service.errors import Conflict, Forbidden, Invalid, NotFound
 
@@ -98,6 +100,15 @@ async def add_member(
                 f"Member added: {added['name']} <{added['email']}>, role {_role_label(added)}.",
                 caller.member_id,
             )
+            await audit.record(
+                s,
+                caller,
+                Area.members,
+                "created",
+                f"Member {added['name']} <{added['email']}>",
+                target_id=added["id"],
+                detail={"role": _role_label(added)},
+            )
             return added
     except IntegrityError as exc:
         raise Conflict("Someone in this workspace already uses that email.") from exc
@@ -166,6 +177,21 @@ async def change_member(
                 caller.workspace_id,
                 f"Member {what}: {updated['name']} <{updated['email']}>.",
                 caller.member_id,
+            )
+        changed = audit_rules.changes(
+            {**current, "role": _role_label(current)},
+            {**updated, "role": _role_label(updated)},
+            fields=("name", "role", "is_active"),
+        )
+        if changed:
+            await audit.record(
+                s,
+                caller,
+                Area.members,
+                "changed",
+                f"Member {updated['name']} <{updated['email']}>",
+                target_id=member_id,
+                detail={"changes": changed},
             )
         return updated
 
@@ -237,4 +263,12 @@ async def reset_password(
             raise NotFound("Member not found.")
         await repo.set_password(s, member_id, new_hash)
         await repo.revoke_member_sessions(s, member_id)
+        await audit.record(
+            s,
+            caller,
+            Area.members,
+            "password_reset",
+            f"Password reset for {target['name']} <{target['email']}>",
+            target_id=member_id,
+        )
     logger.info("admin %s reset the password of %s", caller.member_id, member_id)

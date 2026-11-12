@@ -19,14 +19,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from cedesk.db import workspace_session
 from cedesk.helpdesk.domain import articles as rules
+from cedesk.helpdesk.domain import audit as audit_rules
 from cedesk.helpdesk.domain import paging
+from cedesk.helpdesk.domain.audit import Area
 from cedesk.helpdesk.domain.auth import Caller
 from cedesk.helpdesk.domain.permissions import Action
 from cedesk.helpdesk.repo import articles as repo
 from cedesk.helpdesk.repo import auth as auth_repo
+from cedesk.helpdesk.service import audit
 from cedesk.helpdesk.service.auth import Sessionmaker
 from cedesk.helpdesk.service.errors import Conflict, Invalid, NotFound
 from cedesk.helpdesk.service.members import require
+
+ARTICLE_FIELDS = ("title", "status", "category_id", "body")
 
 NO_ARTICLE = "Article not found."
 NO_CATEGORY = "Category not found."
@@ -100,7 +105,11 @@ async def create_category(sm: Sessionmaker, caller: Caller, name: str, position:
     clean = _checked(rules.clean_category, name)
     try:
         async with workspace_session(sm, caller.workspace_id) as s:
-            return await repo.insert_category(s, caller.workspace_id, clean, position)
+            category_id = await repo.insert_category(s, caller.workspace_id, clean, position)
+            await audit.record(
+                s, caller, Area.help_center, "created", f"Category {clean}", target_id=category_id
+            )
+            return category_id
     except IntegrityError as exc:
         raise Conflict(NAME_TAKEN) from exc
 
@@ -122,6 +131,19 @@ async def update_category(
             clean = _checked(rules.clean_category, name) if name is not None else current["name"]
             where = position if position is not None else current["position"]
             await repo.update_category(s, category_id, clean, where)
+            changed = audit_rules.changes(
+                current, {"name": clean, "position": where}, fields=("name", "position")
+            )
+            if changed:
+                await audit.record(
+                    s,
+                    caller,
+                    Area.help_center,
+                    "changed",
+                    f"Category {clean}",
+                    target_id=category_id,
+                    detail={"changes": changed},
+                )
     except IntegrityError as exc:
         raise Conflict(NAME_TAKEN) from exc
 
@@ -130,8 +152,17 @@ async def delete_category(sm: Sessionmaker, caller: Caller, category_id: UUID) -
     """Its articles stay, with no category."""
     require(caller, Action.settings)
     async with workspace_session(sm, caller.workspace_id) as s:
-        if not await repo.delete_category(s, category_id):
+        current = await repo.category(s, category_id)
+        if current is None or not await repo.delete_category(s, category_id):
             raise NotFound(NO_CATEGORY)
+        await audit.record(
+            s,
+            caller,
+            Area.help_center,
+            "deleted",
+            f"Category {current['name']}",
+            target_id=category_id,
+        )
 
 
 async def list_articles(
@@ -189,6 +220,15 @@ async def create_article(
             member_id=caller.member_id,
         )
         found = await repo.article(s, article_id)
+        await audit.record(
+            s,
+            caller,
+            Area.help_center,
+            "created",
+            f"Article {clean_title}",
+            target_id=article_id,
+            detail=audit_rules.snapshot(found, ARTICLE_FIELDS[1:]),
+        )
     assert found is not None
     return found
 
@@ -216,15 +256,36 @@ async def update_article(
             member_id=caller.member_id,
         )
         found = await repo.article(s, article_id)
-    assert found is not None
+        assert found is not None
+        changed = audit_rules.changes(current, found, fields=ARTICLE_FIELDS)
+        if changed:
+            await audit.record(
+                s,
+                caller,
+                Area.help_center,
+                "changed",
+                f"Article {found['title']}",
+                target_id=article_id,
+                detail={"changes": changed},
+            )
     return found
 
 
 async def delete_article(sm: Sessionmaker, caller: Caller, article_id: UUID) -> None:
     require(caller, Action.settings)
     async with workspace_session(sm, caller.workspace_id) as s:
-        if not await repo.delete_article(s, article_id):
+        current = await repo.lock_article(s, article_id)
+        if current is None or not await repo.delete_article(s, article_id):
             raise NotFound(NO_ARTICLE)
+        await audit.record(
+            s,
+            caller,
+            Area.help_center,
+            "deleted",
+            f"Article {current['title']}",
+            target_id=article_id,
+            detail=audit_rules.snapshot(current, ARTICLE_FIELDS[1:]),
+        )
 
 
 # The public help center (no sign-in; published articles only)

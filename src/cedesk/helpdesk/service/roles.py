@@ -13,13 +13,20 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cedesk.db import workspace_session
+from cedesk.helpdesk.domain import audit as audit_rules
+from cedesk.helpdesk.domain.audit import Area
 from cedesk.helpdesk.domain.auth import Caller
 from cedesk.helpdesk.domain.permissions import Action, Scope
 from cedesk.helpdesk.repo import roles as repo
 from cedesk.helpdesk.repo.roles import Row
+from cedesk.helpdesk.service import audit
 from cedesk.helpdesk.service.auth import Sessionmaker
 from cedesk.helpdesk.service.errors import Conflict, Invalid, NotFound
 from cedesk.helpdesk.service.members import require
+
+ROLE_FIELDS = (
+    "name", "reply", "assign_any", "reports", "settings", "approve", "scope", "team_name",
+)  # fmt: skip
 
 NAME_TAKEN = "A role with that name already exists."
 
@@ -62,6 +69,15 @@ async def create_role(sm: Sessionmaker, caller: Caller, role: RoleIn) -> Row:
         async with workspace_session(sm, caller.workspace_id) as s:
             role_id = await repo.insert_role(s, caller.workspace_id, await _checked(s, role))
             row = await repo.get_role(s, role_id)
+            await audit.record(
+                s,
+                caller,
+                Area.roles,
+                "created",
+                f"Role {role.name}",
+                target_id=role_id,
+                detail=audit_rules.snapshot(row, ROLE_FIELDS[1:]),
+            )
     except IntegrityError as exc:
         raise Conflict(NAME_TAKEN) from exc
     assert row is not None
@@ -73,10 +89,21 @@ async def change_role(sm: Sessionmaker, caller: Caller, role_id: UUID, role: Rol
     require(caller, Action.manage_access)
     try:
         async with workspace_session(sm, caller.workspace_id) as s:
-            if await repo.get_role(s, role_id, lock=True) is None:
+            before = await repo.get_role(s, role_id, lock=True)
+            if before is None:
                 raise NotFound("Role not found.")
             await repo.update_role(s, role_id, await _checked(s, role))
             row = await repo.get_role(s, role_id)
+            assert row is not None
+            await audit.record(
+                s,
+                caller,
+                Area.roles,
+                "changed",
+                f"Role {row['name']}",
+                target_id=role_id,
+                detail={"changes": audit_rules.changes(before, row, fields=ROLE_FIELDS)},
+            )
     except IntegrityError as exc:
         raise Conflict(NAME_TAKEN) from exc
     assert row is not None
@@ -103,3 +130,12 @@ async def _delete(sm: Sessionmaker, caller: Caller, role_id: UUID) -> None:
                 "role first."
             )
         await repo.delete_role(s, role_id)
+        await audit.record(
+            s,
+            caller,
+            Area.roles,
+            "deleted",
+            f"Role {row['name']}",
+            target_id=role_id,
+            detail=audit_rules.snapshot(row, ROLE_FIELDS[1:]),
+        )

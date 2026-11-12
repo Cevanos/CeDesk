@@ -20,8 +20,10 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from cedesk.db import workspace_session
+from cedesk.helpdesk.domain import audit as audit_rules
 from cedesk.helpdesk.domain import auth as auth_rules
 from cedesk.helpdesk.domain import portal as rules
+from cedesk.helpdesk.domain.audit import Area
 from cedesk.helpdesk.domain.auth import Caller
 from cedesk.helpdesk.domain.email import new_message_id
 from cedesk.helpdesk.domain.permissions import Action
@@ -29,6 +31,7 @@ from cedesk.helpdesk.repo import auth as auth_repo
 from cedesk.helpdesk.repo import email as email_repo
 from cedesk.helpdesk.repo import portal as repo
 from cedesk.helpdesk.repo import tickets as ticket_repo
+from cedesk.helpdesk.service import audit
 from cedesk.helpdesk.service.auth import Sessionmaker
 from cedesk.helpdesk.service.errors import Forbidden, Invalid, NotSignedIn
 from cedesk.helpdesk.service.members import require
@@ -244,7 +247,17 @@ async def save_settings(
     except rules.BadSetting as exc:
         raise Invalid(str(exc)) from exc
     async with workspace_session(sm, caller.workspace_id) as s:
+        before = await repo.settings_row(s)
         await repo.save_settings(
             s, caller.workspace_id, cleaned, csat_survey, web_form, caller.member_id
         )
+        changed = audit_rules.changes(
+            before or {"allowed_domains": [], "csat_survey": True, "web_form": False},
+            await repo.settings_row(s),
+            fields=("allowed_domains", "csat_survey", "web_form"),
+        )
+        if changed:
+            await audit.record(
+                s, caller, Area.portal, "changed", "Customer portal", detail={"changes": changed}
+            )
     return await get_settings(sm, caller)

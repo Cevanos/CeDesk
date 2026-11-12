@@ -15,7 +15,9 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cedesk.db import workspace_session
+from cedesk.helpdesk.domain import audit as audit_rules
 from cedesk.helpdesk.domain import rules as engine
+from cedesk.helpdesk.domain.audit import Area
 from cedesk.helpdesk.domain.auth import Caller
 from cedesk.helpdesk.domain.permissions import Action
 from cedesk.helpdesk.domain.tickets import Channel, Priority, Sentiment, Status, carry_over
@@ -23,7 +25,7 @@ from cedesk.helpdesk.repo import catalog
 from cedesk.helpdesk.repo import rules as repo
 from cedesk.helpdesk.repo import tickets as ticket_repo
 from cedesk.helpdesk.repo.rules import Row
-from cedesk.helpdesk.service import children, sla
+from cedesk.helpdesk.service import audit, children, sla
 from cedesk.helpdesk.service.auth import Sessionmaker
 from cedesk.helpdesk.service.catalog import field_defs
 from cedesk.helpdesk.service.errors import Conflict, Invalid, NotFound
@@ -46,7 +48,11 @@ class RuleRun:
     team_changed: bool
 
 
-def _parse(name: str, event: str, conditions: Sequence[Any], actions: Sequence[Any]) -> engine.Rule:
+_AUDITED = ("name", "enabled", "event", "conditions", "actions")
+
+
+def parse(name: str, event: str, conditions: Sequence[Any], actions: Sequence[Any]) -> engine.Rule:
+    """A rule as an Admin sent it, checked (also used by the sandbox)."""
     if not all(isinstance(x, Mapping) for x in [*conditions, *actions]):
         raise Invalid("Each condition and action is an object with a `kind`.")
     name = " ".join(name.split())
@@ -111,29 +117,44 @@ async def create_rule(
     actions: Sequence[Any],
 ) -> RuleView:
     require(caller, Action.settings)
-    rule = _parse(name, event, conditions, actions)
+    rule = parse(name, event, conditions, actions)
     try:
         async with workspace_session(sm, caller.workspace_id) as s:
-            # A soft cap: two Admins adding at the same moment can pass it by one each.
-            if await repo.count(s) >= engine.MAX_RULES:
-                raise Invalid(f"A workspace can have at most {engine.MAX_RULES} rules.")
-            await _check_targets(s, rule)
-            rule_id = await repo.insert_rule(
-                s,
-                caller.workspace_id,
-                name=rule.name,
-                enabled=enabled,
-                event=rule.event.value,
-                conditions=[engine.stored_condition(c) for c in rule.conditions],
-                actions=[engine.stored_action(a) for a in rule.actions],
-                created_by=caller.member_id,
-            )
-            assert rule_id is not None
-            row = await repo.get_rule(s, rule_id)
-            assert row is not None
-            return await _view(s, row)
+            return await _view(s, await create_in(s, caller, rule, enabled))
     except IntegrityError as exc:
         raise Conflict(TAKEN) from exc
+
+
+async def create_in(s: AsyncSession, caller: Caller, rule: engine.Rule, enabled: bool) -> Row:
+    """Adds a checked rule (last in order) and its audit entry, in the caller's
+    transaction."""
+    # A soft cap: two Admins adding at the same moment can pass it by one each.
+    if await repo.count(s) >= engine.MAX_RULES:
+        raise Invalid(f"A workspace can have at most {engine.MAX_RULES} rules.")
+    await _check_targets(s, rule)
+    rule_id = await repo.insert_rule(
+        s,
+        caller.workspace_id,
+        name=rule.name,
+        enabled=enabled,
+        event=rule.event.value,
+        conditions=[engine.stored_condition(c) for c in rule.conditions],
+        actions=[engine.stored_action(a) for a in rule.actions],
+        created_by=caller.member_id,
+    )
+    assert rule_id is not None
+    row = await repo.get_rule(s, rule_id)
+    assert row is not None
+    await audit.record(
+        s,
+        caller,
+        Area.rules,
+        "created",
+        f"Rule {rule.name}",
+        target_id=rule_id,
+        detail=audit_rules.snapshot(row, _AUDITED[1:]),
+    )
+    return row
 
 
 async def change_rule(
@@ -154,35 +175,77 @@ async def change_rule(
             current = await repo.get_rule(s, rule_id)
             if current is None:
                 raise NotFound("Rule not found.")
-            rule = _parse(
+            rule = parse(
                 current["name"] if name is None else name,
                 current["event"] if event is None else event,
                 current["conditions"] if conditions is None else conditions,
                 current["actions"] if actions is None else actions,
             )
-            if actions is not None:
-                await _check_targets(s, rule)
-            await repo.update_rule(
-                s,
-                rule_id,
-                name=rule.name,
-                enabled=enabled,
-                event=rule.event.value,
-                conditions=[engine.stored_condition(c) for c in rule.conditions],
-                actions=[engine.stored_action(a) for a in rule.actions],
+            row = await change_in(
+                s, caller, current, rule, enabled, check_targets=actions is not None
             )
-            row = await repo.get_rule(s, rule_id)
-            assert row is not None
             return await _view(s, row)
     except IntegrityError as exc:
         raise Conflict(TAKEN) from exc
 
 
+async def change_in(
+    s: AsyncSession,
+    caller: Caller,
+    current: Row,
+    rule: engine.Rule,
+    enabled: bool | None,
+    *,
+    check_targets: bool = True,
+) -> Row:
+    """Saves a checked rule over `current` and its audit entry, in the caller's
+    transaction. `enabled` None keeps it."""
+    if check_targets:
+        await _check_targets(s, rule)
+    await repo.update_rule(
+        s,
+        current["id"],
+        name=rule.name,
+        enabled=enabled,
+        event=rule.event.value,
+        conditions=[engine.stored_condition(c) for c in rule.conditions],
+        actions=[engine.stored_action(a) for a in rule.actions],
+    )
+    row = await repo.get_rule(s, current["id"])
+    assert row is not None
+    await audit.record(
+        s,
+        caller,
+        Area.rules,
+        "changed",
+        f"Rule {rule.name}",
+        target_id=current["id"],
+        detail={"changes": audit_rules.changes(current, row, fields=_AUDITED)},
+    )
+    return row
+
+
 async def delete_rule(sm: Sessionmaker, caller: Caller, rule_id: UUID) -> None:
     require(caller, Action.settings)
     async with workspace_session(sm, caller.workspace_id) as s:
-        if not await repo.delete_rule(s, rule_id):
+        current = await repo.get_rule(s, rule_id)
+        if current is None:
             raise NotFound("Rule not found.")
+        await delete_in(s, caller, current)
+
+
+async def delete_in(s: AsyncSession, caller: Caller, current: Row) -> None:
+    if not await repo.delete_rule(s, current["id"]):
+        raise NotFound("Rule not found.")
+    await audit.record(
+        s,
+        caller,
+        Area.rules,
+        "deleted",
+        f"Rule {current['name']}",
+        target_id=current["id"],
+        detail=audit_rules.snapshot(current, _AUDITED[1:]),
+    )
 
 
 async def reorder_rules(
@@ -194,6 +257,7 @@ async def reorder_rules(
         if set(rule_ids) != current or len(rule_ids) != len(current):
             raise Invalid("Send every rule id exactly once, in the new order.")
         await repo.reorder_rules(s, rule_ids)
+        await audit.record(s, caller, Area.rules, "reordered", "Rule order")
         return await _views(s, await repo.list_rules(s))
 
 

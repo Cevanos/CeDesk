@@ -347,3 +347,16 @@ async def test_the_server_can_clear_an_ip_list_that_locks_everyone_out(
         "IP allowlist cleared from the server (every address can sign in again).",
         None,
     )
+    # The audit log shows it came from the server, with no member and no address.
+    audit = await run_sql(
+        app_sessionmaker,
+        w,
+        "SELECT actor_id, actor_name, ip, area, target FROM hd_audit ORDER BY seq DESC LIMIT 1",
+    )
+    assert dict(audit[0]) == {
+        "actor_id": None,
+        "actor_name": "Server (command line)",
+        "ip": None,
+        "area": "security",
+        "target": "IP allowlist cleared from the server",
+    }
