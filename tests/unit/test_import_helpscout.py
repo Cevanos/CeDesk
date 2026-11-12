@@ -4,6 +4,7 @@ Docs articles with and without a key, and the errors."""
 
 import asyncio
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -66,6 +67,11 @@ class Fake:
             return httpx.Response(200, json=fx("customers"))
         if path == "/v2/conversations":
             return httpx.Response(200, json=fx(f"conversations_p{query.get('page', '1')}"))
+        if path.startswith("/v2/conversations/") and path.endswith("/data"):
+            aid = path.split("/")[-2]
+            if aid == "501":
+                return httpx.Response(200, json=fx("attachment_501"))
+            return httpx.Response(404, json={})
         if path.startswith("/v2/conversations/") and path.endswith("/threads"):
             return httpx.Response(200, json=fx(f"threads_{path.split('/')[3]}"))
         if path.startswith("/v2/mailboxes/") and "saved-replies" in path:
@@ -229,6 +235,53 @@ def test_chat_ticket_and_status_map() -> None:
     assert t.requester.email is None
     for word, want in (("active", "open"), ("open", "open"), ("pending", "pending")):
         assert rules.status(word, c.status_map) == want
+
+
+def test_thread_attachments_are_parsed() -> None:
+    t = run(connector(Fake()).page("tickets", None)).items[0]
+    customer = t.messages[0]
+    assert [(a.name, a.size, a.mime) for a in customer.attachments] == [
+        ("receipt.pdf", 11, "application/pdf"),
+        ("gone.png", 5, "image/png"),
+    ]  # the one without an id is skipped
+    assert customer.attachments[0].url == ("/v2/conversations/1001/threads/11/attachments/501/data")
+    assert t.messages[1].attachments == []
+
+
+def test_fetch_decodes_base64_with_the_bearer_token() -> None:
+    fake = Fake()
+    c = connector(fake)
+    t = run(c.page("tickets", None)).items[0]
+    got = run(c.fetch(t.messages[0].attachments[0], 1000))
+    assert got == b"hello world"
+    last = fake.requests[-1]
+    assert last.url.path.endswith("/attachments/501/data")
+    assert last.headers["authorization"].startswith("Bearer ")
+
+
+def test_fetch_is_none_when_missing_or_too_big() -> None:
+    fake = Fake()
+    c = connector(fake)
+    first, gone = run(c.page("tickets", None)).items[0].messages[0].attachments
+    assert run(c.fetch(gone, 1000)) is None  # the source answers 404
+    before = len(fake.requests)
+    assert run(c.fetch(first, 5)) is None  # size 11 > 5: no call at all
+    assert len(fake.requests) == before
+    nosize = rules.Attachment("x", first.url)
+    assert run(c.fetch(nosize, 5)) is None  # decoded bytes are over the limit
+    assert run(c.fetch(rules.Attachment("x", "https://evil.example/f"), 1000)) is None
+
+
+def test_changed_tickets_sends_modified_since() -> None:
+    fake = Fake()
+    c = connector(fake)
+    since = datetime(2025, 3, 1, 9, 30, tzinfo=UTC)
+    page = run(c.changed_tickets(since, None))
+    assert [t.external_id for t in page.items] == ["1001"] and page.cursor == {"page": 2}
+    listing = next(r for r in fake.requests if r.url.path == "/v2/conversations")
+    assert listing.url.params["modifiedSince"] == "2025-03-01T09:30:00Z"
+    assert listing.method == "GET"
+    assert run(c.changed_tickets(since, page.cursor)).cursor is None
 
 
 def test_replies_use_the_saved_reply_body() -> None:
