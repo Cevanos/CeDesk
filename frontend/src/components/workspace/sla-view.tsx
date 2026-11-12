@@ -7,11 +7,12 @@ import { PRIORITY_LABEL } from "@/components/tickets/badges";
 import { formatMinutes } from "@/components/tickets/sla";
 import { Badge, Button, Card, Input, Skeleton } from "@/components/ui/primitives";
 import { FormError, fieldErrors, LoadError } from "@/components/workspace/list-shared";
+import { SlaHolidays } from "@/components/workspace/sla-holidays";
+import { SlaHoursEditor } from "@/components/workspace/sla-hours-editor";
+import { SlaPoliciesEditor } from "@/components/workspace/sla-policies-editor";
 import { useCurrentUser } from "@/hooks/use-auth";
 import { useSaveSlaTargets, useSla } from "@/hooks/use-workspace";
 import type { SlaSettings, SlaTarget } from "@/lib/api/types";
-
-const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 export function SlaView() {
   const sla = useSla();
@@ -33,6 +34,9 @@ function SlaBody({ data }: { data: SlaSettings }) {
   const [errs, setErrs] = useState<Record<string, string>>({});
   const canEdit = perms.manageSettings;
   const cal = data.calendar;
+  // A fresh copy of the server data resets the editors' drafts (after a save or reset).
+  const policiesKey = JSON.stringify(data.policies);
+  const hoursKey = JSON.stringify({ ...cal, holidays: undefined });
 
   const submit = () => {
     const next: Record<string, string> = {};
@@ -144,74 +148,26 @@ function SlaBody({ data }: { data: SlaSettings }) {
         )}
       </section>
 
-      <section aria-labelledby="sla-policies">
-        <h2 id="sla-policies" className="text-base font-semibold">
-          Policies
-        </h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Read-only for now. The first matching policy applies; otherwise the targets above.
-          {data.policies_are_default && " (Using the built-in defaults.)"}
-        </p>
-        {data.policies.length === 0 ? (
-          <p className="mt-3 text-sm text-muted-foreground">No policies.</p>
-        ) : (
-          <Card className="mt-3 overflow-hidden">
-            <ul className="divide-y divide-border">
-              {data.policies.map((p) => (
-                <li
-                  key={p.position}
-                  className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-3"
-                >
-                  <span className="font-medium">{p.name}</span>
-                  <Badge tone={p.enabled ? "success" : "neutral"}>{p.enabled ? "On" : "Off"}</Badge>
-                  {p.vip_only && <Badge tone="warning">VIP only</Badge>}
-                  <span className="text-xs text-muted-foreground">
-                    {p.channels.length ? p.channels.join(", ") : "All channels"} ·{" "}
-                    {p.priorities.length ? p.priorities.join(", ") : "All priorities"}
-                    {p.first_reply_minutes != null &&
-                      ` · reply ${formatMinutes(p.first_reply_minutes)}`}
-                    {p.resolve_minutes != null && ` · resolve ${formatMinutes(p.resolve_minutes)}`}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </Card>
-        )}
-      </section>
+      <SlaPoliciesEditor
+        key={policiesKey}
+        policies={data.policies}
+        isDefault={data.policies_are_default}
+        canEdit={canEdit}
+      />
 
       <section aria-labelledby="sla-hours">
         <h2 id="sla-hours" className="text-base font-semibold">
           Business hours and holidays
         </h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          Read-only for now. The timer pauses outside these hours and on holidays.
+          The timer pauses outside these hours and on holidays.
+          {!canEdit && " Only an Admin can change them."}
         </p>
-        <Card className="mt-3 space-y-2 p-4 text-sm">
-          {cal.always_open ? (
-            <p>Open 24 hours, every day.</p>
-          ) : (
-            <p>
-              {cal.days
-                .slice()
-                .sort((a, b) => a - b)
-                .map((d) => DAYS[d] ?? String(d))
-                .join(", ")}{" "}
-              · {cal.opens}–{cal.closes} ({cal.timezone})
-            </p>
-          )}
-          {cal.holidays.length > 0 ? (
-            <ul className="flex flex-wrap gap-1.5">
-              {cal.holidays.map((h) => (
-                <li key={`${h.day}-${h.name}`}>
-                  <Badge>
-                    {h.day} · {h.name}
-                  </Badge>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="text-muted-foreground">No holidays set.</p>
-          )}
+        <Card className="mt-3 space-y-5 p-4 text-sm">
+          <SlaHoursEditor key={hoursKey} calendar={cal} canEdit={canEdit} />
+          <div className="border-t border-border pt-4">
+            <SlaHolidays holidays={cal.holidays} canEdit={canEdit} />
+          </div>
         </Card>
       </section>
     </div>
