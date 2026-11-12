@@ -8583,6 +8583,225 @@
         }
       }
     },
+    "/api/v1/stream/ticket": {
+      "post": {
+        "tags": [
+          "live updates"
+        ],
+        "summary": "A one-use ticket to open the live stream",
+        "operationId": "agent_ticket_api_v1_stream_ticket_post",
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StreamTicketOut"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/stream": {
+      "get": {
+        "tags": [
+          "live updates"
+        ],
+        "summary": "Live updates for an agent (Server-Sent Events)",
+        "operationId": "agent_stream_api_v1_stream_get",
+        "parameters": [
+          {
+            "name": "ticket",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 20,
+              "maxLength": 200,
+              "title": "Ticket"
+            }
+          },
+          {
+            "name": "last_event_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 20
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last Event Id"
+            }
+          },
+          {
+            "name": "Last-Event-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last-Event-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "An endless `text/event-stream`. Each event has an `id` (send it back as `Last-Event-ID`, or `last_event_id`, to carry on without losing one), an `event` kind and a JSON `data` of ids. `reset`: your last id is older than what is kept, refetch what you show. `end`: you were signed out. A line starting with `:` is a heartbeat. An id may repeat after a reconnect: ignore one you have seen.",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The ticket is unknown, used, expired, or its sign-in ended."
+          },
+          "429": {
+            "description": "You already have 5 live streams open."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/portal/stream/ticket": {
+      "post": {
+        "tags": [
+          "live updates"
+        ],
+        "summary": "A one-use ticket to open the customer's live stream",
+        "operationId": "customer_ticket_api_v1_portal_stream_ticket_post",
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StreamTicketOut"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/portal/stream": {
+      "get": {
+        "tags": [
+          "live updates"
+        ],
+        "summary": "Live updates for a portal customer (Server-Sent Events)",
+        "description": "Only a customer, agent or AI message on the customer's own tickets, and a change of their status: never a note, a system line or anything else.",
+        "operationId": "customer_stream_api_v1_portal_stream_get",
+        "parameters": [
+          {
+            "name": "ticket",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 20,
+              "maxLength": 200,
+              "title": "Ticket"
+            }
+          },
+          {
+            "name": "last_event_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 20
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last Event Id"
+            }
+          },
+          {
+            "name": "Last-Event-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last-Event-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "An endless `text/event-stream`. Each event has an `id` (send it back as `Last-Event-ID`, or `last_event_id`, to carry on without losing one), an `event` kind and a JSON `data` of ids. `reset`: your last id is older than what is kept, refetch what you show. `end`: you were signed out. A line starting with `:` is a heartbeat. An id may repeat after a reconnect: ignore one you have seen.",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The ticket is unknown, used, expired, or its sign-in ended."
+          },
+          "429": {
+            "description": "You already have 5 live streams open."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/healthz": {
       "get": {
         "tags": [
@@ -15341,6 +15560,26 @@
         ],
         "title": "StatusOut"
       },
+      "StreamTicketOut": {
+        "properties": {
+          "ticket": {
+            "type": "string",
+            "title": "Ticket",
+            "description": "Open the stream with this: `GET /stream?ticket=...`."
+          },
+          "expires_in": {
+            "type": "integer",
+            "title": "Expires In",
+            "description": "Seconds it can still be used. Works once."
+          }
+        },
+        "type": "object",
+        "required": [
+          "ticket",
+          "expires_in"
+        ],
+        "title": "StreamTicketOut"
+      },
       "SummaryOut": {
         "properties": {
           "open": {
@@ -17699,7 +17938,7 @@
     "securitySchemes": {
       "HTTPBearer": {
         "type": "http",
-        "description": "The token from POST /api/v1/auth/sign-in.",
+        "description": "The token from POST /api/v1/portal/{workspace}/session.",
         "scheme": "bearer"
       }
     }
