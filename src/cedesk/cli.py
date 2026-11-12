@@ -200,6 +200,8 @@ def _worker(once: bool) -> int:
     from cedesk.helpdesk.service.email import send_due
     from cedesk.helpdesk.service.email_in import poll
     from cedesk.helpdesk.service.idempotency import sweep_everywhere
+    from cedesk.helpdesk.service.imports.framework import make_importers
+    from cedesk.helpdesk.service.imports.framework import run_due as run_imports
     from cedesk.helpdesk.service.password_reset import Sender
     from cedesk.helpdesk.service.portal_notice import PortalNoticeHandler
     from cedesk.helpdesk.service.scanning import scan_due
@@ -244,6 +246,7 @@ def _worker(once: bool) -> int:
             SecurityAlertHandler(sm, fallback=fallback),
         ]
         chats = ChatPoller(sm, cevanos, batch=settings.cevanos_poll_batch)
+        importers = make_importers(settings.secret_key.get_secret_value(), store)
         swept_at = 0.0
         alerted_at = 0.0
         logger.info("worker started", extra={"event": settings.mail_backend.value})
@@ -279,6 +282,15 @@ def _worker(once: bool) -> int:
                         f"messages, {polled.failed} not read",
                         extra={"event": "cevanos"},
                     )
+                # Imports from other help desks work in slices of about 20 seconds, so the
+                # email, outbox and SLA work below is never held up by a big import.
+                try:
+                    importing = await run_imports(sm, importers)
+                except Exception:
+                    importing = 0
+                    logger.exception("import pass failed")
+                if importing:
+                    logger.info(f"imports worked on: {importing}", extra={"event": "import"})
                 # Before sending: a handler may queue an email (the CSAT survey).
                 outbox = await deliver_due(sm, handlers)
                 if outbox.retrying or outbox.failed:
