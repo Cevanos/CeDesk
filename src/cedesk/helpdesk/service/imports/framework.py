@@ -764,8 +764,8 @@ async def _stop(sm: Sessionmaker, workspace_id: UUID, run: Row, message: str) ->
         )  # fmt: skip
         if run["last_error"] != message[:500]:
             await repo.add_event(
-                s, workspace_id, run["connection_id"], "sync_failed", run_id=run["id"],
-                detail={"error": message[:300]},
+                s, workspace_id, run["connection_id"], "failed", run_id=run["id"],
+                detail={"error": message[:300], "sync": True},
             )  # fmt: skip
 
 
@@ -894,10 +894,6 @@ async def _sync_slice(sm: Sessionmaker, importers: Importers, run: Row, deadline
                         s, run_id, last_sync_at=started, counts=counts,
                         next_run_at=done_at + timedelta(seconds=rules.SYNC_EVERY_SECONDS),
                     )  # fmt: skip
-                    if this_look.get("created", 0) or this_look.get("updated", 0):
-                        await repo.add_event(
-                            s, ws, run["connection_id"], "synced", run_id=run_id, detail=this_look
-                        )
                 else:
                     page_cursor = dict(page.cursor)
                     mark = {
