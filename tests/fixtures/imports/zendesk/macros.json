@@ -1,0 +1,5 @@
+{"macros":[
+{"id":401,"title":"Billing::Refund done","active":true,"actions":[{"field":"status","value":"solved"},{"field":"comment_value","value":["channel:all","Your refund is on its way."]}]},
+{"id":402,"title":"Just tag","active":true,"actions":[{"field":"set_tags","value":"x"}]},
+{"id":403,"title":"HTML one","active":true,"actions":[{"field":"comment_value_html","value":"<p>Hello <b>there</b></p>"}]}],
+"meta":{"has_more":false}}
