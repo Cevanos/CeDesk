@@ -3,6 +3,15 @@
 `openapi.json` next to this file is the API as served (`uv run cedesk openapi`). Every
 route is under `/api/v1`. Breaking changes only come in v2 (md 2B). Newest first.
 
+## 2026-11-12: Fix: notifications failed after live updates (C11, P7)
+
+- Since live updates (migration 0040), any change that notifies an agent (auto-assignment,
+  @mention, customer reply, task alerts) answered 500 and was not saved. Two causes in the
+  `notification` stream event: the ticket id was sent as two types in one query, and the
+  event name `notification` broke the event table's name rule (it asked for a dot).
+- Fixed in the query and by migration 0041, which lets an event name be one word. No API
+  change; the stream's `notification` event now arrives as documented.
+
 ## 2026-11-12: Reports: more metrics, Governance link, article votes, CSV (Phase 3, R3-R5, R7, R8)
 
 Who: Supervisors, Admins and custom roles with `reports` (as the team report). A
