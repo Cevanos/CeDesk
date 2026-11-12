@@ -28,12 +28,13 @@ from cedesk.helpdesk.domain.attachments import (
     ready,
 )
 from cedesk.helpdesk.domain.auth import Caller
+from cedesk.helpdesk.domain.limits import Kind
 from cedesk.helpdesk.domain.permissions import Action
 from cedesk.helpdesk.repo import attachments as repo
 from cedesk.helpdesk.repo import security as security_repo
 from cedesk.helpdesk.repo import tickets as ticket_repo
 from cedesk.helpdesk.repo.attachments import Row
-from cedesk.helpdesk.service import idempotency, scope
+from cedesk.helpdesk.service import idempotency, limits, scope
 from cedesk.helpdesk.service.auth import Sessionmaker
 from cedesk.helpdesk.service.errors import Conflict, Invalid, NotFound, TooLarge
 from cedesk.helpdesk.service.idempotency import Idempotency
@@ -99,6 +100,7 @@ async def upload(
             return earlier
         if not await repo.ticket_exists(s, ticket_id):
             raise NotFound("Ticket not found.")
+        await limits.check(s, Kind.storage_bytes, adding=len(data))  # cloud plan (md O4)
         row = await repo.insert(
             s,
             attachment_id=attachment_id,

@@ -15,12 +15,13 @@ from cedesk.helpdesk.domain import audit as audit_rules
 from cedesk.helpdesk.domain import auth as rules
 from cedesk.helpdesk.domain.audit import Area
 from cedesk.helpdesk.domain.auth import Caller
+from cedesk.helpdesk.domain.limits import Kind
 from cedesk.helpdesk.domain.permissions import Action, Role
 from cedesk.helpdesk.repo import auth as repo
 from cedesk.helpdesk.repo import roles as role_repo
 from cedesk.helpdesk.repo import security as security_repo
 from cedesk.helpdesk.repo.auth import Row
-from cedesk.helpdesk.service import audit, passwords
+from cedesk.helpdesk.service import audit, limits, passwords
 from cedesk.helpdesk.service.auth import Sessionmaker
 from cedesk.helpdesk.service.errors import Conflict, Forbidden, Invalid, NotFound
 
@@ -94,6 +95,8 @@ async def add_member(
                 role_id=role_id,
                 password_hash=passwords.hash_password(password),
             )
+            # Counted with the new member in: light agents are free seats (md O4, A2).
+            await limits.check(s, Kind.agents, adding=0)
             await security_repo.queue_alert(
                 s,
                 caller.workspace_id,
@@ -159,6 +162,9 @@ async def change_member(
             role_id=role_id,
             is_active=is_active,
         )
+        if is_active or role is not None:
+            # Reactivating, or a light agent made an agent, takes a seat too (md O4).
+            await limits.check(s, Kind.agents, adding=0)
         if is_active is False:
             await repo.revoke_member_sessions(s, member_id)
         if _role_label(updated) != _role_label(current):

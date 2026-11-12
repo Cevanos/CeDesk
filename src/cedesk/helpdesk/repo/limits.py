@@ -1,0 +1,102 @@
+"""SQL for plan limits, usage and retention (md O2, O4, O5). RLS applies, except for the
+plan itself, which only the server's command line sets."""
+
+from collections.abc import Sequence
+from datetime import datetime
+from uuid import UUID
+
+from sqlalchemy import RowMapping, text
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from cedesk.helpdesk.repo.auth import TAKES_TICKETS
+
+
+async def plan_name(session: AsyncSession) -> str | None:
+    result = await session.execute(text("SELECT plan FROM hd_workspace_plan"))
+    value = result.scalar_one_or_none()
+    return str(value) if value is not None else None
+
+
+async def set_plan(session: AsyncSession, workspace_id: UUID, plan: str | None) -> None:
+    if plan is None:
+        await session.execute(text("DELETE FROM hd_workspace_plan"))
+        return
+    await session.execute(
+        text(
+            "INSERT INTO hd_workspace_plan (workspace_id, plan) VALUES (:ws, :plan) "
+            "ON CONFLICT (workspace_id) DO UPDATE SET plan = EXCLUDED.plan, updated_at = now()"
+        ),
+        {"ws": workspace_id, "plan": plan},
+    )
+
+
+async def agents(session: AsyncSession) -> int:
+    result = await session.execute(
+        text(f"SELECT count(*) FROM member m WHERE m.is_active AND {TAKES_TICKETS}")  # noqa: S608
+    )
+    return int(result.scalar_one())
+
+
+async def tickets_since(session: AsyncSession, since: datetime, imported: Sequence[str]) -> int:
+    result = await session.execute(
+        text(
+            "SELECT count(*) FROM hd_ticket WHERE created_at >= :since "
+            "AND NOT coalesce(source = ANY(CAST(:imported AS text[])), false)"
+        ),
+        {"since": since, "imported": list(imported)},
+    )
+    return int(result.scalar_one())
+
+
+async def storage_bytes(session: AsyncSession) -> int:
+    result = await session.execute(text("SELECT coalesce(sum(size), 0) FROM hd_attachment"))
+    return int(result.scalar_one())
+
+
+async def retention(session: AsyncSession) -> RowMapping | None:
+    result = await session.execute(
+        text(
+            "SELECT r.closed_ticket_days, r.updated_at, m.name AS updated_by_name "
+            "FROM hd_retention r LEFT JOIN member m ON m.id = r.updated_by"
+        )
+    )
+    return result.mappings().first()
+
+
+async def save_retention(
+    session: AsyncSession, workspace_id: UUID, days: int | None, by: UUID
+) -> None:
+    await session.execute(
+        text(
+            "INSERT INTO hd_retention (workspace_id, closed_ticket_days, updated_by) "
+            "VALUES (:ws, :days, :by) ON CONFLICT (workspace_id) DO UPDATE SET "
+            "closed_ticket_days = EXCLUDED.closed_ticket_days, "
+            "updated_by = EXCLUDED.updated_by, updated_at = now()"
+        ),
+        {"ws": workspace_id, "days": days, "by": by},
+    )
+
+
+async def resolved_before(
+    session: AsyncSession, cutoff: datetime, limit: int
+) -> Sequence[RowMapping]:
+    """Resolved tickets older than the cutoff, with their files' storage keys."""
+    result = await session.execute(
+        text(
+            "SELECT t.id, coalesce(array_agg(a.object_key) FILTER (WHERE a.object_key IS NOT "
+            "NULL), '{}') AS keys FROM hd_ticket t LEFT JOIN hd_attachment a ON "
+            "a.ticket_id = t.id WHERE t.status = 'resolved' AND t.resolved_at < :cutoff "
+            "GROUP BY t.id ORDER BY min(t.resolved_at) LIMIT :limit"
+        ),
+        {"cutoff": cutoff, "limit": limit},
+    )
+    return result.mappings().all()
+
+
+async def delete_tickets(session: AsyncSession, ticket_ids: Sequence[UUID]) -> int:
+    """Their messages, files' rows, tasks and the rest go with them (ON DELETE CASCADE)."""
+    result = await session.execute(
+        text("DELETE FROM hd_ticket WHERE id = ANY(CAST(:ids AS uuid[]))"),
+        {"ids": list(ticket_ids)},
+    )
+    return int(result.rowcount or 0)  # type: ignore[attr-defined]

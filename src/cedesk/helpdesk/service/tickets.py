@@ -18,6 +18,7 @@ from cedesk.db import workspace_session
 from cedesk.helpdesk.domain import events, paging
 from cedesk.helpdesk.domain import tickets as rules
 from cedesk.helpdesk.domain.auth import Caller, normalise_email
+from cedesk.helpdesk.domain.limits import Kind as LimitKind
 from cedesk.helpdesk.domain.paging import CursorError
 from cedesk.helpdesk.domain.permissions import Action, Scope
 from cedesk.helpdesk.domain.portal import subject_from
@@ -37,7 +38,7 @@ from cedesk.helpdesk.repo import catalog, outbox
 from cedesk.helpdesk.repo import messages as message_repo
 from cedesk.helpdesk.repo import tickets as repo
 from cedesk.helpdesk.repo.tickets import Row
-from cedesk.helpdesk.service import children, idempotency, routing, sla, triage
+from cedesk.helpdesk.service import children, idempotency, limits, routing, sla, triage
 from cedesk.helpdesk.service import rules as automation
 from cedesk.helpdesk.service import scope as scope_rules
 from cedesk.helpdesk.service.attachments import IncomingFiles, save_incoming
@@ -358,6 +359,9 @@ async def _create(
             made = await idempotency.begin(s, caller, idem)
             if made is not None:
                 return await _view(s, made)
+            # A cloud plan's tickets a month (md O4): only for tickets an agent or an API
+            # key opens; a customer's email, chat or portal request is never refused.
+            await limits.check(s, LimitKind.tickets_month)
         _, defs = await _type_defs(s, new.type_id)
         try:
             values = rules.clean_values(defs, new.fields)
