@@ -91,7 +91,7 @@ async def publish_notifications(
     await session.execute(
         text(
             "INSERT INTO hd_event_log (workspace_id, kind, ticket_id, target_member_id, payload) "
-            "SELECT :ws, 'notification', :ticket, m, "
+            "SELECT :ws, 'notification', CAST(:ticket AS uuid), m, "
             "jsonb_build_object('ticket_id', CAST(:ticket AS text), "
             "'notification', CAST(:kind AS text)) "
             "FROM unnest(CAST(:members AS uuid[])) AS m"
