@@ -3,6 +3,46 @@
 `openapi.json` next to this file is the API as served (`uv run cedesk openapi`). Every
 route is under `/api/v1`. Breaking changes only come in v2 (md 2B). Newest first.
 
+## 2026-11-12: Imports from Intercom, Zendesk, Freshdesk, Gorgias and Help Scout (Phase 2, M1-M8)
+
+No new route: `POST /imports/connections` now accepts these five sources, and the rest of the
+flow (discover, dry run, run, close) is as for a CSV file. Read-only: nothing is ever written
+back to the source. HubSpot and Zoho Desk are not offered (Phase 3).
+
+What `POST /imports/connections` `{source, settings, credentials}` needs per source:
+
+| source | `settings` | `credentials` |
+|---|---|---|
+| `intercom` | `region`: `us` (default), `eu` or `au` | `token`: an access token |
+| `zendesk` | `subdomain`: `acme` | `email`, `token`: an API token |
+| `freshdesk` | `domain`: `acme`; `include_archived`: `"true"` to import archived tickets (see below) | `api_key` |
+| `gorgias` | `domain`: `acme` | `email`, `api_key` |
+| `helpscout` | none | `app_id`, `app_secret` (OAuth app; the token is fetched by the server); optional `docs_key` for help articles |
+
+- The account name is the part before the vendor's domain. `acme`, `acme.zendesk.com` and a
+  pasted `https://acme.zendesk.com/agent` are all read as `acme`; anything that isn't a plain
+  name (a dot, `@`, `#`, a port, an IP address, another domain) is a 422. The server only ever
+  calls the vendor's own domain, over https, never follows a redirect, and refuses a host that
+  resolves to a private, loopback or link-local address.
+- 422 when the credentials are missing or the source refuses them, naming what's missing; 503
+  when the source can't be reached.
+- `discover` and `dry-run` return `warnings` that matter before running, for example: Freshdesk
+  archived tickets, Help Scout without a `docs_key` ("Add a Docs API key to import help
+  articles."), spam conversations that are skipped, and counts that are estimates.
+- What each source brings: contacts, tickets with every message (a private or internal note
+  is a note), tags, custom fields, the group or team (for `team_map`), the assignee (matched
+  by email) and the customer rating where the source has one. Help articles and saved replies
+  where the source has them (Intercom has no saved replies; Gorgias articles aren't imported).
+- Status: open and active are open; pending, on hold and snoozed are pending; solved and
+  closed are resolved. A status the source has that CeDesk doesn't is imported as open.
+- Freshdesk: closed tickets are archived after 120 days and Freshdesk has no way to list them,
+  so by default they are **not** imported. With `settings.include_archived = "true"` every
+  ticket number is tried, one request each: slow, and it uses the account's Freshdesk API
+  quota. Zendesk's incremental export is used for tickets.
+- Rate limits: a 429 pauses the run for the source's Retry-After and goes on from the same page.
+- Not in this change: attachments (files on source messages are not copied yet), and keeping a
+  source in sync until go-live.
+
 ## 2026-11-12: Imports from other help desks: framework and CSV (Phase 2, M1-M8)
 
 All routes are Admin only (Settings). The first source is a CSV file; Intercom, Zendesk,
