@@ -18,8 +18,8 @@
   downgrade removes the rules its old check can't hold; the rest of the downgrade drops
   these four tables.
 
-Revision ID: 0034
-Revises: 0033
+Revision ID: 0038
+Revises: 0037
 """
 
 from collections.abc import Sequence
@@ -28,8 +28,8 @@ from alembic import op
 
 from cedesk.tenancy import tenant_rls_sql
 
-revision: str = "0034"
-down_revision: str | None = "0033"
+revision: str = "0038"
+down_revision: str | None = "0037"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
