@@ -1,0 +1,25 @@
+{
+ "id": "t2",
+ "direction": "out",
+ "content": "<p>Sorry!</p><p>It ships today.</p>",
+ "createdTime": "2025-03-01T11:00:00.000Z",
+ "author": {
+  "name": "Neha",
+  "email": "neha@acme.com",
+  "type": "AGENT"
+ },
+ "attachments": [
+  {
+   "id": "a1",
+   "name": "label.pdf",
+   "size": "2048",
+   "href": "https://desk.zoho.in/api/v1/tickets/z1/threads/t2/attachments/a1/content"
+  },
+  {
+   "id": "a2",
+   "name": "x.txt",
+   "size": "5",
+   "href": "http://desk.zoho.in/insecure"
+  }
+ ]
+}

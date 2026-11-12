@@ -39,6 +39,20 @@ FIXED_HOSTS: Mapping[str, Mapping[str, str]] = {
         "au": "api.au.intercom.io",
     },
     "helpscout": {"api": "api.helpscout.net", "docs": "docsapi.helpscout.net"},
+    "hubspot": {"api": "api.hubapi.com"},
+    # Zoho Desk: the API and the sign-in service of each data centre (md 8.3)
+    "zoho": {
+        "us": "desk.zoho.com",
+        "eu": "desk.zoho.eu",
+        "in": "desk.zoho.in",
+        "au": "desk.zoho.com.au",
+        "jp": "desk.zoho.jp",
+        "accounts-us": "accounts.zoho.com",
+        "accounts-eu": "accounts.zoho.eu",
+        "accounts-in": "accounts.zoho.in",
+        "accounts-au": "accounts.zoho.com.au",
+        "accounts-jp": "accounts.zoho.jp",
+    },
 }
 
 

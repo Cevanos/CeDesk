@@ -1,0 +1,46 @@
+{
+ "data": [
+  {
+   "id": "z1",
+   "ticketNumber": "101",
+   "subject": "Order 1042 late",
+   "status": "Waiting on courier",
+   "statusType": "On Hold",
+   "priority": "High",
+   "channel": "Email",
+   "departmentId": "d1",
+   "contactId": "c1",
+   "contact": {
+    "id": "c1",
+    "email": "priya@example.org",
+    "firstName": "Priya",
+    "lastName": "Sharma"
+   },
+   "assignee": {
+    "id": "a1",
+    "email": "neha@acme.com"
+   },
+   "customFields": {
+    "Order": "1042",
+    "Empty": null
+   },
+   "createdTime": "2025-03-01T10:00:00.000Z",
+   "modifiedTime": "2025-03-09T09:00:00.000Z",
+   "closedTime": null
+  },
+  {
+   "id": "z2",
+   "ticketNumber": "102",
+   "subject": "Refund",
+   "status": "Closed",
+   "statusType": "Closed",
+   "priority": null,
+   "channel": "Web",
+   "departmentId": null,
+   "contactId": "c9",
+   "createdTime": "2025-02-01T08:00:00.000Z",
+   "modifiedTime": "2025-02-01T09:00:00.000Z",
+   "closedTime": "2025-02-01T09:00:00.000Z"
+  }
+ ]
+}
