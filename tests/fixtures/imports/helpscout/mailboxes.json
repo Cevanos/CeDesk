@@ -1,0 +1,1 @@
+{"_embedded": {"mailboxes": [{"id": 100, "name": "Support", "slug": "support", "email": "help@example.com"}, {"id": 200, "name": "Billing", "slug": "billing", "email": "pay@example.com"}]}, "page": {"size": 50, "totalElements": 2, "totalPages": 1, "number": 1}}
