@@ -9,7 +9,7 @@ retention...), `migrate` (`cedesk migrate`), or `cli` (the other `cedesk` comman
 **In compose**: whether `deploy/docker-compose.yml` passes it from `deploy/.env` (and to
 which service). A setting marked "no" needs adding to the `environment:` list of the
 services that read it (see SELF_HOSTING.md, "Settings the compose file doesn't pass").
-`tests/test_settings_reference.py` fails when a setting is missing here, or when this
+`tests/unit/test_settings_reference.py` fails when a setting is missing here, or when this
 file or `deploy/env.example` names one that doesn't exist.
 
 ## Running mode and secrets
