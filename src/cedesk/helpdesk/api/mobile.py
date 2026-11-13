@@ -49,7 +49,10 @@ class MobileReplyOut(BaseModel):
     saved_as: MessageKind = Field(
         description="reply; note when you can't reply (a light agent): only the team sees it."
     )
-    accepted: bool = Field(description="This reply accepted a waiting chat first.")
+    accepted: bool = Field(
+        description="The ticket is accepted now (by this reply or before it); false only "
+        "for a light agent's note on a chat still waiting. A replay answers the same."
+    )
 
 
 @router.get(
@@ -73,8 +76,10 @@ async def my_queue(
     status_code=status.HTTP_201_CREATED,
     summary="Reply from the mobile app",
     description="On a chat handover nobody has accepted, accepts it first (line '<you> "
-    "joined the chat (mobile)'), so the customer hears a person joined. A light agent's "
-    "text is saved as a private note instead. Idempotency-Key is honoured.",
+    "joined the chat (mobile)'), so the customer hears a person joined; a second tap that "
+    "finds it just accepted replies all the same. If the reply then fails, the accept "
+    "stands and the error says so. A light agent's text is saved as a private note "
+    "instead (the chat stays waiting). Idempotency-Key is honoured.",
     responses={
         403: {"description": "The ticket is another team's (view only)"},
         404: {"description": "No such ticket"},

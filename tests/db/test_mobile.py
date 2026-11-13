@@ -3,8 +3,9 @@ chats, never resolved, merged or someone else's, last message without notes, tea
 and the one-tap reply (accepts a waiting chat first; a light agent's text becomes a note;
 Idempotency-Key)."""
 
+import asyncio
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import pytest
 from httpx import AsyncClient
@@ -12,6 +13,9 @@ from sqlalchemy import text
 
 from cedesk.db import workspace_session
 from cedesk.helpdesk.domain.tickets import Channel
+from cedesk.helpdesk.repo import outbox
+from cedesk.helpdesk.service import mobile
+from cedesk.helpdesk.service.errors import Invalid
 from cedesk.helpdesk.service.tickets import NewTicket, create_from_channel
 from tests.db.helpers import Sm, add, bearer, new_workspace, ok, sign_in
 
@@ -42,11 +46,13 @@ async def ticket(client: AsyncClient, w: dict[str, Any], subject: str, who: str 
     return str(ok(await client.post(T, headers=w["h"], json=body), 201)["id"])
 
 
-async def waiting_chat(sm: Sm, w: dict[str, Any]) -> str:
+async def waiting_chat(sm: Sm, w: dict[str, Any], *, cevanos: str | None = None) -> str:
+    """A chat handover nobody has accepted; `cevanos`: from that Cevanos conversation."""
     view = await create_from_channel(sm, w["ws"], NewTicket(
         subject="Chat from the widget", contact_email="asha@example.org", contact_name="Asha",
         description="Is anyone there?", channel=Channel.chat, accepted=False,
-        handover={"reason": "asked for a human"}))  # fmt: skip
+        handover={"reason": "asked for a human"}, conversation_id=cevanos,
+        source="cevanos" if cevanos else None, source_id=cevanos))  # fmt: skip
     return str(view.ticket["id"])
 
 
@@ -110,7 +116,7 @@ async def test_the_mobile_reply(client: AsyncClient, app_sessionmaker: Sm) -> No
     assert "Neha joined the chat (mobile)" in lines
 
     again = ok(await client.post(url, headers=w["as"]["Neha"], json={"body": "Still here"}), 201)
-    assert again["accepted"] is False  # already accepted
+    assert again["accepted"] is True  # the ticket's state, not "this call accepted"
 
     normal = await ticket(client, w, "Email question", "Neha")
     murl = f"{T}/{normal}/mobile-reply"
@@ -123,9 +129,133 @@ async def test_the_mobile_reply(client: AsyncClient, app_sessionmaker: Sm) -> No
     )
     two = await client.post(murl, headers={**w["as"]["Neha"], **key}, json={"body": "Done"})
     assert two.json()["message"]["id"] == one["message"]["id"]  # a double tap sends once
+    assert two.json()["accepted"] is one["accepted"] is True  # a replay answers the same
     replies = [m for m in ok(await client.get(f"{T}/{normal}", headers=w["h"]))["messages"]
                if m["body"] == "Done"]  # fmt: skip
     assert len(replies) == 1
     r = await client.post(f"{T}/{UUID(int=6)}/mobile-reply", headers=w["as"]["Neha"],
                           json={"body": "x"})  # fmt: skip
     assert r.status_code == 404
+
+
+async def handover_events(sm: Sm, w: dict[str, Any], ticket_id: str) -> list[Any]:
+    async with workspace_session(sm, w["ws"]) as s:
+        rows = await outbox.for_ticket(s, UUID(ticket_id))
+    return [r["payload"] for r in rows if r["event"] == "handover.accepted"]
+
+
+async def test_a_light_agent_leaves_a_cevanos_chat_waiting(
+    client: AsyncClient, app_sessionmaker: Sm
+) -> None:
+    sm = app_sessionmaker
+    w = await desk(client, sm)
+    chat = await waiting_chat(sm, w, cevanos=f"conv-{uuid4()}")
+    url = f"{T}/{chat}/mobile-reply"
+    got = ok(await client.post(url, headers=w["as"]["Meena"], json={"body": "Looking"}), 201)
+    assert (got["saved_as"], got["message"]["kind"], got["accepted"]) == ("note", "note", False)
+    t = ok(await client.get(f"{T}/{chat}", headers=w["h"]))
+    assert t["accepted"] is False and t["assignee_id"] is None  # still waiting, not accepted
+    assert not [m for m in t["messages"] if m["kind"] == "system" and "joined" in m["body"]]
+    assert await handover_events(sm, w, chat) == []
+
+
+async def test_mobile_accept_takes_the_cevanos_chat_over(
+    client: AsyncClient, app_sessionmaker: Sm
+) -> None:
+    sm = app_sessionmaker
+    w = await desk(client, sm)
+    chat = await waiting_chat(sm, w, cevanos=f"conv-{uuid4()}")
+    ok(await client.post(f"{T}/{chat}/mobile-reply", headers=w["as"]["Neha"],
+                         json={"body": "Hi"}), 201)  # fmt: skip
+    events = await handover_events(sm, w, chat)
+    assert len(events) == 1 and events[0]["by"] == w["ids"]["Neha"]
+
+
+async def test_a_team_edit_role_cannot_reply_on_another_teams_ticket(
+    client: AsyncClient, app_sessionmaker: Sm
+) -> None:
+    w = await desk(client, app_sessionmaker)
+    new_team = {"name": "Billing", "auto_assign": False}
+    team = ok(await client.post("/api/v1/teams", headers=w["h"], json=new_team), 201)["id"]
+    role = ok(await client.post("/api/v1/roles", headers=w["h"], json={
+        "name": "Billing edits", "scope": "team_edit", "team_id": team}), 201)  # fmt: skip
+    ok(await client.patch(f"/api/v1/members/{w['ids']['Ravi']}", headers=w["h"],
+                          json={"role": "custom", "role_id": role["id"]}))  # fmt: skip
+    other = await ticket(client, w, "Other team's", None)
+    ravi = bearer(await sign_in(client, w["slug"], "ravi@example.com"))
+    r = await client.post(f"{T}/{other}/mobile-reply", headers=ravi, json={"body": "x"})
+    assert r.status_code == 403
+    assert other in {i["id"] for i in ok(await client.get(Q, headers=ravi))}  # sees it
+
+
+async def test_a_double_tap_on_a_waiting_chat(client: AsyncClient, app_sessionmaker: Sm) -> None:
+    sm = app_sessionmaker
+    w = await desk(client, sm)
+    chat = await waiting_chat(sm, w, cevanos=f"conv-{uuid4()}")
+    url = f"{T}/{chat}/mobile-reply"
+    neha = w["as"]["Neha"]
+    taps = await asyncio.gather(*(client.post(url, headers=neha, json={"body": "On it"})
+                                  for _ in range(2)))  # fmt: skip
+    assert [r.status_code for r in taps] == [201, 201]
+    assert all(r.json()["accepted"] is True for r in taps)
+    t = ok(await client.get(f"{T}/{chat}", headers=w["h"]))
+    assert len([m for m in t["messages"] if m["body"] == "On it"]) == 2  # one reply each
+    assert len(await handover_events(sm, w, chat)) == 1  # accepted once
+
+    key = {**w["as"]["Neha"], "Idempotency-Key": "tap-2"}
+    chat2 = await waiting_chat(sm, w, cevanos=f"conv-{uuid4()}")
+    url2 = f"{T}/{chat2}/mobile-reply"
+    taps = await asyncio.gather(*(client.post(url2, headers=key, json={"body": "Hello"})
+                                  for _ in range(2)))  # fmt: skip
+    assert [r.status_code for r in taps] == [201, 201]
+    assert taps[0].json()["message"]["id"] == taps[1].json()["message"]["id"]
+    t = ok(await client.get(f"{T}/{chat2}", headers=w["h"]))
+    assert len([m for m in t["messages"] if m["body"] == "Hello"]) == 1  # one reply
+
+
+async def test_the_second_tap_finds_the_chat_just_accepted(
+    client: AsyncClient, app_sessionmaker: Sm, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Deterministic race: the second tap read the chat as waiting before the first's
+    accept committed, so its own accept answers NOT_WAITING; it replies all the same."""
+    sm = app_sessionmaker
+    w = await desk(client, sm)
+    chat = await waiting_chat(sm, w)
+    url = f"{T}/{chat}/mobile-reply"
+    ok(await client.post(url, headers=w["as"]["Neha"], json={"body": "First"}), 201)
+
+    real = mobile.ticket_repo.ticket_detail
+    stale = {"calls": 0}
+
+    async def stale_detail(s: Any, ticket_id: UUID) -> Any:
+        row = await real(s, ticket_id)
+        stale["calls"] += 1
+        return None if row is None else dict(row) | ({"accepted": False}
+                                                      if stale["calls"] == 1 else {})  # fmt: skip
+
+    class StaleRepo:
+        ticket_detail = staticmethod(stale_detail)
+
+    monkeypatch.setattr(mobile, "ticket_repo", StaleRepo)
+    got = ok(await client.post(url, headers=w["as"]["Neha"], json={"body": "Second"}), 201)
+    assert (got["saved_as"], got["accepted"]) == ("reply", True)
+    t = ok(await client.get(f"{T}/{chat}", headers=w["h"]))
+    assert [m["body"] for m in t["messages"] if m["body"] in ("First", "Second")] == [
+        "First", "Second"]  # fmt: skip
+
+
+async def test_a_failed_reply_after_accept_says_the_accept_stands(
+    client: AsyncClient, app_sessionmaker: Sm, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sm = app_sessionmaker
+    w = await desk(client, sm)
+    chat = await waiting_chat(sm, w)
+
+    async def broken(*args: Any, **kwargs: Any) -> Any:
+        raise Invalid("Write something or add a file first.")
+
+    monkeypatch.setattr(mobile.messages, "post_message", broken)
+    r = await client.post(f"{T}/{chat}/mobile-reply", headers=w["as"]["Neha"], json={"body": "x"})
+    assert r.status_code == 422 and "accepted" in r.text
+    monkeypatch.undo()
+    assert ok(await client.get(f"{T}/{chat}", headers=w["h"]))["accepted"] is True
