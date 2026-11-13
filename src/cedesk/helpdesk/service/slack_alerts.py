@@ -15,6 +15,7 @@ from cedesk.db import workspace_session
 from cedesk.helpdesk.domain import slack as rules
 from cedesk.helpdesk.domain.tickets import label
 from cedesk.helpdesk.repo import apps as app_repo
+from cedesk.helpdesk.repo import demo as demo_repo
 from cedesk.helpdesk.service.app_post import AppCallError
 from cedesk.helpdesk.service.auth import Sessionmaker
 from cedesk.helpdesk.service.delivery import Event, HandlerError
@@ -46,6 +47,8 @@ class SlackAlertHandler:
         if not rules.alerts_for(event.event, event.payload):
             return
         async with workspace_session(self._sm, event.workspace_id) as s:
+            if event.ticket_id is not None and await demo_repo.is_demo(s, event.ticket_id):
+                return  # demo data (md D1) never leaves CeDesk
             app = await app_repo.get(s, APP)
         if app is None:
             return

@@ -28,6 +28,7 @@ from cedesk.helpdesk.domain.audit import Area
 from cedesk.helpdesk.domain.auth import Caller
 from cedesk.helpdesk.domain.permissions import Action
 from cedesk.helpdesk.repo import auth as auth_repo
+from cedesk.helpdesk.repo import demo as demo_repo
 from cedesk.helpdesk.repo import webhooks as repo
 from cedesk.helpdesk.service import audit
 from cedesk.helpdesk.service.auth import Sessionmaker
@@ -368,6 +369,8 @@ class WebhookFanout:
 
     async def handle(self, event: Event, effect_key: str) -> None:
         async with workspace_session(self._sm, event.workspace_id) as s:
+            if event.ticket_id is not None and await demo_repo.is_demo(s, event.ticket_id):
+                return  # demo data (md D1) never leaves CeDesk
             for hook in await repo.listening(s, event.event):
                 if rules.wants(list(hook["events"]), event.event, event.payload):
                     await repo.add_delivery(
