@@ -38,10 +38,12 @@ class AppOut(BaseModel):
     name: str
     card: str = Field(
         description="What it adds: orders or payments (ticket sidebar), jira, alerts, or "
-        "side (side conversations in Slack)."
+        "side (side conversations in Slack), book (the saved reply /book)."
     )
     settings_fields: list[str] = Field(description="Settings to send at install (not secret).")
-    credential: str = Field(description="The name of the credential to send.")
+    credential: str | None = Field(
+        description="The name of the credential to send; null: none (Calendly)."
+    )
     credential_help: str
     second_credential: str | None = Field(
         description="A second secret to send at install (Slack side conversations: "
@@ -62,13 +64,15 @@ class InstallIn(Body):
         default={},
         max_length=5,
         description='Shopify: {"shop": "acme"}. Jira: {"site": "acme", "email": '
-        '"ops@acme.com", "project": "SUP"}. Stripe and both Slack apps: none.',
+        '"ops@acme.com", "project": "SUP"}. Calendly: {"link": '
+        '"https://calendly.com/acme/30min"}. Stripe and both Slack apps: none.',
     )
-    secret: str = Field(
-        min_length=1,
+    secret: str | None = Field(
+        default=None,
         max_length=300,
         description="The app's credential (Slack alerts: the Incoming Webhook URL; Slack "
-        "side conversations: the bot token, xoxb-...).",
+        "side conversations: the bot token, xoxb-...). Required, except for Calendly, which "
+        "takes none.",
     )
     signing_secret: str | None = Field(
         default=None,

@@ -3,6 +3,24 @@
 `openapi.json` next to this file is the API as served (`uv run cedesk openapi`). Every
 route is under `/api/v1`. Breaking changes only come in v2 (md 2B). Newest first.
 
+## 2026-11-13: Calendly app and the saved reply /book (Phase 3, PL7, W19)
+
+- New app `calendly` in `GET /apps`: `card: "book"`, `settings_fields: ["link"]`,
+  `credential: null` (a booking link is public, so nothing secret is kept).
+- `PUT /apps/calendly {"settings": {"link": "https://calendly.com/acme/30min"}}`: only
+  `https://calendly.com/<you>` or `https://calendly.com/<you>/<event>`; a credential or
+  any other setting is a 422. Installing adds the saved reply `/book` ("Hi
+  {{customer.first_name}}, you can pick a time that suits you here: <link>", `source:
+  calendly`); when the workspace already has its own `/book`, Calendly's is `/book1`.
+  Changing the link changes that reply's text. Audited (area `apps`, with
+  `saved_reply`).
+- `DELETE /apps/calendly` removes Calendly's reply only (never a `/book` of your own);
+  the audit lists `saved_replies_removed`.
+- `InstallIn.secret` is now optional in the schema: every app except Calendly still
+  needs it (422 "Paste the ..." without it). `AppOut.credential` can be null.
+
+Migration 0050 (after 0049).
+
 ## 2026-11-13: Archive tier for old resolved tickets (Phase 3, O3)
 
 Resolved tickets older than the workspace's archive age (default 120 days) move out of
