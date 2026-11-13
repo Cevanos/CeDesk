@@ -84,6 +84,7 @@ export function EmailChecks({ address: a }: { address: EmailAddress }) {
   const f = a.forwarding;
   const waiting = f?.status === "waiting";
   const from = f?.forward_from ?? a.address;
+  const forwardTo = a.forward_to ?? f?.forward_to;
 
   return (
     <div className="basis-full">
@@ -114,12 +115,12 @@ export function EmailChecks({ address: a }: { address: EmailAddress }) {
               Set your mail provider to forward your support address to CDesk, so customer emails
               become tickets.
             </p>
-            {f?.forward_to ? (
+            {forwardTo ? (
               <div className="mt-2">
                 <p className="text-[13px]">
                   Forward <strong>{from}</strong> to
                 </p>
-                <Mono text={f.forward_to} label={`Copy ${f.forward_to}`} />
+                <Mono text={forwardTo} label={`Copy ${forwardTo}`} />
               </div>
             ) : (
               <p className="mt-2 text-[13px] text-muted-foreground">

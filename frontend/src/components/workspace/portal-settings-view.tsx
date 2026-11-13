@@ -33,15 +33,15 @@ export function PortalSettingsView() {
 
 function PortalBody({ saved }: { saved: PortalSettings }) {
   const save = useSavePortalSettings();
-  const [domains, setDomains] = useState(saved.allowed_email_domains);
-  const [csat, setCsat] = useState(saved.csat_enabled);
-  const [form, setForm] = useState(saved.web_form_enabled);
+  const [domains, setDomains] = useState(saved.allowed_domains);
+  const [csat, setCsat] = useState(saved.csat_survey);
+  const [form, setForm] = useState(saved.web_form);
   const [errs, setErrs] = useState<Record<string, string>>({});
 
   const dirty =
-    csat !== saved.csat_enabled ||
-    form !== saved.web_form_enabled ||
-    JSON.stringify(domains) !== JSON.stringify(saved.allowed_email_domains);
+    csat !== saved.csat_survey ||
+    form !== saved.web_form ||
+    JSON.stringify(domains) !== JSON.stringify(saved.allowed_domains);
   useUnsavedChanges(dirty);
 
   return (
@@ -65,9 +65,9 @@ function PortalBody({ saved }: { saved: PortalSettings }) {
             validate={validateDomain}
             onChange={setDomains}
           />
-          {errs.allowed_email_domains && (
+          {errs.allowed_domains && (
             <p role="alert" className="mt-1 text-xs text-danger">
-              {errs.allowed_email_domains}
+              {errs.allowed_domains}
             </p>
           )}
         </Card>
@@ -103,9 +103,9 @@ function PortalBody({ saved }: { saved: PortalSettings }) {
           variant="ghost"
           disabled={!dirty || save.isPending}
           onClick={() => {
-            setDomains(saved.allowed_email_domains);
-            setCsat(saved.csat_enabled);
-            setForm(saved.web_form_enabled);
+            setDomains(saved.allowed_domains);
+            setCsat(saved.csat_survey);
+            setForm(saved.web_form);
             setErrs({});
           }}
         >
@@ -116,7 +116,7 @@ function PortalBody({ saved }: { saved: PortalSettings }) {
           loading={save.isPending}
           onClick={() =>
             save.mutate(
-              { allowed_email_domains: domains, csat_enabled: csat, web_form_enabled: form },
+              { allowed_domains: domains, csat_survey: csat, web_form: form },
               {
                 onSuccess: () => toast.success("Portal settings saved"),
                 onError: (e) => setErrs(fieldErrors(e)),

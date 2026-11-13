@@ -296,6 +296,8 @@ export interface EmailAddress {
   forwarding?: ForwardingState | null;
   dns?: DnsState | null;
   dkim_selector?: string | null;
+  /** The CDesk inbox to forward this address to. */
+  forward_to?: string | null;
 }
 
 /** `waiting` = a check mail was sent and has not come back yet. */
@@ -405,9 +407,9 @@ export interface TriageSettings {
 }
 
 export interface PortalSettings {
-  allowed_email_domains: string[];
-  csat_enabled: boolean;
-  web_form_enabled: boolean;
+  allowed_domains: string[];
+  csat_survey: boolean;
+  web_form: boolean;
 }
 
 export type ArticleStatus = "draft" | "published";

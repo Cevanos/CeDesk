@@ -12,9 +12,9 @@ export function usePortalSettings() {
     queryFn: async (): Promise<PortalSettings> => {
       const raw = await api.get<Partial<PortalSettings>>("portal-settings");
       return {
-        allowed_email_domains: raw?.allowed_email_domains ?? [],
-        csat_enabled: raw?.csat_enabled === true,
-        web_form_enabled: raw?.web_form_enabled === true,
+        allowed_domains: raw?.allowed_domains ?? [],
+        csat_survey: raw?.csat_survey === true,
+        web_form: raw?.web_form === true,
       };
     },
     staleTime: 60_000,
