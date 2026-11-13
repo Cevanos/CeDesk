@@ -228,7 +228,9 @@ MACROS: tuple[SeedMacro, ...] = (
 # Demo and sample tickets (md D1-D3): `POST /demo/seed`, `/demo/reset`, `/demo/samples`.
 # Customers write in through a channel, so the rules above, triage, routing and SLA run on
 # every one. Agent replies are only on chat and web tickets, which are never emailed; the
-# customers have example.com / example.org addresses (reserved, never delivered).
+# customers have `.invalid` addresses (reserved, never delivered). On top of that, replies
+# to a demo ticket are never emailed, and the CSAT survey, webhooks and Slack alerts skip
+# demo tickets. The seed makes no files.
 
 DEMO_SOURCE = "demo"  # `hd_ticket.source` of every demo ticket
 
@@ -284,21 +286,21 @@ DEMO_SAMPLES: tuple[DemoTicket, ...] = (
     DemoTicket(
         "Refund for damaged T-shirt (order #1042)",
         "Priya Sharma",
-        "priya.sharma@example.com",
+        "priya.sharma@demo.invalid",
         "Hi, my T-shirt from order #1042 arrived torn at the seam. I want a refund.",
         Channel.email,
     ),
     DemoTicket(
         "Invoice copy for October bulk order",
         "Rohan Gupta",
-        "rohan.gupta@example.org",
+        "rohan.gupta@demo.invalid",
         "Hello,\nPlease send a GST invoice copy for our order #0987 (40 tees).\n\nRegards,\nRohan",
         Channel.email,
     ),
     DemoTicket(
         "Where is my order #1077?",
         "Arjun Mehta",
-        "arjun.mehta@example.com",
+        "arjun.mehta@demo.invalid",
         "Mera order #1077 kahan hai? Kal aana tha. Mujhe kal trip ke liye chahiye!",
         Channel.chat,
         Priority.urgent,
@@ -307,21 +309,21 @@ DEMO_SAMPLES: tuple[DemoTicket, ...] = (
     DemoTicket(
         "App crashes on the payment page",
         "Sara Khan",
-        "sara.khan@example.com",
+        "sara.khan@demo.invalid",
         "The app crashes when I press Pay. Error: white screen.",
         Channel.web,
     ),
     DemoTicket(
         "Tracking link not working for #1081",
         "Vikram Rao",
-        "vikram.rao@example.org",
+        "vikram.rao@demo.invalid",
         "The tracking link in your email says 'not found'. Where is my parcel?",
         Channel.email,
     ),
     DemoTicket(
         "Do you ship to Sri Lanka?",
         "Meera Iyer",
-        "meera.iyer@example.com",
+        "meera.iyer@demo.invalid",
         "Hi, do you deliver to Colombo? How long does it take?",
         Channel.web,
         Priority.low,
@@ -334,7 +336,7 @@ DEMO_PAST: tuple[PastTicket, ...] = (
         DemoTicket(
             "Coupon SAVE10 not applied at checkout",
             "Ananya Singh",
-            "ananya.singh@example.com",
+            "ananya.singh@demo.invalid",
             "The coupon SAVE10 says invalid but it is in your newsletter.",
             Channel.chat,
         ),
@@ -349,7 +351,7 @@ DEMO_PAST: tuple[PastTicket, ...] = (
         DemoTicket(
             "Wrong size delivered (order #0954)",
             "Karan Malhotra",
-            "karan.malhotra@example.org",
+            "karan.malhotra@demo.invalid",
             "I ordered L and got S. Can you exchange it?",
             Channel.web,
         ),
@@ -363,7 +365,7 @@ DEMO_PAST: tuple[PastTicket, ...] = (
         DemoTicket(
             "How do I change my account email?",
             "Divya Nair",
-            "divya.nair@example.com",
+            "divya.nair@demo.invalid",
             "I changed jobs and want my orders to go to my personal email.",
             Channel.chat,
             Priority.low,
@@ -379,7 +381,7 @@ DEMO_PAST: tuple[PastTicket, ...] = (
         DemoTicket(
             "Package marked delivered but not received",
             "Rahul Verma",
-            "rahul.verma@example.com",
+            "rahul.verma@demo.invalid",
             "The app says delivered yesterday but nothing came. Nobody rang the bell.",
             Channel.web,
             Priority.high,
@@ -394,7 +396,7 @@ DEMO_PAST: tuple[PastTicket, ...] = (
         DemoTicket(
             "Can I add a gift note to my order?",
             "Sneha Kulkarni",
-            "sneha.kulkarni@example.org",
+            "sneha.kulkarni@demo.invalid",
             "It's a birthday gift. Can you add a note and remove the price tag?",
             Channel.chat,
             Priority.low,
@@ -413,7 +415,7 @@ DEMO_LIVE: tuple[LiveTicket, ...] = (
         DemoTicket(
             "Order #1103 delivered to the wrong address",
             "Farhan Ali",
-            "farhan.ali@example.com",
+            "farhan.ali@demo.invalid",
             "My order went to my old address in Pune. I live in Bengaluru now.",
             Channel.chat,
             Priority.high,
@@ -425,7 +427,7 @@ DEMO_LIVE: tuple[LiveTicket, ...] = (
         DemoTicket(
             "Payment taken twice for order #1110",
             "Pooja Desai",
-            "pooja.desai@example.org",
+            "pooja.desai@demo.invalid",
             "I was charged ₹2,499 twice for the same order. Please check.",
             Channel.web,
             Priority.high,
@@ -437,7 +439,7 @@ DEMO_LIVE: tuple[LiveTicket, ...] = (
         DemoTicket(
             "Need a GST invoice with our company name",
             "Nikhil Joshi",
-            "nikhil.joshi@example.com",
+            "nikhil.joshi@demo.invalid",
             "Our invoice for #1098 has my name. We need the company name and GSTIN on it.",
             Channel.chat,
         ),
@@ -448,7 +450,7 @@ DEMO_LIVE: tuple[LiveTicket, ...] = (
         DemoTicket(
             "Bulk order: 200 T-shirts for an event",
             "Isha Bose",
-            "isha.bose@example.org",
+            "isha.bose@demo.invalid",
             "We need 200 printed T-shirts by the 30th. Can you do it, and at what price?",
             Channel.web,
         ),
@@ -463,7 +465,7 @@ DEMO_HANDOVER = Handover(
     DemoTicket(
         "Return shoes after 35 days",
         "Aditi Menon",
-        "aditi.menon@example.com",
+        "aditi.menon@demo.invalid",
         "The sole came off after a month. Can I still return them?",
         Channel.chat,
         Priority.high,
@@ -472,3 +474,17 @@ DEMO_HANDOVER = Handover(
     "wants a return or a new pair.",
     reason="Returns after the 30-day window need a person to decide.",
 )
+
+
+def demo_tickets() -> tuple[DemoTicket, ...]:
+    """Every ticket the full demo makes, in the order it makes them."""
+    return (
+        *DEMO_SAMPLES,
+        *(p.ticket for p in DEMO_PAST),
+        *(t.ticket for t in DEMO_LIVE),
+        DEMO_HANDOVER.ticket,
+    )
+
+
+DEMO_EMAILS: frozenset[str] = frozenset(t.email for t in demo_tickets())
+"""The demo customers. Reset deletes them only when they have no tickets left."""

@@ -10659,7 +10659,7 @@
           "demo"
         ],
         "summary": "Load the demo",
-        "description": "16 tickets: the 6 samples, 5 past tickets resolved and rated over the last week, 4 live ones assigned to you (a reply, a note, a task, time logged, one Pending) and 1 chat handover waiting to be accepted. Customers write in through a channel, so rules, triage, routing and SLA run. Audited.",
+        "description": "16 tickets: the 6 samples, 5 past tickets resolved and rated over the last week, 4 live ones assigned to you (a reply, a note, a task, time logged, one Pending) and 1 chat handover waiting to be accepted. Customers write in through a channel, so rules, triage, routing and SLA run. Demo tickets have `source: \"demo\"`; nothing about them is emailed or sent to webhooks or Slack. 409 when demo tickets are already there. Audited.",
         "operationId": "seed_api_v1_demo_seed_post",
         "responses": {
           "201": {
@@ -10673,7 +10673,10 @@
             }
           },
           "403": {
-            "description": "Not an Admin, or a production server (CEDESK_ENV=production)"
+            "description": "Not an Admin, demo data not turned on for this server (CEDESK_DEMO_ENABLED), or a production server (CEDESK_ENV=production)"
+          },
+          "409": {
+            "description": "The demo (or sample) tickets are already there: use reset"
           }
         },
         "security": [
@@ -10689,7 +10692,7 @@
           "demo"
         ],
         "summary": "Load sample tickets",
-        "description": "The 6 sample tickets only: new, from customers on email, chat and the web. Audited.",
+        "description": "The 6 sample tickets only: new, from customers on email, chat and the web. 409 when they are already there. Audited.",
         "operationId": "samples_api_v1_demo_samples_post",
         "responses": {
           "201": {
@@ -10703,7 +10706,10 @@
             }
           },
           "403": {
-            "description": "Not an Admin, or a production server (CEDESK_ENV=production)"
+            "description": "Not an Admin, demo data not turned on for this server (CEDESK_DEMO_ENABLED), or a production server (CEDESK_ENV=production)"
+          },
+          "409": {
+            "description": "The demo (or sample) tickets are already there: use reset"
           }
         },
         "security": [
@@ -10719,7 +10725,7 @@
           "demo"
         ],
         "summary": "Reset the demo",
-        "description": "Deletes every ticket in this workspace (with its messages, notes, tasks, time and ratings), then loads the demo again. Contacts, members and settings stay. Audited.",
+        "description": "Loads the demo again, then deletes the old demo tickets (`source: \"demo\"`, with their messages, notes, tasks, time, ratings and files) and the demo customers left with no ticket. Tickets made by hand, imported or from a channel stay, and so do members and settings. If anything fails, the old demo stays as it was. Audited.",
         "operationId": "reset_api_v1_demo_reset_post",
         "responses": {
           "200": {
@@ -10733,7 +10739,7 @@
             }
           },
           "403": {
-            "description": "Not an Admin, or a production server (CEDESK_ENV=production)"
+            "description": "Not an Admin, demo data not turned on for this server (CEDESK_DEMO_ENABLED), or a production server (CEDESK_ENV=production)"
           }
         },
         "security": [
@@ -13383,7 +13389,7 @@
           "deleted": {
             "type": "integer",
             "title": "Deleted",
-            "description": "Tickets deleted first (reset only)."
+            "description": "Old demo tickets deleted (reset only)."
           }
         },
         "type": "object",
