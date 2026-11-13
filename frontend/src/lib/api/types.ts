@@ -406,6 +406,13 @@ export interface TriageSettings {
   shape?: "map" | "list";
 }
 
+export interface ReportArticleRow {
+  id: string | null;
+  title: string;
+  helpful: number;
+  not_helpful: number;
+}
+
 export interface PortalSettings {
   allowed_domains: string[];
   csat_survey: boolean;

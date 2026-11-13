@@ -4,7 +4,13 @@ import { keepPreviousData, useQuery } from "@tanstack/react-query";
 
 import { api } from "@/lib/api/client";
 import { queryKeys } from "@/lib/api/query-keys";
-import type { ReportAgentRow, ReportSummary, ReportTeamRow, TeamReport } from "@/lib/api/types";
+import type {
+  ReportAgentRow,
+  ReportArticleRow,
+  ReportSummary,
+  ReportTeamRow,
+  TeamReport,
+} from "@/lib/api/types";
 
 type Obj = Record<string, unknown>;
 const isObj = (v: unknown): v is Obj => typeof v === "object" && v !== null && !Array.isArray(v);
@@ -174,6 +180,35 @@ export function useTeamReport(params: ReportParams) {
           from: withOffset(params.from),
           to: withOffset(params.to, true),
           team_id: params.team_id,
+        }),
+      ),
+    placeholderData: keepPreviousData,
+    staleTime: 60_000,
+  });
+}
+
+/** Help article votes ("Was this helpful?") for the chosen dates. */
+export function normalizeArticleReport(raw: unknown): ReportArticleRow[] {
+  const r: Obj = isObj(raw) ? raw : {};
+  const list = Array.isArray(raw)
+    ? raw.filter(isObj)
+    : rows(r, "articles", "items", "rows", "data");
+  return list.map((a) => ({
+    id: str(a, "article_id", "id"),
+    title: str(a, "title", "article_title", "name") ?? "Untitled article",
+    helpful: num(a, "helpful", "helpful_yes", "yes", "helpful_count", "up") ?? 0,
+    not_helpful: num(a, "not_helpful", "helpful_no", "no", "not_helpful_count", "down") ?? 0,
+  }));
+}
+
+export function useArticleReport(params: ReportParams) {
+  return useQuery({
+    queryKey: queryKeys.reports.articles(params),
+    queryFn: async () =>
+      normalizeArticleReport(
+        await api.get<unknown>("reports/articles", {
+          from: withOffset(params.from),
+          to: withOffset(params.to, true),
         }),
       ),
     placeholderData: keepPreviousData,

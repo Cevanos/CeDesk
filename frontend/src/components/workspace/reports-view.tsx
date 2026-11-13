@@ -4,6 +4,7 @@ import {
   ArrowDown,
   ArrowUp,
   BarChart3,
+  BookOpen,
   CheckCircle2,
   Clock,
   Hourglass,
@@ -21,9 +22,9 @@ import { formatMinutes } from "@/components/tickets/sla";
 import { Badge, Card, EmptyState, Input, Select, Skeleton } from "@/components/ui/primitives";
 import { LoadError } from "@/components/workspace/list-shared";
 import { useCurrentUser } from "@/hooks/use-auth";
-import { useTeamReport, useTeams } from "@/hooks/use-workspace";
+import { useArticleReport, useTeamReport, useTeams } from "@/hooks/use-workspace";
 import { ApiError } from "@/lib/api/client";
-import type { ReportAgentRow, TeamReport } from "@/lib/api/types";
+import type { ReportAgentRow, ReportArticleRow, TeamReport } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
 
 const PRESETS = [
@@ -171,6 +172,7 @@ function ReportsBody() {
         ) : (
           <ReportData data={report.data} stale={report.isPlaceholderData} />
         )}
+        {badRange || report.isPending || report.isError ? null : <ArticlesTable range={range} />}
       </div>
     </div>
   );
@@ -480,6 +482,58 @@ function AgentsTable({ agents }: { agents: ReportAgentRow[] }) {
                   <Td>{count(a.open)}</Td>
                   <Td>{mins(a.first_reply_minutes)}</Td>
                   <Td>{rating(a.csat_average)}</Td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </Card>
+    </section>
+  );
+}
+
+function ArticlesTable({ range }: { range: { from: string; to: string } }) {
+  const q = useArticleReport(range);
+  const rows: ReportArticleRow[] = useMemo(
+    () =>
+      [...(q.data ?? [])].sort((a, b) => b.helpful + b.not_helpful - (a.helpful + a.not_helpful)),
+    [q.data],
+  );
+
+  return (
+    <section
+      aria-labelledby="articles-h"
+      className={cn("mt-6", q.isPlaceholderData && "opacity-60")}
+    >
+      <h2 id="articles-h" className="mb-2 text-base font-semibold">
+        Help articles
+      </h2>
+      <Card className="overflow-x-auto">
+        {q.isPending ? (
+          <Skeleton className="h-24" />
+        ) : q.isError ? (
+          <LoadError error={q.error} />
+        ) : rows.length === 0 ? (
+          <EmptyState icon={<BookOpen className="size-6" />} title="No article votes">
+            Nobody has voted on a help article in this period.
+          </EmptyState>
+        ) : (
+          <table className="w-full min-w-[30rem] text-sm">
+            <thead>
+              <tr className="border-b border-border text-left text-xs text-muted-foreground">
+                <Th>Article</Th>
+                <Th right>Helpful</Th>
+                <Th right>Not helpful</Th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {rows.map((a) => (
+                <tr key={a.id ?? a.title} className="hover:bg-surface-2/60">
+                  <th scope="row" className="px-4 py-3 text-left font-medium">
+                    {a.title}
+                  </th>
+                  <Td>{count(a.helpful)}</Td>
+                  <Td>{count(a.not_helpful)}</Td>
                 </tr>
               ))}
             </tbody>

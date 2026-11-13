@@ -39,7 +39,10 @@ export const queryKeys = {
     events: ["failed", "events"] as const,
   },
   cevanos: { all: ["cevanos"] as const },
-  reports: { team: (p: object) => ["reports", "team", p] as const },
+  reports: {
+    team: (p: object) => ["reports", "team", p] as const,
+    articles: (p: object) => ["reports", "articles", p] as const,
+  },
   triage: { all: ["triage-settings"] as const },
   portalSettings: { all: ["portal-settings"] as const },
   helpCenter: {
