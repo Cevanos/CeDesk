@@ -10,7 +10,7 @@ import { useSaveSlaCalendar } from "@/hooks/use-workspace";
 import type { SlaSettings } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
 
-/** 0 = Monday ... 6 = Sunday, as the API sends them. */
+/** Index 0 = Monday ... 6 = Sunday. The API sends ISO weekdays: 1 = Monday ... 7 = Sunday. */
 export const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 const FALLBACK_ZONES = [
@@ -66,7 +66,7 @@ export function SlaHoursEditor({ calendar, canEdit }: { calendar: Calendar; canE
           : `${calendar.days
               .slice()
               .sort((a, b) => a - b)
-              .map((d) => DAYS[d] ?? String(d))
+              .map((d) => DAYS[d - 1] ?? String(d))
               .join(", ")} · ${calendar.opens}–${calendar.closes} (${calendar.timezone})`}
       </p>
     );
@@ -133,7 +133,8 @@ export function SlaHoursEditor({ calendar, canEdit }: { calendar: Calendar; canE
         <fieldset disabled={always}>
           <legend className="text-[13px] font-medium text-foreground-2">Open days</legend>
           <div className="mt-1.5 flex flex-wrap gap-1.5">
-            {DAYS.map((label, d) => {
+            {DAYS.map((label, i) => {
+              const d = i + 1;
               const on = days.includes(d);
               return (
                 <button
