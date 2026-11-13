@@ -4,6 +4,9 @@ Help desk backend: tickets, routing, SLA, macros, rules, customer portal and imp
 CeDesk works on its own; connecting a Cevanos workspace adds the AI agent, the
 AI-to-human handover and the Cevanos chat channels.
 
+Hosting it yourself: [docs/SELF_HOSTING.md](docs/SELF_HOSTING.md). Every setting:
+[docs/SETTINGS.md](docs/SETTINGS.md). The API: [docs/api](docs/api).
+
 ## Run it locally
 
 Needs Python 3.12 via [uv](https://docs.astral.sh/uv/) and Docker.

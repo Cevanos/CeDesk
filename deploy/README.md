@@ -3,6 +3,10 @@
 One server with Docker. Caddy answers on 80/443 and passes requests to the API; the
 database and the API are not reachable from outside.
 
+These are the notes for our own servers. For a customer hosting CeDesk themselves, see
+[../docs/SELF_HOSTING.md](../docs/SELF_HOSTING.md); every setting is in
+[../docs/SETTINGS.md](../docs/SETTINGS.md).
+
 ## First time
 
 1. Server: Docker with the compose plugin, and a firewall that allows only SSH, 80 and 443:
