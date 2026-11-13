@@ -11427,7 +11427,8 @@
           "stripe",
           "jira",
           "slack_alerts",
-          "slack"
+          "slack",
+          "calendly"
         ],
         "title": "App"
       },
@@ -11443,7 +11444,7 @@
           "card": {
             "type": "string",
             "title": "Card",
-            "description": "What it adds: orders or payments (ticket sidebar), jira, alerts, or side (side conversations in Slack)."
+            "description": "What it adds: orders or payments (ticket sidebar), jira, alerts, or side (side conversations in Slack), book (the saved reply /book)."
           },
           "settings_fields": {
             "items": {
@@ -11454,9 +11455,16 @@
             "description": "Settings to send at install (not secret)."
           },
           "credential": {
-            "type": "string",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Credential",
-            "description": "The name of the credential to send."
+            "description": "The name of the credential to send; null: none (Calendly)."
           },
           "credential_help": {
             "type": "string",
@@ -15561,15 +15569,21 @@
             "type": "object",
             "maxProperties": 5,
             "title": "Settings",
-            "description": "Shopify: {\"shop\": \"acme\"}. Jira: {\"site\": \"acme\", \"email\": \"ops@acme.com\", \"project\": \"SUP\"}. Stripe and both Slack apps: none.",
+            "description": "Shopify: {\"shop\": \"acme\"}. Jira: {\"site\": \"acme\", \"email\": \"ops@acme.com\", \"project\": \"SUP\"}. Calendly: {\"link\": \"https://calendly.com/acme/30min\"}. Stripe and both Slack apps: none.",
             "default": {}
           },
           "secret": {
-            "type": "string",
-            "maxLength": 300,
-            "minLength": 1,
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 300
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Secret",
-            "description": "The app's credential (Slack alerts: the Incoming Webhook URL; Slack side conversations: the bot token, xoxb-...)."
+            "description": "The app's credential (Slack alerts: the Incoming Webhook URL; Slack side conversations: the bot token, xoxb-...). Required, except for Calendly, which takes none."
           },
           "signing_secret": {
             "anyOf": [
@@ -15587,9 +15601,6 @@
         },
         "additionalProperties": false,
         "type": "object",
-        "required": [
-          "secret"
-        ],
         "title": "InstallIn"
       },
       "JiraIssueOut": {

@@ -35,11 +35,12 @@ async def save(
     *,
     app: str,
     settings: dict[str, Any],
-    secret_sealed: bytes,
-    secret_hint: str,
+    secret_sealed: bytes | None,
+    secret_hint: str | None,
     by: UUID,
 ) -> bool:
-    """Installs, or replaces the settings and credential. True when it was new."""
+    """Installs, or replaces the settings and credential (None for Calendly, which has
+    none). True when it was new."""
     result = await session.execute(
         text(
             "INSERT INTO hd_app_install (workspace_id, app, settings, secret_sealed, "
