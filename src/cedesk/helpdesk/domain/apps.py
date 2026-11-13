@@ -2,8 +2,9 @@
 the rules that need no database.
 
 - Apps here: Shopify (orders) and Stripe (payments), read only; Jira (issues from tickets),
-  Slack alerts (Urgent and High tickets to a channel) and Slack side conversations (a bot
-  that posts in a channel and hears the thread's replies). Calendly is on the cut line.
+  Slack alerts (Urgent and High tickets to a channel), Slack side conversations (a bot
+  that posts in a channel and hears the thread's replies) and Calendly (the saved reply
+  /book with the booking link; no credential, the link is public).
 - An Admin installs an app with its credentials; CeDesk checks them with the provider,
   keeps them sealed (only the last 4 characters are shown), and audits install and
   uninstall. With Cevanos connected, orders and payments come from Cevanos's own
@@ -13,6 +14,7 @@ the rules that need no database.
   ticket still loads.
 """
 
+import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -26,14 +28,15 @@ class App(StrEnum):
     jira = "jira"
     slack_alerts = "slack_alerts"
     slack = "slack"  # side conversations in Slack (md X5)
+    calendly = "calendly"  # the saved reply /book (md W19)
 
 
 @dataclass(frozen=True)
 class AppInfo:
     name: str
-    card: str  # what it adds: orders, payments, jira (on tickets), alerts or side
+    card: str  # what it adds: orders, payments, jira (on tickets), alerts, side or book
     settings: tuple[str, ...]  # what the Admin types that isn't secret
-    credential: str  # its name
+    credential: str | None  # its name; None: the app needs none (Calendly)
     credential_help: str
     second_credential: str | None = None  # also secret, sealed with the first
 
@@ -85,7 +88,19 @@ CATALOG: dict[App, AppInfo] = {
         "message.channels and message.groups. Invite the bot to each channel it should use.",
         second_credential="signing_secret",
     ),
+    App.calendly: AppInfo(
+        name="Calendly",
+        card="book",
+        settings=("link",),
+        credential=None,
+        credential_help="No credential: the booking link is public. `link` is your "
+        "Calendly page or one event's page (https://calendly.com/acme/30min). Installing "
+        "adds the saved reply /book with it (/book1 if you already have a /book); "
+        "uninstalling removes it.",
+    ),
 }
+BOOK_SHORTCUT = "book"
+_CALENDLY = re.compile(r"^https://calendly\.com/[A-Za-z0-9_-]{1,100}(/[A-Za-z0-9_-]{1,100})?/?$")
 CARD_LIMIT = 5  # orders or payments shown per customer
 SECRET_MAX = 300
 SHOPIFY_API = "2024-10"
@@ -104,7 +119,8 @@ class BadCredentials(ValueError):
 def check_secret(app: App, value: str) -> str:
     value = value.strip()
     if not value or len(value) > SECRET_MAX:
-        raise BadCredentials(f"Paste the {CATALOG[app].credential.replace('_', ' ')}.")
+        name = (CATALOG[app].credential or "credential").replace("_", " ")
+        raise BadCredentials(f"Paste the {name}.")
     if app is App.stripe and not value.startswith(("rk_", "sk_")):
         raise BadCredentials("A Stripe key starts with rk_ (restricted) or sk_.")
     return value
@@ -112,6 +128,21 @@ def check_secret(app: App, value: str) -> str:
 
 def secret_hint(value: str) -> str:
     return f"…{value[-4:]}"
+
+
+def booking_link(raw: Any) -> str:
+    """A Calendly page: https://calendly.com/<you> or https://calendly.com/<you>/<event>."""
+    link = str(raw or "").strip()
+    if not _CALENDLY.match(link):
+        raise BadCredentials(
+            "Give your Calendly booking link, e.g. https://calendly.com/acme/30min."
+        )
+    return link.rstrip("/")
+
+
+def book_reply(link: str) -> str:
+    """The saved reply /book (placeholders are filled when it is sent)."""
+    return f"Hi {{{{customer.first_name}}}}, you can pick a time that suits you here: {link}"
 
 
 @dataclass(frozen=True)

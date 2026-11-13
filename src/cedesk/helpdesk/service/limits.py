@@ -21,6 +21,7 @@ from cedesk.helpdesk.domain.auth import Caller
 from cedesk.helpdesk.domain.limits import Kind, Plan
 from cedesk.helpdesk.domain.permissions import Action
 from cedesk.helpdesk.domain.reports import IMPORT_SOURCES
+from cedesk.helpdesk.repo import archive as archive_repo
 from cedesk.helpdesk.repo import auth as auth_repo
 from cedesk.helpdesk.repo import limits as repo
 from cedesk.helpdesk.service import audit
@@ -180,8 +181,8 @@ async def run_retention(
     sm: Sessionmaker, store: ObjectStore | None, *, now: datetime | None = None
 ) -> int:
     """Once a day (the worker): in each workspace with a retention (its setting or its
-    plan's history), deletes resolved tickets older than that and their files, and audits
-    the run. Returns how many tickets went."""
+    plan's history), deletes resolved tickets older than that and their files, live or
+    archived (md O3), and audits the run. Returns how many tickets went."""
     now = now or datetime.now(UTC)
     async with sm() as s, s.begin():
         workspace_ids = await auth_repo.all_workspace_ids(s)
@@ -208,23 +209,40 @@ async def _retain(
             if not batch:
                 break
             deleted += await repo.delete_tickets(s, [r["id"] for r in batch])
-        # Files after the rows are gone: a file left behind by a crash is only space.
-        for r in batch:
-            for key in r["keys"]:
-                if store is None:
-                    continue
-                try:
-                    await store.delete(str(key))
-                except ObjectMissing:
-                    pass
+        await _delete_files(store, batch)
         if len(batch) < rules.RETENTION_BATCH:
             break
-    if deleted:
+    archived = 0  # the archive tier (md O3) keeps them no longer than retention says
+    while True:
+        async with workspace_session(sm, workspace_id) as s:
+            batch = await archive_repo.resolved_before(s, cutoff, rules.RETENTION_BATCH)
+            if not batch:
+                break
+            archived += await archive_repo.delete(s, [r["id"] for r in batch])
+        await _delete_files(store, batch)
+        if len(batch) < rules.RETENTION_BATCH:
+            break
+    if deleted or archived:
+        detail: dict[str, int] = {"tickets": deleted, "days": days}
+        if archived:
+            detail["archived"] = archived
         async with workspace_session(sm, workspace_id) as s:
             await audit.record_server(
                 s, workspace_id, Area.retention, "deleted",
-                f"{deleted} resolved tickets older than {days} days",
-                detail={"tickets": deleted, "days": days},
+                f"{deleted + archived} resolved tickets older than {days} days",
+                detail=detail,
             )  # fmt: skip
         logger.info("retention", extra={"workspace_id": workspace_id, "event": "retention"})
-    return deleted
+    return deleted + archived
+
+
+async def _delete_files(store: ObjectStore | None, batch: Any) -> None:
+    """After the rows are gone: a file left behind by a crash is only space."""
+    for r in batch:
+        for key in r["keys"]:
+            if store is None:
+                continue
+            try:
+                await store.delete(str(key))
+            except ObjectMissing:
+                pass
