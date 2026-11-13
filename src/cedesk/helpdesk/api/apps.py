@@ -36,10 +36,19 @@ PostDep = Annotated[PostFactory, Depends(get_post)]
 class AppOut(BaseModel):
     app: App
     name: str
-    card: str = Field(description="What it shows in the ticket sidebar: orders or payments.")
+    card: str = Field(
+        description="What it adds: orders or payments (ticket sidebar), jira, alerts, or "
+        "side (side conversations in Slack), book (the saved reply /book)."
+    )
     settings_fields: list[str] = Field(description="Settings to send at install (not secret).")
-    credential: str = Field(description="The name of the credential to send.")
+    credential: str | None = Field(
+        description="The name of the credential to send; null: none (Calendly)."
+    )
     credential_help: str
+    second_credential: str | None = Field(
+        description="A second secret to send at install (Slack side conversations: "
+        "signing_secret), or null."
+    )
     installed: bool
     settings: dict[str, Any]
     secret_hint: str | None = Field(description="… and the credential's last 4 characters.")
@@ -55,12 +64,20 @@ class InstallIn(Body):
         default={},
         max_length=5,
         description='Shopify: {"shop": "acme"}. Jira: {"site": "acme", "email": '
-        '"ops@acme.com", "project": "SUP"}. Stripe and Slack alerts: none.',
+        '"ops@acme.com", "project": "SUP"}. Calendly: {"link": '
+        '"https://calendly.com/acme/30min"}. Stripe and both Slack apps: none.',
     )
-    secret: str = Field(
-        min_length=1,
+    secret: str | None = Field(
+        default=None,
         max_length=300,
-        description="The app's credential (Slack alerts: the Incoming Webhook URL).",
+        description="The app's credential (Slack alerts: the Incoming Webhook URL; Slack "
+        "side conversations: the bot token, xoxb-...). Required, except for Calendly, which "
+        "takes none.",
+    )
+    signing_secret: str | None = Field(
+        default=None,
+        max_length=300,
+        description="Slack side conversations only: the Slack app's signing secret.",
     )
 
 
@@ -131,7 +148,15 @@ async def install_app(
 ) -> AppOut:  # fmt: skip
     return _out(
         await apps.install(
-            sm, sealer, http, post, caller, app, settings=body.settings, secret=body.secret
+            sm,
+            sealer,
+            http,
+            post,
+            caller,
+            app,
+            settings=body.settings,
+            secret=body.secret,
+            second=body.signing_secret,
         )
     )
 

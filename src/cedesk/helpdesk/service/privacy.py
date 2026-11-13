@@ -2,9 +2,9 @@
 them. Admins only (`manage_access`); every request is in the audit log, by contact id
 only (the log can't be changed later, so it never holds the customer's address).
 
-Export: one JSON file (the customer, their tickets with every message, file names and
-ratings), kept in storage for 7 days and downloaded signed in. Internal notes are
-included: review them before sending the file to the customer.
+Export: one JSON file (the customer, their tickets, archived ones too (md O3), with
+every message, file names and ratings), kept in storage for 7 days and downloaded signed
+in. Internal notes are included: review them before sending the file to the customer.
 
 Erase: the words that could identify the customer are replaced and their files are
 deleted from storage; every row stays, so ticket counts, reply times, ratings and time
@@ -28,8 +28,10 @@ from cedesk.db import workspace_session
 from cedesk.helpdesk.domain.audit import Area
 from cedesk.helpdesk.domain.auth import Caller
 from cedesk.helpdesk.domain.permissions import Action
+from cedesk.helpdesk.repo import archive as archive_repo
 from cedesk.helpdesk.repo import auth as auth_repo
 from cedesk.helpdesk.repo import privacy as repo
+from cedesk.helpdesk.repo.privacy import ERASED, ERASED_NAME
 from cedesk.helpdesk.service import audit
 from cedesk.helpdesk.service.auth import Sessionmaker
 from cedesk.helpdesk.service.errors import Conflict, Invalid, NotFound
@@ -136,6 +138,49 @@ def build_export(
     }
 
 
+def archived_export(a: RowMapping) -> dict[str, Any]:
+    """An archived ticket (md O3) in the export's ticket shape, marked `archived`."""
+    ticket = a["ticket"]
+    files: dict[Any, list[dict[str, Any]]] = {}
+    for f in a["files"]:
+        files.setdefault(f.get("message_id"), []).append(
+            {"name": f.get("name"), "size": f.get("size"), "type": f.get("mime")}
+        )
+    rating = a["rating"]
+    return {
+        "number": a["number"],
+        "subject": a["subject"],
+        "status": a["status"],
+        "priority": a["priority"],
+        "channel": a["channel"],
+        "type": None,
+        "fields": ticket.get("fields") or {},
+        "tags": list(ticket.get("tags") or []),
+        "created_at": _when(a["created_at"]),
+        "resolved_at": _when(a["resolved_at"]),
+        "archived": True,
+        "messages": [
+            {
+                "at": m.get("created_at"),
+                "kind": m.get("kind"),
+                "from": m.get("author_name"),
+                "text": m.get("body"),
+                "files": files.get(m.get("id"), []),
+            }
+            for m in a["messages"]
+        ],
+        "rating": (
+            {
+                "score": rating.get("score"),
+                "comment": rating.get("comment"),
+                "rated_at": rating.get("rated_at"),
+            }
+            if rating
+            else None
+        ),
+    }
+
+
 async def export(
     sm: Sessionmaker,
     store: ObjectStore,
@@ -162,6 +207,8 @@ async def export(
             workspace=await repo.workspace_name(s),
             now=now,
         )
+        archived = await archive_repo.for_contact(s, contact["id"])
+        data["tickets"] += [archived_export(a) for a in archived]  # md O3
         body = json.dumps(data, ensure_ascii=False, indent=2).encode()
         await store.put(key, body, content_type="application/json")
         try:
@@ -228,9 +275,13 @@ async def erase(
             raise Invalid("Type the customer's email address exactly to confirm.")
         ids = await repo.ticket_ids(s, contact_id)
         keys = await repo.file_keys(s, ids) + await repo.export_keys(s, contact_id)
+        keys += await archive_repo.file_keys(s, contact_id)  # archived tickets (md O3)
         for key in keys:  # first: see the module note
             await store.delete(key)
         counts = await repo.erase_tickets(s, ids)
+        counts["archived_tickets"] = await archive_repo.erase_for_contact(
+            s, contact_id, erased=ERASED, name=ERASED_NAME
+        )
         counts |= await repo.erase_contact(s, contact_id, str(contact["email"]))
         counts["exports"] = await repo.forget_exports(s, contact_id)
         await repo.insert_request(
