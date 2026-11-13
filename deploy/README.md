@@ -3,6 +3,10 @@
 One server with Docker. Caddy answers on 80/443 and passes requests to the API; the
 database and the API are not reachable from outside.
 
+These are the notes for our own servers. For a customer hosting CeDesk themselves, see
+[../docs/SELF_HOSTING.md](../docs/SELF_HOSTING.md); every setting is in
+[../docs/SETTINGS.md](../docs/SETTINGS.md).
+
 ## First time
 
 1. Server: Docker with the compose plugin, and a firewall that allows only SSH, 80 and 443:
@@ -12,7 +16,7 @@ database and the API are not reachable from outside.
    ```
 
    (Docker opens published ports itself, past ufw. Only Caddy publishes any here.)
-2. Get the code: `git clone git@github.com:Cogninest-AI/CDESK.git && cd CDESK/deploy`
+2. Get the code: `git clone https://github.com/Cogninest-AI/CDESK.git && cd CDESK/deploy`
 3. `cp env.example .env`, then fill in `.env`: four secrets from `openssl rand -hex 32`,
    `CEDESK_SITE` (a domain pointing at the server for HTTPS, or `:80`) and
    `CEDESK_CORS_ORIGINS` (the frontend's addresses).
