@@ -498,3 +498,55 @@ export interface PublicHelp {
   categories: ArticleCategory[];
   articles: Article[];
 }
+
+/* ---------- Imports from other help desks ---------- */
+
+export type ImportKind = "contacts" | "tickets" | "articles" | "replies";
+
+export interface ImportConnection {
+  id: string;
+  source: string;
+  /** The account name at the source, e.g. "Acme Support". */
+  label?: string | null;
+  state?: string;
+  /** Last 4 characters of the key. The key itself is never returned. */
+  credentials_hint?: string | null;
+  created_at?: string;
+}
+
+export interface ImportGroup {
+  id: string;
+  name: string;
+  /** The team the API suggests for this group, matched by name. */
+  suggested_team_id: string | null;
+}
+export interface ImportDiscovery {
+  counts: Record<string, number>;
+  groups: ImportGroup[];
+  /** Source status -> our status, shown read-only. */
+  status_map: { from: string; to: string }[];
+  warnings: string[];
+}
+export interface ImportDryRun {
+  will_create: Record<string, number>;
+  already_imported: Record<string, number>;
+  warnings: string[];
+}
+
+export type ImportRunState = "queued" | "running" | "done" | "failed" | (string & {});
+export interface ImportRun {
+  id: string;
+  connection_id?: string | null;
+  source: string;
+  label?: string | null;
+  state: ImportRunState;
+  kinds: string[];
+  /** Per kind: created / skipped, plus `files`, `sync` and the like. */
+  counts: Record<string, Record<string, number> | number>;
+  sync_on: boolean;
+  last_sync_at: string | null;
+  last_error: string | null;
+  started_by?: string | null;
+  started_at?: string | null;
+  finished_at?: string | null;
+}

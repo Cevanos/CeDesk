@@ -15,3 +15,4 @@ export * from "./workspace/reports";
 export * from "./workspace/triage";
 export * from "./workspace/portal-settings";
 export * from "./workspace/help-center";
+export * from "./workspace/imports";

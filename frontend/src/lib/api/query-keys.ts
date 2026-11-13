@@ -43,6 +43,11 @@ export const queryKeys = {
     team: (p: object) => ["reports", "team", p] as const,
     articles: (p: object) => ["reports", "articles", p] as const,
   },
+  imports: {
+    history: ["imports", "history"] as const,
+    run: (id: string) => ["imports", "run", id] as const,
+    discover: (id: string) => ["imports", "discover", id] as const,
+  },
   triage: { all: ["triage-settings"] as const },
   portalSettings: { all: ["portal-settings"] as const },
   helpCenter: {

@@ -4,6 +4,7 @@ import {
   type LucideIcon,
   BookOpen,
   Bot,
+  Download,
   Globe,
   Mail,
   ShieldCheck,
@@ -59,6 +60,7 @@ const GROUPS: {
       { href: "/settings/email", label: "Email", icon: Mail },
       { href: "/settings/cevanos", label: "Cevanos", icon: Bot },
       { href: "/settings/failed", label: "Failed events", icon: TriangleAlert },
+      { href: "/settings/imports", label: "Imports", icon: Download },
     ],
   },
 ];
