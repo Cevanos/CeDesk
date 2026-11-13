@@ -3,6 +3,7 @@ app's install (bot token and signing secret, checked, never shown or audited), s
 one in a channel, writing again in the thread, a signed reply coming back to the right
 side conversation (once), the signature rules, and tenancy."""
 
+import asyncio
 import hashlib
 import hmac
 import json
@@ -19,6 +20,7 @@ from sqlalchemy import text
 
 from cedesk.db import workspace_session
 from cedesk.helpdesk.service import side_conversations as sides
+from cedesk.helpdesk.service import slack_bot
 from cedesk.helpdesk.service.app_post import AppPost
 from tests.db.helpers import Sm, add, bearer, new_workspace, ok, sign_in
 
@@ -37,9 +39,16 @@ class FakeSlack:
     def __init__(self) -> None:
         self.posts: list[dict[str, Any]] = []
         self.seen: list[httpx.Request] = []
+        self.name_delay = 0.0  # users.info answers this many seconds late
+        self.name_broken = False  # users.info fails (500)
 
-    def __call__(self, request: httpx.Request) -> httpx.Response:
+    async def __call__(self, request: httpx.Request) -> httpx.Response:
         self.seen.append(request)
+        if request.url.path == "/api/users.info":
+            if self.name_delay:
+                await asyncio.sleep(self.name_delay)
+            if self.name_broken:
+                return httpx.Response(500)
         if request.url.host != "slack.com":
             return httpx.Response(404)
         if request.headers.get("Authorization") != f"Bearer {TOKEN}":
@@ -181,6 +190,7 @@ async def test_a_side_conversation_in_slack(client: AsyncClient, app_sessionmake
     lines = [m["body"] for m in detail["messages"] if m["kind"] == "system"]
     assert "Side conversation in Slack #warehouse started by Neha" in lines
     assert "Ravi (warehouse) replied in the side conversation in Slack #warehouse" in lines
+    assert not any(line.startswith("Slack user") for line in lines)  # renamed, not added
     assert not any("Shipped today" in m["body"] for m in detail["messages"])  # not the ticket's
     notes = ok(await client.get("/api/v1/notifications", headers=w["neha"]))
     assert [n["kind"] for n in notes["notifications"]].count("side_reply") == 1
@@ -290,4 +300,107 @@ async def test_a_team_only_role_and_email_headers(
             from_address="x@evil.test", from_name="X", text="Hijack",
         )  # fmt: skip
         assert got is None
+    assert len(await side_rows(sm, w["ws"])) == 1
+
+
+async def _started(client: AsyncClient, sm: Sm) -> tuple[FakeSlack, dict[str, Any], str, str]:
+    fake = install_fake(client)
+    w = await desk(client, sm)
+    await install(client, w)
+    t = await ticket(client, w)
+    ok(await client.post(f"{T}/{t}/side-conversations/slack", headers=w["neha"],
+                         json={"channel": "#warehouse", "body": "Where?"}), 201)  # fmt: skip
+    return fake, w, t, f"/api/v1/slack/events/{w['ws']}"
+
+
+async def test_a_photo_reply_keeps_its_text_and_names_the_file(
+    client: AsyncClient, app_sessionmaker: Sm
+) -> None:
+    fake, w, _, events = await _started(client, app_sessionmaker)
+    files = [{"id": "F01", "name": "parcel.jpg", "url_private": "https://files.slack.com/F01"}]
+    event = reply_event("1700000000.000001", "1700000050.000200",
+                        text="Found it <@U0RAVI>, see <https://track.example/1|tracking>",
+                        subtype="file_share", files=files)  # fmt: skip
+    assert ok(await client.post(events, content=event, headers=signed(event))) == {}
+    rows = await side_rows(app_sessionmaker, w["ws"])
+    assert rows[-1]["author_name"] == "Ravi (warehouse)"
+    assert rows[-1]["body"] == (
+        "Found it @Ravi (warehouse), see tracking (https://track.example/1)\n[file: parcel.jpg]"
+    )
+    assert not any("files.slack.com" in str(r.url) for r in fake.seen)  # never downloaded
+
+
+@pytest.mark.parametrize("trouble", ["slow", "broken"])
+async def test_a_slow_or_failed_name_lookup_keeps_the_reply(
+    client: AsyncClient, app_sessionmaker: Sm, monkeypatch: pytest.MonkeyPatch, trouble: str
+) -> None:
+    sm = app_sessionmaker
+    fake, w, t, events = await _started(client, sm)
+    monkeypatch.setattr(sides, "NAME_WAIT", 0.2)
+    if trouble == "slow":
+        fake.name_delay = 2.0
+    else:
+        fake.name_broken = True
+    event = reply_event("1700000000.000001", "1700000050.000200", text="Hi <@U0RAVI>")
+    started = time.monotonic()
+    assert ok(await client.post(events, content=event, headers=signed(event))) == {}
+    assert time.monotonic() - started < 1.5  # Slack's answer isn't held up
+    rows = await side_rows(sm, w["ws"])
+    assert (rows[-1]["author_name"], rows[-1]["body"]) == ("Slack user U0RAVI", "Hi @U0RAVI")
+    detail = ok(await client.get(f"{T}/{t}", headers=w["h"]))
+    lines = [m["body"] for m in detail["messages"] if m["kind"] == "system"]
+    assert "Slack user U0RAVI replied in the side conversation in Slack #warehouse" in lines
+    notes = ok(await client.get("/api/v1/notifications", headers=w["neha"]))
+    told = [n for n in notes["notifications"] if n["kind"] == "side_reply"]
+    assert len(told) == 1
+    assert slack_bot.stand_in("not an id") == slack_bot.SOMEONE
+
+
+async def test_a_crash_after_saving_loses_only_the_name(
+    client: AsyncClient, app_sessionmaker: Sm, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The reply, the ticket's line and the notification are one transaction; the name
+    lookup comes after it."""
+    sm = app_sessionmaker
+    _, w, t, events = await _started(client, sm)
+
+    async def crash(bot: Any, user: str) -> str | None:
+        raise RuntimeError("the worker died")
+
+    monkeypatch.setattr(sides, "_name_in_time", crash)
+    event = reply_event("1700000000.000001", "1700000050.000200")
+    with pytest.raises(RuntimeError):
+        await client.post(events, content=event, headers=signed(event))
+    rows = await side_rows(sm, w["ws"])
+    assert rows[-1]["author_name"] == "Slack user U0RAVI"
+    detail = ok(await client.get(f"{T}/{t}", headers=w["h"]))
+    lines = [m["body"] for m in detail["messages"] if m["kind"] == "system"]
+    assert "Slack user U0RAVI replied in the side conversation in Slack #warehouse" in lines
+    notes = ok(await client.get("/api/v1/notifications", headers=w["neha"]))
+    assert [n["kind"] for n in notes["notifications"]].count("side_reply") == 1
+
+
+async def test_an_event_after_uninstalling_is_refused(
+    client: AsyncClient, app_sessionmaker: Sm
+) -> None:
+    sm = app_sessionmaker
+    _, w, _, events = await _started(client, sm)
+    assert (await client.delete(A, headers=w["h"])).status_code == 204
+    event = reply_event("1700000000.000001", "1700000050.000200")
+    r = await client.post(events, content=event, headers=signed(event))
+    assert r.status_code == 401
+    assert len(await side_rows(sm, w["ws"])) == 1  # only our first message
+
+
+@pytest.mark.parametrize("stamp", ["²", "", "9999999999"])
+async def test_a_bad_timestamp_header_is_a_401(
+    client: AsyncClient, app_sessionmaker: Sm, stamp: str
+) -> None:
+    sm = app_sessionmaker
+    _, w, _, events = await _started(client, sm)
+    event = reply_event("1700000000.000001", "1700000050.000200")
+    # Sent as Latin-1 bytes: the server reads header bytes as Latin-1, so it sees "²".
+    headers = {**signed(event), "X-Slack-Request-Timestamp": stamp.encode("latin-1")}
+    r = await client.post(events, content=event, headers=headers)
+    assert r.status_code == 401
     assert len(await side_rows(sm, w["ws"])) == 1

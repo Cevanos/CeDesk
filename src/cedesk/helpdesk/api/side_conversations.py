@@ -150,7 +150,12 @@ async def write_again(
 
 async def _raw(request: Request) -> bytes:
     declared = request.headers.get("content-length")
-    if declared is not None and declared.isdigit() and int(declared) > slack_rules.EVENT_MAX:
+    if (
+        declared is not None
+        and declared.isascii()
+        and declared.isdigit()
+        and int(declared) > slack_rules.EVENT_MAX
+    ):
         raise TooLarge("Too large for a Slack event.")
     body = bytearray()
     async for chunk in request.stream():

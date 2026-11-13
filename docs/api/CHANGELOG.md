@@ -28,7 +28,15 @@ The customer never sees it, and a reply in the thread comes back to the ticket.
   A person's reply in a side conversation's thread is saved on it (once, even if Slack
   sends it again), a line goes on the ticket ("Ravi replied in the side conversation in
   Slack #warehouse") and the assignee gets a `side_reply` notification. A bot's message,
-  an edit, or any other thread is ignored.
+  an edit, a delete, or any other thread is ignored. A reply with a photo or file keeps
+  its text plus a `[file: name]` line per file (the file isn't downloaded). Slack's
+  markup is made readable: `<@U123>` -> `@name` (or `@U123`), `<https://x|label>` ->
+  `label (https://x)`, `&lt; &gt; &amp;` unescaped. The reply, the ticket's line and the
+  notification are saved first, together, under "Slack user U123"; the person's name is
+  then asked of Slack for at most 1.5 s and, if Slack answers in time, replaces it in the
+  reply, its mentions and the ticket's line (a slow or failed lookup is not an error).
+  A malformed timestamp header (e.g. `²`) or an event after the app is uninstalled is
+  a 401, nothing stored.
 - Side conversations have a new field `via`: `email` or `slack`. For Slack, `to` is the
   channel and `from_address` is empty.
 - An email can never attach itself to a Slack thread, whatever its reply headers say.

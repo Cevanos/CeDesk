@@ -15,7 +15,9 @@
   does. Writing again posts in the same thread.
 """
 
+import asyncio
 import json
+import logging
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
@@ -50,6 +52,9 @@ from cedesk.helpdesk.service.members import require
 NO_ADDRESS = "Add a support address first (Settings > Email): side conversations go out from it."
 NO_SLACK = "Install the Slack side conversations app first (Settings > Apps)."
 BAD_SIGNATURE = "The request isn't signed by this workspace's Slack app."
+NAME_WAIT = 1.5  # seconds for Slack's users.info before a reply keeps the Slack id
+
+logger = logging.getLogger("cedesk.slack")
 
 
 @dataclass(frozen=True)
@@ -86,8 +91,8 @@ def _message(row: Any) -> SideMessage:
     )
 
 
-async def _line(s: Any, workspace_id: UUID, ticket_id: UUID, body: str) -> None:
-    await ticket_repo.insert_message(
+async def _line(s: Any, workspace_id: UUID, ticket_id: UUID, body: str) -> UUID:
+    return await ticket_repo.insert_message(
         s, workspace_id=workspace_id, ticket_id=ticket_id, kind="system", body=body,
         author_member_id=None, author_name=None,
     )  # fmt: skip
@@ -265,10 +270,10 @@ async def receive_reply(
     return ticket_id
 
 
-async def _replied(s: Any, workspace_id: UUID, ticket_id: UUID, who: str, line: str) -> None:
-    """A reply came back: a line on the ticket, and the assignee is told."""
+async def _replied(s: Any, workspace_id: UUID, ticket_id: UUID, who: str, line: str) -> UUID:
+    """A reply came back: a line on the ticket, and the assignee is told. The line's id."""
     detail = await ticket_repo.ticket_detail(s, ticket_id)
-    await _line(s, workspace_id, ticket_id, line)
+    line_id = await _line(s, workspace_id, ticket_id, line)
     assignee = detail["assignee_id"] if detail is not None else None
     if detail is not None and assignee is not None:
         where = label(int(detail["number"]))
@@ -280,6 +285,7 @@ async def _replied(s: Any, workspace_id: UUID, ticket_id: UUID, who: str, line: 
             kind="side_reply",
             body=f"{who} replied in a side conversation on {where}"[:500],
         )
+    return line_id
 
 
 # Slack (the `slack` app)
@@ -402,16 +408,45 @@ async def receive_slack(
         side = await repo.by_slack_thread(s, reply.channel, reply.thread_ts)
     if side is None:
         return {}  # a thread that isn't a side conversation
-    who = await bot.name_of(reply.user)
+    # Saved first, under the person's Slack id, with the ticket's line and the assignee's
+    # notification in the same transaction: Slack wants its answer within 3 s, and asking
+    # Slack for the name may be slow. The name follows if Slack says it in time; a crash
+    # in between loses only the nicer name.
+    who = slack_bot.stand_in(reply.user)
+    where = str(next(iter(side["to_addresses"])))
     async with workspace_session(sm, workspace_id) as s:
         added = await repo.add_message(
             s, workspace_id, side_id=side["id"], direction="in",
-            body=reply.text[: rules.BODY_MAX] or "(empty)", author_member_id=None,
-            author_name=who, from_address="",
-            header_message_id=slack_rules.message_key(reply.channel, reply.ts),
+            body=_slack_body(reply, {}), author_member_id=None, author_name=who,
+            from_address="", header_message_id=slack_rules.message_key(reply.channel, reply.ts),
         )  # fmt: skip
-        if added is not None:  # else Slack sent the same message again
-            where = str(next(iter(side["to_addresses"])))
-            await _replied(s, workspace_id, UUID(str(side["ticket_id"])), who,
-                           f"{who} replied in the side conversation in Slack {where}")  # fmt: skip
+        if added is None:
+            return {}  # Slack sent the same message again
+        line_id = await _replied(s, workspace_id, UUID(str(side["ticket_id"])), who,
+                                 _slack_line(who, where))  # fmt: skip
+    name = await _name_in_time(bot, reply.user)
+    if name is None:
+        return {}
+    async with workspace_session(sm, workspace_id) as s:
+        await repo.name_message(
+            s, added, author_name=name, body=_slack_body(reply, {reply.user: name})
+        )
+        await repo.rename_line(s, line_id, _slack_line(name, where))
     return {}
+
+
+def _slack_line(who: str, where: str) -> str:
+    return f"{who} replied in the side conversation in Slack {where}"
+
+
+def _slack_body(reply: slack_rules.ThreadReply, names: dict[str, str]) -> str:
+    return slack_rules.reply_body(reply, names)[: rules.BODY_MAX] or "(empty)"
+
+
+async def _name_in_time(bot: slack_bot.Bot, user: str) -> str | None:
+    """The replier's Slack name, or None when Slack is slow or fails (never an error)."""
+    try:
+        return await asyncio.wait_for(bot.name_of(user), NAME_WAIT)
+    except Exception as exc:  # a slow or broken lookup must not lose the reply
+        logger.warning("slack: name lookup failed (%s)", type(exc).__name__)
+        return None
