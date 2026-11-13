@@ -3,6 +3,7 @@
 sent, which answers mean "the device is gone", a refused key, only Google's two fixed
 hosts (never the key file's token_uri), the egress guard, and no token or key in errors."""
 
+import asyncio
 import base64
 import json
 from typing import Any
@@ -98,21 +99,33 @@ async def test_signs_in_and_sends() -> None:
 
 
 @pytest.mark.parametrize(
-    ("status", "answer", "gone"),
+    ("status", "answer", "gone", "retry"),
     [
-        (404, {"error": {"status": "NOT_FOUND"}}, True),
-        (400, {"error": {"details": [{"errorCode": "UNREGISTERED"}]}}, True),
-        (400, {"error": {"details": [{"errorCode": "INVALID_ARGUMENT"}]}}, True),
-        (400, {"error": {"details": [{"errorCode": "SENDER_ID_MISMATCH"}]}}, False),
-        (429, {"error": {}}, False),
-        (503, {"error": {}}, False),
+        (404, {"error": {"status": "NOT_FOUND"}}, True, False),
+        (400, {"error": {"details": [{"errorCode": "UNREGISTERED"}]}}, True, False),
+        # A bad message or token format: refused, but the app may still be there.
+        (400, {"error": {"details": [{"errorCode": "INVALID_ARGUMENT"}]}}, False, False),
+        (400, {"error": {"status": "INVALID_ARGUMENT"}}, False, False),
+        (400, {"error": {"details": [{"errorCode": "SENDER_ID_MISMATCH"}]}}, False, False),
+        (429, {"error": {}}, False, True),
+        (503, {"error": {}}, False, True),
     ],
 )
-async def test_answers(status: int, answer: Any, gone: bool) -> None:
+async def test_answers(status: int, answer: Any, gone: bool, retry: bool) -> None:
     fake = FakeGoogle()
     fake.answer = (status, answer)
     sent = await client(fake).send(DEVICE, "t", "b", {})
-    assert (sent.ok, sent.gone) == (False, gone)
+    assert (sent.ok, sent.gone, sent.retry) == (False, gone, retry)
+
+
+async def test_one_pool_and_one_token_for_concurrent_sends() -> None:
+    fake = FakeGoogle()
+    fcm = client(fake)
+    async with fcm.opened():
+        results = await asyncio.gather(*(fcm.send(DEVICE, "t", "b", {}) for _ in range(5)))
+    assert all(r.ok for r in results)
+    assert [r.url.host for r in fake.seen].count("oauth2.googleapis.com") == 1
+    assert fcm._client is None  # closed with the pass
 
 
 async def test_a_refused_key_stops_without_leaking() -> None:

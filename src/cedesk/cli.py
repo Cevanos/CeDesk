@@ -367,13 +367,6 @@ def _worker(once: bool) -> int:
                         f"{outbox.failed} failed",
                         extra={"event": "outbox"},
                     )
-                try:  # after the outbox: its handlers make notifications
-                    banners = await push_due(sm, pusher)
-                except Exception:
-                    banners = 0
-                    logger.exception("push pass failed")
-                if banners:
-                    logger.info(f"push: {banners} banners", extra={"event": "push"})
                 result = await send_due(sm, mailer, store=store, scanning=scanner is not None)
                 if result.sent or result.retrying or result.failed:
                     logger.info(
@@ -381,6 +374,15 @@ def _worker(once: bool) -> int:
                         f"{result.failed} failed",
                         extra={"event": "email"},
                     )
+                # After the outbox (its handlers make notifications) and the emails: one
+                # pass sends for at most 20 s, the rest waits for the next.
+                try:
+                    banners = await push_due(sm, pusher)
+                except Exception:
+                    banners = 0
+                    logger.exception("push pass failed")
+                if banners:
+                    logger.info(f"push: {banners} banners", extra={"event": "push"})
                 try:
                     hooks = await send_webhooks(sm, sealer, webhook_client)
                 except Exception:

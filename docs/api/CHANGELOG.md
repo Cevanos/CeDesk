@@ -9,26 +9,40 @@ Banners on agents' phones, through Firebase Cloud Messaging (it reaches iPhones 
 the app's Apple key uploaded to Firebase).
 
 - `POST /me/devices {"platform": "ios"|"android", "token"}` -> 201: after sign-in, with
-  the app's FCM registration token. The same token again refreshes it, or moves it to
-  you if someone else used the phone. You keep your 10 newest phones.
+  the app's FCM registration token; the phone is tied to this sign-in. The same token
+  again refreshes it (under your current sign-in). A token registered to someone else
+  who is still signed in on it -> 409; once their sign-in has ended it moves to you. Not
+  with an API key (403). You keep your 10 newest phones.
 - `GET /me/devices` -> `{"push_on", "devices": [{id, platform, token_hint, created_at,
   last_seen_at}]}`: your phones, never the token itself (`token_hint` is its last 6
-  characters). `push_on: false` when the server has no Firebase settings.
-- `DELETE /me/devices/{id}` -> 204: call it on sign-out. Someone else's device: 404.
-- Banners for three notifications: a ticket assigned to you ("New ticket for you"), a
-  mention ("You were mentioned") and a customer reply ("The customer replied"). The body
+  characters). `push_on: true` only when both Firebase settings are set.
+- `DELETE /me/devices/{id}` -> 204. Someone else's device: 404. Ending a sign-in removes
+  its phones anyway: sign-out, a password change (your other sign-ins), an Admin's
+  password reset, deactivation; a phone whose sign-in expired gets nothing.
+- Banners for four notifications: a ticket assigned to you ("New ticket for you"), a
+  mention ("You were mentioned"), a customer reply ("The customer replied") and a
+  Cevanos chat waiting for Accept ("A chat is waiting for you": new notification kind
+  `handover`, to the assignee, else the team's Available agents; for such a chat the
+  "assigned" one gets no banner, and none once it is accepted). The body
   is the ticket's number (`T-1042`), never its subject or a message; `data` has
   `ticket_id`, `notification_id` and `kind` so the app can open the ticket. Everything
   else stays in the bell.
-- The worker sends them: once each, even with several workers (claimed with SKIP
-  LOCKED); one older than 10 minutes is dropped (it is in the bell); a token Firebase
-  says is gone is deleted; a deactivated member gets none.
+- The worker sends them after the emails: claimed with SKIP LOCKED under a lease (other
+  workers skip them), 10 at a time, at most 20 s a pass (the rest wait for the next),
+  5 s a request. One older than 10 minutes is dropped (it is in the bell). A network
+  error or a busy Firebase (429, 5xx) is retried a minute later, at most 5 tries. A
+  token Firebase says is gone (UNREGISTERED, NOT_FOUND, 404) is deleted; INVALID_ARGUMENT
+  keeps the device. A refused key stops sending for that pass (logged once) and the
+  banners wait. A deactivated member gets none.
 - Settings (worker): `CEDESK_PUSH_FCM_PROJECT_ID` and `CEDESK_PUSH_FCM_SERVICE_ACCOUNT`
   (the service account key's JSON). Both empty: push is off and nothing else changes.
   One without the other, or a key that can't be read, stops the worker with the reason.
-  Tokens and the key are never logged.
+  Tokens and the key are never logged; the database engine hides statement values from
+  logs and errors (`hide_parameters`).
 
-Migration 0051 (after 0050).
+Migration 0051 (after 0050): `hd_push_device` (with the registering `session_id`), and on
+`hd_notification` `push_handled_at`, `push_claimed_until`, `push_attempts` and kind
+`handover`.
 
 ## 2026-11-13: Calendly app and the saved reply /book (Phase 3, PL7, W19)
 

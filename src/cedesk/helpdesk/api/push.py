@@ -40,19 +40,23 @@ class DevicesOut(BaseModel):
 @router.get("", response_model=DevicesOut, summary="My phones that get banners")
 async def my_devices(caller: CallerDep, sm: SessionmakerDep, settings: SettingsDep) -> DevicesOut:
     found = await push.devices(sm, caller)
-    return DevicesOut(push_on=bool(settings.push_fcm_project_id),
+    return DevicesOut(push_on=settings.push_on(),
                       devices=[DeviceOut(**d.__dict__) for d in found])  # fmt: skip
 
 
 @router.post(
     "",
     response_model=DeviceOut,
+    responses={409: {"description": "Registered to someone still signed in on this phone"}},
     status_code=status.HTTP_201_CREATED,
     summary="Register this phone for banners",
     description="After sign-in, with the app's push token. Banners: a new ticket for you, "
-    "a mention, a customer reply; they name the ticket's number only. The same token "
-    "again just refreshes it (or moves it to you, if someone else used this phone). You "
-    "keep your 10 newest phones.",
+    "a mention, a customer reply, a Cevanos chat waiting for Accept; they name the "
+    "ticket's number only. The same token "
+    "again just refreshes it (or moves it to you, if whoever used this phone signed out). You "
+    "keep your 10 newest phones. Banners stop when this sign-in ends (sign-out, a password "
+    "change or reset, deactivation). 409: the phone is registered to someone still signed "
+    "in on it. Not with an API key (403).",
 )
 async def register(body: DeviceIn, caller: CallerDep, sm: SessionmakerDep) -> DeviceOut:
     got = await push.register(sm, caller, platform=body.platform.value, token=body.token)
