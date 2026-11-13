@@ -41,7 +41,7 @@ from cedesk.helpdesk.repo import auth as auth_repo
 from cedesk.helpdesk.repo import cevanos as repo
 from cedesk.helpdesk.repo import outbox
 from cedesk.helpdesk.repo import tickets as ticket_repo
-from cedesk.helpdesk.service import audit, customer_replies, tickets
+from cedesk.helpdesk.service import audit, customer_replies, push, tickets
 from cedesk.helpdesk.service.auth import Sessionmaker
 from cedesk.helpdesk.service.delivery import Event, HandlerError
 from cedesk.helpdesk.service.errors import (
@@ -448,6 +448,8 @@ async def _handover(
         )  # fmt: skip
         if unread:
             await _line(s, ws, ticket_id, f"The chat couldn't be read from Cevanos: {unread}")
+        # Its assignee, else the team's Available agents, hear of it (bell and phone).
+        await push.tell_handover(s, ws, ticket_id, int(view.ticket["number"]))
     return Received(Outcome.created, ticket_id)
 
 
@@ -470,6 +472,7 @@ async def _again(
     await repo.reopen_for_handover(s, ticket_id, event_id)
     reason = handover.get("reason") or "handover"
     await _line(s, ws, ticket_id, f"Handed over again by Cevanos ({reason}). Accept it to reply.")
+    await push.tell_handover(s, ws, ticket_id, int(detail["number"]))
     if before["status"] == Status.resolved.value:
         await _emit(s, ws, ticket_id, events.Event.ticket_updated, {"changes": ["status"]})
     return Received(Outcome.handed_over_again, ticket_id)

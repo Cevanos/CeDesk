@@ -54,6 +54,7 @@ class Area(StrEnum):
     retention = "retention"
     plan = "plan"
     demo = "demo"
+    archive = "archive"
 
 
 @dataclass(frozen=True)
