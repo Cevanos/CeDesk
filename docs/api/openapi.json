@@ -9280,7 +9280,7 @@
           "mobile"
         ],
         "summary": "Reply from the mobile app",
-        "description": "On a chat handover nobody has accepted, accepts it first (line 'Chat accepted by <you> (mobile)'), so the customer hears a person joined. A light agent's text is saved as a private note instead. Idempotency-Key is honoured.",
+        "description": "On a chat handover nobody has accepted, accepts it first (line '<you> joined the chat (mobile)'), so the customer hears a person joined. A light agent's text is saved as a private note instead. Idempotency-Key is honoured.",
         "operationId": "mobile_reply_api_v1_tickets__ticket_id__mobile_reply_post",
         "security": [
           {

@@ -72,8 +72,8 @@ async def my_queue(
     response_model=MobileReplyOut,
     status_code=status.HTTP_201_CREATED,
     summary="Reply from the mobile app",
-    description="On a chat handover nobody has accepted, accepts it first (line 'Chat "
-    "accepted by <you> (mobile)'), so the customer hears a person joined. A light agent's "
+    description="On a chat handover nobody has accepted, accepts it first (line '<you> "
+    "joined the chat (mobile)'), so the customer hears a person joined. A light agent's "
     "text is saved as a private note instead. Idempotency-Key is honoured.",
     responses={
         403: {"description": "The ticket is another team's (view only)"},
