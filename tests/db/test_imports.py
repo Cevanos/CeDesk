@@ -322,6 +322,30 @@ async def test_running_again_creates_no_duplicates(im: AsyncClient, app_sessionm
     await end_runs(sm, w["ws"])
 
 
+async def test_an_archived_ticket_is_not_imported_again(
+    im: AsyncClient, app_sessionmaker: Sm
+) -> None:
+    """md O3: an imported ticket moved to the archive is still "already here"."""
+    from cedesk.helpdesk.service import archive
+
+    sm = app_sessionmaker
+    w = await desk(im, sm)
+    first = await upload(im, w)
+    ok(await im.post(f"{I}/connections/{first['id']}/run", headers=w["admin"], json={}), 202)
+    await work(im, sm)
+    later = datetime.now(UTC) + timedelta(days=400)  # it counts from its import
+    assert await archive.archive_workspace(sm, w["ws"], later) == 1  # T1, solved
+    second = await upload(im, w)
+    run = ok(await im.post(f"{I}/connections/{second['id']}/run", headers=w["admin"], json={}), 202)
+    await work(im, sm)
+    done = await run_state(im, w, run["id"])
+    assert done["counts"]["tickets"]["created"] == 0 and done["counts"]["tickets"]["skipped"] == 2
+    assert len(await sql(sm, w["ws"], "SELECT 1 FROM hd_ticket WHERE source = 'csv'")) == 1
+    archived = await sql(sm, w["ws"], "SELECT source, source_id FROM hd_ticket_archive")
+    assert [(a["source"], a["source_id"]) for a in archived] == [("csv", "T1")]
+    await end_runs(sm, w["ws"])
+
+
 # A fake help desk: contacts, articles, saved replies, agents by email, resume, 429
 
 

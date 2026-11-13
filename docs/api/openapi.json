@@ -11101,7 +11101,7 @@
           "archive"
         ],
         "summary": "Open an archived ticket (read only)",
-        "description": "Its messages (internal notes too), files' names and rating. It can't be changed, replied to or reopened.",
+        "description": "Everything that was on it: messages (internal notes too, with an email's headers), files' names, rating, time logged, tasks, approvals, links, side conversations, Jira issues and emails sent. The team's and assignee's names are as they were when it was archived. It can't be changed, replied to or reopened; a customer's late email answer to it becomes a new ticket that follows it.",
         "operationId": "open_one_api_v1_archive_tickets__ticket_id__get",
         "security": [
           {
@@ -12137,6 +12137,19 @@
             "type": "array",
             "title": "Files",
             "description": "name, size and type of each file."
+          },
+          "email": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email",
+            "description": "An email's headers (from, to, cc, subject, message ids); else null."
           }
         },
         "type": "object",
@@ -12145,7 +12158,8 @@
           "author_name",
           "body",
           "created_at",
-          "files"
+          "files",
+          "email"
         ],
         "title": "ArchivedMessageOut"
       },
@@ -12428,6 +12442,69 @@
             ],
             "title": "Rating",
             "description": "score, comment, source, rated_at."
+          },
+          "time_log": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Time Log",
+            "description": "minutes, billable, note, member_name, logged_at."
+          },
+          "tasks": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Tasks",
+            "description": "text, owner_name, due_at, done_at, created_at."
+          },
+          "approvals": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Approvals",
+            "description": "what, amount, currency, state, decision_note, requester_name, approver_name, decided_by_name, decided_at, created_at."
+          },
+          "links": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Links",
+            "description": "The linked tickets: ticket_id, number, label, kind, created_at."
+          },
+          "side_conversations": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Side Conversations",
+            "description": "subject, via, to_addresses, from_address, created_at and messages (direction, author_name, from_address, body, created_at)."
+          },
+          "jira_issues": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Jira Issues",
+            "description": "issue_key, url, made_here, created_at."
+          },
+          "emails": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Emails",
+            "description": "The emails sent from it: from_address, to_addresses, cc_addresses, subject, body_text (null for one that carried a secret), status, sent_at, created_at."
           }
         },
         "type": "object",
@@ -12451,7 +12528,14 @@
           "fields",
           "messages",
           "files",
-          "rating"
+          "rating",
+          "time_log",
+          "tasks",
+          "approvals",
+          "links",
+          "side_conversations",
+          "jira_issues",
+          "emails"
         ],
         "title": "ArchivedTicketOut"
       },

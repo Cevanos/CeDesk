@@ -8,9 +8,12 @@ customer message on the ticket it answers.
    X5, by its reply headers) is saved there and goes no further.
 4. Find the ticket: In-Reply-To / References match a message on it; else a '[T-1001]'
    label in the subject, only when the sender is that ticket's customer. A merged ticket
-   passes it on to the ticket it was merged into.
+   passes it on to the ticket it was merged into. No live ticket: an archived one (md O3)
+   is looked for the same way.
 5. Found: `customer_reply` (reopen, thank-you, reply rules). Else a new ticket (channel
-   email, rules, auto-assignment) with the address it was sent to recorded.
+   email, rules, auto-assignment) with the address it was sent to recorded. An answer to
+   an archived ticket (read only) is a new ticket too, tagged `archived-follow-up`, with
+   the line "Follows archived ticket T-1234".
 """
 
 import logging
@@ -23,8 +26,10 @@ from uuid import UUID
 from cedesk.db import workspace_session
 from cedesk.helpdesk.domain import email_verify as verify
 from cedesk.helpdesk.domain import inbound as rules
+from cedesk.helpdesk.domain.archive import FOLLOW_UP_TAG
 from cedesk.helpdesk.domain.email import normalise_address
-from cedesk.helpdesk.domain.tickets import Channel
+from cedesk.helpdesk.domain.tickets import Channel, label
+from cedesk.helpdesk.repo import archive as archive_repo
 from cedesk.helpdesk.repo import email as repo
 from cedesk.helpdesk.service import side_conversations
 from cedesk.helpdesk.service.attachments import IncomingFiles
@@ -62,13 +67,29 @@ class Received:
     workspace_id: UUID | None = None
 
 
-async def _find_ticket(sm: Sessionmaker, workspace_id: UUID, email: rules.Inbound) -> UUID | None:
+@dataclass(frozen=True)
+class _Found:
+    ticket_id: UUID | None = None  # a live ticket it answers
+    follows: int | None = None  # else: the number of the archived ticket it answers
+
+
+async def _find_ticket(sm: Sessionmaker, workspace_id: UUID, email: rules.Inbound) -> _Found:
+    """A live ticket first, by the reply headers then by '[T-1001]'. Else an archived one
+    (md O3), the same way: an archived ticket is read only, so the answer becomes a new
+    ticket that says which one it follows."""
     async with workspace_session(sm, workspace_id) as s:
-        ticket_id = await repo.ticket_for_email_ids(s, workspace_id, email.thread_ids())
+        ids = email.thread_ids()
+        number = rules.ticket_number(email.subject)
+        ticket_id = await repo.ticket_for_email_ids(s, workspace_id, ids)
+        archived = None
         if ticket_id is None:
-            number = rules.ticket_number(email.subject)
-            if number is not None:
-                ticket_id = await repo.ticket_for_contact_number(s, number, email.from_address)
+            archived = await archive_repo.for_email_ids(s, ids)
+        if ticket_id is None and archived is None and number is not None:
+            ticket_id = await repo.ticket_for_contact_number(s, number, email.from_address)
+            if ticket_id is None:
+                archived = await archive_repo.for_contact_number(s, number, email.from_address)
+        if archived is not None:
+            return _Found(follows=int(archived["number"]))
         for _ in range(MAX_MERGE_HOPS):
             if ticket_id is None:
                 break
@@ -76,7 +97,7 @@ async def _find_ticket(sm: Sessionmaker, workspace_id: UUID, email: rules.Inboun
             if target is None:
                 break
             ticket_id = target
-        return ticket_id
+        return _Found(ticket_id)
 
 
 async def receive(
@@ -136,14 +157,14 @@ async def receive(
     if written_to not in email.to:
         stored["to"] = [written_to, *email.to][:20]  # so From picks it for our reply
     files = IncomingFiles(store, email.files, file_max_bytes) if store is not None else None
-    ticket_id = await _find_ticket(sm, workspace_id, email)
-    if ticket_id is not None:
+    thread = await _find_ticket(sm, workspace_id, email)
+    if thread.ticket_id is not None:
         result = await customer_reply(
-            sm, workspace_id, ticket_id, email.text,
+            sm, workspace_id, thread.ticket_id, email.text,
             email=stored, channel_message_id=email.message_id,
             author_name=email.from_name, files=files,
         )  # fmt: skip
-        return Received(Outcome(result.outcome.value), ticket_id, workspace_id)
+        return Received(Outcome(result.outcome.value), thread.ticket_id, workspace_id)
 
     new = NewTicket(
         subject=email.subject or "(no subject)",
@@ -156,6 +177,8 @@ async def receive(
         to_address=written_to,
         first_email=stored,
         first_channel_message_id=email.message_id[:200],
+        follows=label(thread.follows) if thread.follows is not None else None,
+        tags=(FOLLOW_UP_TAG,) if thread.follows is not None else (),
     )
     try:
         view = await create_from_channel(sm, workspace_id, new, files=files)

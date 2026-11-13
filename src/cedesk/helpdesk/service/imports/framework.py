@@ -67,6 +67,7 @@ from cedesk.helpdesk.domain.imports import (
 )
 from cedesk.helpdesk.domain.permissions import Action
 from cedesk.helpdesk.domain.portal import normalise_email
+from cedesk.helpdesk.repo import archive as archive_repo
 from cedesk.helpdesk.repo import attachments as attach_repo
 from cedesk.helpdesk.repo import auth as auth_repo
 from cedesk.helpdesk.repo import imports as repo
@@ -692,6 +693,7 @@ class _Ctx:
     categories: dict[str, UUID] = field(default_factory=dict)
     # Set by `_prepare` for the page about to be written:
     have: dict[str, UUID] = field(default_factory=dict)  # source id -> ticket already here
+    archived: set[str] = field(default_factory=set)  # source ids already in the archive (O3)
     ticket_ids: dict[str, UUID] = field(default_factory=dict)  # source id -> ticket id to use
     seen: dict[UUID, tuple[set[str], set[tuple[str, int]]]] = field(default_factory=dict)
     files: dict[int, list[_Kept | _Linked]] = field(default_factory=dict)  # by id(message)
@@ -944,6 +946,9 @@ async def _prepare(ctx: _Ctx, connector: SourceConnector, items: list[Ticket]) -
     unique = {t.external_id: t for t in items}
     async with workspace_session(ctx.sm, ctx.ws) as s:
         ctx.have = await repo.ticket_ids_by_source(s, ctx.source, list(unique))
+        # An archived ticket (md O3) was imported already: skipped, never made again, and a
+        # sync look leaves it as archived (it is read only).
+        ctx.archived = await archive_repo.source_ids(s, ctx.source, list(unique))
         ctx.seen = (
             await repo.message_keys(s, list(ctx.have.values())) if ctx.update_existing else {}
         )
@@ -955,7 +960,7 @@ async def _prepare(ctx: _Ctx, connector: SourceConnector, items: list[Ticket]) -
     try:
         for ext, ticket in unique.items():
             known_id = ctx.have.get(ext)
-            if known_id is not None and not ctx.update_existing:
+            if ext in ctx.archived or (known_id is not None and not ctx.update_existing):
                 continue
             known = ctx.seen.get(known_id) if known_id is not None else None
             for message in ticket.messages:
@@ -1087,9 +1092,10 @@ async def _member(s: AsyncSession, ctx: _Ctx, email: str | None) -> Row | None:
 
 async def _tickets(s: AsyncSession, ctx: _Ctx, items: list[Ticket]) -> dict[str, int]:
     """Writes a page prepared by `_prepare`: new tickets are created; ones already here are
-    skipped, or (a sync look) get their new messages and status."""
+    skipped, or (a sync look) get their new messages and status. Archived ones (md O3) are
+    always skipped."""
     unique = {t.external_id: t for t in items}
-    fresh = [t for key, t in unique.items() if key not in ctx.have]
+    fresh = [t for key, t in unique.items() if key not in ctx.have and key not in ctx.archived]
     stats = {
         "created": 0, "skipped": len(unique) - len(fresh) + len(items) - len(unique),
         "updated": 0, "new_messages": 0, "unknown_agent_messages": 0,

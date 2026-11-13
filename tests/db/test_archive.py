@@ -8,6 +8,7 @@ import asyncio
 import json
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
+from email.message import EmailMessage
 from pathlib import Path
 from typing import Any
 from uuid import UUID
@@ -272,9 +273,28 @@ async def test_privacy_export_and_erase_cover_the_archive(
     assert archived["subject"] == "Old parcel" and archived["rating"]["score"] == 4
     assert "Found it, sending today." in [m["text"] for m in archived["messages"]]
 
+    assert (made["counts"]["tickets"], data["customer"]["email"]) == (1, PRIYA)
+
+    # Its events and webhook deliveries name it (and its subject): erased as for live ones.
+    await sql(sm, w["ws"],
+        "INSERT INTO hd_webhook (workspace_id, url, events, secret_sealed, secret_hint) "
+        "VALUES (:ws, 'https://hooks.example.com/x', ARRAY['ticket.created'], '\\x00', "
+        "'…abcd')", ws=w["ws"])  # fmt: skip
+    await sql(sm, w["ws"],
+        "INSERT INTO hd_webhook_delivery (workspace_id, webhook_id, event, body, state) "
+        "SELECT :ws, id, 'ticket.created', jsonb_build_object('ticket', jsonb_build_object("
+        "'id', CAST(:t AS text), 'subject', 'Old parcel')), 'pending' FROM hd_webhook",
+        ws=w["ws"], t=old["id"])  # fmt: skip
+    events = "SELECT payload FROM hd_outbox WHERE ticket_id = :t"
+    assert await sql(sm, w["ws"], events, t=UUID(old["id"]))  # some, naming it
+
     erase = {"contact_id": old["contact"]["id"], "confirm_email": PRIYA}
     done = ok(await client.post(f"{P}/erase", headers=w["h"], json=erase), 201)
     assert done["counts"]["archived_tickets"] == 1
+    payloads = [e["payload"] for e in await sql(sm, w["ws"], events, t=UUID(old["id"]))]
+    assert payloads and all(p == {"erased": True} for p in payloads)
+    [hook] = await sql(sm, w["ws"], "SELECT body, state FROM hd_webhook_delivery")
+    assert (hook["body"], hook["state"]) == ({"erased": True}, "failed")
     [row] = await sql(sm, w["ws"], "SELECT subject, ticket, messages, files, rating "
                       "FROM hd_ticket_archive")  # fmt: skip
     assert row["subject"] == "(erased)" and row["ticket"]["subject"] == "(erased)"
@@ -286,3 +306,247 @@ async def test_privacy_export_and_erase_cover_the_archive(
     assert row["rating"]["comment"] is None and row["rating"]["score"] == 4
     assert stored_files(files) == 0  # its file is deleted from storage
     assert "Priya" not in json.dumps([dict(row)], default=str).replace("Erased customer", "")
+
+
+async def member_id(sm: Sm, ws: UUID, email: str) -> UUID:
+    [row] = await sql(sm, ws, "SELECT id FROM member WHERE email = :e", e=email)
+    return UUID(str(row["id"]))
+
+
+async def test_everything_on_the_ticket_moves_with_it(
+    client: AsyncClient, app_sessionmaker: Sm
+) -> None:
+    """Nothing is lost: every message column (an email's headers too), time logged, tasks,
+    approvals, links, side conversations with their messages, Jira issues and the emails
+    sent are in the archive and in its read; the team's and assignee's names are as they
+    were, even after the team and the member are gone."""
+    sm = app_sessionmaker
+    w = await desk(client, sm)
+    ws = w["ws"]
+    admin, neha = await member_id(sm, ws, "admin@example.com"), UUID(w["neha"])
+    team = ok(await client.post("/api/v1/teams", headers=w["h"],
+                                json={"name": "Returns", "auto_assign": False}), 201)  # fmt: skip
+    old = await an_old_ticket(client, sm, w)
+    other = await ticket(client, w, "Related, resolved lately")
+    await resolved_ago(sm, ws, other["id"], 10)
+    tid = UUID(old["id"])
+    await sql(sm, ws, "UPDATE hd_ticket SET team_id = :team, assignee_id = :neha WHERE id = :id",
+              team=UUID(team["id"]), neha=neha, id=tid)  # fmt: skip
+    email_head = {"message_id": "<late-1@mail.example.org>", "from": PRIYA, "to": ["s@x.test"]}
+    await sql(sm, ws,
+        "INSERT INTO hd_message (workspace_id, ticket_id, kind, author_name, body, email, "
+        "channel_message_id) VALUES (:ws, :t, 'customer', 'Priya', 'By email', "
+        "CAST(:email AS jsonb), '<late-1@mail.example.org>')",
+        ws=ws, t=tid, email=json.dumps(email_head))  # fmt: skip
+    await sql(sm, ws,
+        "INSERT INTO hd_time_log (workspace_id, ticket_id, member_id, minutes, note, billable) "
+        "VALUES (:ws, :t, :m, 25, 'Called the courier', true)", ws=ws, t=tid, m=neha)  # fmt: skip
+    await sql(sm, ws,
+        "INSERT INTO hd_task (workspace_id, ticket_id, owner_id, text, created_by) "
+        "VALUES (:ws, :t, :m, 'Refund the shipping', :a)",
+        ws=ws, t=tid, m=neha, a=admin)  # fmt: skip
+    await sql(sm, ws,
+        "INSERT INTO hd_approval (workspace_id, ticket_id, requester_id, approver_id, what, "
+        "amount, currency, state, decided_by, decided_at) VALUES (:ws, :t, :n, :a, "
+        "'Refund 499', 499, 'INR', 'approved', :a, now())",
+        ws=ws, t=tid, n=neha, a=admin)  # fmt: skip
+    a, b = sorted([tid, UUID(other["id"])])
+    await sql(sm, ws, "INSERT INTO hd_link (workspace_id, ticket_a, ticket_b, created_by) "
+              "VALUES (:ws, :a, :b, :m)", ws=ws, a=a, b=b, m=admin)  # fmt: skip
+    [side] = await sql(sm, ws,
+        "INSERT INTO hd_side_conversation (workspace_id, ticket_id, subject, to_addresses, "
+        "from_address, created_by) VALUES (:ws, :t, 'Courier claim', ARRAY['ops@courier.test'], "
+        "'support@x.test', :m) RETURNING id", ws=ws, t=tid, m=neha)  # fmt: skip
+    await sql(sm, ws,
+        "INSERT INTO hd_side_message (workspace_id, side_id, direction, body, author_name, "
+        "from_address, header_message_id) VALUES (:ws, :s, 'in', 'Claim accepted', 'Courier', "
+        "'ops@courier.test', '<side-1@courier.test>')", ws=ws, s=side["id"])  # fmt: skip
+    await sql(sm, ws,
+        "INSERT INTO hd_jira_issue (workspace_id, ticket_id, issue_key, url, made_here) "
+        "VALUES (:ws, :t, 'SHIP-42', 'https://acme.atlassian.net/browse/SHIP-42', true)",
+        ws=ws, t=tid)  # fmt: skip
+    await sql(sm, ws,
+        "INSERT INTO hd_email_out (workspace_id, ticket_id, from_address, from_name, "
+        "to_addresses, subject, body_text, status, sent_at) VALUES (:ws, :t, 's@x.test', "
+        "'Acme', ARRAY[:to], 'Re: Old parcel', 'Found it, sending today.', 'sent', now())",
+        ws=ws, t=tid, to=PRIYA)  # fmt: skip
+
+    assert await archive.archive_workspace(sm, ws, datetime.now(UTC)) == 1
+    ok(await client.get(f"{T}/{other['id']}", headers=w["h"]))  # the linked one stays live
+    # The team and the member go: the archive keeps their names from then.
+    gone = await client.delete(f"/api/v1/teams/{team['id']}", headers=w["h"])
+    assert gone.status_code == 204
+    await sql(sm, ws, "UPDATE member SET name = 'Neha (left)' WHERE id = :m", m=neha)
+
+    [row] = await sql(sm, ws, "SELECT messages, related, email_ids FROM hd_ticket_archive")
+    by_email = next(m for m in row["messages"] if m["body"] == "By email")
+    assert by_email["email"] == email_head
+    assert by_email["channel_message_id"] == "<late-1@mail.example.org>"
+    assert row["email_ids"] == ["<late-1@mail.example.org>"]
+
+    got = ok(await client.get(f"{A}/tickets/{old['id']}", headers=w["agent"]))
+    assert (got["team_name"], got["assignee_name"]) == ("Returns", "Neha")
+    assert next(m for m in got["messages"] if m["body"] == "By email")["email"] == email_head
+    assert [(t["minutes"], t["note"], t["billable"], t["member_name"]) for t in got["time_log"]] \
+        == [(25, "Called the courier", True, "Neha")]  # fmt: skip
+    assert [(t["text"], t["owner_name"]) for t in got["tasks"]] == [("Refund the shipping", "Neha")]
+    [approval] = got["approvals"]
+    assert (approval["what"], approval["state"], approval["requester_name"],
+            approval["approver_name"]) == ("Refund 499", "approved", "Neha", "Admin")  # fmt: skip
+    assert [(x["ticket_id"], x["label"]) for x in got["links"]] == [
+        (other["id"], f"T-{other['number']}")]  # fmt: skip
+    [side_out] = got["side_conversations"]
+    assert side_out["subject"] == "Courier claim"
+    assert [(m["direction"], m["body"]) for m in side_out["messages"]] == [("in", "Claim accepted")]
+    assert [(j["issue_key"], j["made_here"]) for j in got["jira_issues"]] == [("SHIP-42", True)]
+    [sent] = got["emails"]
+    assert (sent["to_addresses"], sent["subject"], sent["status"]) == (
+        [PRIYA], "Re: Old parcel", "sent")  # fmt: skip
+    assert "object_key" not in json.dumps(got)
+
+
+async def test_a_ticket_a_live_one_still_needs_waits(
+    client: AsyncClient, app_sessionmaker: Sm
+) -> None:
+    """A parent with a live child, a ticket merged into by a live one, or one linked to an
+    open ticket isn't archived (the live one would lose it); it moves once they have."""
+    sm = app_sessionmaker
+    w = await desk(client, sm)
+    ws = w["ws"]
+    parent = await ticket(client, w, "Parent")
+    child = await ticket(client, w, "Child, still open")
+    merged_into = await ticket(client, w, "Kept after a merge")
+    merged = await ticket(client, w, "Merged duplicate")
+    linked = await ticket(client, w, "Linked to an open one")
+    still_open = await ticket(client, w, "Open, linked")
+    for t in (parent, merged_into, merged, linked):
+        await resolved_ago(sm, ws, t["id"], 200)
+    await sql(sm, ws, "UPDATE hd_ticket SET parent_id = :p WHERE id = :c",
+              p=UUID(parent["id"]), c=UUID(child["id"]))  # fmt: skip
+    await sql(sm, ws, "UPDATE hd_ticket SET merged_into_id = :k WHERE id = :m",
+              k=UUID(merged_into["id"]), m=UUID(merged["id"]))  # fmt: skip
+    a, b = sorted([UUID(linked["id"]), UUID(still_open["id"])])
+    await sql(sm, ws, "INSERT INTO hd_link (workspace_id, ticket_a, ticket_b) "
+              "VALUES (:ws, :a, :b)", ws=ws, a=a, b=b)  # fmt: skip
+
+    async def archived() -> set[str]:
+        return {str(r["id"]) for r in await sql(sm, ws, "SELECT id FROM hd_ticket_archive")}
+
+    # Only the merged duplicate moves: nothing live names it. What it names stays.
+    assert await archive.archive_workspace(sm, ws, datetime.now(UTC)) == 1
+    assert await archived() == {merged["id"]}
+    [row] = await sql(sm, ws, "SELECT ticket FROM hd_ticket_archive")
+    assert row["ticket"]["merged_into_id"] == merged_into["id"]  # kept, not set to null
+    # Its merge target is named by no live ticket now: it moves on the next run.
+    assert await archive.archive_workspace(sm, ws, datetime.now(UTC)) == 1
+    assert await archived() == {merged["id"], merged_into["id"]}
+    [child_now] = await sql(sm, ws, "SELECT parent_id FROM hd_ticket WHERE id = :c",
+                            c=UUID(child["id"]))  # fmt: skip
+    assert str(child_now["parent_id"]) == parent["id"]  # the live child keeps its parent
+    assert await archive.archive_workspace(sm, ws, datetime.now(UTC)) == 0
+
+    # The child and the open linked ticket are resolved long ago too: they all move, the
+    # child first, then its parent.
+    for t in (child, still_open):
+        await resolved_ago(sm, ws, t["id"], 200)
+    assert await archive.archive_workspace(sm, ws, datetime.now(UTC)) == 3
+    assert await archive.archive_workspace(sm, ws, datetime.now(UTC)) == 1
+    assert await sql(sm, ws, "SELECT id FROM hd_ticket") == []
+    [row] = await sql(sm, ws, "SELECT ticket FROM hd_ticket_archive WHERE id = :c",
+                      c=UUID(child["id"]))  # fmt: skip
+    assert row["ticket"]["parent_id"] == parent["id"]
+
+
+async def test_retention_deletes_an_archived_tickets_events(
+    client: AsyncClient, app_sessionmaker: Sm, files: Path
+) -> None:
+    """As for a live ticket: its events and webhook deliveries (which name it) go too."""
+    sm = app_sessionmaker
+    w = await desk(client, sm)
+    ws = w["ws"]
+    old = await an_old_ticket(client, sm, w)
+    keep = await ticket(client, w, "Kept")
+    await sql(sm, ws,
+        "INSERT INTO hd_webhook (workspace_id, url, events, secret_sealed, secret_hint) "
+        "VALUES (:ws, 'https://hooks.example.com/x', ARRAY['ticket.created'], '\\x00', "
+        "'…abcd')", ws=ws)  # fmt: skip
+    for t in (old, keep):
+        await sql(sm, ws,
+            "INSERT INTO hd_webhook_delivery (workspace_id, webhook_id, event, body, state) "
+            "SELECT :ws, id, 'ticket.created', jsonb_build_object('ticket', "
+            "jsonb_build_object('id', CAST(:t AS text), 'subject', 'x')), 'delivered' "
+            "FROM hd_webhook", ws=ws, t=t["id"])  # fmt: skip
+    assert await archive.archive_workspace(sm, ws, datetime.now(UTC)) == 1
+    count = "SELECT count(*) AS n FROM hd_outbox WHERE ticket_id = :t"
+    assert (await sql(sm, ws, count, t=UUID(old["id"])))[0]["n"] >= 1
+    ok(await client.put("/api/v1/retention", headers=w["h"], json={"closed_ticket_days": 180}))
+    store = client._transport.app.state.store  # type: ignore[attr-defined]
+    assert await limits.run_retention(sm, store) == 1
+    assert (await sql(sm, ws, count, t=UUID(old["id"])))[0]["n"] == 0
+    assert (await sql(sm, ws, count, t=UUID(keep["id"])))[0]["n"] >= 1
+    hooks = await sql(sm, ws, "SELECT body->'ticket'->>'id' AS t FROM hd_webhook_delivery")
+    assert [h["t"] for h in hooks] == [keep["id"]]
+    assert stored_files(files) == 0
+
+
+async def test_archived_files_count_as_storage(client: AsyncClient, app_sessionmaker: Sm) -> None:
+    sm = app_sessionmaker
+    w = await desk(client, sm)
+    old = await an_old_ticket(client, sm, w)  # one file of 5 bytes
+    assert ok(await client.get("/api/v1/usage", headers=w["h"]))["storage_bytes"] == 5
+    assert await archive.archive_workspace(sm, w["ws"], datetime.now(UTC)) == 1
+    assert ok(await client.get("/api/v1/usage", headers=w["h"]))["storage_bytes"] == 5
+    erase = {"contact_id": old["contact"]["id"], "confirm_email": PRIYA}
+    ok(await client.post("/api/v1/privacy/erase", headers=w["h"], json=erase), 201)
+    assert ok(await client.get("/api/v1/usage", headers=w["h"]))["storage_bytes"] == 0
+
+
+async def test_a_late_email_answer_to_an_archived_ticket(
+    client: AsyncClient, app_sessionmaker: Sm
+) -> None:
+    """The archived ticket is read only: the answer (by its reply headers or '[T-1234]'
+    from its customer) is a new ticket that says which one it follows. The same email
+    delivered again is still a duplicate."""
+    from cedesk.helpdesk.service.email_in import Outcome, receive
+
+    sm = app_sessionmaker
+    w = await desk(client, sm)
+    support = f"support@{w['slug']}.test"
+    ok(await client.post("/api/v1/email-addresses", headers=w["h"],
+                         json={"address": support, "name": "Acme"}), 201)  # fmt: skip
+
+    def mail(subject: str, message_id: str, in_reply_to: str | None = None) -> bytes:
+        msg = EmailMessage()
+        msg["From"], msg["To"], msg["Subject"] = f"Priya <{PRIYA}>", support, subject
+        msg["Message-ID"] = message_id
+        if in_reply_to:
+            msg["In-Reply-To"] = msg["References"] = in_reply_to
+        msg.set_content("Any news?")
+        return msg.as_bytes()
+
+    first = await receive(sm, mail("Lost parcel", "<first@mail.example.org>"))
+    assert first.outcome is Outcome.created
+    [made] = await sql(sm, w["ws"], "SELECT number FROM hd_ticket WHERE id = :id",
+                       id=first.ticket_id)  # fmt: skip
+    label = f"T-{made['number']}"
+    await resolved_ago(sm, w["ws"], str(first.ticket_id), 200)
+    assert await archive.archive_workspace(sm, w["ws"], datetime.now(UTC)) == 1
+
+    again = await receive(sm, mail("Lost parcel", "<first@mail.example.org>"))
+    assert again.outcome is Outcome.duplicate
+    for raw in (mail("Re: Lost parcel", "<late-2@mail.example.org>", "<first@mail.example.org>"),
+                mail(f"Still waiting [{label}]", "<late-3@mail.example.org>")):  # fmt: skip
+        got = await receive(sm, raw)
+        assert got.outcome is Outcome.created and got.ticket_id != first.ticket_id
+        t = ok(await client.get(f"{T}/{got.ticket_id}", headers=w["h"]))
+        lines = [m["body"] for m in t["messages"] if m["kind"] == "system"]
+        assert f"Follows archived ticket {label}" in lines
+        assert "archived-follow-up" in t["tags"]
+    # '[T-…]' from someone else is not theirs to follow: an ordinary new ticket.
+    other = EmailMessage()
+    other["From"], other["To"], other["Subject"] = "x@example.net", support, f"Re [{label}]"
+    other["Message-ID"] = "<other@example.net>"
+    other.set_content("Hi")
+    got = await receive(sm, other.as_bytes())
+    t = ok(await client.get(f"{T}/{got.ticket_id}", headers=w["h"]))
+    assert "archived-follow-up" not in t["tags"]

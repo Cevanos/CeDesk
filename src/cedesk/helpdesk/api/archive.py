@@ -40,6 +40,9 @@ class ArchivedMessageOut(BaseModel):
     body: str
     created_at: str
     files: list[dict[str, Any]] = Field(description="name, size and type of each file.")
+    email: dict[str, Any] | None = Field(
+        description="An email's headers (from, to, cc, subject, message ids); else null."
+    )
 
 
 class ArchivedTicketOut(ArchivedOut):
@@ -48,6 +51,28 @@ class ArchivedTicketOut(ArchivedOut):
     messages: list[ArchivedMessageOut]
     files: list[dict[str, Any]] = Field(description="Every file on the ticket: name, size, type.")
     rating: dict[str, Any] | None = Field(description="score, comment, source, rated_at.")
+    time_log: list[dict[str, Any]] = Field(
+        description="minutes, billable, note, member_name, logged_at."
+    )
+    tasks: list[dict[str, Any]] = Field(
+        description="text, owner_name, due_at, done_at, created_at."
+    )
+    approvals: list[dict[str, Any]] = Field(
+        description="what, amount, currency, state, decision_note, requester_name, "
+        "approver_name, decided_by_name, decided_at, created_at."
+    )
+    links: list[dict[str, Any]] = Field(
+        description="The linked tickets: ticket_id, number, label, kind, created_at."
+    )
+    side_conversations: list[dict[str, Any]] = Field(
+        description="subject, via, to_addresses, from_address, created_at and messages "
+        "(direction, author_name, from_address, body, created_at)."
+    )
+    jira_issues: list[dict[str, Any]] = Field(description="issue_key, url, made_here, created_at.")
+    emails: list[dict[str, Any]] = Field(
+        description="The emails sent from it: from_address, to_addresses, cc_addresses, "
+        "subject, body_text (null for one that carried a secret), status, sent_at, created_at."
+    )
 
 
 class SettingOut(BaseModel):
@@ -89,8 +114,11 @@ async def find(
     "/tickets/{ticket_id}",
     response_model=ArchivedTicketOut,
     summary="Open an archived ticket (read only)",
-    description="Its messages (internal notes too), files' names and rating. It can't be "
-    "changed, replied to or reopened.",
+    description="Everything that was on it: messages (internal notes too, with an email's "
+    "headers), files' names, rating, time logged, tasks, approvals, links, side "
+    "conversations, Jira issues and emails sent. The team's and assignee's names are as "
+    "they were when it was archived. It can't be changed, replied to or reopened; a "
+    "customer's late email answer to it becomes a new ticket that follows it.",
     responses={404: {"description": "Not in the archive, or another team's"}},
 )
 async def open_one(ticket_id: UUID, caller: CallerDep, sm: SessionmakerDep) -> ArchivedTicketOut:
