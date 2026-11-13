@@ -13,7 +13,7 @@ domain/apps.py.
 """
 
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 from typing import Any
 from uuid import UUID
@@ -38,6 +38,7 @@ from cedesk.helpdesk.repo import saved_replies as reply_repo
 from cedesk.helpdesk.repo import tickets as ticket_repo
 from cedesk.helpdesk.service import audit, scope, slack_bot
 from cedesk.helpdesk.service import jira as jira_service
+from cedesk.helpdesk.service import saved_replies as reply_service
 from cedesk.helpdesk.service.app_post import AppCallError
 from cedesk.helpdesk.service.auth import Sessionmaker
 from cedesk.helpdesk.service.errors import Conflict, Invalid, NotFound, Unavailable
@@ -77,6 +78,7 @@ class AppView:
     installed_at: datetime | None
     installed_by_name: str | None
     blocked: str | None  # why it can't be installed here (Cevanos connected)
+    note: str | None = None  # for the Admin, from a save (Calendly's /book edited by hand)
 
 
 @dataclass(frozen=True)
@@ -255,18 +257,39 @@ async def install(
 
 
 async def uninstall(sm: Sessionmaker, caller: Caller, app: App) -> None:
-    """The credential is deleted with it; Calendly's saved reply (/book) too."""
+    """The credential is deleted with it. Calendly's saved reply (/book) too, unless the
+    Admin edited its text: then it stays, as an ordinary saved reply."""
     require(caller, Action.settings)
     async with workspace_session(sm, caller.workspace_id) as s:
-        if not await repo.remove(s, app.value):
+        row = await repo.get(s, app.value)
+        if row is None or not await repo.remove(s, app.value):
             raise NotFound(f"{rules.CATALOG[app].name} isn't installed.")
         detail: dict[str, Any] = {}
         if app is App.calendly:
-            gone = await reply_repo.delete_from(s, App.calendly.value)
-            detail["saved_replies_removed"] = [f"/{shortcut}" for shortcut in gone]
+            detail = await _drop_book(s, caller, dict(row["settings"]).get("link"))
         await audit.record(
             s, caller, Area.apps, "uninstalled", rules.CATALOG[app].name, detail=detail or None
         )
+
+
+async def _drop_book(s: Any, caller: Caller, link: Any) -> dict[str, Any]:
+    """Calendly is going: its /book is deleted if untouched, else kept as the Admin's own.
+    Both audited under saved replies; returns what the apps entry says about it."""
+    reply = await reply_repo.by_source(s, App.calendly.value, rules.BOOK_SHORTCUT)
+    if reply is None:  # deleted by hand already
+        return {"saved_replies_removed": []}
+    shortcut = str(reply["shortcut"])
+    if rules.book_untouched(str(reply["body"]), link if isinstance(link, str) else None):
+        await reply_service.delete_in(s, caller, reply)
+        return {"saved_replies_removed": [f"/{shortcut}"]}
+    await reply_repo.make_manual(s, reply["id"])
+    note = rules.BOOK_KEPT.format(shortcut=shortcut)
+    await audit.record(
+        s, caller, Area.saved_replies, "changed", f"Saved reply /{shortcut}",
+        target_id=reply["id"], detail={"changes": {"source": ["calendly", "manual"]},
+                                       "note": note},
+    )  # fmt: skip
+    return {"saved_replies_removed": [], "saved_reply_kept": f"/{shortcut}", "note": note}
 
 
 async def _install_calendly(
@@ -274,8 +297,9 @@ async def _install_calendly(
     second: str | None,
 ) -> AppView:  # fmt: skip
     """Saves the booking link and keeps the saved reply /book in step with it: added on
-    install (/book1 ... when the workspace has its own /book), its text changed with the
-    link. Both in one transaction, audited together."""
+    install (/book1 ... when the workspace has its own /book; again if it was deleted by
+    hand), its link changed with the setting. A /book the Admin edited beyond its link is
+    left alone, with a note. All in one transaction, audited (apps and saved replies)."""
     try:
         if secret or second:
             raise rules.BadCredentials("Calendly needs no credential: give its booking link.")
@@ -284,33 +308,49 @@ async def _install_calendly(
         clean = {"link": rules.booking_link(settings.get("link"))}
     except rules.BadCredentials as exc:
         raise Invalid(str(exc)) from exc
-    body = rules.book_reply(clean["link"])
+    link = clean["link"]
     source = App.calendly.value
+    note: str | None = None
     try:
         async with workspace_session(sm, caller.workspace_id) as s:
+            before = await repo.get(s, source)
+            old = dict(before["settings"]).get("link") if before is not None else None
             new = await repo.save(
                 s, caller.workspace_id, app=source, settings=clean, secret_sealed=None,
                 secret_hint=None, by=caller.member_id,
             )  # fmt: skip
             reply = await reply_repo.by_source(s, source, rules.BOOK_SHORTCUT)
-            if reply is None:
+            if reply is None:  # a first install, or the Admin deleted it: it comes back
                 taken = await reply_repo.shortcuts(s)
                 shortcut = reply_rules.free_shortcut(rules.BOOK_SHORTCUT, taken)
-                await reply_repo.insert_from(
-                    s, caller.workspace_id, shortcut=shortcut, body=body, source=source,
-                    source_id=rules.BOOK_SHORTCUT, created_by=caller.member_id,
+                reply_id = await reply_repo.insert_from(
+                    s, caller.workspace_id, shortcut=shortcut, body=rules.book_reply(link),
+                    source=source, source_id=rules.BOOK_SHORTCUT, created_by=caller.member_id,
+                )  # fmt: skip
+                await audit.record(
+                    s, caller, Area.saved_replies, "created", f"Saved reply /{shortcut}",
+                    target_id=reply_id, detail={"body": rules.book_reply(link),
+                                                "source": source},
                 )  # fmt: skip
             else:
                 shortcut = str(reply["shortcut"])
-                await reply_repo.update_reply(s, reply["id"], shortcut=None, body=body)
+                body = str(reply["body"])
+                relinked = rules.relinked_book(body, old if isinstance(old, str) else None, link)
+                if relinked is None and old != link:
+                    note = rules.BOOK_EDITED.format(shortcut=shortcut)
+                elif relinked is not None and relinked != body:
+                    await reply_service.change_in(s, caller, reply, None, relinked)
+            detail: dict[str, Any] = {"settings": clean, "saved_reply": f"/{shortcut}"}
+            if note is not None:
+                detail["note"] = note
             await audit.record(
                 s, caller, Area.apps, "installed" if new else "changed", "Calendly",
-                detail={"settings": clean, "saved_reply": f"/{shortcut}"},
+                detail=detail,
             )  # fmt: skip
             row = await repo.get(s, source)
     except IntegrityError as exc:  # two installs at once
         raise Conflict("Calendly was being set up at the same time; try again.") from exc
-    return _view(App.calendly, row, None)
+    return replace(_view(App.calendly, row, None), note=note)
 
 
 # The sidebar (C12)
