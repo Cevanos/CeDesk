@@ -3,6 +3,29 @@
 `openapi.json` next to this file is the API as served (`uv run cedesk openapi`). Every
 route is under `/api/v1`. Breaking changes only come in v2 (md 2B). Newest first.
 
+## 2026-11-13: Mobile agent app: queue and one-tap reply (Phase 3, P8)
+
+Two routes for the mobile app. Everything else on a phone (the ticket screen, notes, status,
+notifications) uses the ordinary routes. Same rights and team scope as the web app.
+
+- `GET /me/queue?limit=` (1-100, default 50): tickets not resolved and not merged that are
+  yours or nobody's. Yours first, then chats waiting to be accepted, then by SLA time left,
+  then oldest. Each has `mine`, `waiting_to_accept`, the contact's name and the last message
+  a customer can see (`last_kind` customer, agent or ai; first 140 characters; never a
+  note). A `team_only` role sees its team's only.
+- `POST /tickets/{id}/mobile-reply` `{"body"}` -> 201 `{message, saved_as, accepted}`. On a
+  chat handover nobody has accepted, the reply accepts it first (line "Neha joined the
+  chat (mobile)", so the customer hears a person joined). `accepted` is the ticket's state
+  after the call (true once accepted, by this reply or before), so a replay or a second tap
+  answers the same as the first. A second tap that finds the chat just accepted by the first
+  replies all the same (no 409). If the reply fails after the accept, the accept stands and
+  the error message says so; send the reply again. A light agent can't reply: the text is
+  saved as a private note, `saved_as` is `note` and a waiting chat stays waiting.
+  `Idempotency-Key` is honoured, so a double tap with one key sends once. 403 on another
+  team's ticket (view only), 404 on an unknown one.
+
+Push notifications to phones (device tokens, APNs/FCM) are on the md cut line: not in this
+release.
 ## 2026-11-13: Push notifications to the mobile app (Phase 3, P8)
 
 Banners on agents' phones, through Firebase Cloud Messaging (it reaches iPhones too, with
