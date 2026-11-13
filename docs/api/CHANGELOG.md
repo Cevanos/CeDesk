@@ -3,6 +3,36 @@
 `openapi.json` next to this file is the API as served (`uv run cedesk openapi`). Every
 route is under `/api/v1`. Breaking changes only come in v2 (md 2B). Newest first.
 
+## 2026-11-13: Archive tier for old resolved tickets (Phase 3, O3)
+
+Resolved tickets older than the workspace's archive age (default 120 days) move out of
+the ticket list to the archive once a day, so the ticket list, views, search and reports
+stay fast. They are still found by number or customer and open read only.
+
+- `GET /archive/tickets?number=1042` (or `T-1042`), `?email=`, `?contact_id=`: at least
+  one, else 422. Newest first, at most 50. Same rights as reading tickets; a team-only role
+  sees its team's only.
+- `GET /archive/tickets/{id}`: read only, with every message (internal notes too), the
+  files' names, sizes and types (`files`, and per message), the tags, fields and the CSAT
+  rating. 404 when it isn't archived or is another team's. An archived ticket can't be
+  changed, replied to or reopened; `GET /tickets/{id}` answers 404 for it.
+- `GET /archive/settings`, `PUT /archive/settings {"after_days": 30-3650 | null}`
+  (null: 120). Settings right, audited (area `archive`).
+- The worker moves them in batches with `FOR UPDATE SKIP LOCKED`, so several workers never
+  move a ticket twice. Each run is audited (area `archive`, action `archived`). An
+  imported ticket counts from when it was imported, as for retention.
+- Retention deletes from the archive too, with the files; its audit detail gets
+  `archived` (how many came from the archive).
+- Privacy: a customer's export lists their archived tickets (`"archived": true`), and
+  erasing a customer blanks those too and deletes their files (erase `counts` get
+  `archived_tickets`).
+
+What leaves with a ticket: its tasks, notifications, links, approvals and time logs (they
+belong to live work). Reports count live tickets only, so periods older than the archive
+age show fewer tickets and ratings than before.
+
+Migration 0049 (after 0048).
+
 ## 2026-11-13: Side conversations in Slack (Phase 3, X5, the Slack part)
 
 A side conversation can now be held in a Slack channel (#warehouse) as well as by email.
