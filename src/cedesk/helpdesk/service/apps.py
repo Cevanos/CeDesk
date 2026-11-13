@@ -18,11 +18,14 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
+from sqlalchemy.exc import IntegrityError
+
 from cedesk.crypto import Sealer
 from cedesk.db import workspace_session
 from cedesk.egress import BadAddress, account_host, account_label
 from cedesk.helpdesk.domain import apps as rules
 from cedesk.helpdesk.domain import jira as jira_rules
+from cedesk.helpdesk.domain import saved_replies as reply_rules
 from cedesk.helpdesk.domain import slack as slack_rules
 from cedesk.helpdesk.domain.apps import App, Order, Payment
 from cedesk.helpdesk.domain.audit import Area
@@ -31,8 +34,9 @@ from cedesk.helpdesk.domain.imports import RateLimited, SourceError
 from cedesk.helpdesk.domain.permissions import Action
 from cedesk.helpdesk.repo import apps as repo
 from cedesk.helpdesk.repo import cevanos as cevanos_repo
+from cedesk.helpdesk.repo import saved_replies as reply_repo
 from cedesk.helpdesk.repo import tickets as ticket_repo
-from cedesk.helpdesk.service import audit, scope
+from cedesk.helpdesk.service import audit, scope, slack_bot
 from cedesk.helpdesk.service import jira as jira_service
 from cedesk.helpdesk.service.app_post import AppCallError
 from cedesk.helpdesk.service.auth import Sessionmaker
@@ -64,8 +68,9 @@ class AppView:
     name: str
     card: str
     settings_fields: tuple[str, ...]
-    credential: str
+    credential: str | None  # None: the app needs none (Calendly)
     credential_help: str
+    second_credential: str | None  # also secret (Slack side conversations: signing_secret)
     installed: bool
     settings: dict[str, Any]
     secret_hint: str | None
@@ -92,6 +97,7 @@ def _view(app: App, row: Any, blocked: str | None) -> AppView:
         settings_fields=info.settings,
         credential=info.credential,
         credential_help=info.credential_help,
+        second_credential=info.second_credential,
         installed=row is not None,
         settings=dict(row["settings"]) if row is not None else {},
         secret_hint=row["secret_hint"] if row is not None else None,
@@ -175,10 +181,14 @@ def _clean_settings(app: App, settings: Mapping[str, Any]) -> dict[str, Any]:
 async def _check_by_post(
     post: PostFactory, app: App, settings: Mapping[str, Any], secret: str
 ) -> None:
-    """Jira: the token can see the project. Slack: a test line reaches the channel."""
+    """Jira: the token can see the project. Slack alerts: a test line reaches the channel.
+    Slack side conversations: Slack knows the bot token."""
     try:
         if app is App.jira:
             await jira_service.check_install(post, settings, secret)
+        elif app is App.slack:
+            token, signing_secret = slack_rules.opened(secret)
+            await slack_bot.Bot(post, token, signing_secret).check()
         else:
             await post(slack_rules.HOST, {}, "Slack").post(
                 slack_rules.path_of(secret), {"text": SLACK_TEST_LINE}
@@ -198,18 +208,30 @@ async def install(
     app: App,
     *,
     settings: Mapping[str, Any],
-    secret: str,
+    secret: str | None,
+    second: str | None = None,
 ) -> AppView:
     """Installs, or replaces the settings and credential of an installed app. The
-    credential is checked with the provider first: a refused one is a 422."""
+    credential is checked with the provider first: a refused one is a 422. `second`: the
+    Slack side conversations app's signing secret, sealed with the bot token. Calendly has
+    no credential (its link is public)."""
     require(caller, Action.settings)
+    if app is App.calendly:
+        return await _install_calendly(sm, caller, settings, secret, second)
     try:
-        secret = rules.check_secret(app, secret)
+        secret = rules.check_secret(app, secret or "")
+        hint = rules.secret_hint(secret)
         if app is App.slack_alerts:
             secret = slack_rules.check_webhook(secret)
+        if app is App.slack:
+            token = slack_rules.check_bot_token(secret)
+            hint = rules.secret_hint(token)
+            secret = slack_rules.seal_value(token, slack_rules.check_signing_secret(second))
+        elif second is not None:
+            raise rules.BadCredentials(f"{rules.CATALOG[app].name} takes one credential.")
         clean = _clean_settings(app, settings)
     except (rules.BadCredentials, BadAddress, jira_rules.JiraInputError,
-            slack_rules.BadWebhook) as exc:  # fmt: skip
+            slack_rules.BadWebhook, slack_rules.BadSlack) as exc:  # fmt: skip
         raise Invalid(str(exc)) from exc
     if app in _DATA_APPS:
         async with workspace_session(sm, caller.workspace_id) as s:
@@ -222,23 +244,73 @@ async def install(
         new = await repo.save(
             s, caller.workspace_id, app=app.value, settings=clean,
             secret_sealed=sealer.seal(secret, bound_to=_bound(caller.workspace_id, app)),
-            secret_hint=rules.secret_hint(secret), by=caller.member_id,
+            secret_hint=hint, by=caller.member_id,
         )  # fmt: skip
         await audit.record(
             s, caller, Area.apps, "installed" if new else "changed", rules.CATALOG[app].name,
-            detail={"settings": clean, "hint": rules.secret_hint(secret)},
+            detail={"settings": clean, "hint": hint},
         )  # fmt: skip
         row = await repo.get(s, app.value)
     return _view(app, row, None)
 
 
 async def uninstall(sm: Sessionmaker, caller: Caller, app: App) -> None:
-    """The credential is deleted with it."""
+    """The credential is deleted with it; Calendly's saved reply (/book) too."""
     require(caller, Action.settings)
     async with workspace_session(sm, caller.workspace_id) as s:
         if not await repo.remove(s, app.value):
             raise NotFound(f"{rules.CATALOG[app].name} isn't installed.")
-        await audit.record(s, caller, Area.apps, "uninstalled", rules.CATALOG[app].name)
+        detail: dict[str, Any] = {}
+        if app is App.calendly:
+            gone = await reply_repo.delete_from(s, App.calendly.value)
+            detail["saved_replies_removed"] = [f"/{shortcut}" for shortcut in gone]
+        await audit.record(
+            s, caller, Area.apps, "uninstalled", rules.CATALOG[app].name, detail=detail or None
+        )
+
+
+async def _install_calendly(
+    sm: Sessionmaker, caller: Caller, settings: Mapping[str, Any], secret: str | None,
+    second: str | None,
+) -> AppView:  # fmt: skip
+    """Saves the booking link and keeps the saved reply /book in step with it: added on
+    install (/book1 ... when the workspace has its own /book), its text changed with the
+    link. Both in one transaction, audited together."""
+    try:
+        if secret or second:
+            raise rules.BadCredentials("Calendly needs no credential: give its booking link.")
+        if set(settings) - {"link"}:
+            raise rules.BadCredentials("Calendly takes one setting: link.")
+        clean = {"link": rules.booking_link(settings.get("link"))}
+    except rules.BadCredentials as exc:
+        raise Invalid(str(exc)) from exc
+    body = rules.book_reply(clean["link"])
+    source = App.calendly.value
+    try:
+        async with workspace_session(sm, caller.workspace_id) as s:
+            new = await repo.save(
+                s, caller.workspace_id, app=source, settings=clean, secret_sealed=None,
+                secret_hint=None, by=caller.member_id,
+            )  # fmt: skip
+            reply = await reply_repo.by_source(s, source, rules.BOOK_SHORTCUT)
+            if reply is None:
+                taken = await reply_repo.shortcuts(s)
+                shortcut = reply_rules.free_shortcut(rules.BOOK_SHORTCUT, taken)
+                await reply_repo.insert_from(
+                    s, caller.workspace_id, shortcut=shortcut, body=body, source=source,
+                    source_id=rules.BOOK_SHORTCUT, created_by=caller.member_id,
+                )  # fmt: skip
+            else:
+                shortcut = str(reply["shortcut"])
+                await reply_repo.update_reply(s, reply["id"], shortcut=None, body=body)
+            await audit.record(
+                s, caller, Area.apps, "installed" if new else "changed", "Calendly",
+                detail={"settings": clean, "saved_reply": f"/{shortcut}"},
+            )  # fmt: skip
+            row = await repo.get(s, source)
+    except IntegrityError as exc:  # two installs at once
+        raise Conflict("Calendly was being set up at the same time; try again.") from exc
+    return _view(App.calendly, row, None)
 
 
 # The sidebar (C12)

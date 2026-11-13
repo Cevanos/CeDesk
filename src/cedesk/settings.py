@@ -209,6 +209,20 @@ class Settings(BaseSettings):
     worker_interval_seconds: float = Field(
         default=10, gt=0, le=3600, description="How often `cedesk worker` looks for work."
     )
+    # Push notifications to the mobile app (md P8), through Firebase Cloud Messaging (it
+    # delivers to iPhones too, with the app's Apple key uploaded to Firebase). Both empty:
+    # push is off, and nothing else changes.
+    push_fcm_project_id: str = Field(
+        default="", description="The Firebase project's id, e.g. 'cedesk-mobile'."
+    )
+    push_fcm_service_account: SecretStr | None = Field(
+        default=None,
+        description="The Firebase service account's JSON key (the whole file's content), "
+        "with the 'Firebase Cloud Messaging API' role. Never logged.",
+    )
+
+    def push_on(self) -> bool:
+        return bool(self.push_fcm_project_id and self.push_fcm_service_account)
 
     def allowed_origins(self) -> list[str]:
         return [o.strip().rstrip("/") for o in self.cors_origins.split(",") if o.strip()]
@@ -243,6 +257,11 @@ class Settings(BaseSettings):
             problems.append("CEDESK_SMTP_HOST: set it, or choose another CEDESK_MAIL_BACKEND")
         if self.imap_host and not (self.imap_username and self.imap_password):
             problems.append("CEDESK_IMAP_USERNAME and CEDESK_IMAP_PASSWORD: set both")
+        if bool(self.push_fcm_project_id) != bool(self.push_fcm_service_account):
+            problems.append(
+                "CEDESK_PUSH_FCM_PROJECT_ID and CEDESK_PUSH_FCM_SERVICE_ACCOUNT: set both, "
+                "or neither (push off)"
+            )
         if self.env is Env.production and self.mail_backend is MailBackend.log:
             problems.append(
                 "CEDESK_MAIL_BACKEND: `log` writes emails (with sign-in codes) to the log; "
