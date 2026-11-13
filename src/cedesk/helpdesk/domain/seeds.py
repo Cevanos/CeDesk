@@ -3,12 +3,14 @@ workspace"). Admins can rename, change or delete all of it afterwards.
 
 Teams, ticket types, saved replies, rules and macros so far. SLA and email addresses join
 this list when those features are built.
+
+At the end: the demo and sample tickets (md D1-D3).
 """
 
 from dataclasses import dataclass
 from typing import Any
 
-from cedesk.helpdesk.domain.tickets import FieldDef, FieldKind
+from cedesk.helpdesk.domain.tickets import Channel, FieldDef, FieldKind, Priority
 
 
 @dataclass(frozen=True)
@@ -220,4 +222,253 @@ MACROS: tuple[SeedMacro, ...] = (
             {"kind": "note", "text": "Escalated by L1 support. Needs a developer to look at it."},
         ),
     ),
+)
+
+
+# Demo and sample tickets (md D1-D3): `POST /demo/seed`, `/demo/reset`, `/demo/samples`.
+# Customers write in through a channel, so the rules above, triage, routing and SLA run on
+# every one. Agent replies are only on chat and web tickets, which are never emailed; the
+# customers have example.com / example.org addresses (reserved, never delivered).
+
+DEMO_SOURCE = "demo"  # `hd_ticket.source` of every demo ticket
+
+
+@dataclass(frozen=True)
+class DemoTicket:
+    subject: str
+    name: str
+    email: str
+    body: str
+    channel: Channel = Channel.web
+    priority: Priority = Priority.medium
+    language: str | None = None
+
+
+@dataclass(frozen=True)
+class PastTicket:
+    """Resolved, with the customer's CSAT rating, `days_ago`; it took `hours` from the
+    customer's message to the reply that solved it."""
+
+    ticket: DemoTicket
+    reply: str
+    score: int
+    comment: str | None
+    days_ago: int
+    hours: int
+
+
+@dataclass(frozen=True)
+class LiveTicket:
+    """Assigned to the person who loads the demo, who is working on it."""
+
+    ticket: DemoTicket
+    reply: str | None = None
+    note: str | None = None
+    task: str | None = None
+    minutes: int | None = None  # time logged
+    pending: bool = False  # waiting on the customer
+
+
+@dataclass(frozen=True)
+class Handover:
+    """A chat the AI handed over, waiting for someone to accept it."""
+
+    ticket: DemoTicket
+    summary: str
+    reason: str
+
+
+# The 6 samples ("Load sample tickets", md D3): new and untouched. The first five match
+# a rule above (refund, billing, tracking, app error), the last one none.
+DEMO_SAMPLES: tuple[DemoTicket, ...] = (
+    DemoTicket(
+        "Refund for damaged T-shirt (order #1042)",
+        "Priya Sharma",
+        "priya.sharma@example.com",
+        "Hi, my T-shirt from order #1042 arrived torn at the seam. I want a refund.",
+        Channel.email,
+    ),
+    DemoTicket(
+        "Invoice copy for October bulk order",
+        "Rohan Gupta",
+        "rohan.gupta@example.org",
+        "Hello,\nPlease send a GST invoice copy for our order #0987 (40 tees).\n\nRegards,\nRohan",
+        Channel.email,
+    ),
+    DemoTicket(
+        "Where is my order #1077?",
+        "Arjun Mehta",
+        "arjun.mehta@example.com",
+        "Mera order #1077 kahan hai? Kal aana tha. Mujhe kal trip ke liye chahiye!",
+        Channel.chat,
+        Priority.urgent,
+        "hi",
+    ),
+    DemoTicket(
+        "App crashes on the payment page",
+        "Sara Khan",
+        "sara.khan@example.com",
+        "The app crashes when I press Pay. Error: white screen.",
+        Channel.web,
+    ),
+    DemoTicket(
+        "Tracking link not working for #1081",
+        "Vikram Rao",
+        "vikram.rao@example.org",
+        "The tracking link in your email says 'not found'. Where is my parcel?",
+        Channel.email,
+    ),
+    DemoTicket(
+        "Do you ship to Sri Lanka?",
+        "Meera Iyer",
+        "meera.iyer@example.com",
+        "Hi, do you deliver to Colombo? How long does it take?",
+        Channel.web,
+        Priority.low,
+    ),
+)
+
+# The 5 past tickets (md D1): resolved over the last week, each rated.
+DEMO_PAST: tuple[PastTicket, ...] = (
+    PastTicket(
+        DemoTicket(
+            "Coupon SAVE10 not applied at checkout",
+            "Ananya Singh",
+            "ananya.singh@example.com",
+            "The coupon SAVE10 says invalid but it is in your newsletter.",
+            Channel.chat,
+        ),
+        "Sorry Ananya, the code had expired a day early by mistake. I've added ₹100 to your "
+        "wallet for the next order.",
+        5,
+        "Quick and kind, thank you!",
+        1,
+        1,
+    ),
+    PastTicket(
+        DemoTicket(
+            "Wrong size delivered (order #0954)",
+            "Karan Malhotra",
+            "karan.malhotra@example.org",
+            "I ordered L and got S. Can you exchange it?",
+            Channel.web,
+        ),
+        "Hi Karan, the courier will pick up the S tomorrow and bring the L on the same visit.",
+        4,
+        "Exchange was easy.",
+        2,
+        5,
+    ),
+    PastTicket(
+        DemoTicket(
+            "How do I change my account email?",
+            "Divya Nair",
+            "divya.nair@example.com",
+            "I changed jobs and want my orders to go to my personal email.",
+            Channel.chat,
+            Priority.low,
+        ),
+        "Hi Divya, go to Profile, then Email, and enter the new address; we send a code to "
+        "confirm it.",
+        5,
+        None,
+        3,
+        2,
+    ),
+    PastTicket(
+        DemoTicket(
+            "Package marked delivered but not received",
+            "Rahul Verma",
+            "rahul.verma@example.com",
+            "The app says delivered yesterday but nothing came. Nobody rang the bell.",
+            Channel.web,
+            Priority.high,
+        ),
+        "Rahul, the courier found it with your building's security. Sorry for the trouble.",
+        3,
+        "Sorted in the end, but it took a while.",
+        5,
+        20,
+    ),
+    PastTicket(
+        DemoTicket(
+            "Can I add a gift note to my order?",
+            "Sneha Kulkarni",
+            "sneha.kulkarni@example.org",
+            "It's a birthday gift. Can you add a note and remove the price tag?",
+            Channel.chat,
+            Priority.low,
+        ),
+        "Done, Sneha: the note is added and the parcel goes without a price tag.",
+        5,
+        "Lovely, thanks!",
+        6,
+        3,
+    ),
+)
+
+# The 4 live tickets (md D1): a reply, a note, a task, time logged; one waits on the customer.
+DEMO_LIVE: tuple[LiveTicket, ...] = (
+    LiveTicket(
+        DemoTicket(
+            "Order #1103 delivered to the wrong address",
+            "Farhan Ali",
+            "farhan.ali@example.com",
+            "My order went to my old address in Pune. I live in Bengaluru now.",
+            Channel.chat,
+            Priority.high,
+        ),
+        reply="Sorry Farhan. I've asked the courier to collect it and send it to Bengaluru.",
+        task="Call the courier to confirm the pickup",
+    ),
+    LiveTicket(
+        DemoTicket(
+            "Payment taken twice for order #1110",
+            "Pooja Desai",
+            "pooja.desai@example.org",
+            "I was charged ₹2,499 twice for the same order. Please check.",
+            Channel.web,
+            Priority.high,
+        ),
+        note="Two charges in the payment log, 40 seconds apart. Asking finance to refund one.",
+        minutes=15,
+    ),
+    LiveTicket(
+        DemoTicket(
+            "Need a GST invoice with our company name",
+            "Nikhil Joshi",
+            "nikhil.joshi@example.com",
+            "Our invoice for #1098 has my name. We need the company name and GSTIN on it.",
+            Channel.chat,
+        ),
+        reply="Sure Nikhil. Could you send the company's legal name and GSTIN?",
+        pending=True,
+    ),
+    LiveTicket(
+        DemoTicket(
+            "Bulk order: 200 T-shirts for an event",
+            "Isha Bose",
+            "isha.bose@example.org",
+            "We need 200 printed T-shirts by the 30th. Can you do it, and at what price?",
+            Channel.web,
+        ),
+        reply="Hi Isha, yes, we can. I'll send a quote with three print options today.",
+        note="Big order: checking stock of white tees in M and L.",
+        minutes=20,
+    ),
+)
+
+# The handover (md D1): a chat the AI passed to a person, not accepted yet.
+DEMO_HANDOVER = Handover(
+    DemoTicket(
+        "Return shoes after 35 days",
+        "Aditi Menon",
+        "aditi.menon@example.com",
+        "The sole came off after a month. Can I still return them?",
+        Channel.chat,
+        Priority.high,
+    ),
+    summary="Aditi bought running shoes (order #1012) 35 days ago; the sole came off. She "
+    "wants a return or a new pair.",
+    reason="Returns after the 30-day window need a person to decide.",
 )
