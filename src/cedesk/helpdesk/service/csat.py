@@ -126,6 +126,16 @@ async def rate_in_portal(
         return await _save(s, customer.workspace_id, ticket_id, score, text, "portal")
 
 
+async def demo_rating(
+    sm: Sessionmaker, workspace_id: UUID, ticket_id: UUID, score: int, comment: str | None
+) -> Rating:
+    """Demo data only (md D1, `service/demo.py`): the rating a demo customer gives in the
+    portal. Rated straight after resolving, so the emailed survey is never sent."""
+    score, text = _checked(score, comment)
+    async with workspace_session(sm, workspace_id) as s:
+        return await _save(s, workspace_id, ticket_id, score, text, "portal")
+
+
 async def _by_link(s: AsyncSession, token: str) -> tuple[RowMapping, Rating | None]:
     ticket = await repo.link_ticket(s, auth_rules.token_hash(token))
     if ticket is None:

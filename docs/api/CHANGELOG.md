@@ -3,6 +3,28 @@
 `openapi.json` next to this file is the API as served (`uv run cedesk openapi`). Every
 route is under `/api/v1`. Breaking changes only come in v2 (md 2B). Newest first.
 
+## 2026-11-13: Demo and sample tickets (Phase 3, D1-D3)
+
+Three routes for sales demos and for trying CeDesk out. Admin only, audited (area `demo`),
+and refused on a production server: 403 "Demo data is off on a production server
+(CEDESK_ENV=production)." Each answers `{"created", "deleted"}`.
+
+- `POST /demo/seed` -> 201: 16 tickets. The 6 samples; 5 past tickets resolved over the
+  last week, each with a CSAT rating and a first reply and resolution that took hours; 4
+  live tickets assigned to you (a reply, a note, a task, time logged, one Pending); and 1
+  chat handover waiting to be accepted.
+- `POST /demo/samples` -> 201: "Load sample tickets", the 6 samples only (new, from
+  customers on email, chat and the web).
+- `POST /demo/reset` -> 200: deletes every ticket in the workspace (with its messages,
+  notes, tasks, time, approvals and ratings), then seeds again. Contacts, members and
+  settings stay. Other workspaces are never touched.
+
+Customers write in through a channel, so the rules, triage, routing and SLA run on every
+ticket (the "refund" sample goes to Billing at High with the default rules). Demo tickets
+have `source: "demo"`. Nobody is emailed: agent replies are only on chat and web tickets,
+the ratings are given before any survey would go, and the customers have example.com and
+example.org addresses. `cedesk seed-demo` still makes a whole demo workspace with members.
+
 ## 2026-11-13: Imports: HubSpot and Zoho Desk (Phase 2, M1)
 
 New `source` values for `POST /imports/connections`: all 7 help desks of md M1 can now be

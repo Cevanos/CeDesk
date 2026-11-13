@@ -29,6 +29,7 @@ from cedesk.helpdesk.api import audit as audit_api
 from cedesk.helpdesk.api import auth as auth_api
 from cedesk.helpdesk.api import catalog as catalog_api
 from cedesk.helpdesk.api import cevanos as cevanos_api
+from cedesk.helpdesk.api import demo as demo_api
 from cedesk.helpdesk.api import email as email_api
 from cedesk.helpdesk.api import email_in as email_in_api
 from cedesk.helpdesk.api import imports as imports_api
@@ -312,6 +313,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(jira_api.router, prefix="/api/v1")
     app.include_router(side_conversations_api.router, prefix="/api/v1")
     app.include_router(limits_api.router, prefix="/api/v1")
+    app.include_router(demo_api.router, prefix="/api/v1")
 
     @app.get("/healthz", tags=["health"], summary="The process is up")
     async def healthz() -> dict[str, str]:
