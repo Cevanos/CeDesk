@@ -11014,7 +11014,7 @@
           "mobile"
         ],
         "summary": "Register this phone for banners",
-        "description": "After sign-in, with the app's push token. Banners: a new ticket for you, a mention, a customer reply; they name the ticket's number only. The same token again just refreshes it (or moves it to you, if someone else used this phone). You keep your 10 newest phones.",
+        "description": "After sign-in, with the app's push token. Banners: a new ticket for you, a mention, a customer reply, a Cevanos chat waiting for Accept; they name the ticket's number only. The same token again just refreshes it (or moves it to you, if whoever used this phone signed out). You keep your 10 newest phones. Banners stop when this sign-in ends (sign-out, a password change or reset, deactivation). 409: the phone is registered to someone still signed in on it. Not with an API key (403).",
         "operationId": "register_api_v1_me_devices_post",
         "requestBody": {
           "content": {
@@ -11036,6 +11036,9 @@
                 }
               }
             }
+          },
+          "409": {
+            "description": "Registered to someone still signed in on this phone"
           },
           "422": {
             "description": "Validation Error",
