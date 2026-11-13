@@ -29,8 +29,9 @@ export function PriorityBadge({ priority }: { priority: Priority }) {
   return <Badge tone={P_TONE[priority]}>{PRIORITY_LABEL[priority]}</Badge>;
 }
 
-export function StatusBadge({ status }: { status: TicketStatus }) {
-  return <Badge tone={S_TONE[status]}>{STATUS_LABEL[status]}</Badge>;
+/** `label` overrides the default text, e.g. the customer portal's "Waiting on you". */
+export function StatusBadge({ status, label }: { status: TicketStatus; label?: string | null }) {
+  return <Badge tone={S_TONE[status]}>{label || STATUS_LABEL[status]}</Badge>;
 }
 
 export function VipBadge() {

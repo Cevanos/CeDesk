@@ -9,6 +9,7 @@ import { publicErrorMessage } from "@/components/public/errors";
 import { PortalSignIn } from "@/components/public/portal-signin";
 import { RatingPicker, scoreLabel } from "@/components/public/rating";
 import { StatusBadge } from "@/components/tickets/badges";
+import { FileChip } from "@/components/tickets/message-files";
 import { Button, Card, EmptyState, Field, Skeleton, Textarea } from "@/components/ui/primitives";
 import {
   isUnauthorized,
@@ -75,7 +76,7 @@ export function PortalTicketPage() {
             {t.subject}
           </h1>
         </div>
-        <StatusBadge status={t.status} />
+        <StatusBadge status={t.status} label={t.status_label} />
       </div>
 
       <ol aria-label="Conversation" className="mt-8 space-y-4">
@@ -91,7 +92,7 @@ export function PortalTicketPage() {
 }
 
 function Bubble({ m }: { m: PortalMessage }) {
-  const mine = m.kind === "customer";
+  const mine = m.from_customer;
   return (
     <li className={cn("flex gap-3", mine && "flex-row-reverse")}>
       <span
@@ -106,7 +107,7 @@ function Bubble({ m }: { m: PortalMessage }) {
       <div className={cn("min-w-0 max-w-[85%]", mine && "text-right")}>
         <p className="text-xs text-muted-foreground">
           <span className="font-medium text-foreground-2">
-            {mine ? "You" : (m.author_name ?? "Support team")}
+            {mine ? "You" : (m.author || "Support team")}
           </span>{" "}
           · {formatDateTime(m.created_at)}
         </p>
@@ -120,6 +121,18 @@ function Bubble({ m }: { m: PortalMessage }) {
         >
           {m.body}
         </div>
+        {m.attachments && m.attachments.length > 0 && (
+          <ul
+            aria-label="Files"
+            className={cn("mt-2 flex flex-wrap gap-1.5", mine && "justify-end")}
+          >
+            {m.attachments.map((f) => (
+              <li key={f.id} className="max-w-full">
+                <FileChip file={f} portal />
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
     </li>
   );

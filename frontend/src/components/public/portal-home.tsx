@@ -102,7 +102,7 @@ export function PortalHome() {
                     {t.label} · updated {timeAgo(t.updated_at)}
                   </span>
                 </span>
-                <StatusBadge status={t.status} />
+                <StatusBadge status={t.status} label={t.status_label} />
                 <ChevronRight
                   className="size-4 flex-none text-subtle-foreground transition-transform group-hover:translate-x-0.5"
                   aria-hidden

@@ -23,9 +23,12 @@ export const isBlocked = (s?: ScanStatus) => s === "infected" || s === "scan_fai
 export function FileChip({
   file,
   className,
+  portal,
 }: {
   file: { id: string; name: string; size?: number; scan_status?: ScanStatus };
   className?: string;
+  /** A customer on the portal: uses the portal file route and the customer's own cookie. */
+  portal?: boolean;
 }) {
   const [busy, setBusy] = useState(false);
   const blocked = isBlocked(file.scan_status);
@@ -56,7 +59,7 @@ export function FileChip({
       disabled={busy}
       onClick={() => {
         setBusy(true);
-        downloadAttachment(file.id)
+        downloadAttachment(file.id, portal ? "portal/attachments" : "attachments")
           .catch((e) => {
             if (e instanceof ApiError && e.status === 409) {
               toast.info(e.message || "Checking this file for viruses… try again in a moment.");

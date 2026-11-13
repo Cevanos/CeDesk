@@ -444,17 +444,28 @@ export interface PublicCsat {
 
 export interface PortalMessage {
   id: string;
-  /** `customer` = the signed-in customer; anything else is the support team. */
-  kind: string;
+  /** True for the signed-in customer's own messages. */
+  from_customer: boolean;
   body: string;
-  author_name?: string | null;
+  /** Ready to show: "You", "Acme assistant", "Neha · Acme Support". */
+  author?: string | null;
   created_at: string;
+  attachments?: PortalAttachment[];
+}
+export interface PortalAttachment {
+  id: string;
+  name: string;
+  size?: number;
+  mime?: string;
+  scan_status?: ScanStatus;
 }
 export interface PortalTicketSummary {
   id: string;
   label: string;
   subject: string;
   status: TicketStatus;
+  /** What to show the customer, e.g. "Waiting on you" for Pending. */
+  status_label?: string | null;
   created_at: string;
   updated_at: string;
 }

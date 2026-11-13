@@ -264,8 +264,11 @@ export function useUploadAttachment(id: string) {
  * A 409 means the virus scan is still running ("Checking…"): the caller shows
  * `ApiError.userMessage` and lets the user try again.
  */
-export async function downloadAttachment(id: string) {
-  const { url } = await api.get<{ url: string; expires_at: string }>(`attachments/${id}`);
+export async function downloadAttachment(
+  id: string,
+  area: "attachments" | "portal/attachments" = "attachments",
+) {
+  const { url } = await api.get<{ url: string; expires_at: string }>(`${area}/${id}`);
   // The URL comes from the API; never open anything but a plain web link
   // (blocks javascript:, data: and similar schemes if the response is tampered with).
   let target: URL;
