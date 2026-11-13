@@ -207,21 +207,33 @@ async def live_session(session: AsyncSession, token_hash: bytes) -> Row | None:
 
 
 async def revoke_session(session: AsyncSession, session_id: UUID) -> None:
+    """Also the phones registered under it stop getting banners (md P8)."""
     await session.execute(
         text("UPDATE auth_session SET revoked_at = now() WHERE id = :id AND revoked_at IS NULL"),
         {"id": session_id},
+    )
+    await session.execute(
+        text("DELETE FROM hd_push_device WHERE session_id = :id"), {"id": session_id}
     )
 
 
 async def revoke_member_sessions(
     session: AsyncSession, member_id: UUID, *, keep: UUID | None = None
 ) -> None:
-    """Ends every live session of the member, except `keep` when given."""
+    """Ends every live session of the member, except `keep` when given; the phones
+    registered under the ended ones stop getting banners (md P8)."""
     await session.execute(
         text(
             "UPDATE auth_session SET revoked_at = now() "
             "WHERE member_id = :id AND revoked_at IS NULL "
             "AND (CAST(:keep AS uuid) IS NULL OR id <> CAST(:keep AS uuid))"
+        ),
+        {"id": member_id, "keep": keep},
+    )
+    await session.execute(
+        text(
+            "DELETE FROM hd_push_device WHERE member_id = :id "
+            "AND (CAST(:keep AS uuid) IS NULL OR session_id <> CAST(:keep AS uuid))"
         ),
         {"id": member_id, "keep": keep},
     )
