@@ -163,6 +163,54 @@ async def deliver(c: AsyncClient, sm: Sm) -> None:
     await deliver_due(sm, [CevanosHandler(sm, c.cevanos)])  # type: ignore[attr-defined]
 
 
+async def test_a_waiting_handover_gets_a_banner(
+    cv: AsyncClient, app_sessionmaker: Sm, world: FakeCevanos
+) -> None:
+    """md P8: the assignee's phone hears of a chat waiting for Accept (not as "New ticket
+    for you"); with nobody assigned, the team's Available agents do; nothing once it is
+    accepted."""
+    from cedesk.helpdesk.service import push
+    from tests.db.test_push import FakeFcm, token
+
+    sm = app_sessionmaker
+    w = await desk(cv, sm, world)
+    fcm = FakeFcm()
+    await push.push_due(sm, fcm)
+    fcm.sent.clear()
+    for who, n in (("asha", 801), ("admin", 802)):
+        ok(await cv.post("/api/v1/me/devices", headers=w[who],
+                         json={"platform": "android", "token": token(n)}), 201)  # fmt: skip
+
+    t = await hand_over(cv, w, world.chat(("customer", "Where is my parcel?")))
+    assert t["assignee_name"] == "Asha"
+    assert await push.push_due(sm, fcm) == 1
+    assert [(x[0], x[1], x[2]) for x in fcm.sent] == [
+        (token(801), "A chat is waiting for you", f"T-{t['number']}")]  # fmt: skip
+    assert fcm.sent[0][3]["kind"] == "handover"
+
+    # Asha is full for chats: nobody is assigned, and the team's Available agents (Asha)
+    # hear of it; the Admin, not in the team, doesn't.
+    ok(await cv.patch(f"/api/v1/agents/{w['asha_id']}/routing", headers=w["admin"],
+                      json={"cap_chat": 0}))  # fmt: skip
+    fcm.sent.clear()
+    t = await hand_over(cv, w, world.chat(("customer", "And my refund?")))
+    assert t["assignee_name"] is None
+    assert await push.push_due(sm, fcm) == 1 and fcm.sent[0][0] == token(801)
+
+    # Accepted before the worker's pass: no banner.
+    fcm.sent.clear()
+    t = await hand_over(cv, w, world.chat(("customer", "Still there?")))
+    ok(await cv.post(f"{T}/{t['id']}/accept", headers=w["asha"]))
+    assert await push.push_due(sm, fcm) == 0
+
+    # Offline: nobody to tell.
+    ok(await cv.patch(f"/api/v1/agents/{w['asha_id']}/routing", headers=w["admin"],
+                      json={"status": "offline"}))  # fmt: skip
+    fcm.sent.clear()
+    await hand_over(cv, w, world.chat(("customer", "Hello?")))
+    assert await push.push_due(sm, fcm) == 0 and fcm.sent == []
+
+
 def kinds(t: dict[str, Any]) -> list[tuple[str, str]]:
     return [(m["kind"], m["body"]) for m in t["messages"]]
 
@@ -285,7 +333,9 @@ async def test_a_handover_becomes_a_routed_ticket_waiting_for_accept(
     assert t["team_name"] == "Chat" and t["assignee_name"] == "Asha"
     assert lines(t)[-1].startswith("Auto-assigned to Asha (Chat")
     box = ok(await cv.get("/api/v1/notifications", headers=w["asha"]))
-    assert box["notifications"][0]["text"].startswith("You were auto-assigned")
+    texts = [n["text"] for n in box["notifications"]]
+    assert any(x.startswith("You were auto-assigned") for x in texts)
+    assert f"T-{t['number']}: a Cevanos chat is waiting for Accept" in texts
 
     # The same event again, or a take-over inside Cevanos: no second ticket.
     again = ok(await event(cv, w, "conversation.escalated", escalated(conversation)))

@@ -9,8 +9,8 @@
   thread. The assignee is told.
 - Not to the ticket's customer, nor to one of our own support addresses (their mail
   comes back in as "from us" and would be dropped).
-- Slack side conversations (#warehouse) need a Slack bot to bring replies back; email
-  first (md X5's other half is a follow-up).
+- Or in Slack (#warehouse), through the Slack side conversations app: its bot posts in
+  the channel and the thread's replies come back the same way (rules in domain/slack.py).
 """
 
 from collections.abc import Iterable
