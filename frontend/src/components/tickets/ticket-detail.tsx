@@ -72,10 +72,10 @@ export function TicketDetail({ id }: { id: string }) {
         <span className="font-mono font-medium text-foreground-2">{ticket.label}</span>
       </nav>
 
-      <header className="relative overflow-hidden rounded-2xl border border-border bg-surface shadow-card">
+      <header className="relative rounded-2xl border border-border bg-surface shadow-card">
         <div
           aria-hidden
-          className="absolute inset-x-0 top-0 h-1 bg-linear-to-r from-primary via-primary/60 to-transparent"
+          className="absolute inset-x-0 top-0 h-1 rounded-t-2xl bg-linear-to-r from-primary via-primary/60 to-transparent"
         />
         <div className="flex flex-wrap items-start gap-4 p-4 sm:p-6">
           <div className="min-w-0 flex-1 basis-72">
