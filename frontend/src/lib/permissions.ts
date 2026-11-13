@@ -1,4 +1,4 @@
-import type { Role } from "@/lib/api/types";
+import type { Me, Role } from "@/lib/api/types";
 
 /** Role matrix. The UI only hides/disables things; the API still enforces with 403. */
 const RANK: Record<Role, number> = {
@@ -24,6 +24,15 @@ export function can(role: Role | undefined) {
     manageSettings: role === "admin",
     viewReports: atLeast(role, "supervisor"),
   };
+}
+
+/**
+ * Whether GET /me's `access.actions` allows an action (`reply`, `approve`, `reports`...).
+ * Older answers without `access` fall back to `fallback` (the role matrix above).
+ */
+export function hasAction(me: Me | undefined, action: string, fallback = false): boolean {
+  const actions = me?.access?.actions;
+  return Array.isArray(actions) ? actions.includes(action) : fallback;
 }
 
 export const ROLE_LABEL: Record<Role, string> = {

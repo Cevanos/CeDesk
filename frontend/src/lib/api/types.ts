@@ -12,10 +12,24 @@ export type SlaKind = "first_reply" | "resolve";
 export type Delivery = "pending" | "sent" | "failed";
 export type ScanStatus = "not_scanned" | "clean" | "infected" | "scan_failed" | (string & {});
 
+/**
+ * What the sign-in call answers. When `two_factor_required` is true there is no session yet:
+ * ask for the code (POST auth/2fa). `password_expired` means only Change password works.
+ */
 export interface SignInResponse {
-  member_id: string;
-  role: Role;
-  expires_at: string;
+  member_id?: string;
+  role?: Role;
+  expires_at?: string;
+  two_factor_required?: boolean;
+  password_expired?: boolean;
+}
+
+/** What GET /me says this person may do (hide what `actions` does not list). */
+export type AccessScope = "all" | "team_edit" | "team_only" | (string & {});
+export interface Access {
+  role?: Role;
+  actions?: string[];
+  scope?: AccessScope;
 }
 
 export interface Me {
@@ -26,6 +40,9 @@ export interface Me {
   workspace_name?: string;
   workspace?: string;
   status?: AgentStatus | null;
+  /** The workspace requires 2FA and this person has not set it up: send them to set it up. */
+  two_factor_setup_required?: boolean;
+  access?: Access;
 }
 
 export interface Contact {

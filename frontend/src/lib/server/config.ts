@@ -15,6 +15,14 @@ export const SESSION_HINT_COOKIE = "cdesk_auth";
  * goes to its own area.
  */
 export const PORTAL_COOKIE = "cdesk_portal";
+/**
+ * The half-signed-in token between password and 2FA code. It is a different cookie from
+ * the session on purpose: it is only sent to POST /api/auth/2fa (cookie path), so it can
+ * never authorise any other call, and it lives for the 10 minutes the backend allows.
+ */
+export const PENDING_2FA_COOKIE = "cdesk_2fa";
+export const PENDING_2FA_PATH = "/api/auth/2fa";
+export const PENDING_2FA_MAX_AGE_S = 10 * 60;
 
 /** Largest upload the backend accepts (25 MB). Reject early, not upstream. */
 export const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
@@ -34,6 +42,8 @@ export function upstreamBase(): string | null {
 /** Credential endpoints are rate limited per client (default 10 tries a minute). */
 export const RATE_LIMITED_PATHS = new Set([
   "auth/sign-in",
+  // A 6 digit code is guessable by brute force, so it gets the same limit as passwords.
+  "auth/2fa",
   "auth/forgot-password",
   "auth/reset-password",
 ]);
@@ -81,6 +91,10 @@ export const ALLOWED_AREAS = new Set([
   "articles",
   "imports",
   "stream",
+  "sso",
+  "archive",
+  "approvals",
+  "tasks",
   // Customer-facing areas (see isPublicPath / the portal cookie in the proxy).
   "portal",
   "public",
@@ -93,11 +107,19 @@ export const PUBLIC_PATHS = new Set([
   "auth/reset-password",
 ]);
 
+/** Single sign-on discovery and start only; the IdP's ACS post is not for the browser. */
+const SSO_PUBLIC = /^sso\/[^/]+(\/start)?$/;
+
 const PORTAL_SIGN_IN = /^portal\/[^/]+\/(code|session)$/;
 
 /** No token at all: the whole `public/` area plus the portal's code request and sign-in. */
 export function isPublicPath(path: string): boolean {
-  return PUBLIC_PATHS.has(path) || path.startsWith("public/") || PORTAL_SIGN_IN.test(path);
+  return (
+    PUBLIC_PATHS.has(path) ||
+    path.startsWith("public/") ||
+    PORTAL_SIGN_IN.test(path) ||
+    SSO_PUBLIC.test(path)
+  );
 }
 
 /** The portal's own area: it gets the portal cookie, never the agent one. */
@@ -108,4 +130,9 @@ export function isPortalPath(path: string): boolean {
 /** Anyone can ask for a code, so it is rate limited like the other credential calls. */
 export function isRateLimitedPath(path: string): boolean {
   return RATE_LIMITED_PATHS.has(path) || PORTAL_SIGN_IN.test(path);
+}
+
+/** The SSO start answer is a redirect to the identity provider; the browser follows it. */
+export function isSsoStart(path: string): boolean {
+  return /^sso\/[^/]+\/start$/.test(path);
 }

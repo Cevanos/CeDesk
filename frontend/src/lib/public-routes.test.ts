@@ -23,6 +23,8 @@ describe("isPublicPage", () => {
     "/settings/portal",
     "/customers/x",
     "/agents",
+    "/account",
+    "/archive/tickets/abc",
     "/reports/team",
     "/acme-store",
     "/acme-store/tickets",

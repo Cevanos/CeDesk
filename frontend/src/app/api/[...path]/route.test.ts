@@ -330,3 +330,111 @@ describe("Phase 2 areas", () => {
     expect(okRes.headers.get("cache-control")).toContain("no-transform");
   });
 });
+
+describe("two-step sign-in", () => {
+  const post = (path: string[], body: unknown, headers: Record<string, string> = {}) =>
+    call(POST, path, {
+      method: "POST",
+      headers: { origin: ORIGIN, "content-type": "application/json", ...freshIp(), ...headers },
+      body: JSON.stringify(body),
+    });
+
+  it("parks the token in a path-limited pending cookie, not a session", async () => {
+    server.use(
+      http.post(`${BACKEND}/auth/sign-in`, () =>
+        HttpResponse.json({ token: "half-token", two_factor_required: true }),
+      ),
+    );
+    const res = await post(["auth", "sign-in"], { workspace: "w", email: "a@b.c", password: "x" });
+    const body = await res.text();
+    const cookie = (res.headers.get("set-cookie") ?? "").toLowerCase();
+    expect(body).not.toContain("half-token");
+    expect(JSON.parse(body)).toMatchObject({ two_factor_required: true });
+    expect(cookie).toContain("cdesk_2fa=");
+    expect(cookie).toContain("path=/api/auth/2fa");
+    expect(cookie).toContain("httponly");
+    expect(cookie).toContain("samesite=strict");
+    expect(cookie).not.toContain("cdesk_session=");
+  });
+
+  it("sends the code with the pending token and turns it into a session", async () => {
+    let auth: string | null = null;
+    let sent: unknown;
+    server.use(
+      http.post(`${BACKEND}/auth/2fa`, async ({ request }) => {
+        auth = request.headers.get("authorization");
+        sent = await request.json();
+        return HttpResponse.json({
+          member_id: "m1",
+          role: "agent",
+          expires_at: "2099-01-01T00:00:00Z",
+        });
+      }),
+    );
+    const res = await post(
+      ["auth", "2fa"],
+      { code: "123456" },
+      { cookie: "cdesk_2fa=0.half-token" },
+    );
+    const cookie = res.headers.get("set-cookie") ?? "";
+    expect(res.status).toBe(200);
+    expect(auth).toBe("Bearer half-token");
+    expect(sent).toEqual({ code: "123456" });
+    expect(cookie).toContain("cdesk_session=half-token");
+    expect(cookie.toLowerCase()).toContain("httponly");
+    expect(await res.text()).not.toContain("half-token");
+  });
+
+  it("keeps password_expired across the second step", async () => {
+    server.use(http.post(`${BACKEND}/auth/2fa`, () => HttpResponse.json({ role: "agent" })));
+    const res = await post(["auth", "2fa"], { code: "1" }, { cookie: "cdesk_2fa=1.half-token" });
+    expect(await res.json()).toMatchObject({ password_expired: true });
+  });
+
+  it("refuses the code step without a pending sign-in, and ignores a real session", async () => {
+    const res = await post(["auth", "2fa"], { code: "123456" }, { cookie: "cdesk_session=tok" });
+    expect(res.status).toBe(401);
+  });
+
+  it("never uses the pending token on any other call", async () => {
+    const res = await call(GET, ["me"], { headers: { cookie: "cdesk_2fa=0.half-token" } });
+    expect(res.status).toBe(401);
+  });
+
+  it("rate limits code guesses", async () => {
+    server.use(
+      http.post(`${BACKEND}/auth/2fa`, () =>
+        HttpResponse.json({ error: { code: "Bad", message: "no" } }, { status: 401 }),
+      ),
+    );
+    const ip = freshIp();
+    const go = () => post(["auth", "2fa"], { code: "0" }, { ...ip, cookie: "cdesk_2fa=0.t" });
+    for (let i = 0; i < 10; i++) expect((await go()).status).toBe(401);
+    expect((await go()).status).toBe(429);
+  });
+});
+
+describe("single sign-on", () => {
+  it("answers discovery and passes the redirect to the identity provider without a session", async () => {
+    server.use(
+      http.get(`${BACKEND}/sso/acme`, () => HttpResponse.json({ enabled: true })),
+      http.get(
+        `${BACKEND}/sso/acme/start`,
+        () => new HttpResponse(null, { status: 302, headers: { location: "https://idp.test/x" } }),
+      ),
+    );
+    expect((await call(GET, ["sso", "acme"])).status).toBe(200);
+    const start = await call(GET, ["sso", "acme", "start"]);
+    expect(start.status).toBe(302);
+    expect(start.headers.get("location")).toBe("https://idp.test/x");
+  });
+
+  it("does not open the ACS post to the browser", async () => {
+    const res = await call(POST, ["sso", "acme", "acs"], {
+      method: "POST",
+      headers: { origin: ORIGIN },
+      body: "x",
+    });
+    expect(res.status).toBe(401);
+  });
+});

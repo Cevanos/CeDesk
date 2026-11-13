@@ -4,8 +4,10 @@
  * customer portal of a workspace called "settings".
  */
 const AGENT_AREAS = new Set([
+  "account",
   "agents",
   "api",
+  "archive",
   "customers",
   "dev",
   "forgot-password",

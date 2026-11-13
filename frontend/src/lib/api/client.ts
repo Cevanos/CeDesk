@@ -156,7 +156,7 @@ export async function request<T>(path: string, opts: RequestOptions = {}): Promi
     const err = await parseError(res);
     // 401 anywhere (except the sign-in call itself) ends the session.
     // Customer pages handle their own 401 (they show the code sign-in, not the agent login).
-    const agentArea = !/^(auth\/sign-in|portal\/|public\/)/.test(path);
+    const agentArea = !/^(auth\/(sign-in|2fa)|portal\/|public\/)/.test(path);
     if (res.status === 401 && agentArea) onUnauthorized?.();
     if (res.status === 409) {
       err.specificConflict = !Object.keys(headers).some((h) => h.toLowerCase() === "if-match");

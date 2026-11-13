@@ -1,7 +1,8 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Check, ChevronDown, KeyRound, LogOut } from "lucide-react";
+import { Check, ChevronDown, KeyRound, LogOut, UserCog } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { toast } from "sonner";
@@ -29,13 +30,14 @@ export function UserMenu() {
   const signOut = useSignOut();
   const setStatus = useSetMyStatus();
   const [pwOpen, setPwOpen] = useState(false);
+  const router = useRouter();
 
   const status = user?.status ?? null;
 
   return (
     <>
       <Popover
-        className="w-72"
+        className="w-72 max-sm:fixed max-sm:inset-x-3 max-sm:top-16 max-sm:w-auto"
         trigger={({ props }) => (
           <button
             {...props}
@@ -88,6 +90,12 @@ export function UserMenu() {
                     {status === s && <Check className="ml-auto size-4 text-primary-ink" />}
                   </MenuItem>
                 ))}
+                {status === "offline" && (
+                  <p className="px-2.5 pt-1 pb-1.5 text-xs text-muted-foreground">
+                    You&apos;re offline, so no tickets are routed to you. Switch to Available to
+                    start receiving them.
+                  </p>
+                )}
               </>
             )}
 
@@ -96,6 +104,14 @@ export function UserMenu() {
               <span className="text-sm text-foreground-2">Theme</span>
               <ThemeToggle />
             </div>
+            <MenuItem
+              onClick={() => {
+                close();
+                router.push("/account");
+              }}
+            >
+              <UserCog className="size-4 text-muted-foreground" /> My account
+            </MenuItem>
             <MenuItem
               onClick={() => {
                 close();

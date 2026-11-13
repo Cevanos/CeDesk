@@ -1,15 +1,26 @@
 "use client";
 
-import { BarChart3, Inbox, Menu, Plus, Search, Settings, UsersRound, X } from "lucide-react";
+import {
+  Archive,
+  BarChart3,
+  Inbox,
+  Menu,
+  Plus,
+  Search,
+  Settings,
+  UsersRound,
+  X,
+} from "lucide-react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { OfflineBanner } from "@/components/feedback/offline-banner";
 import { CommandPalette } from "@/components/layout/command-palette";
 import { NotificationBell } from "@/components/layout/notification-bell";
 import { UserMenu } from "@/components/layout/user-menu";
+import { WorkMenu } from "@/components/layout/work-menu";
 import { Logo } from "@/components/ui/brand";
 import { Button } from "@/components/ui/primitives";
 import { useCurrentUser } from "@/hooks/use-auth";
@@ -22,13 +33,20 @@ import { cn, initials } from "@/lib/utils";
 const NAV = [
   { href: "/tickets", label: "Tickets", icon: Inbox },
   { href: "/agents", label: "Agents", icon: UsersRound },
+  { href: "/archive", label: "Archive", icon: Archive },
   { href: "/reports/team", label: "Reports", icon: BarChart3, reports: true, match: "/reports" },
   { href: "/settings/members", label: "Settings", icon: Settings, admin: true, match: "/settings" },
 ] as const;
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
   const { user, perms } = useCurrentUser();
+  // A workspace that requires 2FA sends people without it to set it up first.
+  const mustSetUp2fa = user?.two_factor_setup_required === true;
+  useEffect(() => {
+    if (mustSetUp2fa && !pathname.startsWith("/account")) router.replace("/account?setup=2fa");
+  }, [mustSetUp2fa, pathname, router]);
   const t = useTranslations("palette");
   // New messages and reassignments arrive by themselves; no refresh needed.
   useAgentLiveUpdates(!!user);
@@ -179,6 +197,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               {t("button")}
               <kbd className="rounded bg-surface-2 px-1.5 py-0.5 font-mono text-[10px]">Ctrl K</kbd>
             </button>
+            <WorkMenu />
             <NotificationBell />
             <UserMenu />
           </div>

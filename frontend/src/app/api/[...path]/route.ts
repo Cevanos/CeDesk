@@ -5,10 +5,14 @@ import {
   AUTH_RATE_WINDOW_MS,
   authRateLimit,
   MAX_UPLOAD_BYTES,
+  PENDING_2FA_COOKIE,
+  PENDING_2FA_MAX_AGE_S,
+  PENDING_2FA_PATH,
   PORTAL_COOKIE,
   isPortalPath,
   isPublicPath,
   isRateLimitedPath,
+  isSsoStart,
   SESSION_COOKIE,
   SESSION_HINT_COOKIE,
   UPSTREAM_TIMEOUT_MS,
@@ -66,6 +70,18 @@ function clearSession(res: NextResponse) {
   return res;
 }
 
+const secureCookies = () =>
+  process.env.NODE_ENV === "production" && process.env.ALLOW_INSECURE_HTTP !== "1";
+
+/** Pending 2FA cookie value: "<password_expired 0|1>.<token>". Never readable by page JS. */
+function packPending(token: string, passwordExpired: boolean) {
+  return `${passwordExpired ? 1 : 0}.${token}`;
+}
+function unpackPending(v: string | undefined) {
+  if (!v || v.length < 3 || v[1] !== ".") return null;
+  return { passwordExpired: v[0] === "1", token: v.slice(2) };
+}
+
 async function handle(req: NextRequest, { params }: Ctx) {
   const { path: segments } = await params;
 
@@ -100,7 +116,16 @@ async function handle(req: NextRequest, { params }: Ctx) {
   const portal = isPortalPath(path);
   // Each token only ever goes to its own area: portal calls carry the customer's
   // token, everything else the agent's.
-  const token = req.cookies.get(portal ? PORTAL_COOKIE : SESSION_COOKIE)?.value;
+  // The second sign-in step is the one call that carries the half-signed-in token: it comes
+  // from its own cookie (only sent to this path), never from the session cookie.
+  const twoFactor = path === "auth/2fa" && req.method === "POST";
+  const pending = twoFactor ? unpackPending(req.cookies.get(PENDING_2FA_COOKIE)?.value) : null;
+  if (twoFactor && !pending) {
+    return errorBody("NotSignedIn", "That sign-in has expired. Start again.", 401);
+  }
+  const token = twoFactor
+    ? pending?.token
+    : req.cookies.get(portal ? PORTAL_COOKIE : SESSION_COOKIE)?.value;
   if (!isPublic && !token) {
     const res = errorBody("NotSignedIn", "Please sign in.", 401);
     return portal ? res : clearSession(res);
@@ -156,6 +181,16 @@ async function handle(req: NextRequest, { params }: Ctx) {
   }
   out.set("cache-control", "no-store");
 
+  // Single sign-on start: the answer is a redirect to the identity provider. Only the
+  // Location is passed on, and only for this one route.
+  if (isSsoStart(path) && req.method === "GET" && upstream.status >= 300 && upstream.status < 400) {
+    const location = upstream.headers.get("location");
+    if (location) {
+      out.set("location", location);
+      return new NextResponse(null, { status: 302, headers: out });
+    }
+  }
+
   // Server-Sent Events: hand the body through as it arrives. Never buffer it, never
   // compress it, and don't treat a refused ticket as an ended session.
   if (isStream && upstream.ok && upstream.body) {
@@ -193,21 +228,53 @@ async function handle(req: NextRequest, { params }: Ctx) {
     return res;
   }
 
-  // Sign-in: move the token into an httpOnly cookie and drop it from the body.
-  if (path === "auth/sign-in" && req.method === "POST" && upstream.ok) {
-    const data = (await upstream.json().catch(() => null)) as {
+  // Sign-in (and its 2FA second step): move the token into an httpOnly cookie and drop it
+  // from the body.
+  if ((path === "auth/sign-in" || twoFactor) && req.method === "POST" && upstream.ok) {
+    let data = (await upstream.json().catch(() => null)) as {
       token?: string;
       expires_at?: string;
       member_id?: string;
       role?: string;
+      two_factor_required?: boolean;
+      password_expired?: boolean;
     } | null;
+    // The second step may answer without a token: the same one is now fully signed in.
+    if (twoFactor && !data) data = {};
+    if (twoFactor && data && !data.token) data.token = pending?.token;
+    if (twoFactor && data && pending?.passwordExpired) data.password_expired = true;
     if (!data?.token) {
       return errorBody("Internal", "Unexpected response from the service.", 502);
+    }
+    // Password was right but a code is still needed: this token is NOT a session. Park it in
+    // the path-limited pending cookie (10 minutes) and tell the page to ask for the code.
+    if (path === "auth/sign-in" && data.two_factor_required) {
+      const res = NextResponse.json(
+        { two_factor_required: true, password_expired: data.password_expired === true },
+        {
+          headers: upstream.headers.get("x-request-id")
+            ? { "x-request-id": upstream.headers.get("x-request-id")! }
+            : undefined,
+        },
+      );
+      res.cookies.set(PENDING_2FA_COOKIE, packPending(data.token, data.password_expired === true), {
+        path: PENDING_2FA_PATH,
+        sameSite: "strict",
+        secure: secureCookies(),
+        httpOnly: true,
+        maxAge: PENDING_2FA_MAX_AGE_S,
+      });
+      return res;
     }
     const expires = data.expires_at ? new Date(data.expires_at) : undefined;
     const valid = expires && !Number.isNaN(expires.valueOf()) ? expires : undefined;
     const res = NextResponse.json(
-      { member_id: data.member_id, role: data.role, expires_at: data.expires_at },
+      {
+        member_id: data.member_id,
+        role: data.role,
+        expires_at: data.expires_at,
+        ...(data.password_expired ? { password_expired: true } : {}),
+      },
       {
         headers: upstream.headers.get("x-request-id")
           ? { "x-request-id": upstream.headers.get("x-request-id")! }
@@ -223,6 +290,9 @@ async function handle(req: NextRequest, { params }: Ctx) {
     };
     res.cookies.set(SESSION_COOKIE, data.token, cookieOpts);
     res.cookies.set(SESSION_HINT_COOKIE, "1", cookieOpts);
+    if (twoFactor) {
+      res.cookies.set(PENDING_2FA_COOKIE, "", { path: PENDING_2FA_PATH, maxAge: 0 });
+    }
     return res;
   }
 

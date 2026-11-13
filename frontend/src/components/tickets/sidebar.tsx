@@ -1,10 +1,11 @@
 "use client";
 
-import { Paperclip, Plus, SlidersHorizontal, Upload, UserRound, X } from "lucide-react";
+import { Layers, Paperclip, Plus, SlidersHorizontal, Upload, UserRound, X } from "lucide-react";
 import Link from "next/link";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
 
+import { ApprovalsCard } from "@/components/tickets/approvals-card";
 import {
   PRIORITIES,
   PRIORITY_LABEL,
@@ -12,9 +13,15 @@ import {
   STATUS_LABEL,
   VipBadge,
 } from "@/components/tickets/badges";
+import { OrdersCard, PaymentsCard } from "@/components/tickets/commerce-cards";
 import { CsatAverage, CsatCard } from "@/components/tickets/csat";
+import { JiraCard } from "@/components/tickets/jira-card";
 import { FileChip } from "@/components/tickets/message-files";
+import { RelatedCard } from "@/components/tickets/related-card";
+import { SideConversations } from "@/components/tickets/side-conversations";
 import { SlaPanel } from "@/components/tickets/sla";
+import { TasksCard } from "@/components/tickets/tasks-card";
+import { TimeCard } from "@/components/tickets/time-card";
 import { Badge, Card, Input, Select, Skeleton } from "@/components/ui/primitives";
 import { useCurrentUser } from "@/hooks/use-auth";
 import {
@@ -69,7 +76,7 @@ export function TicketSidebar({ ticket, etag }: { ticket: Ticket; etag: string |
   const types = useTicketTypes();
   const agents = useAgents();
   const [tag, setTag] = useState("");
-  const [tab, setTab] = useState<"details" | "customer" | "files">("details");
+  const [tab, setTab] = useState<"details" | "customer" | "files" | "more">("details");
 
   const patch = (p: TicketPatch) =>
     update.mutate(
@@ -84,7 +91,9 @@ export function TicketSidebar({ ticket, etag }: { ticket: Ticket; etag: string |
       },
     );
 
-  const disabled = !perms.editTicket || update.isPending;
+  // `can_edit` comes from the API (view-only tickets); the role matrix still applies.
+  const canEdit = perms.editTicket && (ticket as { can_edit?: boolean }).can_edit !== false;
+  const disabled = !canEdit || update.isPending;
   const type = types.data?.find((t) => t.id === ticket.type_id);
 
   // Supervisors/admins can assign to anyone; agents only to themselves.
@@ -96,6 +105,7 @@ export function TicketSidebar({ ticket, etag }: { ticket: Ticket; etag: string |
     { id: "details", label: "Details", icon: SlidersHorizontal },
     { id: "customer", label: "Customer", icon: UserRound },
     { id: "files", label: "Files", icon: Paperclip },
+    { id: "more", label: "More", icon: Layers },
   ] as const;
 
   return (
@@ -103,7 +113,7 @@ export function TicketSidebar({ ticket, etag }: { ticket: Ticket; etag: string |
       <div
         role="tablist"
         aria-label="Ticket sections"
-        className="grid grid-cols-3 gap-1 rounded-xl border border-border bg-surface-2 p-1"
+        className="grid grid-cols-4 gap-1 rounded-xl border border-border bg-surface-2 p-1"
       >
         {TABS.map(({ id, label, icon: Icon }) => (
           <button
@@ -114,7 +124,7 @@ export function TicketSidebar({ ticket, etag }: { ticket: Ticket; etag: string |
             aria-controls={`panel-${id}`}
             onClick={() => setTab(id)}
             className={cn(
-              "inline-flex items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-[13px] font-semibold transition-all",
+              "inline-flex items-center justify-center gap-1 rounded-lg px-1.5 py-1.5 text-[12px] font-semibold transition-all sm:text-[13px]",
               tab === id
                 ? "bg-surface text-foreground shadow-card ring-1 ring-border"
                 : "text-muted-foreground hover:text-foreground",
@@ -381,6 +391,32 @@ export function TicketSidebar({ ticket, etag }: { ticket: Ticket; etag: string |
             </Link>
           )}
         </Section>
+        {tab === "customer" && (
+          <>
+            <OrdersCard ticketId={ticket.id} />
+            <PaymentsCard ticketId={ticket.id} />
+          </>
+        )}
+      </div>
+
+      <div
+        role="tabpanel"
+        id="panel-more"
+        aria-labelledby="tab-more"
+        hidden={tab !== "more"}
+        className="space-y-4"
+      >
+        {/* Mounted only when opened, so these optional calls don't fire until needed. */}
+        {tab === "more" && (
+          <>
+            <RelatedCard ticketId={ticket.id} canEdit={canEdit} />
+            <ApprovalsCard ticketId={ticket.id} canEdit={canEdit} />
+            <TasksCard ticketId={ticket.id} canEdit={canEdit} />
+            <TimeCard ticketId={ticket.id} canEdit={canEdit} />
+            <SideConversations ticketId={ticket.id} canEdit={canEdit} />
+            <JiraCard ticketId={ticket.id} canEdit={canEdit} />
+          </>
+        )}
       </div>
 
       <div role="tabpanel" id="panel-files" aria-labelledby="tab-files" hidden={tab !== "files"}>

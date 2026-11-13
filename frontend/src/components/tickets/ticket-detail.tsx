@@ -53,6 +53,11 @@ export function TicketDetail({ id }: { id: string }) {
   }
 
   const { ticket, etag } = q.data;
+  const viewOnlyReason =
+    (ticket as { can_edit?: boolean; view_only_reason?: string | null }).can_edit === false
+      ? ((ticket as { view_only_reason?: string | null }).view_only_reason ??
+        "This ticket is view-only for you.")
+      : null;
 
   return (
     <div className="mx-auto flex min-h-[calc(100svh-3.5rem)] w-full max-w-6xl flex-col px-3 pt-4 sm:px-6 sm:pt-6">
@@ -129,6 +134,15 @@ export function TicketDetail({ id }: { id: string }) {
           </div>
         </div>
       </header>
+
+      {viewOnlyReason && (
+        <div
+          role="status"
+          className="mt-4 rounded-xl border border-warning/30 bg-warning-soft px-4 py-2.5 text-sm text-warning"
+        >
+          {viewOnlyReason}
+        </div>
+      )}
 
       <div className="mt-5 grid flex-1 gap-5 lg:grid-cols-[minmax(0,1fr)_21rem]">
         <section className="flex min-w-0 flex-col gap-4" aria-label="Conversation">

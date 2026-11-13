@@ -17,7 +17,7 @@ export function NotificationBell() {
 
   return (
     <Popover
-      className="w-[min(22rem,calc(100vw-2rem))] p-0"
+      className="w-[min(22rem,calc(100vw-2rem))] p-0 max-sm:fixed max-sm:inset-x-3 max-sm:top-16 max-sm:w-auto"
       trigger={({ props }) => (
         <button
           {...props}
