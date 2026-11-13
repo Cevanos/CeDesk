@@ -3,6 +3,33 @@
 `openapi.json` next to this file is the API as served (`uv run cedesk openapi`). Every
 route is under `/api/v1`. Breaking changes only come in v2 (md 2B). Newest first.
 
+## 2026-11-13: Push notifications to the mobile app (Phase 3, P8)
+
+Banners on agents' phones, through Firebase Cloud Messaging (it reaches iPhones too, with
+the app's Apple key uploaded to Firebase).
+
+- `POST /me/devices {"platform": "ios"|"android", "token"}` -> 201: after sign-in, with
+  the app's FCM registration token. The same token again refreshes it, or moves it to
+  you if someone else used the phone. You keep your 10 newest phones.
+- `GET /me/devices` -> `{"push_on", "devices": [{id, platform, token_hint, created_at,
+  last_seen_at}]}`: your phones, never the token itself (`token_hint` is its last 6
+  characters). `push_on: false` when the server has no Firebase settings.
+- `DELETE /me/devices/{id}` -> 204: call it on sign-out. Someone else's device: 404.
+- Banners for three notifications: a ticket assigned to you ("New ticket for you"), a
+  mention ("You were mentioned") and a customer reply ("The customer replied"). The body
+  is the ticket's number (`T-1042`), never its subject or a message; `data` has
+  `ticket_id`, `notification_id` and `kind` so the app can open the ticket. Everything
+  else stays in the bell.
+- The worker sends them: once each, even with several workers (claimed with SKIP
+  LOCKED); one older than 10 minutes is dropped (it is in the bell); a token Firebase
+  says is gone is deleted; a deactivated member gets none.
+- Settings (worker): `CEDESK_PUSH_FCM_PROJECT_ID` and `CEDESK_PUSH_FCM_SERVICE_ACCOUNT`
+  (the service account key's JSON). Both empty: push is off and nothing else changes.
+  One without the other, or a key that can't be read, stops the worker with the reason.
+  Tokens and the key are never logged.
+
+Migration 0051 (after 0050).
+
 ## 2026-11-13: Calendly app and the saved reply /book (Phase 3, PL7, W19)
 
 - New app `calendly` in `GET /apps`: `card: "book"`, `settings_fields: ["link"]`,
