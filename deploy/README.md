@@ -16,7 +16,7 @@ These are the notes for our own servers. For a customer hosting CeDesk themselve
    ```
 
    (Docker opens published ports itself, past ufw. Only Caddy publishes any here.)
-2. Get the code: `git clone git@github.com:Cogninest-AI/CDESK.git && cd CDESK/deploy`
+2. Get the code: `git clone https://github.com/Cogninest-AI/CDESK.git && cd CDESK/deploy`
 3. `cp env.example .env`, then fill in `.env`: four secrets from `openssl rand -hex 32`,
    `CEDESK_SITE` (a domain pointing at the server for HTTPS, or `:80`) and
    `CEDESK_CORS_ORIGINS` (the frontend's addresses).

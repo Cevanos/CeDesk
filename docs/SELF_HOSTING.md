@@ -10,8 +10,8 @@ workspace our operators give a cloud plan (`cedesk set-plan`), which you never d
 ## What you need
 
 - A Linux server with Docker and the compose plugin. A small one is enough to start (for
-  example 2 CPUs and 4 GB of memory, plus 1.5 GB for the virus scan); the load test at the
-  end of Phase 3 will give measured numbers.
+  example 2 CPUs and 4 GB of memory, plus 1.5 GB for the virus scan). Add more as the
+  number of agents and tickets grows.
 - A domain name pointing at the server (for HTTPS), e.g. `help.example.com`.
 - An SMTP account to send email (Amazon SES, Gmail or Zoho with an app password, ...), and
   a way for customers' emails to reach CeDesk: a mailbox it reads, or a mail service that
@@ -88,7 +88,7 @@ workspace our operators give a cloud plan (`cedesk set-plan`), which you never d
    ```
 
    The worker does everything else by itself: sending email, reading the mailbox, SLA
-   alerts, webhooks, imports, retention and the archive.
+   alerts, webhooks, imports and retention.
 
 The API's own documentation, to try any route: `https://help.example.com/docs`.
 
@@ -191,7 +191,7 @@ Read `docs/api/CHANGELOG.md` before updating: it lists what changed.
 Three things, and you need all three to restore:
 
 1. **The database**: `deploy/backup.sh` (the cron line above) writes
-   `~/cedesk-backups/cedesk-<date>.sql.gz` every night and keeps 14 days
+   `~/cedesk-backups/cedesk-<date>-<HHMM>.sql.gz` every night and keeps 14 days
    (`BACKUP_DIR` changes the folder).
 2. **The files**, with local storage (with S3, GCS or Azure, use the bucket's own
    versioning or backups):
@@ -232,5 +232,4 @@ roles first). The migrations then find it up to date.
 
 ## Licence
 
-The licence (AGPL-3.0 is proposed) is not set yet; until it is, this repository is
-private.
+To be announced.
