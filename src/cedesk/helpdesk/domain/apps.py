@@ -145,6 +145,35 @@ def book_reply(link: str) -> str:
     return f"Hi {{{{customer.first_name}}}}, you can pick a time that suits you here: {link}"
 
 
+BOOK_EDITED = "/{shortcut} was edited by hand; update its link yourself."
+BOOK_KEPT = "/{shortcut} was edited by hand, so it was kept as an ordinary saved reply."
+
+
+def _link_in(link: str) -> re.Pattern[str]:
+    """The link as a whole word: https://calendly.com/acme isn't found in .../acme/30min."""
+    return re.compile(re.escape(link) + r"(?![A-Za-z0-9_/-])")
+
+
+def book_untouched(body: str, link: str | None) -> bool:
+    """Whether /book is still exactly the text Calendly wrote for `link` (not edited by
+    hand). Only such a reply is deleted when Calendly is uninstalled."""
+    return link is not None and body == book_reply(link)
+
+
+def relinked_book(body: str, old: str | None, new: str) -> str | None:
+    """/book's text for a new link: Calendly's own text, or the Admin's text with only the
+    old link swapped for the new one. None when the Admin's text no longer has the old link
+    (edited beyond that): it is left alone."""
+    if old is None:
+        return None
+    if body == book_reply(old):
+        return book_reply(new)
+    pattern = _link_in(old)
+    if not pattern.search(body):
+        return None
+    return pattern.sub(lambda _: new, body)
+
+
 @dataclass(frozen=True)
 class Order:
     id: str
