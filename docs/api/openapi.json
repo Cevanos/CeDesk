@@ -10774,6 +10774,216 @@
         ]
       }
     },
+    "/api/v1/archive/tickets": {
+      "get": {
+        "tags": [
+          "archive"
+        ],
+        "summary": "Find archived tickets by number or customer",
+        "description": "Resolved tickets older than the archive age (default 120 days) leave the ticket list and live here. Give `number` (1042 or T-1042), or the customer's `email` or `contact_id`; newest first, at most 50. A team-only role sees its team's.",
+        "operationId": "find_api_v1_archive_tickets_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "number",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 20
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Number"
+            }
+          },
+          {
+            "name": "email",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 254
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Email"
+            }
+          },
+          {
+            "name": "contact_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Contact Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ArchivedOut"
+                  },
+                  "title": "Response Find Api V1 Archive Tickets Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Neither a number nor a customer, or a bad number"
+          }
+        }
+      }
+    },
+    "/api/v1/archive/tickets/{ticket_id}": {
+      "get": {
+        "tags": [
+          "archive"
+        ],
+        "summary": "Open an archived ticket (read only)",
+        "description": "Its messages (internal notes too), files' names and rating. It can't be changed, replied to or reopened.",
+        "operationId": "open_one_api_v1_archive_tickets__ticket_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "ticket_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Ticket Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArchivedTicketOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not in the archive, or another team's"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/archive/settings": {
+      "get": {
+        "tags": [
+          "archive"
+        ],
+        "summary": "The archive age (Settings)",
+        "operationId": "get_setting_api_v1_archive_settings_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingOut"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "archive"
+        ],
+        "summary": "Set the archive age (Settings; audited)",
+        "description": "Resolved tickets older than this move to the archive at the next nightly run. Retention still deletes them when it says so.",
+        "operationId": "set_setting_api_v1_archive_settings_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SettingIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/healthz": {
       "get": {
         "tags": [
@@ -11521,6 +11731,358 @@
         ],
         "title": "ApprovalOut"
       },
+      "ArchivedMessageOut": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "title": "Kind",
+            "description": "customer, agent, ai, note or system."
+          },
+          "author_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author Name"
+          },
+          "body": {
+            "type": "string",
+            "title": "Body"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At"
+          },
+          "files": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Files",
+            "description": "name, size and type of each file."
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "author_name",
+          "body",
+          "created_at",
+          "files"
+        ],
+        "title": "ArchivedMessageOut"
+      },
+      "ArchivedOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "number": {
+            "type": "integer",
+            "title": "Number"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "subject": {
+            "type": "string",
+            "title": "Subject"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "priority": {
+            "type": "string",
+            "title": "Priority"
+          },
+          "channel": {
+            "type": "string",
+            "title": "Channel"
+          },
+          "contact_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact Id"
+          },
+          "contact_email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact Email"
+          },
+          "contact_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact Name"
+          },
+          "team_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Team Name"
+          },
+          "assignee_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assignee Name"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "resolved_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolved At"
+          },
+          "archived_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Archived At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "number",
+          "label",
+          "subject",
+          "status",
+          "priority",
+          "channel",
+          "contact_id",
+          "contact_email",
+          "contact_name",
+          "team_name",
+          "assignee_name",
+          "created_at",
+          "resolved_at",
+          "archived_at"
+        ],
+        "title": "ArchivedOut"
+      },
+      "ArchivedTicketOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "number": {
+            "type": "integer",
+            "title": "Number"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "subject": {
+            "type": "string",
+            "title": "Subject"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "priority": {
+            "type": "string",
+            "title": "Priority"
+          },
+          "channel": {
+            "type": "string",
+            "title": "Channel"
+          },
+          "contact_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact Id"
+          },
+          "contact_email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact Email"
+          },
+          "contact_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact Name"
+          },
+          "team_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Team Name"
+          },
+          "assignee_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assignee Name"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "resolved_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolved At"
+          },
+          "archived_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Archived At"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Tags"
+          },
+          "fields": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Fields"
+          },
+          "messages": {
+            "items": {
+              "$ref": "#/components/schemas/ArchivedMessageOut"
+            },
+            "type": "array",
+            "title": "Messages"
+          },
+          "files": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Files",
+            "description": "Every file on the ticket: name, size, type."
+          },
+          "rating": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rating",
+            "description": "score, comment, source, rated_at."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "number",
+          "label",
+          "subject",
+          "status",
+          "priority",
+          "channel",
+          "contact_id",
+          "contact_email",
+          "contact_name",
+          "team_name",
+          "assignee_name",
+          "created_at",
+          "resolved_at",
+          "archived_at",
+          "tags",
+          "fields",
+          "messages",
+          "files",
+          "rating"
+        ],
+        "title": "ArchivedTicketOut"
+      },
       "Area": {
         "type": "string",
         "enum": [
@@ -11548,7 +12110,8 @@
           "webhooks",
           "apps",
           "retention",
-          "plan"
+          "plan",
+          "archive"
         ],
         "title": "Area",
         "description": "Filter on the audit page. Other teams' features add their own (api_keys,\nwebhooks, apps, retention): the column takes any lower-case name."
@@ -18870,6 +19433,79 @@
           "7d"
         ],
         "title": "SessionLength"
+      },
+      "SettingIn": {
+        "properties": {
+          "after_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "After Days",
+            "description": "30 to 3650; null for the default (120)."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "after_days"
+        ],
+        "title": "SettingIn"
+      },
+      "SettingOut": {
+        "properties": {
+          "after_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "After Days",
+            "description": "Null: the default (120)."
+          },
+          "effective_days": {
+            "type": "integer",
+            "title": "Effective Days"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "updated_by_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated By Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "after_days",
+          "effective_days",
+          "updated_at",
+          "updated_by_name"
+        ],
+        "title": "SettingOut"
       },
       "SetupOut": {
         "properties": {

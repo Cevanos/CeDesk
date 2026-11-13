@@ -227,6 +227,7 @@ def _worker(once: bool) -> int:
     from cedesk.helpdesk.domain.limits import parse_plans
     from cedesk.helpdesk.service import limits as plan_limits
     from cedesk.helpdesk.service.apps import slack_bound
+    from cedesk.helpdesk.service.archive import run_archive
     from cedesk.helpdesk.service.cevanos import CevanosHandler, ChatPoller
     from cedesk.helpdesk.service.csat import CsatHandler
     from cedesk.helpdesk.service.delivery import Handler, deliver_due
@@ -403,6 +404,12 @@ def _worker(once: bool) -> int:
                         logger.exception("Pruning the webhook log failed")
                     swept_at = time.monotonic()
                 if time.monotonic() - retained_at > RETENTION_EVERY_SECONDS:
+                    try:  # resolved tickets past the archive age to the archive (md O3)
+                        moved = await run_archive(sm)
+                        if moved:
+                            logger.info(f"archive: {moved} tickets", extra={"event": "archive"})
+                    except Exception:
+                        logger.exception("Archiving failed")
                     try:  # resolved tickets past the workspace's retention (md O2)
                         gone = await run_retention(sm, store)
                         if gone:
