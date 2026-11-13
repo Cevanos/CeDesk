@@ -1,6 +1,13 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 import { resetBackend, signedIn } from "./helpers";
+
+/** The new-ticket page renders more than one "Create ticket" button, so use the sidebar one. */
+function createButton(page: Page) {
+  return page
+    .getByRole("complementary", { name: "Ticket settings" })
+    .getByRole("button", { name: "Create ticket" });
+}
 
 test.describe("tickets", () => {
   test.beforeEach(async ({ page }) => {
@@ -27,16 +34,16 @@ test.describe("tickets", () => {
   test("creates a ticket and lands on it", async ({ page }) => {
     await page.goto("/tickets/new");
     await page.getByLabel("Subject").fill("Printer on fire");
-    await page.getByLabel("Customer name").fill("Linus T");
-    await page.getByLabel("Customer email").fill("linus@example.com");
-    await page.getByRole("button", { name: /Create ticket/ }).click();
+    await page.locator("#name").fill("Linus T");
+    await page.locator("#email").fill("linus@example.com");
+    await createButton(page).click();
     await expect(page).toHaveURL(/\/tickets\/t\d+/);
     await expect(page.getByRole("heading", { name: "Printer on fire" })).toBeVisible();
   });
 
   test("validates the new-ticket form before sending", async ({ page }) => {
     await page.goto("/tickets/new");
-    await page.getByRole("button", { name: /Create ticket/ }).click();
+    await createButton(page).click();
     await expect(page.getByText("Enter a subject")).toBeVisible();
   });
 

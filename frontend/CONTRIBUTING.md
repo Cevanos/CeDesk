@@ -54,3 +54,10 @@ Mock the network with MSW (`server.use(http.get(...))`) instead of stubbing `fet
 ## Decisions
 
 Record significant decisions in `docs/adr`. Add a numbered ADR when you change security, data flow or a core dependency.
+
+## Version decisions
+
+- **TypeScript stays on 5.x.** TypeScript 7 exists, but the latest `typescript-eslint` (8.72.2, used through `eslint-config-next`) declares `typescript >=4.8.4 <6.1.0`. Upgrading would break linting. Revisit when typescript-eslint widens that range.
+- **ESLint stays on 10.** `npm audit` reports moderate findings in the ESLint and typescript-eslint chain (dev dependencies only; production audit is clean). The suggested `npm audit fix --force` would downgrade ESLint and `eslint-config-next`, so it is not applied.
+- **Tailwind CSS 4 is wired through `@tailwindcss/turbopack`** (published by Tailwind Labs, same version as `tailwindcss`). There is no PostCSS config.
+- **Node 22** is what `.nvmrc`, CI and the Dockerfile use. `engines` allows 20.19+.

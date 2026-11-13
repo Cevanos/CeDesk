@@ -6,6 +6,12 @@ Notable changes are listed here. The format follows [Keep a Changelog](https://k
 
 ### Added
 
+- README screenshots (from the e2e mock backend) and more unit tests: rules, ticket types, members, agents, Cevanos and notification hooks.
+- MIT `LICENSE` and `license` field in `package.json`.
+- Code of Conduct (Contributor Covenant 2.1), GitHub issue forms (bug, feature) and a security contact link.
+- `robots.txt` (disallow all, matching the app-wide `noindex`).
+- Unit tests for `queryKeys` and the teams, macros and saved-replies hooks.
+- README: architecture overview, troubleshooting, roadmap, license and acknowledgements sections; `ALLOW_INSECURE_HTTP` documented.
 - Phase 1 backend update: SLA pill on tickets and rows, "Time left" sort, Settings > SLA (targets editable by Admin); files on replies and notes with virus-scan states; saved replies (type `/` in the reply box); rules and macros (Settings screens, Macros menu on a ticket); support email addresses, send test, email delivery status under replies; failed emails / failed events with "Send again"; Settings > Cevanos and the Accept button on handover tickets; message kinds `customer`/`agent`/`ai`/`note`/`system`; `Idempotency-Key` on create, reply, upload, accept and macro actions; 503 `Unavailable` message; reset link now read from `#token=` and cleared from the address bar.
 - Test suite: Vitest + Testing Library + MSW (proxy, client, permissions, hooks, components) and Playwright e2e with axe WCAG scans in light and dark.
 - CI (format, lint, typecheck, tests with coverage, build, e2e, audit), Dependabot, Husky + lint-staged, Conventional Commit enforcement.
@@ -19,6 +25,10 @@ Notable changes are listed here. The format follows [Keep a Changelog](https://k
 
 ### Changed
 
+- Internal reference notes (`refDoc/`) are no longer tracked; the ADR and a code comment no longer point at them.
+- Removed the `deploy.yml` workflow (auto-deploy to a private server). Deployment is documented in the README (Docker).
+- Minor/patch dependency updates in `package-lock.json` (`@hookform/resolvers`, `react-hook-form`, `next-intl`, `lucide-react`, `msw`, `jsdom`, `prettier`, `@testing-library/user-event`).
+- Dockerfile uses `node:22-alpine` to match `.nvmrc` and CI; removed a stale `.next-sec` path from `tsconfig.json`.
 - Strict TypeScript (`noUncheckedIndexedAccess`), stricter ESLint (jsx-a11y recommended, import order, no `console`, type imports).
 - Split the ticket list view and workspace hooks into focused modules; agent drawer is lazy-loaded.
 - Overlays trap and restore focus, close on Escape, and support arrow-key menu navigation.
@@ -26,6 +36,7 @@ Notable changes are listed here. The format follows [Keep a Changelog](https://k
 
 ### Fixed
 
+- e2e: the new-ticket spec used old field labels and an ambiguous "Create ticket" button, so two tests failed against the current form.
 - A signed-in user landing on `/login?next=…` is sent to `next` instead of always `/tickets`.
 - Message-type tablist contained a non-tab control, which broke the ARIA tab pattern.
 - Removed leftover debug logging and all lint suppressions that hid real issues.

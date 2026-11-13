@@ -355,7 +355,7 @@ export interface CevanosConnection {
 }
 
 /* ------------------------------------------------------------------ *
- * Phase 2. Shapes are inferred from CEDESK_FRONTEND_TODO_PHASE1_PHASE2.md
+ * Phase 2. Shapes are inferred from the backend's phase 2 notes
  * and read tolerantly; confirm field names against the API /docs page.
  * ------------------------------------------------------------------ */
 

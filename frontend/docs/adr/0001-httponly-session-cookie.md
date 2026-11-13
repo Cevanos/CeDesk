@@ -5,7 +5,7 @@
 
 ## Context
 
-`refDoc/CDESK_FRONTEND_GUIDE.md` section 3.1 suggests keeping the bearer token in memory or sessionStorage and sending it as `Authorization: Bearer ...` from the browser. Any script on the page can read both, so one XSS bug would let an attacker steal a working session. The backend is also on a different origin, which exposes its address and needs CORS.
+The original (internal) frontend integration guide, section 3.1, suggested keeping the bearer token in memory or sessionStorage and sending it as `Authorization: Bearer ...` from the browser. Any script on the page can read both, so one XSS bug would let an attacker steal a working session. The backend is also on a different origin, which exposes its address and needs CORS.
 
 ## Decision
 

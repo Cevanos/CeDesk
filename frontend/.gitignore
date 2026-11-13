@@ -67,3 +67,6 @@ Desktop.ini
 *.key
 *.p12
 *.pfx
+
+# Reference docs
+refDoc/
