@@ -61,6 +61,8 @@ services:
       CEDESK_SCAN_BACKEND: ${CEDESK_SCAN_BACKEND:-none}
       CEDESK_CEVANOS_URL: ${CEDESK_CEVANOS_URL:-https://api.cevanos.ai}
       CEDESK_CEVANOS_APP_URL: ${CEDESK_CEVANOS_APP_URL:-https://cevanos.ai}
+      # Push banners to the mobile app: the API only says whether they are on.
+      CEDESK_PUSH_FCM_PROJECT_ID: ${CEDESK_PUSH_FCM_PROJECT_ID:-}
       CEDESK_STORAGE_LOCAL_PATH: /data/storage
     volumes:
       - files:/data/storage
@@ -104,6 +106,9 @@ services:
       CEDESK_CLAMD_MAX_BYTES: ${CEDESK_CLAMD_MAX_BYTES:-104857600}
       # Cevanos: take-overs and replies out, customers' chat messages in.
       CEDESK_CEVANOS_URL: ${CEDESK_CEVANOS_URL:-https://api.cevanos.ai}
+      # Push banners to the mobile app (Firebase Cloud Messaging); both empty: off.
+      CEDESK_PUSH_FCM_PROJECT_ID: ${CEDESK_PUSH_FCM_PROJECT_ID:-}
+      CEDESK_PUSH_FCM_SERVICE_ACCOUNT: ${CEDESK_PUSH_FCM_SERVICE_ACCOUNT:-}
       # The same files as the api: replies send them, customer emails bring them.
       CEDESK_STORAGE_LOCAL_PATH: /data/storage
     volumes:

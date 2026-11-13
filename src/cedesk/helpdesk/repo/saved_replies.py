@@ -90,3 +90,50 @@ async def delete_reply(session: AsyncSession, reply_id: UUID) -> bool:
         text("DELETE FROM hd_saved_reply WHERE id = :id RETURNING id"), {"id": reply_id}
     )
     return result.first() is not None
+
+
+# ---- an app's own reply (Calendly's /book, md W19) ---------------------------------------
+
+
+async def by_source(session: AsyncSession, source: str, source_id: str) -> Row | None:
+    result = await session.execute(
+        text(_COLUMNS + " WHERE source = :source AND source_id = :sid"),
+        {"source": source, "sid": source_id},
+    )
+    return result.mappings().first()
+
+
+async def insert_from(
+    session: AsyncSession,
+    workspace_id: UUID,
+    *,
+    shortcut: str,
+    body: str,
+    source: str,
+    source_id: str,
+    created_by: UUID | None,
+) -> UUID:
+    result = await session.execute(
+        text(
+            "INSERT INTO hd_saved_reply (workspace_id, shortcut, body, source, source_id, "
+            "created_by) VALUES (:ws, :shortcut, :body, :source, :sid, :by) RETURNING id"
+        ),
+        {
+            "ws": workspace_id,
+            "shortcut": shortcut,
+            "body": body,
+            "source": source,
+            "sid": source_id,
+            "by": created_by,
+        },
+    )
+    return UUID(str(result.scalar_one()))
+
+
+async def delete_from(session: AsyncSession, source: str) -> list[str]:
+    """Every reply an app added; their shortcuts."""
+    result = await session.execute(
+        text("DELETE FROM hd_saved_reply WHERE source = :source RETURNING shortcut"),
+        {"source": source},
+    )
+    return [str(r[0]) for r in result.all()]

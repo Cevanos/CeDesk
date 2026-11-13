@@ -10486,10 +10486,77 @@
             "description": "No such ticket or side conversation"
           },
           "409": {
-            "description": "No support address yet, or 20 side conversations already"
+            "description": "No support address (or Slack app) yet, or 20 already"
           },
           "422": {
-            "description": "Not an address, the customer, one of our own addresses, empty"
+            "description": "Not an address, the customer, one of our own addresses, empty; Slack: no such channel, or the bot isn't in it"
+          },
+          "503": {
+            "description": "Slack didn't answer; try again"
+          }
+        }
+      }
+    },
+    "/api/v1/tickets/{ticket_id}/side-conversations/slack": {
+      "post": {
+        "tags": [
+          "side conversations"
+        ],
+        "summary": "Start a side conversation in a Slack channel",
+        "description": "Needs the Slack side conversations app. Its bot posts your message in the channel (invite it there first) with the ticket's number and subject, never the customer's messages. Replies in that thread come back here and the assignee is told (notification side_reply). The customer sees none of it. The ticket gets a system line.",
+        "operationId": "start_in_slack_api_v1_tickets__ticket_id__side_conversations_slack_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "ticket_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Ticket Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SlackStartIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SideOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Can't reply, or the ticket is another team's (view only)"
+          },
+          "404": {
+            "description": "No such ticket or side conversation"
+          },
+          "409": {
+            "description": "No support address (or Slack app) yet, or 20 already"
+          },
+          "422": {
+            "description": "Not an address, the customer, one of our own addresses, empty; Slack: no such channel, or the bot isn't in it"
+          },
+          "503": {
+            "description": "Slack didn't answer; try again"
           }
         }
       }
@@ -10500,7 +10567,7 @@
           "side conversations"
         ],
         "summary": "Write again in a side conversation",
-        "description": "Threaded under the earlier emails, to the same addresses.",
+        "description": "Email: threaded under the earlier emails, to the same addresses. Slack: another message in the same thread.",
         "operationId": "write_again_api_v1_side_conversations__side_id__messages_post",
         "security": [
           {
@@ -10547,10 +10614,64 @@
             "description": "No such ticket or side conversation"
           },
           "409": {
-            "description": "No support address yet, or 20 side conversations already"
+            "description": "No support address (or Slack app) yet, or 20 already"
           },
           "422": {
-            "description": "Not an address, the customer, one of our own addresses, empty"
+            "description": "Not an address, the customer, one of our own addresses, empty; Slack: no such channel, or the bot isn't in it"
+          },
+          "503": {
+            "description": "Slack didn't answer; try again"
+          }
+        }
+      }
+    },
+    "/api/v1/slack/events/{workspace_id}": {
+      "post": {
+        "tags": [
+          "side conversations"
+        ],
+        "summary": "Slack's Events API (the Slack side conversations app's Request URL)",
+        "description": "Public, for Slack only: every request must carry Slack's signature (X-Slack-Signature, X-Slack-Request-Timestamp, at most 5 minutes old), made with this workspace's signing secret, or it is refused before anything is read. Answers the URL check's challenge; a person's reply in a side conversation's thread is saved on it.",
+        "operationId": "slack_events_api_v1_slack_events__workspace_id__post",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Slack Events Api V1 Slack Events  Workspace Id  Post"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed by this workspace's Slack app"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
           }
         }
       }
@@ -10651,6 +10772,334 @@
             "HTTPBearer": []
           }
         ]
+      }
+    },
+    "/api/v1/archive/tickets": {
+      "get": {
+        "tags": [
+          "archive"
+        ],
+        "summary": "Find archived tickets by number or customer",
+        "description": "Resolved tickets older than the archive age (default 120 days) leave the ticket list and live here. Give `number` (1042 or T-1042), or the customer's `email` or `contact_id`; newest first, at most 50. A team-only role sees its team's.",
+        "operationId": "find_api_v1_archive_tickets_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "number",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 20
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Number"
+            }
+          },
+          {
+            "name": "email",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 254
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Email"
+            }
+          },
+          {
+            "name": "contact_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Contact Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ArchivedOut"
+                  },
+                  "title": "Response Find Api V1 Archive Tickets Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Neither a number nor a customer, or a bad number"
+          }
+        }
+      }
+    },
+    "/api/v1/archive/tickets/{ticket_id}": {
+      "get": {
+        "tags": [
+          "archive"
+        ],
+        "summary": "Open an archived ticket (read only)",
+        "description": "Its messages (internal notes too), files' names and rating. It can't be changed, replied to or reopened.",
+        "operationId": "open_one_api_v1_archive_tickets__ticket_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "ticket_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Ticket Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArchivedTicketOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not in the archive, or another team's"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/archive/settings": {
+      "get": {
+        "tags": [
+          "archive"
+        ],
+        "summary": "The archive age (Settings)",
+        "operationId": "get_setting_api_v1_archive_settings_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingOut"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "archive"
+        ],
+        "summary": "Set the archive age (Settings; audited)",
+        "description": "Resolved tickets older than this move to the archive at the next nightly run. Retention still deletes them when it says so.",
+        "operationId": "set_setting_api_v1_archive_settings_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SettingIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/me/devices": {
+      "get": {
+        "tags": [
+          "mobile"
+        ],
+        "summary": "My phones that get banners",
+        "operationId": "my_devices_api_v1_me_devices_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DevicesOut"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "mobile"
+        ],
+        "summary": "Register this phone for banners",
+        "description": "After sign-in, with the app's push token. Banners: a new ticket for you, a mention, a customer reply, a Cevanos chat waiting for Accept; they name the ticket's number only. The same token again just refreshes it (or moves it to you, if whoever used this phone signed out). You keep your 10 newest phones. Banners stop when this sign-in ends (sign-out, a password change or reset, deactivation). 409: the phone is registered to someone still signed in on it. Not with an API key (403).",
+        "operationId": "register_api_v1_me_devices_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeviceIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Registered to someone still signed in on this phone"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/me/devices/{device_id}": {
+      "delete": {
+        "tags": [
+          "mobile"
+        ],
+        "summary": "Stop banners on this phone (call it on sign-out)",
+        "operationId": "unregister_api_v1_me_devices__device_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "device_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Device Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "Not one of your devices"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/healthz": {
@@ -11095,7 +11544,9 @@
           "shopify",
           "stripe",
           "jira",
-          "slack_alerts"
+          "slack_alerts",
+          "slack",
+          "calendly"
         ],
         "title": "App"
       },
@@ -11111,7 +11562,7 @@
           "card": {
             "type": "string",
             "title": "Card",
-            "description": "What it shows in the ticket sidebar: orders or payments."
+            "description": "What it adds: orders or payments (ticket sidebar), jira, alerts, or side (side conversations in Slack), book (the saved reply /book)."
           },
           "settings_fields": {
             "items": {
@@ -11122,13 +11573,32 @@
             "description": "Settings to send at install (not secret)."
           },
           "credential": {
-            "type": "string",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Credential",
-            "description": "The name of the credential to send."
+            "description": "The name of the credential to send; null: none (Calendly)."
           },
           "credential_help": {
             "type": "string",
             "title": "Credential Help"
+          },
+          "second_credential": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Second Credential",
+            "description": "A second secret to send at install (Slack side conversations: signing_secret), or null."
           },
           "installed": {
             "type": "boolean",
@@ -11195,6 +11665,7 @@
           "settings_fields",
           "credential",
           "credential_help",
+          "second_credential",
           "installed",
           "settings",
           "secret_hint",
@@ -11386,6 +11857,358 @@
         ],
         "title": "ApprovalOut"
       },
+      "ArchivedMessageOut": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "title": "Kind",
+            "description": "customer, agent, ai, note or system."
+          },
+          "author_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author Name"
+          },
+          "body": {
+            "type": "string",
+            "title": "Body"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At"
+          },
+          "files": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Files",
+            "description": "name, size and type of each file."
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "author_name",
+          "body",
+          "created_at",
+          "files"
+        ],
+        "title": "ArchivedMessageOut"
+      },
+      "ArchivedOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "number": {
+            "type": "integer",
+            "title": "Number"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "subject": {
+            "type": "string",
+            "title": "Subject"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "priority": {
+            "type": "string",
+            "title": "Priority"
+          },
+          "channel": {
+            "type": "string",
+            "title": "Channel"
+          },
+          "contact_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact Id"
+          },
+          "contact_email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact Email"
+          },
+          "contact_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact Name"
+          },
+          "team_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Team Name"
+          },
+          "assignee_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assignee Name"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "resolved_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolved At"
+          },
+          "archived_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Archived At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "number",
+          "label",
+          "subject",
+          "status",
+          "priority",
+          "channel",
+          "contact_id",
+          "contact_email",
+          "contact_name",
+          "team_name",
+          "assignee_name",
+          "created_at",
+          "resolved_at",
+          "archived_at"
+        ],
+        "title": "ArchivedOut"
+      },
+      "ArchivedTicketOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "number": {
+            "type": "integer",
+            "title": "Number"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "subject": {
+            "type": "string",
+            "title": "Subject"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "priority": {
+            "type": "string",
+            "title": "Priority"
+          },
+          "channel": {
+            "type": "string",
+            "title": "Channel"
+          },
+          "contact_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact Id"
+          },
+          "contact_email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact Email"
+          },
+          "contact_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact Name"
+          },
+          "team_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Team Name"
+          },
+          "assignee_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assignee Name"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "resolved_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolved At"
+          },
+          "archived_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Archived At"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Tags"
+          },
+          "fields": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Fields"
+          },
+          "messages": {
+            "items": {
+              "$ref": "#/components/schemas/ArchivedMessageOut"
+            },
+            "type": "array",
+            "title": "Messages"
+          },
+          "files": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Files",
+            "description": "Every file on the ticket: name, size, type."
+          },
+          "rating": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rating",
+            "description": "score, comment, source, rated_at."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "number",
+          "label",
+          "subject",
+          "status",
+          "priority",
+          "channel",
+          "contact_id",
+          "contact_email",
+          "contact_name",
+          "team_name",
+          "assignee_name",
+          "created_at",
+          "resolved_at",
+          "archived_at",
+          "tags",
+          "fields",
+          "messages",
+          "files",
+          "rating"
+        ],
+        "title": "ArchivedTicketOut"
+      },
       "Area": {
         "type": "string",
         "enum": [
@@ -11413,7 +12236,8 @@
           "webhooks",
           "apps",
           "retention",
-          "plan"
+          "plan",
+          "archive"
         ],
         "title": "Area",
         "description": "Filter on the audit page. Other teams' features add their own (api_keys,\nwebhooks, apps, retention): the column takes any lower-case name."
@@ -13282,6 +14106,86 @@
         ],
         "title": "DeliveryPageOut"
       },
+      "DeviceIn": {
+        "properties": {
+          "platform": {
+            "$ref": "#/components/schemas/Platform"
+          },
+          "token": {
+            "type": "string",
+            "maxLength": 4096,
+            "minLength": 20,
+            "title": "Token",
+            "description": "The app's Firebase Cloud Messaging registration token (iOS too)."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "platform",
+          "token"
+        ],
+        "title": "DeviceIn"
+      },
+      "DeviceOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "platform": {
+            "type": "string",
+            "title": "Platform"
+          },
+          "token_hint": {
+            "type": "string",
+            "title": "Token Hint",
+            "description": "The token's last 6 characters, never the token."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "last_seen_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Last Seen At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "platform",
+          "token_hint",
+          "created_at",
+          "last_seen_at"
+        ],
+        "title": "DeviceOut"
+      },
+      "DevicesOut": {
+        "properties": {
+          "push_on": {
+            "type": "boolean",
+            "title": "Push On",
+            "description": "False: this server sends no banners (not set up)."
+          },
+          "devices": {
+            "items": {
+              "$ref": "#/components/schemas/DeviceOut"
+            },
+            "type": "array",
+            "title": "Devices"
+          }
+        },
+        "type": "object",
+        "required": [
+          "push_on",
+          "devices"
+        ],
+        "title": "DevicesOut"
+      },
       "DiffOut": {
         "properties": {
           "added": {
@@ -14863,22 +15767,38 @@
             "type": "object",
             "maxProperties": 5,
             "title": "Settings",
-            "description": "Shopify: {\"shop\": \"acme\"}. Jira: {\"site\": \"acme\", \"email\": \"ops@acme.com\", \"project\": \"SUP\"}. Stripe and Slack alerts: none.",
+            "description": "Shopify: {\"shop\": \"acme\"}. Jira: {\"site\": \"acme\", \"email\": \"ops@acme.com\", \"project\": \"SUP\"}. Calendly: {\"link\": \"https://calendly.com/acme/30min\"}. Stripe and both Slack apps: none.",
             "default": {}
           },
           "secret": {
-            "type": "string",
-            "maxLength": 300,
-            "minLength": 1,
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 300
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Secret",
-            "description": "The app's credential (Slack alerts: the Incoming Webhook URL)."
+            "description": "The app's credential (Slack alerts: the Incoming Webhook URL; Slack side conversations: the bot token, xoxb-...). Required, except for Calendly, which takes none."
+          },
+          "signing_secret": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 300
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Signing Secret",
+            "description": "Slack side conversations only: the Slack app's signing secret."
           }
         },
         "additionalProperties": false,
         "type": "object",
-        "required": [
-          "secret"
-        ],
         "title": "InstallIn"
       },
       "JiraIssueOut": {
@@ -16330,6 +17250,14 @@
           "payments"
         ],
         "title": "PaymentsOut"
+      },
+      "Platform": {
+        "type": "string",
+        "enum": [
+          "ios",
+          "android"
+        ],
+        "title": "Platform"
       },
       "PoliciesIn": {
         "properties": {
@@ -18723,6 +19651,79 @@
         ],
         "title": "SessionLength"
       },
+      "SettingIn": {
+        "properties": {
+          "after_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "After Days",
+            "description": "30 to 3650; null for the default (120)."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "after_days"
+        ],
+        "title": "SettingIn"
+      },
+      "SettingOut": {
+        "properties": {
+          "after_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "After Days",
+            "description": "Null: the default (120)."
+          },
+          "effective_days": {
+            "type": "integer",
+            "title": "Effective Days"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "updated_by_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated By Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "after_days",
+          "effective_days",
+          "updated_at",
+          "updated_by_name"
+        ],
+        "title": "SettingOut"
+      },
       "SetupOut": {
         "properties": {
           "secret": {
@@ -18765,7 +19766,8 @@
           },
           "from_address": {
             "type": "string",
-            "title": "From Address"
+            "title": "From Address",
+            "description": "Email: the sender's address. Slack: empty."
           },
           "created_at": {
             "type": "string",
@@ -18791,6 +19793,11 @@
             "format": "uuid",
             "title": "Id"
           },
+          "via": {
+            "type": "string",
+            "title": "Via",
+            "description": "email or slack."
+          },
           "subject": {
             "type": "string",
             "title": "Subject"
@@ -18800,12 +19807,13 @@
               "type": "string"
             },
             "type": "array",
-            "title": "To"
+            "title": "To",
+            "description": "Email: the addresses. Slack: the channel."
           },
           "from_address": {
             "type": "string",
             "title": "From Address",
-            "description": "The support address it goes out from."
+            "description": "Email: the support address it goes out from."
           },
           "created_at": {
             "type": "string",
@@ -18839,6 +19847,7 @@
         "type": "object",
         "required": [
           "id",
+          "via",
           "subject",
           "to",
           "from_address",
@@ -19062,6 +20071,30 @@
           "calendar"
         ],
         "title": "SlaSettingsOut"
+      },
+      "SlackStartIn": {
+        "properties": {
+          "channel": {
+            "type": "string",
+            "maxLength": 81,
+            "minLength": 1,
+            "title": "Channel",
+            "description": "#warehouse, or a channel id (C0123ABCD)."
+          },
+          "body": {
+            "type": "string",
+            "maxLength": 20000,
+            "minLength": 1,
+            "title": "Body"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "channel",
+          "body"
+        ],
+        "title": "SlackStartIn"
       },
       "Sort": {
         "type": "string",
