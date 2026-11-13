@@ -277,6 +277,14 @@ async def erase_tickets(session: AsyncSession, ids: list[UUID]) -> dict[str, int
     return counts
 
 
+# The customer's tickets, live and archived (md O3): their events and webhook deliveries
+# name them without a foreign key.
+_THEIR_TICKETS = (
+    "SELECT id FROM hd_ticket WHERE contact_id = :c "
+    "UNION ALL SELECT id FROM hd_ticket_archive WHERE contact_id = :c"
+)
+
+
 async def erase_contact(session: AsyncSession, contact_id: UUID, email: str) -> dict[str, int]:
     """The rating comments, portal sign-ins, events and the contact itself."""
     p: dict[str, Any] = {"c": contact_id}
@@ -307,11 +315,11 @@ async def erase_contact(session: AsyncSession, contact_id: UUID, email: str) -> 
         # (they'd carry the customer's words to a webhook).
         "events": await _changed(
             session,
-            "UPDATE hd_outbox SET payload = jsonb_build_object('erased', true), "
+            "UPDATE hd_outbox SET payload = jsonb_build_object('erased', true), "  # noqa: S608
             "failed_at = CASE WHEN published_at IS NULL THEN coalesce(failed_at, now()) "
             "ELSE failed_at END, "
             "last_error = CASE WHEN published_at IS NULL THEN :stopped ELSE last_error END "
-            "WHERE ticket_id IN (SELECT id FROM hd_ticket WHERE contact_id = :c) "
+            f"WHERE ticket_id IN ({_THEIR_TICKETS}) "
             "OR payload->>'contact_id' = CAST(:c AS text)",
             {**p, "stopped": STOPPED},
         ),
@@ -319,19 +327,18 @@ async def erase_contact(session: AsyncSession, contact_id: UUID, email: str) -> 
         # and its subject is the customer's words): the same, and the receiver's answers go.
         "webhook_responses": await _changed(
             session,
-            "UPDATE hd_webhook_attempt SET response = NULL WHERE response IS NOT NULL "
+            "UPDATE hd_webhook_attempt SET response = NULL WHERE response IS NOT NULL "  # noqa: S608
             "AND delivery_id IN (SELECT id FROM hd_webhook_delivery WHERE "
-            "body->'ticket'->>'id' IN (SELECT CAST(id AS text) FROM hd_ticket "
-            "WHERE contact_id = :c))",
+            f"body->'ticket'->>'id' IN (SELECT CAST(id AS text) FROM ({_THEIR_TICKETS}) t))",
             p,
         ),
         "webhook_deliveries": await _changed(
             session,
-            "UPDATE hd_webhook_delivery SET body = jsonb_build_object('erased', true), "
+            "UPDATE hd_webhook_delivery SET body = jsonb_build_object('erased', true), "  # noqa: S608
             "state = CASE WHEN state = 'pending' THEN 'failed' ELSE state END, "
             "last_error = CASE WHEN state = 'pending' THEN :stopped ELSE last_error END, "
             "lease_until = NULL WHERE body->'ticket'->>'id' IN "
-            "(SELECT CAST(id AS text) FROM hd_ticket WHERE contact_id = :c)",
+            f"(SELECT CAST(id AS text) FROM ({_THEIR_TICKETS}) t)",
             {**p, "stopped": STOPPED},
         ),
     }

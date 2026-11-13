@@ -103,6 +103,8 @@ class NewTicket:
     # message (a private note by the caller, so the customer never sees it).
     parent_id: UUID | None = None
     note: str | None = None
+    # Email in: the archived ticket (md O3, its label) this one is a late answer to.
+    follows: str | None = None
 
 
 def _check_origin(new: NewTicket) -> None:
@@ -477,6 +479,8 @@ async def _create(
         if any(line.kind == "agent" for line in new.history):
             await message_repo.ticket_replied(s, ticket_id)  # a person already answered
         await _line(s, origin, ticket_id, f"Ticket created by {who}")
+        if new.follows:
+            await _line(s, origin, ticket_id, f"Follows archived ticket {new.follows}")
         if new.note and caller is not None:
             await repo.insert_message(
                 s,
