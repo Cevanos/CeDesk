@@ -4,8 +4,9 @@ For the frontend team. Written from the API as served (`docs/api/openapi.json`, 
 source of truth for every field) and `docs/api/CHANGELOG.md` (what changed and why).
 Regenerate with `uv run python scripts/frontend_handoff.py`.
 
-Every route is under `/api/v1`, shown here without it. Routes marked with a PR are
-built and tested but wait for review: they exist on `main` once that PR is merged.
+Every route is under `/api/v1`, shown here without it, except `/healthz` and `/readyz`.
+Routes marked with a PR are built and tested but wait for review: they exist on `main`
+once that PR is merged.
 
 ## 1. What every screen needs to know
 
@@ -28,7 +29,7 @@ it up).
 
 **Errors.** Every error is `{"error": {"code", "message", "details"?}}`. Show `message`:
 it is written for the person using the screen. `details` comes only on 422 validation
-errors, one entry per field (`field`, `message`), to put next to the right input.
+errors, one entry per field (`field`, `location`, `message`), to put next to the right input.
 
 | Status | Means | What to do |
 |---|---|---|
@@ -65,7 +66,7 @@ its own stream (`/portal/stream`) with only the customer's own messages and stat
 `{{customer.first_name}}` and the like; the API fills them when the reply is sent.
 Show them as they are in the editor.
 
-**224 routes** (11 in PRs waiting for review: PR #42 mobile, demo seed PR, Slack PR, archive PR).
+**227 routes** (14 in PRs waiting for review: PR #42 mobile, demo seed PR, Slack PR, archive PR, push PR).
 
 ## 2. Screens
 
@@ -174,7 +175,7 @@ Show them as they are in the editor.
 
 ### 2.6 Ticket page: side conversations, Jira, orders and payments
 
-- Side conversations (agents only, never shown to the customer): by email (addresses) or in a Slack channel (needs the Slack side conversations app). Replies come back to the same side conversation, and the assignee gets a `side_reply` notification. `via` says `email` or `slack`.
+- Side conversations (agents only, never shown to the customer): by email (addresses), or *(Slack PR)* in a Slack channel (needs the Slack side conversations app). Replies come back to the same side conversation, and the assignee gets a `side_reply` notification. *(Slack PR)* `via` says `email` or `slack`.
 - Jira: create an issue from the ticket or link an existing one.
 - Orders and payments cards: `available: false` comes with a `message` to show (not installed, Cevanos connected, provider down); the ticket still works.
 
@@ -350,7 +351,7 @@ Show them as they are in the editor.
 
 ### 2.15 Settings: apps, API keys, webhooks, Cevanos
 
-- Apps: `GET /apps` lists each app with what to ask for: `settings_fields`, `credential` (null: none, as for Calendly) and `second_credential` (Slack side conversations: `signing_secret`). Credentials are never shown again, only `secret_hint`. `blocked` explains why an app can't be installed here.
+- Apps: `GET /apps` lists each app with what to ask for: `settings_fields`, `credential` (the credential to ask for; *(Calendly PR)* null when the app needs none) and *(Slack PR)* `second_credential` (Slack side conversations: `signing_secret`). Credentials are never shown again, only `secret_hint`. `blocked` explains why an app can't be installed here.
 - API keys and webhook secrets are shown **once**, on creation: say so.
 - Webhooks: events, delivery log, retry, test ping, new secret.
 - Cevanos: connect with a key, check, disconnect. Failed events list (outbox).
@@ -452,9 +453,13 @@ Show them as they are in the editor.
 
 - `GET /me/queue`: mine and unassigned, not resolved; mine first, then chats waiting to be accepted, then by SLA. Each item has the last message's first 140 characters.
 - `POST /tickets/{id}/mobile-reply`: one tap; accepts a waiting chat first; a light agent's text is saved as a note (`saved_as`). Everything else uses the web routes.
+- *(push PR)* `POST /me/devices` registers the phone for push banners after sign-in; `DELETE /me/devices/{id}` on sign-out; `GET /me/devices` lists them and says whether push is on for this server.
 
 | | Route | What it does |
 |---|---|---|
+| `GET` | `/me/devices` | My phones that get banners *(push PR)* |
+| `POST` | `/me/devices` | Register this phone for banners *(push PR)* |
+| `DELETE` | `/me/devices/{device_id}` | Stop banners on this phone (call it on sign-out) *(push PR)* |
 | `GET` | `/me/queue` | Your mobile queue *(PR #42 mobile)* |
 | `POST` | `/tickets/{ticket_id}/mobile-reply` | Reply from the mobile app *(PR #42 mobile)* |
 

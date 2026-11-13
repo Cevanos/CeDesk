@@ -65,8 +65,9 @@ For the frontend team. Written from the API as served (`docs/api/openapi.json`, 
 source of truth for every field) and `docs/api/CHANGELOG.md` (what changed and why).
 Regenerate with `uv run python scripts/frontend_handoff.py`.
 
-Every route is under `/api/v1`, shown here without it. Routes marked with a PR are
-built and tested but wait for review: they exist on `main` once that PR is merged.
+Every route is under `/api/v1`, shown here without it, except `/healthz` and `/readyz`.
+Routes marked with a PR are built and tested but wait for review: they exist on `main`
+once that PR is merged.
 
 ## 1. What every screen needs to know
 
@@ -89,7 +90,7 @@ it up).
 
 **Errors.** Every error is `{"error": {"code", "message", "details"?}}`. Show `message`:
 it is written for the person using the screen. `details` comes only on 422 validation
-errors, one entry per field (`field`, `message`), to put next to the right input.
+errors, one entry per field (`field`, `location`, `message`), to put next to the right input.
 
 | Status | Means | What to do |
 |---|---|---|
@@ -216,9 +217,9 @@ SCREENS: list[Screen] = [
     Screen(
         "Ticket page: side conversations, Jira, orders and payments",
         "- Side conversations (agents only, never shown to the customer): by email "
-        "(addresses) or in a Slack channel (needs the Slack side conversations app). "
-        "Replies come back to the same side conversation, and the assignee gets a "
-        "`side_reply` notification. `via` says `email` or `slack`.\n"
+        "(addresses), or *(Slack PR)* in a Slack channel (needs the Slack side conversations "
+        "app). Replies come back to the same side conversation, and the assignee gets a "
+        "`side_reply` notification. *(Slack PR)* `via` says `email` or `slack`.\n"
         "- Jira: create an issue from the ticket or link an existing one.\n"
         "- Orders and payments cards: `available: false` comes with a `message` to show "
         "(not installed, Cevanos connected, provider down); the ticket still works.",
@@ -305,8 +306,9 @@ SCREENS: list[Screen] = [
     Screen(
         "Settings: apps, API keys, webhooks, Cevanos",
         "- Apps: `GET /apps` lists each app with what to ask for: `settings_fields`, "
-        "`credential` (null: none, as for Calendly) and `second_credential` (Slack side "
-        "conversations: `signing_secret`). Credentials are never shown again, only "
+        "`credential` (the credential to ask for; *(Calendly PR)* null when the app needs "
+        "none) and *(Slack PR)* `second_credential` (Slack side conversations: "
+        "`signing_secret`). Credentials are never shown again, only "
         "`secret_hint`. `blocked` explains why an app can't be installed here.\n"
         "- API keys and webhook secrets are shown **once**, on creation: say so.\n"
         "- Webhooks: events, delivery log, retry, test ping, new secret.\n"
@@ -349,8 +351,17 @@ SCREENS: list[Screen] = [
         "characters.\n"
         "- `POST /tickets/{id}/mobile-reply`: one tap; accepts a waiting chat first; a "
         "light agent's text is saved as a note (`saved_as`). Everything else uses the "
-        "web routes.",
-        exact("GET /me/queue", "POST /tickets/{ticket_id}/mobile-reply"),
+        "web routes.\n"
+        "- *(push PR)* `POST /me/devices` registers the phone for push banners after "
+        "sign-in; `DELETE /me/devices/{id}` on sign-out; `GET /me/devices` lists them and "
+        "says whether push is on for this server.",
+        exact(
+            "GET /me/queue",
+            "POST /tickets/{ticket_id}/mobile-reply",
+            "GET /me/devices",
+            "POST /me/devices",
+            "DELETE /me/devices/{device_id}",
+        ),
     ),
     Screen(
         "Not for the frontend: server to server",
