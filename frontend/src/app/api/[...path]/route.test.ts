@@ -286,3 +286,47 @@ describe("customer portal and public areas", () => {
     expect((await post(["portal", "acme", "code"], ip)).status).toBe(429);
   });
 });
+
+describe("Phase 2 areas", () => {
+  it("forwards imports calls with the raw CSV body and Idempotency-Key", async () => {
+    let seen: { type: string | null; key: string | null; body: string } | null = null;
+    server.use(
+      http.post(`${BACKEND}/imports/csv`, async ({ request }) => {
+        seen = {
+          type: request.headers.get("content-type"),
+          key: request.headers.get("idempotency-key"),
+          body: await request.text(),
+        };
+        return HttpResponse.json({ id: "c1" }, { status: 201 });
+      }),
+    );
+    const res = await call(POST, ["imports", "csv"], {
+      method: "POST",
+      headers: { ...session, "content-type": "text/csv", "idempotency-key": "k-2" },
+      body: "a,b\n1,2",
+    });
+    expect(res.status).toBe(201);
+    expect(seen).toEqual({ type: "text/csv", key: "k-2", body: "a,b\n1,2" });
+  });
+
+  it("streams events through unbuffered and keeps the session on a refused ticket", async () => {
+    server.use(
+      http.get(`${BACKEND}/stream`, ({ request }) =>
+        new URL(request.url).searchParams.get("ticket") === "good"
+          ? new HttpResponse("event: reset\ndata: {}\n\n", {
+              headers: { "content-type": "text/event-stream" },
+            })
+          : HttpResponse.json({ error: { code: "Unauthorized", message: "x" } }, { status: 401 }),
+      ),
+    );
+    const ok = await new NextRequest(`${ORIGIN}/api/stream?ticket=good`, { headers: session });
+    const okRes = await GET(ok, { params: Promise.resolve({ path: ["stream"] }) });
+    const bad = new NextRequest(`${ORIGIN}/api/stream?ticket=bad`, { headers: session });
+    const badRes = await GET(bad, { params: Promise.resolve({ path: ["stream"] }) });
+    expect(badRes.status).toBe(401);
+    expect(badRes.headers.get("set-cookie")).toBeNull();
+    expect(okRes.status).toBe(200);
+    expect(okRes.headers.get("content-type")).toBe("text/event-stream");
+    expect(okRes.headers.get("cache-control")).toContain("no-transform");
+  });
+});

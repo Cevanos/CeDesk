@@ -79,6 +79,8 @@ export const ALLOWED_AREAS = new Set([
   "portal-settings",
   "article-categories",
   "articles",
+  "imports",
+  "stream",
   // Customer-facing areas (see isPublicPath / the portal cookie in the proxy).
   "portal",
   "public",

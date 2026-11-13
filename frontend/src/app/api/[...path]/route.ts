@@ -40,6 +40,8 @@ const FORWARD_REQUEST = [
   "if-match",
   "accept-language",
   "idempotency-key",
+  // Lets a live-update stream resume where it left off after a reconnect.
+  "last-event-id",
 ];
 /** Response headers the UI needs (ETag for edits, Retry-After for 429, ...). */
 const FORWARD_RESPONSE = [
@@ -124,6 +126,8 @@ async function handle(req: NextRequest, { params }: Ctx) {
   }
 
   const url = `${base}/${path}${req.nextUrl.search}`;
+  // Live-update streams stay open for as long as the tab does: no 30 s cut-off.
+  const isStream = req.method === "GET" && (path === "stream" || path === "portal/stream");
 
   let upstream: Response;
   try {
@@ -133,7 +137,7 @@ async function handle(req: NextRequest, { params }: Ctx) {
       body: body && body.byteLength > 0 ? body : undefined,
       redirect: "manual",
       cache: "no-store",
-      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+      signal: isStream ? req.signal : AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
     });
   } catch (err) {
     // Log server-side only; never echo the upstream address to the client.
@@ -151,6 +155,16 @@ async function handle(req: NextRequest, { params }: Ctx) {
     if (v) out.set(h, v);
   }
   out.set("cache-control", "no-store");
+
+  // Server-Sent Events: hand the body through as it arrives. Never buffer it, never
+  // compress it, and don't treat a refused ticket as an ended session.
+  if (isStream && upstream.ok && upstream.body) {
+    out.set("content-type", "text/event-stream");
+    out.set("cache-control", "no-cache, no-transform");
+    out.set("x-accel-buffering", "no");
+    out.set("content-encoding", "identity");
+    return new NextResponse(upstream.body, { status: upstream.status, headers: out });
+  }
 
   // Portal sign-in: same idea with the customer's own cookie.
   if (/^portal\/[^/]+\/session$/.test(path) && req.method === "POST" && upstream.ok) {
@@ -216,7 +230,9 @@ async function handle(req: NextRequest, { params }: Ctx) {
   const res = new NextResponse(payload, { status: upstream.status, headers: out });
 
   // Sign-out always ends the local session; a 401 means the token is dead.
-  if (portal) {
+  if (isStream) {
+    // A refused stream ticket (bad, used or expired) must not sign the person out.
+  } else if (portal) {
     if (path === "portal/sign-out" || (upstream.status === 401 && !isPublic)) {
       res.cookies.set(PORTAL_COOKIE, "", { path: "/", maxAge: 0 });
     }

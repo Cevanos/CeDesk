@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/primitives";
 import { useCurrentUser } from "@/hooks/use-auth";
 import { useEscape } from "@/hooks/use-escape";
 import { useFocusTrap } from "@/hooks/use-focus-trap";
+import { useAgentLiveUpdates } from "@/hooks/use-live-stream";
 import { ROLE_LABEL } from "@/lib/permissions";
 import { cn, initials } from "@/lib/utils";
 
@@ -29,6 +30,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { user, perms } = useCurrentUser();
   const t = useTranslations("palette");
+  // New messages and reassignments arrive by themselves; no refresh needed.
+  useAgentLiveUpdates(!!user);
   // The drawer is "open for" a pathname, so it closes by itself on navigation
   // without an effect that sets state.
   const [openFor, setOpenFor] = useState<string | null>(null);

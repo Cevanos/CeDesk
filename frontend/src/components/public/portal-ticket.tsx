@@ -11,6 +11,7 @@ import { RatingPicker, scoreLabel } from "@/components/public/rating";
 import { StatusBadge } from "@/components/tickets/badges";
 import { FileChip } from "@/components/tickets/message-files";
 import { Button, Card, EmptyState, Field, Skeleton, Textarea } from "@/components/ui/primitives";
+import { usePortalLiveUpdates } from "@/hooks/use-live-stream";
 import {
   isUnauthorized,
   usePortalTicket,
@@ -29,6 +30,7 @@ export function PortalTicketPage() {
   const ws = useWorkspaceSlug();
   const { id } = useParams<{ id: string }>();
   const ticket = usePortalTicket(id);
+  usePortalLiveUpdates(ticket.isSuccess);
 
   if (ticket.isPending) {
     return (

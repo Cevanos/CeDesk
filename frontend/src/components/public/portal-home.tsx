@@ -17,6 +17,7 @@ import {
   Skeleton,
   Textarea,
 } from "@/components/ui/primitives";
+import { usePortalLiveUpdates } from "@/hooks/use-live-stream";
 import {
   isUnauthorized,
   useCreatePortalTicket,
@@ -31,6 +32,7 @@ import { timeAgo } from "@/lib/utils";
 export function PortalHome() {
   const ws = useWorkspaceSlug();
   const tickets = usePortalTickets(ws);
+  usePortalLiveUpdates(tickets.isSuccess);
   const signOut = usePortalSignOut();
   const [creating, setCreating] = useState(false);
 
