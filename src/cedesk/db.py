@@ -21,7 +21,9 @@ WORKSPACE_SETTING = "cedesk.workspace_id"
 
 
 def make_engine(url: str) -> AsyncEngine:
-    return create_async_engine(url, pool_pre_ping=True)
+    # hide_parameters: a statement's values (device tokens, emails...) never reach a log or
+    # an error message; only the SQL does.
+    return create_async_engine(url, pool_pre_ping=True, hide_parameters=True)
 
 
 def make_sessionmaker(engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:
