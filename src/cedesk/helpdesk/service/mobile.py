@@ -6,8 +6,9 @@ uses the ordinary routes.
   waiting to be accepted, then by SLA time left. A `team_only` role sees its team's.
 - Reply: a person who can reply replies; on a chat handover nobody has accepted, the
   reply accepts it first ("Neha joined the chat (mobile)"), so the customer is told a
-  person joined. A light agent can't reply: their text is saved as a private note, and
-  the answer says so.
+  person joined. A second tap that finds the chat just accepted replies all the same.
+  A light agent can't reply: their text is saved as a private note, and the answer says
+  so.
 - Push notifications (device tokens, APNs/FCM) are on the md cut line.
 """
 
@@ -23,7 +24,7 @@ from cedesk.helpdesk.repo import mobile as repo
 from cedesk.helpdesk.repo import tickets as ticket_repo
 from cedesk.helpdesk.service import messages, scope, tickets
 from cedesk.helpdesk.service.auth import Sessionmaker
-from cedesk.helpdesk.service.errors import NotFound
+from cedesk.helpdesk.service.errors import Conflict, NotFound, ServiceError
 from cedesk.helpdesk.service.idempotency import Idempotency
 from cedesk.helpdesk.service.members import require
 from cedesk.helpdesk.service.messages import MessageKind
@@ -82,7 +83,10 @@ def _item(r: Any) -> QueueItem:
 class MobileReply:
     message: Any  # the saved message row
     saved_as: MessageKind  # reply, or note for a light agent
-    accepted: bool  # this reply accepted a waiting chat first
+    accepted: bool  # the ticket is accepted now (by this reply or before it)
+
+
+REPLY_AFTER_ACCEPT = "The chat was accepted, but the reply wasn't sent: {}. Send it again."
 
 
 async def reply(
@@ -93,21 +97,44 @@ async def reply(
     body: str,
     idem: Idempotency | None = None,
 ) -> MobileReply:
+    """`accepted` is read from the ticket after the change, so a replay (Idempotency-Key)
+    or a second tap answers the same as the first.
+
+    Accept and reply are two transactions. A double tap on a waiting chat: both may see it
+    waiting; the second's accept then finds it taken (`NOT_WAITING`) and goes on to reply,
+    as if it had seen it accepted. If the reply fails after this call accepted the chat,
+    the accept stands (the customer was told a person joined) and the error says so."""
     if not caller.can(Action.reply):
         note = await messages.post_message(
             sm, caller, ticket_id, kind=MessageKind.note, body=body, idem=idem
         )
-        return MobileReply(note, MessageKind.note, accepted=False)
+        return MobileReply(note, MessageKind.note, accepted=await _accepted(sm, caller, ticket_id))
     async with workspace_session(sm, caller.workspace_id) as s:
         detail = await ticket_repo.ticket_detail(s, ticket_id)
         if detail is None:
             raise NotFound("Ticket not found.")
         await scope.check(s, caller, ticket_id, edit=True)
-    accepted = False
+    accepted_here = False
     if not detail["accepted"]:
-        await tickets.accept_ticket(sm, caller, ticket_id, mobile=True)
-        accepted = True
-    sent = await messages.post_message(
-        sm, caller, ticket_id, kind=MessageKind.reply, body=body, idem=idem
-    )
-    return MobileReply(sent, MessageKind.reply, accepted=accepted)
+        try:
+            await tickets.accept_ticket(sm, caller, ticket_id, mobile=True)
+            accepted_here = True
+        except Conflict as exc:  # accepted meanwhile (a double tap): reply to it all the same
+            if exc.message != tickets.NOT_WAITING:
+                raise
+    try:
+        sent = await messages.post_message(
+            sm, caller, ticket_id, kind=MessageKind.reply, body=body, idem=idem
+        )
+    except ServiceError as exc:
+        if accepted_here:  # same status, a message that says the accept stands
+            exc.message = REPLY_AFTER_ACCEPT.format(exc.message.rstrip("."))
+            exc.args = (exc.message,)
+        raise
+    return MobileReply(sent, MessageKind.reply, accepted=await _accepted(sm, caller, ticket_id))
+
+
+async def _accepted(sm: Sessionmaker, caller: Caller, ticket_id: UUID) -> bool:
+    async with workspace_session(sm, caller.workspace_id) as s:
+        detail = await ticket_repo.ticket_detail(s, ticket_id)
+    return bool(detail and detail["accepted"])

@@ -15,10 +15,14 @@ notifications) uses the ordinary routes. Same rights and team scope as the web a
   note). A `team_only` role sees its team's only.
 - `POST /tickets/{id}/mobile-reply` `{"body"}` -> 201 `{message, saved_as, accepted}`. On a
   chat handover nobody has accepted, the reply accepts it first (line "Neha joined the
-  chat (mobile)", so the customer hears a person joined) and `accepted` is true. A light
-  agent can't reply: the text is saved as a private note and `saved_as` is `note`.
-  `Idempotency-Key` is honoured, so a double tap sends once. 403 on another team's ticket
-  (view only), 404 on an unknown one.
+  chat (mobile)", so the customer hears a person joined). `accepted` is the ticket's state
+  after the call (true once accepted, by this reply or before), so a replay or a second tap
+  answers the same as the first. A second tap that finds the chat just accepted by the first
+  replies all the same (no 409). If the reply fails after the accept, the accept stands and
+  the error message says so; send the reply again. A light agent can't reply: the text is
+  saved as a private note, `saved_as` is `note` and a waiting chat stays waiting.
+  `Idempotency-Key` is honoured, so a double tap with one key sends once. 403 on another
+  team's ticket (view only), 404 on an unknown one.
 
 Push notifications to phones (device tokens, APNs/FCM) are on the md cut line: not in this
 release.
