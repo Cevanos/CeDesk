@@ -3,6 +3,47 @@
 `openapi.json` next to this file is the API as served (`uv run cedesk openapi`). Every
 route is under `/api/v1`. Breaking changes only come in v2 (md 2B). Newest first.
 
+## 2026-11-13: Side conversations in Slack (Phase 3, X5, the Slack part)
+
+A side conversation can now be held in a Slack channel (#warehouse) as well as by email.
+The customer never sees it, and a reply in the thread comes back to the ticket.
+
+- New app `slack` ("Slack side conversations") in `GET /apps`, with `card: "side"` and
+  `second_credential: "signing_secret"`. `PUT /apps/slack`
+  `{"secret": "xoxb-...", "signing_secret": "..."}`: the bot token is checked with Slack
+  (`auth.test`) and both are kept encrypted together; only the token's last 4 characters
+  are shown, and neither is ever audited. `InstallIn` has a new optional
+  `signing_secret` (any other app with it: 422). The Slack app needs the bot scopes
+  `chat:write`, `channels:history`, `groups:history`, `users:read`, the events
+  `message.channels` and `message.groups`, and the Request URL below.
+- `POST /tickets/{id}/side-conversations/slack` `{"channel": "#warehouse", "body"}` ->
+  201: the bot posts the agent's message in the channel with the ticket's number and
+  subject (never the customer's messages). 409 without the app; 422 when the channel
+  doesn't exist or the bot isn't in it; 503 when Slack doesn't answer. Same rights and
+  team scope as by email.
+- `POST /side-conversations/{id}/messages` on a Slack one posts in the same thread.
+- `POST /slack/events/{workspace_id}`: public, for Slack's Events API. Every request must
+  carry Slack's signature made with this workspace's signing secret, at most 5 minutes
+  old, or it is a 401 before anything is read. It answers Slack's URL check (challenge).
+  A person's reply in a side conversation's thread is saved on it (once, even if Slack
+  sends it again), a line goes on the ticket ("Ravi replied in the side conversation in
+  Slack #warehouse") and the assignee gets a `side_reply` notification. A bot's message,
+  an edit, a delete, or any other thread is ignored. A reply with a photo or file keeps
+  its text plus a `[file: name]` line per file (the file isn't downloaded). Slack's
+  markup is made readable: `<@U123>` -> `@name` (or `@U123`), `<https://x|label>` ->
+  `label (https://x)`, `&lt; &gt; &amp;` unescaped. The reply, the ticket's line and the
+  notification are saved first, together, under "Slack user U123"; the person's name is
+  then asked of Slack for at most 1.5 s and, if Slack answers in time, replaces it in the
+  reply, its mentions and the ticket's line (a slow or failed lookup is not an error).
+  A malformed timestamp header (e.g. `²`) or an event after the app is uninstalled is
+  a 401, nothing stored.
+- Side conversations have a new field `via`: `email` or `slack`. For Slack, `to` is the
+  channel and `from_address` is empty.
+- An email can never attach itself to a Slack thread, whatever its reply headers say.
+
+Migration 0048. Not yet tried against a real Slack workspace: the shapes follow Slack's
+API docs.
+
 ## 2026-11-13: Imports: HubSpot and Zoho Desk (Phase 2, M1)
 
 New `source` values for `POST /imports/connections`: all 7 help desks of md M1 can now be
