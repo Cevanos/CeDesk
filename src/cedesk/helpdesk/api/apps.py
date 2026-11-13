@@ -57,6 +57,11 @@ class AppOut(BaseModel):
     blocked: str | None = Field(
         description="Why it can't be installed here, e.g. Cevanos is connected (md D16)."
     )
+    note: str | None = Field(
+        default=None,
+        description="Only in the answer to a save: something the Admin should know, e.g. "
+        "Calendly's /book was edited by hand, so its link wasn't changed.",
+    )
 
 
 class InstallIn(Body):

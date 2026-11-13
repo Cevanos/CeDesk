@@ -138,7 +138,8 @@ async def test_admins_install_change_and_uninstall(
         ("shopify", SHOP_TOKEN, {"shop": "internal"}, 422),  # not a public address
         ("stripe", "pk_live_x", {}, 422),  # a publishable key can't read
         ("stripe", STRIPE_KEY, {"shop": "x"}, 422),  # Stripe takes no settings
-        ("calendly", "x", {}, 422),  # not an app here
+        ("calendly", "x", {}, 422),  # Calendly takes no credential (and needs its link)
+        ("zapier", "x", {}, 422),  # not an app here
     ):
         r = await put_app(client, w, app, secret, settings)
         assert r.status_code == code, (app, secret, settings, r.text)

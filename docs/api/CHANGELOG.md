@@ -107,12 +107,24 @@ Migration 0051 (after 0050): `hd_push_device` (with the registering `session_id`
   any other setting is a 422. Installing adds the saved reply `/book` ("Hi
   {{customer.first_name}}, you can pick a time that suits you here: <link>", `source:
   calendly`); when the workspace already has its own `/book`, Calendly's is `/book1`.
-  Changing the link changes that reply's text. Audited (area `apps`, with
-  `saved_reply`).
-- `DELETE /apps/calendly` removes Calendly's reply only (never a `/book` of your own);
-  the audit lists `saved_replies_removed`.
+  Audited (area `apps`, with `saved_reply`; and area `saved_replies` whenever Calendly
+  adds, changes or deletes the reply).
+- Changing the link: if `/book` is still Calendly's text, or the Admin's text still has
+  the old link, only the link is swapped for the new one. If the Admin edited it beyond
+  that (the old link is gone), it is left unchanged and the answer's new field
+  `AppOut.note` says "/book was edited by hand; update its link yourself." (also in the
+  audit entry). `note` is null otherwise, and always null in `GET /apps`.
+- If the Admin deleted `/book` by hand, saving Calendly's settings again adds it back
+  (with the current link). Renaming it keeps it Calendly's (relinked under its new name).
+- `DELETE /apps/calendly` deletes Calendly's reply only if its text is exactly what
+  Calendly wrote (a rename alone doesn't count as an edit); an edited one is kept and
+  becomes an ordinary reply (`source: manual`), with a note in the audit
+  (`saved_reply_kept`). Never touches a `/book` of your own; the apps audit lists
+  `saved_replies_removed`.
 - `InstallIn.secret` is now optional in the schema: every app except Calendly still
-  needs it (422 "Paste the ..." without it). `AppOut.credential` can be null.
+  needs it (422 "Paste the ..." without it).
+- `AppOut.credential` may now be null (Calendly takes no credential): clients that
+  showed a credential field for every app must hide it when it is null.
 
 Migration 0050 (after 0049).
 

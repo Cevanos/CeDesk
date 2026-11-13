@@ -11889,6 +11889,18 @@
             ],
             "title": "Blocked",
             "description": "Why it can't be installed here, e.g. Cevanos is connected (md D16)."
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note",
+            "description": "Only in the answer to a save: something the Admin should know, e.g. Calendly's /book was edited by hand, so its link wasn't changed."
           }
         },
         "type": "object",
