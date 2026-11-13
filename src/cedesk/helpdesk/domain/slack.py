@@ -16,14 +16,18 @@ Side conversations in Slack (md X5), the `slack` app: a Slack bot of the workspa
   agent's message there, and the thread is the side conversation.
 - Slack sends each message in the thread to the events URL. Its signature (HMAC-SHA256 of
   "v0:<timestamp>:<body>" with the signing secret, at most 5 minutes old) is checked
-  before anything is read. A person's reply in the thread comes back to the ticket; a
-  bot's message (ours included), an edit or a join is ignored.
+  before anything is read. A person's reply in the thread comes back to the ticket (with
+  a photo or a file: its text and a "[file: name]" line per file; the file itself isn't
+  fetched); a bot's message (ours included), an edit, a delete or a join is ignored.
+- Slack's markup in a reply is made readable: <@U123> becomes @name (or @U123),
+  <https://x|label> becomes "label (https://x)", and &lt; &gt; &amp; are unescaped.
 """
 
 import hashlib
 import hmac
 import json
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urlsplit
@@ -143,8 +147,8 @@ def signature_ok(
     signing_secret: str, timestamp: str | None, body: bytes, signature: str | None, now: float
 ) -> bool:
     """Slack's request signing: v0=HMAC-SHA256(secret, "v0:<timestamp>:<body>")."""
-    if not timestamp or not signature or not timestamp.isdigit():
-        return False
+    if not timestamp or not signature or not (timestamp.isascii() and timestamp.isdigit()):
+        return False  # isdigit() alone is true for "²", which int() refuses
     if abs(now - int(timestamp)) > SIGNATURE_WINDOW:
         return False
     base = b"v0:" + timestamp.encode() + b":" + body
@@ -158,21 +162,76 @@ class ThreadReply:
     thread_ts: str
     ts: str
     user: str
-    text: str
+    text: str  # with Slack's markup; `reply_body` makes it readable
+    files: tuple[str, ...] = ()  # "[file: name]" lines
 
 
 def _unescape(text: str) -> str:
     return text.replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&")
 
 
+_MARKUP = re.compile(r"<([^<>]*)>")
+_MENTION = re.compile(r"^@([UW][A-Z0-9]{2,39})(?:\|([^<>]*))?$")
+_LINK = re.compile(r"^((?:https?|mailto):[^|<>]+)(?:\|([^<>]*))?$")
+_CHANNEL_REF = re.compile(r"^#[CG][A-Z0-9]{6,29}\|([^<>]+)$")
+_SPECIAL = re.compile(r"^!(here|channel|everyone)(?:\|[^<>]*)?$")
+FILE_SHARE = "file_share"
+FILES_MAX = 20  # "[file: ...]" lines of one reply
+FILE_NAME_MAX = 200
+
+
+def readable(text: str, names: Mapping[str, str] | None = None) -> str:
+    """Slack's message markup as plain text: <@U123> -> @name (if known, else @U123),
+    <https://x|label> -> "label (https://x)", <https://x> -> https://x, <#C1|name> ->
+    #name, <!here> -> @here; then &lt; &gt; &amp; are unescaped (in that order, so
+    "&amp;lt;" stays "&lt;")."""
+    known = names or {}
+
+    def one(found: re.Match[str]) -> str:
+        inner = found.group(1)
+        if mention := _MENTION.match(inner):
+            user = mention.group(1)
+            return "@" + (known.get(user) or user)
+        if link := _LINK.match(inner):
+            url, label = link.group(1), (link.group(2) or "").strip()
+            return f"{label} ({url})" if label and label != url else url
+        if ref := _CHANNEL_REF.match(inner):
+            return "#" + ref.group(1)
+        if special := _SPECIAL.match(inner):
+            return "@" + special.group(1)
+        return found.group(0)
+
+    return _unescape(_MARKUP.sub(one, text))
+
+
+def _file_lines(files: Any) -> list[str]:
+    if not isinstance(files, list):
+        return []
+    lines = []
+    for item in files[:FILES_MAX]:
+        if not isinstance(item, dict):
+            continue
+        name = item.get("name") or item.get("title")
+        shown = str(name).strip()[:FILE_NAME_MAX] if isinstance(name, str) else ""
+        lines.append(f"[file: {shown or 'unnamed'}]")
+    return lines
+
+
 def thread_reply(payload: Any) -> ThreadReply | None:
-    """From an `event_callback`: a person's message in a thread; None for anything else
-    (a bot's message, ours included; an edit, a delete or a join; a top-level message)."""
+    """From an `event_callback`: a person's message in a thread, with a "[file: name]" line
+    per file shared with it (the file isn't fetched); None for anything else (a bot's
+    message, ours included; an edit, a delete or a join; a top-level message).
+
+    `text` keeps Slack's markup (`readable` turns it into plain text, once the names of
+    the people mentioned are known)."""
     event = payload.get("event") if isinstance(payload, dict) else None
     if not isinstance(event, dict) or event.get("type") != "message":
         return None
-    if event.get("subtype") not in (None, "thread_broadcast") or event.get("bot_id"):
+    subtype = event.get("subtype")
+    if subtype not in (None, "thread_broadcast", FILE_SHARE) or event.get("bot_id"):
         return None
+    if subtype == FILE_SHARE and event.get("text") is None:
+        event = {**event, "text": ""}  # a file with no words
     fields = [event.get(k) for k in ("channel", "thread_ts", "ts", "user", "text")]
     if not all(isinstance(v, str) for v in fields):
         return None
@@ -181,7 +240,13 @@ def thread_reply(payload: Any) -> ThreadReply | None:
         return None
     if not _TS.match(thread_ts) or not _TS.match(ts):
         return None
-    return ThreadReply(channel_id, thread_ts, ts, user[:40], _unescape(text).strip())
+    files = tuple(_file_lines(event.get("files")))
+    return ThreadReply(channel_id, thread_ts, ts, user[:40], text, files)
+
+
+def reply_body(reply: ThreadReply, names: Mapping[str, str] | None = None) -> str:
+    """What is saved on the side conversation: the readable text, then the file lines."""
+    return "\n".join([readable(reply.text, names).strip(), *reply.files]).strip()
 
 
 def message_key(channel_id: str, ts: str) -> str:

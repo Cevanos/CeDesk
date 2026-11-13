@@ -111,6 +111,23 @@ async def add_message(
     return UUID(str(found)) if found is not None else None
 
 
+async def name_message(session: AsyncSession, message_id: UUID, *, author_name: str,
+                       body: str) -> None:  # fmt: skip
+    """A Slack reply saved under the person's Slack id gets their name (and its mentions)."""
+    await session.execute(
+        text("UPDATE hd_side_message SET author_name = :name, body = :body WHERE id = :id"),
+        {"id": message_id, "name": author_name[:120], "body": body},
+    )
+
+
+async def rename_line(session: AsyncSession, line_id: UUID, body: str) -> None:
+    """The ticket's system line for a Slack reply, once the person's name is known."""
+    await session.execute(
+        text("UPDATE hd_message SET body = :body WHERE id = :id AND kind = 'system'"),
+        {"id": line_id, "body": body},
+    )
+
+
 async def messages(session: AsyncSession, side_ids: Sequence[UUID]) -> Sequence[RowMapping]:
     result = await session.execute(
         text(

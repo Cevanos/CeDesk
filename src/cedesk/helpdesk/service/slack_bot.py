@@ -66,23 +66,28 @@ class Bot:
             raise AppCallError("Slack answered without the message's id.", permanent=False)
         return channel_id, ts
 
-    async def name_of(self, user: str) -> str:
-        """The person's Slack name; "Someone in Slack" if Slack can't say."""
+    async def name_of(self, user: str) -> str | None:
+        """The person's Slack name; None if Slack can't say."""
         if not _USER.match(user):
-            return SOMEONE
+            return None
         try:
             data = await self._client().get(f"/api/users.info?user={user}")
         except AppCallError:
-            return SOMEONE
+            return None
         if rules.api_problem(data, "") is not None:
-            return SOMEONE
+            return None
         person = data.get("user") if isinstance(data, dict) else None
         profile = person.get("profile") if isinstance(person, dict) else None
         names = [profile.get("display_name"), profile.get("real_name")] if isinstance(
             profile, dict) else []  # fmt: skip
         names.append(person.get("name") if isinstance(person, dict) else None)
         found = next((n for n in names if isinstance(n, str) and n.strip()), None)
-        return found.strip()[:120] if found else SOMEONE
+        return found.strip()[:120] if found else None
+
+
+def stand_in(user: str) -> str:
+    """Who a reply is from until Slack says the person's name: their Slack id."""
+    return f"Slack user {user}" if _USER.match(user) else SOMEONE
 
 
 async def load(
