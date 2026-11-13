@@ -907,12 +907,13 @@ async def accept_ticket(
     ticket_id: UUID,
     *,
     idem: Idempotency | None = None,
-    via: str = "",
+    mobile: bool = False,
 ) -> TicketView:
     """Accept chat (md 7.1 point 3): the caller takes a handover. It is assigned to them
     (taking it from someone else needs `assign_others`), replies are allowed from now on,
     and `handover.accepted` tells the connector to take the chat over in Cevanos, so the
-    customer sees that a person joined."""
+    customer sees that a person joined. From the mobile app (a reply on a waiting chat)
+    the line is "Neha joined the chat (mobile)" (md P8)."""
     require(caller, Action.reply)
     async with workspace_session(sm, caller.workspace_id) as s:
         await scope_rules.check(s, caller, ticket_id, edit=True)
@@ -934,7 +935,8 @@ async def accept_ticket(
             await repo.set_assignee(s, ticket_id, caller.member_id)
             await _line(s, caller, ticket_id, f"Assigned to {who} by {who}")
         await repo.set_accepted(s, ticket_id)
-        await _line(s, caller, ticket_id, f"Chat accepted by {who}{via}")
+        line = f"{who} joined the chat (mobile)" if mobile else f"Chat accepted by {who}"
+        await _line(s, caller, ticket_id, line)
         view = await _view(s, ticket_id)
         for event, extra in events.after_change(current, dict(current) | new, caller.member_id):
             await _emit(s, caller, view.ticket, event, extra)

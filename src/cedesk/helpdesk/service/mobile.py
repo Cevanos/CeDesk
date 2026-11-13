@@ -5,7 +5,7 @@ uses the ordinary routes.
 - Queue: tickets not resolved that are the caller's or nobody's; theirs first, then chats
   waiting to be accepted, then by SLA time left. A `team_only` role sees its team's.
 - Reply: a person who can reply replies; on a chat handover nobody has accepted, the
-  reply accepts it first ("Chat accepted by Neha (mobile)"), so the customer is told a
+  reply accepts it first ("Neha joined the chat (mobile)"), so the customer is told a
   person joined. A light agent can't reply: their text is saved as a private note, and
   the answer says so.
 - Push notifications (device tokens, APNs/FCM) are on the md cut line.
@@ -105,7 +105,7 @@ async def reply(
         await scope.check(s, caller, ticket_id, edit=True)
     accepted = False
     if not detail["accepted"]:
-        await tickets.accept_ticket(sm, caller, ticket_id, via=" (mobile)")
+        await tickets.accept_ticket(sm, caller, ticket_id, mobile=True)
         accepted = True
     sent = await messages.post_message(
         sm, caller, ticket_id, kind=MessageKind.reply, body=body, idem=idem

@@ -107,7 +107,7 @@ async def test_the_mobile_reply(client: AsyncClient, app_sessionmaker: Sm) -> No
     t = ok(await client.get(f"{T}/{chat}", headers=w["h"]))
     assert t["assignee_id"] == w["ids"]["Neha"] and t["accepted"] is True
     lines = [m["body"] for m in t["messages"] if m["kind"] == "system"]
-    assert "Chat accepted by Neha (mobile)" in lines
+    assert "Neha joined the chat (mobile)" in lines
 
     again = ok(await client.post(url, headers=w["as"]["Neha"], json={"body": "Still here"}), 201)
     assert again["accepted"] is False  # already accepted

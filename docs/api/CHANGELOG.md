@@ -14,8 +14,8 @@ notifications) uses the ordinary routes. Same rights and team scope as the web a
   a customer can see (`last_kind` customer, agent or ai; first 140 characters; never a
   note). A `team_only` role sees its team's only.
 - `POST /tickets/{id}/mobile-reply` `{"body"}` -> 201 `{message, saved_as, accepted}`. On a
-  chat handover nobody has accepted, the reply accepts it first (line "Chat accepted by
-  Neha (mobile)", so the customer hears a person joined) and `accepted` is true. A light
+  chat handover nobody has accepted, the reply accepts it first (line "Neha joined the
+  chat (mobile)", so the customer hears a person joined) and `accepted` is true. A light
   agent can't reply: the text is saved as a private note and `saved_as` is `note`.
   `Idempotency-Key` is honoured, so a double tap sends once. 403 on another team's ticket
   (view only), 404 on an unknown one.
