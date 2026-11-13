@@ -38,6 +38,7 @@ from cedesk.helpdesk.api import limits as limits_api
 from cedesk.helpdesk.api import macros as macros_api
 from cedesk.helpdesk.api import members as members_api
 from cedesk.helpdesk.api import messages as messages_api
+from cedesk.helpdesk.api import mobile as mobile_api
 from cedesk.helpdesk.api import outbox as outbox_api
 from cedesk.helpdesk.api import portal as portal_api
 from cedesk.helpdesk.api import privacy as privacy_api
@@ -305,6 +306,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(reports_api.router, prefix="/api/v1")
     app.include_router(imports_api.router, prefix="/api/v1")
     app.include_router(stream_api.router, prefix="/api/v1")
+    app.include_router(mobile_api.router, prefix="/api/v1")
     app.include_router(api_keys_api.router, prefix="/api/v1")
     app.include_router(inbound_api_api.router, prefix="/api/v1")
     app.include_router(webhooks_api.router, prefix="/api/v1")
