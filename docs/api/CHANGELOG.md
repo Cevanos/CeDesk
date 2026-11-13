@@ -3,6 +3,95 @@
 `openapi.json` next to this file is the API as served (`uv run cedesk openapi`). Every
 route is under `/api/v1`. Breaking changes only come in v2 (md 2B). Newest first.
 
+## 2026-11-13: Push notifications to the mobile app (Phase 3, P8)
+
+Banners on agents' phones, through Firebase Cloud Messaging (it reaches iPhones too, with
+the app's Apple key uploaded to Firebase).
+
+- `POST /me/devices {"platform": "ios"|"android", "token"}` -> 201: after sign-in, with
+  the app's FCM registration token; the phone is tied to this sign-in. The same token
+  again refreshes it (under your current sign-in). A token registered to someone else
+  who is still signed in on it -> 409; once their sign-in has ended it moves to you. Not
+  with an API key (403). You keep your 10 newest phones.
+- `GET /me/devices` -> `{"push_on", "devices": [{id, platform, token_hint, created_at,
+  last_seen_at}]}`: your phones, never the token itself (`token_hint` is its last 6
+  characters). `push_on: true` only when both Firebase settings are set.
+- `DELETE /me/devices/{id}` -> 204. Someone else's device: 404. Ending a sign-in removes
+  its phones anyway: sign-out, a password change (your other sign-ins), an Admin's
+  password reset, deactivation; a phone whose sign-in expired gets nothing.
+- Banners for four notifications: a ticket assigned to you ("New ticket for you"), a
+  mention ("You were mentioned"), a customer reply ("The customer replied") and a
+  Cevanos chat waiting for Accept ("A chat is waiting for you": new notification kind
+  `handover`, to the assignee, else the team's Available agents; for such a chat the
+  "assigned" one gets no banner, and none once it is accepted). The body
+  is the ticket's number (`T-1042`), never its subject or a message; `data` has
+  `ticket_id`, `notification_id` and `kind` so the app can open the ticket. Everything
+  else stays in the bell.
+- The worker sends them after the emails: claimed with SKIP LOCKED under a lease (other
+  workers skip them), 10 at a time, at most 20 s a pass (the rest wait for the next),
+  5 s a request. One older than 10 minutes is dropped (it is in the bell). A network
+  error or a busy Firebase (429, 5xx) is retried a minute later, at most 5 tries. A
+  token Firebase says is gone (UNREGISTERED, NOT_FOUND, 404) is deleted; INVALID_ARGUMENT
+  keeps the device. A refused key stops sending for that pass (logged once) and the
+  banners wait. A deactivated member gets none.
+- Settings (worker): `CEDESK_PUSH_FCM_PROJECT_ID` and `CEDESK_PUSH_FCM_SERVICE_ACCOUNT`
+  (the service account key's JSON). Both empty: push is off and nothing else changes.
+  One without the other, or a key that can't be read, stops the worker with the reason.
+  Tokens and the key are never logged; the database engine hides statement values from
+  logs and errors (`hide_parameters`).
+
+Migration 0051 (after 0050): `hd_push_device` (with the registering `session_id`), and on
+`hd_notification` `push_handled_at`, `push_claimed_until`, `push_attempts` and kind
+`handover`.
+
+## 2026-11-13: Calendly app and the saved reply /book (Phase 3, PL7, W19)
+
+- New app `calendly` in `GET /apps`: `card: "book"`, `settings_fields: ["link"]`,
+  `credential: null` (a booking link is public, so nothing secret is kept).
+- `PUT /apps/calendly {"settings": {"link": "https://calendly.com/acme/30min"}}`: only
+  `https://calendly.com/<you>` or `https://calendly.com/<you>/<event>`; a credential or
+  any other setting is a 422. Installing adds the saved reply `/book` ("Hi
+  {{customer.first_name}}, you can pick a time that suits you here: <link>", `source:
+  calendly`); when the workspace already has its own `/book`, Calendly's is `/book1`.
+  Changing the link changes that reply's text. Audited (area `apps`, with
+  `saved_reply`).
+- `DELETE /apps/calendly` removes Calendly's reply only (never a `/book` of your own);
+  the audit lists `saved_replies_removed`.
+- `InstallIn.secret` is now optional in the schema: every app except Calendly still
+  needs it (422 "Paste the ..." without it). `AppOut.credential` can be null.
+
+Migration 0050 (after 0049).
+
+## 2026-11-13: Archive tier for old resolved tickets (Phase 3, O3)
+
+Resolved tickets older than the workspace's archive age (default 120 days) move out of
+the ticket list to the archive once a day, so the ticket list, views, search and reports
+stay fast. They are still found by number or customer and open read only.
+
+- `GET /archive/tickets?number=1042` (or `T-1042`), `?email=`, `?contact_id=`: at least
+  one, else 422. Newest first, at most 50. Same rights as reading tickets; a team-only role
+  sees its team's only.
+- `GET /archive/tickets/{id}`: read only, with every message (internal notes too), the
+  files' names, sizes and types (`files`, and per message), the tags, fields and the CSAT
+  rating. 404 when it isn't archived or is another team's. An archived ticket can't be
+  changed, replied to or reopened; `GET /tickets/{id}` answers 404 for it.
+- `GET /archive/settings`, `PUT /archive/settings {"after_days": 30-3650 | null}`
+  (null: 120). Settings right, audited (area `archive`).
+- The worker moves them in batches with `FOR UPDATE SKIP LOCKED`, so several workers never
+  move a ticket twice. Each run is audited (area `archive`, action `archived`). An
+  imported ticket counts from when it was imported, as for retention.
+- Retention deletes from the archive too, with the files; its audit detail gets
+  `archived` (how many came from the archive).
+- Privacy: a customer's export lists their archived tickets (`"archived": true`), and
+  erasing a customer blanks those too and deletes their files (erase `counts` get
+  `archived_tickets`).
+
+What leaves with a ticket: its tasks, notifications, links, approvals and time logs (they
+belong to live work). Reports count live tickets only, so periods older than the archive
+age show fewer tickets and ratings than before.
+
+Migration 0049 (after 0048).
+
 ## 2026-11-13: Side conversations in Slack (Phase 3, X5, the Slack part)
 
 A side conversation can now be held in a Slack channel (#warehouse) as well as by email.
