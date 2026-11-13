@@ -16,12 +16,14 @@ async def create(
     to: list[str],
     from_address: str,
     by: UUID,
+    slack: tuple[str, str] | None = None,
 ) -> UUID:
+    """`slack`: (channel id, ts of the thread's first message) for one in Slack."""
     result = await session.execute(
         text(
             "INSERT INTO hd_side_conversation (workspace_id, ticket_id, subject, to_addresses, "
-            "from_address, created_by) VALUES (:ws, :ticket, :subject, :to, :from_address, "
-            ":by) RETURNING id"
+            "from_address, created_by, via, slack_channel, slack_ts) VALUES (:ws, :ticket, "
+            ":subject, :to, :from_address, :by, :via, :channel, :ts) RETURNING id"
         ),
         {
             "ws": workspace_id,
@@ -30,6 +32,9 @@ async def create(
             "to": to,
             "from_address": from_address,
             "by": by,
+            "via": "slack" if slack else "email",
+            "channel": slack[0] if slack else None,
+            "ts": slack[1] if slack else None,
         },
     )
     return UUID(str(result.scalar_one()))
@@ -45,8 +50,8 @@ async def count_for_ticket(session: AsyncSession, ticket_id: UUID) -> int:
 async def get(session: AsyncSession, side_id: UUID) -> RowMapping | None:
     result = await session.execute(
         text(
-            "SELECT id, ticket_id, subject, to_addresses, from_address, created_at "
-            "FROM hd_side_conversation WHERE id = :id"
+            "SELECT id, ticket_id, subject, to_addresses, from_address, created_at, via, "
+            "slack_channel, slack_ts FROM hd_side_conversation WHERE id = :id"
         ),
         {"id": side_id},
     )
@@ -56,7 +61,7 @@ async def get(session: AsyncSession, side_id: UUID) -> RowMapping | None:
 async def for_ticket(session: AsyncSession, ticket_id: UUID) -> Sequence[RowMapping]:
     result = await session.execute(
         text(
-            "SELECT s.id, s.subject, s.to_addresses, s.from_address, s.created_at, "
+            "SELECT s.id, s.subject, s.via, s.to_addresses, s.from_address, s.created_at, "
             "s.last_message_at, m.name AS created_by_name FROM hd_side_conversation s "
             "LEFT JOIN member m ON m.id = s.created_by WHERE s.ticket_id = :t "
             "ORDER BY s.created_at, s.id"
@@ -119,16 +124,29 @@ async def messages(session: AsyncSession, side_ids: Sequence[UUID]) -> Sequence[
 
 
 async def by_email_ids(session: AsyncSession, ids: Sequence[str]) -> RowMapping | None:
-    """The side conversation one of these Message-IDs belongs to (the first listed)."""
+    """The email side conversation one of these Message-IDs belongs to (the first listed);
+    never a Slack one, whatever an email's headers say."""
     if not ids:
         return None
     result = await session.execute(
         text(
             "SELECT s.id, s.ticket_id FROM hd_side_message m "
             "JOIN hd_side_conversation s ON s.id = m.side_id "
-            "WHERE m.header_message_id = ANY(:ids) "
+            "WHERE m.header_message_id = ANY(:ids) AND s.via = 'email' "
             "ORDER BY array_position(:ids, m.header_message_id) LIMIT 1"
         ),
         {"ids": list(ids)},
+    )
+    return result.mappings().first()
+
+
+async def by_slack_thread(session: AsyncSession, channel: str, ts: str) -> RowMapping | None:
+    """The Slack side conversation whose thread starts at this message."""
+    result = await session.execute(
+        text(
+            "SELECT id, ticket_id, to_addresses FROM hd_side_conversation "
+            "WHERE via = 'slack' AND slack_channel = :channel AND slack_ts = :ts"
+        ),
+        {"channel": channel, "ts": ts},
     )
     return result.mappings().first()
