@@ -241,6 +241,7 @@ def _worker(once: bool) -> int:
     from cedesk.helpdesk.service.password_reset import Sender
     from cedesk.helpdesk.service.portal_notice import PortalNoticeHandler
     from cedesk.helpdesk.service.privacy import remove_expired_exports
+    from cedesk.helpdesk.service.push import push_due
     from cedesk.helpdesk.service.scanning import scan_due
     from cedesk.helpdesk.service.security_alerts import SecurityAlertHandler
     from cedesk.helpdesk.service.sla import refresh_everywhere
@@ -252,6 +253,7 @@ def _worker(once: bool) -> int:
     from cedesk.helpdesk.service.webhooks import prune_everywhere as prune_webhooks
     from cedesk.helpdesk.service.webhooks import send_due as send_webhooks
     from cedesk.mail import MailboxError, make_mailbox, make_mailer
+    from cedesk.push_client import FcmClient, PushConfigError
     from cedesk.scanning import make_scanner
     from cedesk.settings import get_settings
     from cedesk.storage import make_store
@@ -264,6 +266,17 @@ def _worker(once: bool) -> int:
         cloud=settings.edition.value == "cloud", plans=parse_plans(settings.plans)
     )
     problems = settings.unsafe() + settings.mail_problems()
+    # Push banners to the mobile app (md P8): off without the Firebase settings; a key
+    # that can't be read stops the worker here, with the reason (never the key).
+    pusher = None
+    if not problems and settings.push_on():
+        assert settings.push_fcm_service_account is not None
+        try:
+            pusher = FcmClient(
+                settings.push_fcm_project_id, settings.push_fcm_service_account.get_secret_value()
+            )
+        except PushConfigError as exc:
+            problems.append(str(exc))
     if problems:
         print("Refusing to start:\n  " + "\n  ".join(problems), file=sys.stderr)
         return 1
@@ -354,6 +367,13 @@ def _worker(once: bool) -> int:
                         f"{outbox.failed} failed",
                         extra={"event": "outbox"},
                     )
+                try:  # after the outbox: its handlers make notifications
+                    banners = await push_due(sm, pusher)
+                except Exception:
+                    banners = 0
+                    logger.exception("push pass failed")
+                if banners:
+                    logger.info(f"push: {banners} banners", extra={"event": "push"})
                 result = await send_due(sm, mailer, store=store, scanning=scanner is not None)
                 if result.sent or result.retrying or result.failed:
                     logger.info(

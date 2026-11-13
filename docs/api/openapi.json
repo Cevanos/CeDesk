@@ -10984,6 +10984,121 @@
         ]
       }
     },
+    "/api/v1/me/devices": {
+      "get": {
+        "tags": [
+          "mobile"
+        ],
+        "summary": "My phones that get banners",
+        "operationId": "my_devices_api_v1_me_devices_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DevicesOut"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "mobile"
+        ],
+        "summary": "Register this phone for banners",
+        "description": "After sign-in, with the app's push token. Banners: a new ticket for you, a mention, a customer reply; they name the ticket's number only. The same token again just refreshes it (or moves it to you, if someone else used this phone). You keep your 10 newest phones.",
+        "operationId": "register_api_v1_me_devices_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeviceIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/me/devices/{device_id}": {
+      "delete": {
+        "tags": [
+          "mobile"
+        ],
+        "summary": "Stop banners on this phone (call it on sign-out)",
+        "operationId": "unregister_api_v1_me_devices__device_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "device_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Device Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "Not one of your devices"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/healthz": {
       "get": {
         "tags": [
@@ -13987,6 +14102,86 @@
           "next_cursor"
         ],
         "title": "DeliveryPageOut"
+      },
+      "DeviceIn": {
+        "properties": {
+          "platform": {
+            "$ref": "#/components/schemas/Platform"
+          },
+          "token": {
+            "type": "string",
+            "maxLength": 4096,
+            "minLength": 20,
+            "title": "Token",
+            "description": "The app's Firebase Cloud Messaging registration token (iOS too)."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "platform",
+          "token"
+        ],
+        "title": "DeviceIn"
+      },
+      "DeviceOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "platform": {
+            "type": "string",
+            "title": "Platform"
+          },
+          "token_hint": {
+            "type": "string",
+            "title": "Token Hint",
+            "description": "The token's last 6 characters, never the token."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "last_seen_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Last Seen At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "platform",
+          "token_hint",
+          "created_at",
+          "last_seen_at"
+        ],
+        "title": "DeviceOut"
+      },
+      "DevicesOut": {
+        "properties": {
+          "push_on": {
+            "type": "boolean",
+            "title": "Push On",
+            "description": "False: this server sends no banners (not set up)."
+          },
+          "devices": {
+            "items": {
+              "$ref": "#/components/schemas/DeviceOut"
+            },
+            "type": "array",
+            "title": "Devices"
+          }
+        },
+        "type": "object",
+        "required": [
+          "push_on",
+          "devices"
+        ],
+        "title": "DevicesOut"
       },
       "DiffOut": {
         "properties": {
@@ -17052,6 +17247,14 @@
           "payments"
         ],
         "title": "PaymentsOut"
+      },
+      "Platform": {
+        "type": "string",
+        "enum": [
+          "ios",
+          "android"
+        ],
+        "title": "Platform"
       },
       "PoliciesIn": {
         "properties": {

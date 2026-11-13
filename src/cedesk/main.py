@@ -43,6 +43,7 @@ from cedesk.helpdesk.api import outbox as outbox_api
 from cedesk.helpdesk.api import portal as portal_api
 from cedesk.helpdesk.api import privacy as privacy_api
 from cedesk.helpdesk.api import public as public_api
+from cedesk.helpdesk.api import push as push_api
 from cedesk.helpdesk.api import reports as reports_api
 from cedesk.helpdesk.api import roles as roles_api
 from cedesk.helpdesk.api import routing as routing_api
@@ -314,6 +315,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(side_conversations_api.router, prefix="/api/v1")
     app.include_router(limits_api.router, prefix="/api/v1")
     app.include_router(archive_api.router, prefix="/api/v1")
+    app.include_router(push_api.router, prefix="/api/v1")
 
     @app.get("/healthz", tags=["health"], summary="The process is up")
     async def healthz() -> dict[str, str]:
