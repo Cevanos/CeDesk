@@ -5,7 +5,7 @@ import { useState } from "react";
 
 import { PRIORITIES, PRIORITY_LABEL } from "@/components/tickets/badges";
 import { Button, Card, Input, Select } from "@/components/ui/primitives";
-import type { TicketFilters } from "@/lib/api/ticket-filters";
+import { IMPORT_SOURCES, type TicketFilters } from "@/lib/api/ticket-filters";
 import type { Priority } from "@/lib/api/types";
 
 export const SORTS = [
@@ -43,6 +43,16 @@ export function activeChips(filters: TicketFilters, teamName?: string): Chip[] {
       key: "priority",
       label: `${PRIORITY_LABEL[filters.priority as Priority]} priority`,
       clear: { priority: null },
+    });
+  }
+  if (filters.imported) {
+    chips.push({
+      key: "imported",
+      label:
+        filters.imported === "any"
+          ? "Imported"
+          : `Imported from ${IMPORT_SOURCES.find(([v]) => v === filters.imported)?.[1] ?? filters.imported}`,
+      clear: { imported: null },
     });
   }
   if (filters.team) chips.push({ key: "team", label: teamName ?? "Team", clear: { team: null } });
@@ -200,6 +210,20 @@ function FilterSelects({
         {teams?.map((t) => (
           <option key={t.id} value={t.id}>
             {t.name}
+          </option>
+        ))}
+      </Select>
+      <Select
+        aria-label="Imported"
+        className={cls}
+        value={filters.imported ?? ""}
+        onChange={(e) => set({ imported: e.target.value || null })}
+      >
+        <option value="">All tickets</option>
+        <option value="any">Imported (any source)</option>
+        {IMPORT_SOURCES.map(([v, l]) => (
+          <option key={v} value={v}>
+            Imported from {l}
           </option>
         ))}
       </Select>

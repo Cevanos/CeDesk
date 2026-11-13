@@ -56,7 +56,7 @@ export function useTicketFilters() {
   const clearAll = useCallback(() => {
     clearTimeout(timer.current);
     setText("");
-    set({ scope: null, priority: null, team: null, q: null });
+    set({ scope: null, priority: null, team: null, q: null, imported: null });
   }, [set]);
 
   return { filters, set, text, setSearch, clearSearch, clearAll };

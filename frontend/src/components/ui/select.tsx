@@ -93,7 +93,9 @@ const DropdownIndicator = (props: DropdownIndicatorProps<SelectOption, false>) =
 const Option = (props: OptProps) => (
   <components.Option {...props}>
     <span className="flex w-full items-center justify-between gap-2">
-      <span className="min-w-0 flex-1 truncate">{props.children}</span>
+      <span className="min-w-0 flex-1 truncate" title={props.data.label}>
+        {props.children}
+      </span>
       {props.isSelected && <Check className="size-4 flex-none" aria-hidden />}
     </span>
   </components.Option>
@@ -181,7 +183,16 @@ export const Select = React.forwardRef<SelectInstance<SelectOption, false>, Sele
             control: (state) =>
               cn(baseControl(state), aria["aria-invalid"] && "border-danger!", controlClassName),
           }}
-          styles={{ menuPortal: (base) => ({ ...base, zIndex: 100 }) }}
+          styles={{
+            menuPortal: (base) => ({ ...base, zIndex: 100 }),
+            // Never narrower than the control, but wide enough to read long options.
+            menu: (base) => ({
+              ...base,
+              width: "max-content",
+              minWidth: base.width,
+              maxWidth: "min(22rem, 92vw)",
+            }),
+          }}
         />
       </div>
     );

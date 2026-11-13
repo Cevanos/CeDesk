@@ -12,6 +12,7 @@ describe("filtersFromParams", () => {
       priority: "",
       team: "",
       q: "",
+      imported: "",
       sort: "priority",
     });
   });
@@ -27,6 +28,7 @@ describe("filtersFromParams", () => {
       priority: "urgent",
       team: "t1",
       q: "refund",
+      imported: "",
       sort: "newest",
     });
   });
