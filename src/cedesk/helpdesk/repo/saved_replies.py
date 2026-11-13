@@ -130,10 +130,13 @@ async def insert_from(
     return UUID(str(result.scalar_one()))
 
 
-async def delete_from(session: AsyncSession, source: str) -> list[str]:
-    """Every reply an app added; their shortcuts."""
+async def make_manual(session: AsyncSession, reply_id: UUID) -> bool:
+    """An app's reply the Admin edited, kept when the app goes: now an ordinary one."""
     result = await session.execute(
-        text("DELETE FROM hd_saved_reply WHERE source = :source RETURNING shortcut"),
-        {"source": source},
+        text(
+            "UPDATE hd_saved_reply SET source = 'manual', source_id = NULL, updated_at = now() "
+            "WHERE id = :id RETURNING id"
+        ),
+        {"id": reply_id},
     )
-    return [str(r[0]) for r in result.all()]
+    return result.first() is not None
