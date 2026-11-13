@@ -9219,6 +9219,144 @@
         }
       }
     },
+    "/api/v1/me/queue": {
+      "get": {
+        "tags": [
+          "mobile"
+        ],
+        "summary": "Your mobile queue",
+        "description": "Tickets not resolved that are yours or nobody's: yours first, then chats waiting to be accepted, then by SLA time left, then oldest. Team scope applies.",
+        "operationId": "my_queue_api_v1_me_queue_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/QueueItemOut"
+                  },
+                  "title": "Response My Queue Api V1 Me Queue Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tickets/{ticket_id}/mobile-reply": {
+      "post": {
+        "tags": [
+          "mobile"
+        ],
+        "summary": "Reply from the mobile app",
+        "description": "On a chat handover nobody has accepted, accepts it first (line '<you> joined the chat (mobile)'), so the customer hears a person joined; a second tap that finds it just accepted replies all the same. If the reply then fails, the accept stands and the error says so. A light agent's text is saved as a private note instead (the chat stays waiting). Idempotency-Key is honoured.",
+        "operationId": "mobile_reply_api_v1_tickets__ticket_id__mobile_reply_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "ticket_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Ticket Id"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional, any unique string (a UUID is good), up to 255 characters. Send the same key when you retry: a repeat returns what the first request made (header `Idempotent-Replayed: true`) instead of making it twice. The same key with a different request is 422. Keys last 24 hours, per member.",
+              "title": "Idempotency-Key"
+            },
+            "description": "Optional, any unique string (a UUID is good), up to 255 characters. Send the same key when you retry: a repeat returns what the first request made (header `Idempotent-Replayed: true`) instead of making it twice. The same key with a different request is 422. Keys last 24 hours, per member."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MobileReplyIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileReplyOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The ticket is another team's (view only)"
+          },
+          "404": {
+            "description": "No such ticket"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/api-keys": {
       "get": {
         "tags": [
@@ -16705,6 +16843,45 @@
         ],
         "title": "MetricsSummaryOut"
       },
+      "MobileReplyIn": {
+        "properties": {
+          "body": {
+            "type": "string",
+            "maxLength": 50000,
+            "minLength": 1,
+            "title": "Body"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "body"
+        ],
+        "title": "MobileReplyIn"
+      },
+      "MobileReplyOut": {
+        "properties": {
+          "message": {
+            "$ref": "#/components/schemas/MessageOut"
+          },
+          "saved_as": {
+            "$ref": "#/components/schemas/MessageKind",
+            "description": "reply; note when you can't reply (a light agent): only the team sees it."
+          },
+          "accepted": {
+            "type": "boolean",
+            "title": "Accepted",
+            "description": "The ticket is accepted now (by this reply or before it); false only for a light agent's note on a chat still waiting. A replay answers the same."
+          }
+        },
+        "type": "object",
+        "required": [
+          "message",
+          "saved_as",
+          "accepted"
+        ],
+        "title": "MobileReplyOut"
+      },
       "NewIssueIn": {
         "properties": {
           "summary": {
@@ -18160,6 +18337,120 @@
           "article_count"
         ],
         "title": "PublicCategoryOut"
+      },
+      "QueueItemOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "number": {
+            "type": "integer",
+            "title": "Number"
+          },
+          "subject": {
+            "type": "string",
+            "title": "Subject"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "priority": {
+            "type": "string",
+            "title": "Priority"
+          },
+          "channel": {
+            "type": "string",
+            "title": "Channel"
+          },
+          "waiting_to_accept": {
+            "type": "boolean",
+            "title": "Waiting To Accept",
+            "description": "A chat handover nobody has accepted yet."
+          },
+          "sla_due_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sla Due At"
+          },
+          "mine": {
+            "type": "boolean",
+            "title": "Mine",
+            "description": "Assigned to you; false: nobody's yet."
+          },
+          "contact_name": {
+            "type": "string",
+            "title": "Contact Name"
+          },
+          "last_kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Kind",
+            "description": "customer, agent or ai (never notes)."
+          },
+          "last_body": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Body",
+            "description": "Its first 140 characters."
+          },
+          "last_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "number",
+          "subject",
+          "status",
+          "priority",
+          "channel",
+          "waiting_to_accept",
+          "sla_due_at",
+          "mine",
+          "contact_name",
+          "last_kind",
+          "last_body",
+          "last_at",
+          "updated_at"
+        ],
+        "title": "QueueItemOut"
       },
       "RatingIn": {
         "properties": {
