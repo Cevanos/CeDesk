@@ -32,7 +32,7 @@ from cedesk.helpdesk.domain.permissions import Action
 from cedesk.helpdesk.repo import apps as repo
 from cedesk.helpdesk.repo import cevanos as cevanos_repo
 from cedesk.helpdesk.repo import tickets as ticket_repo
-from cedesk.helpdesk.service import audit, scope
+from cedesk.helpdesk.service import audit, scope, slack_bot
 from cedesk.helpdesk.service import jira as jira_service
 from cedesk.helpdesk.service.app_post import AppCallError
 from cedesk.helpdesk.service.auth import Sessionmaker
@@ -66,6 +66,7 @@ class AppView:
     settings_fields: tuple[str, ...]
     credential: str
     credential_help: str
+    second_credential: str | None  # also secret (Slack side conversations: signing_secret)
     installed: bool
     settings: dict[str, Any]
     secret_hint: str | None
@@ -92,6 +93,7 @@ def _view(app: App, row: Any, blocked: str | None) -> AppView:
         settings_fields=info.settings,
         credential=info.credential,
         credential_help=info.credential_help,
+        second_credential=info.second_credential,
         installed=row is not None,
         settings=dict(row["settings"]) if row is not None else {},
         secret_hint=row["secret_hint"] if row is not None else None,
@@ -175,10 +177,14 @@ def _clean_settings(app: App, settings: Mapping[str, Any]) -> dict[str, Any]:
 async def _check_by_post(
     post: PostFactory, app: App, settings: Mapping[str, Any], secret: str
 ) -> None:
-    """Jira: the token can see the project. Slack: a test line reaches the channel."""
+    """Jira: the token can see the project. Slack alerts: a test line reaches the channel.
+    Slack side conversations: Slack knows the bot token."""
     try:
         if app is App.jira:
             await jira_service.check_install(post, settings, secret)
+        elif app is App.slack:
+            token, signing_secret = slack_rules.opened(secret)
+            await slack_bot.Bot(post, token, signing_secret).check()
         else:
             await post(slack_rules.HOST, {}, "Slack").post(
                 slack_rules.path_of(secret), {"text": SLACK_TEST_LINE}
@@ -199,17 +205,26 @@ async def install(
     *,
     settings: Mapping[str, Any],
     secret: str,
+    second: str | None = None,
 ) -> AppView:
     """Installs, or replaces the settings and credential of an installed app. The
-    credential is checked with the provider first: a refused one is a 422."""
+    credential is checked with the provider first: a refused one is a 422. `second`: the
+    Slack side conversations app's signing secret, sealed with the bot token."""
     require(caller, Action.settings)
     try:
         secret = rules.check_secret(app, secret)
+        hint = rules.secret_hint(secret)
         if app is App.slack_alerts:
             secret = slack_rules.check_webhook(secret)
+        if app is App.slack:
+            token = slack_rules.check_bot_token(secret)
+            hint = rules.secret_hint(token)
+            secret = slack_rules.seal_value(token, slack_rules.check_signing_secret(second))
+        elif second is not None:
+            raise rules.BadCredentials(f"{rules.CATALOG[app].name} takes one credential.")
         clean = _clean_settings(app, settings)
     except (rules.BadCredentials, BadAddress, jira_rules.JiraInputError,
-            slack_rules.BadWebhook) as exc:  # fmt: skip
+            slack_rules.BadWebhook, slack_rules.BadSlack) as exc:  # fmt: skip
         raise Invalid(str(exc)) from exc
     if app in _DATA_APPS:
         async with workspace_session(sm, caller.workspace_id) as s:
@@ -222,11 +237,11 @@ async def install(
         new = await repo.save(
             s, caller.workspace_id, app=app.value, settings=clean,
             secret_sealed=sealer.seal(secret, bound_to=_bound(caller.workspace_id, app)),
-            secret_hint=rules.secret_hint(secret), by=caller.member_id,
+            secret_hint=hint, by=caller.member_id,
         )  # fmt: skip
         await audit.record(
             s, caller, Area.apps, "installed" if new else "changed", rules.CATALOG[app].name,
-            detail={"settings": clean, "hint": rules.secret_hint(secret)},
+            detail={"settings": clean, "hint": hint},
         )  # fmt: skip
         row = await repo.get(s, app.value)
     return _view(app, row, None)
