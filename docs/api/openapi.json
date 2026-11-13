@@ -10912,6 +10912,102 @@
         ]
       }
     },
+    "/api/v1/demo/seed": {
+      "post": {
+        "tags": [
+          "demo"
+        ],
+        "summary": "Load the demo",
+        "description": "16 tickets: the 6 samples, 5 past tickets resolved and rated over the last week, 4 live ones assigned to you (a reply, a note, a task, time logged, one Pending) and 1 chat handover waiting to be accepted. Customers write in through a channel, so rules, triage, routing and SLA run. Demo tickets have `source: \"demo\"`; nothing about them is emailed or sent to webhooks or Slack. 409 when demo tickets are already there. Audited.",
+        "operationId": "seed_api_v1_demo_seed_post",
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DemoOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an Admin, demo data not turned on for this server (CEDESK_DEMO_ENABLED), or a production server (CEDESK_ENV=production)"
+          },
+          "409": {
+            "description": "The demo (or sample) tickets are already there: use reset"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/demo/samples": {
+      "post": {
+        "tags": [
+          "demo"
+        ],
+        "summary": "Load sample tickets",
+        "description": "The 6 sample tickets only: new, from customers on email, chat and the web. 409 when they are already there. Audited.",
+        "operationId": "samples_api_v1_demo_samples_post",
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DemoOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an Admin, demo data not turned on for this server (CEDESK_DEMO_ENABLED), or a production server (CEDESK_ENV=production)"
+          },
+          "409": {
+            "description": "The demo (or sample) tickets are already there: use reset"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/demo/reset": {
+      "post": {
+        "tags": [
+          "demo"
+        ],
+        "summary": "Reset the demo",
+        "description": "Loads the demo again, then deletes the old demo tickets (`source: \"demo\"`, with their messages, notes, tasks, time, ratings and files) and the demo customers left with no ticket. Tickets made by hand, imported or from a channel stay, and so do members and settings. If anything fails, the old demo stays as it was. Audited.",
+        "operationId": "reset_api_v1_demo_reset_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DemoOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an Admin, demo data not turned on for this server (CEDESK_DEMO_ENABLED), or a production server (CEDESK_ENV=production)"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/archive/tickets": {
       "get": {
         "tags": [
@@ -12375,6 +12471,7 @@
           "apps",
           "retention",
           "plan",
+          "demo",
           "archive"
         ],
         "title": "Area",
@@ -14243,6 +14340,26 @@
           "next_cursor"
         ],
         "title": "DeliveryPageOut"
+      },
+      "DemoOut": {
+        "properties": {
+          "created": {
+            "type": "integer",
+            "title": "Created",
+            "description": "Tickets made."
+          },
+          "deleted": {
+            "type": "integer",
+            "title": "Deleted",
+            "description": "Old demo tickets deleted (reset only)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "created",
+          "deleted"
+        ],
+        "title": "DemoOut"
       },
       "DeviceIn": {
         "properties": {

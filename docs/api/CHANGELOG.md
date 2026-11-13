@@ -26,6 +26,37 @@ notifications) uses the ordinary routes. Same rights and team scope as the web a
 
 Push notifications to phones (device tokens, APNs/FCM) are on the md cut line: not in this
 release.
+## 2026-11-13: Demo and sample tickets (Phase 3, D1-D3)
+
+Three routes for sales demos and for trying CeDesk out. Admin only (a custom role with
+`settings` is not enough), audited (area `demo`), and off unless the server turns them on
+with the new setting `CEDESK_DEMO_ENABLED=true` (default false). 403 "Demo data is off on
+this server..." when it is not set, and 403 "Demo data is never on a production server
+(CEDESK_ENV=production)." on production even when it is. Each answers
+`{"created", "deleted"}`.
+
+- `POST /demo/seed` -> 201: 16 tickets. The 6 samples; 5 past tickets resolved over the
+  last week, each with a CSAT rating and a first reply and resolution that took hours; 4
+  live tickets assigned to you (a reply, a note, a task, time logged, one Pending); and 1
+  chat handover waiting to be accepted. 409 "Demo data is already there; use reset." when
+  demo tickets are already there.
+- `POST /demo/samples` -> 201: "Load sample tickets", the 6 samples only (new, from
+  customers on email, chat and the web). 409 when the samples are already there.
+- `POST /demo/reset` -> 200: loads the demo again, then deletes the old demo tickets
+  (with their messages, notes, tasks, time, approvals, ratings and files) and the demo
+  customers left with no ticket. Only demo data is touched: tickets made by hand,
+  imported or from a channel stay, and so do members and settings. If a step fails, what
+  was made is deleted again and the old demo stays as it was. Audited once, as `reset`
+  with `{"deleted", "created"}`. Other workspaces are never touched.
+
+Only one demo call runs at a time per workspace (a second one waits, then gets its 409).
+Customers write in through a channel, so the rules, triage, routing and SLA run on every
+ticket (the "refund" sample goes to Billing at High with the default rules). Demo tickets
+have `source: "demo"`, and nothing about them leaves CeDesk: no webhook deliveries, no
+Slack alerts, no CSAT survey, and agent replies to them are not emailed. The demo
+customers have `.invalid` addresses, which are never delivered to. The seed stores no
+files. Demo ratings show `source: "portal"` (the rating's ticket is the demo one).
+`cedesk seed-demo` still makes a whole demo workspace with members.
 ## 2026-11-13: Push notifications to the mobile app (Phase 3, P8)
 
 Banners on agents' phones, through Firebase Cloud Messaging (it reaches iPhones too, with

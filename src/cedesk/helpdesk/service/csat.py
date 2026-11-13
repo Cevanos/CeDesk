@@ -22,7 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from cedesk.db import workspace_session
 from cedesk.helpdesk.domain import auth as auth_rules
 from cedesk.helpdesk.domain import csat as rules
-from cedesk.helpdesk.domain import events
+from cedesk.helpdesk.domain import events, seeds
 from cedesk.helpdesk.domain.email import new_message_id
 from cedesk.helpdesk.domain.tickets import label
 from cedesk.helpdesk.repo import auth as auth_repo
@@ -126,6 +126,19 @@ async def rate_in_portal(
         return await _save(s, customer.workspace_id, ticket_id, score, text, "portal")
 
 
+async def demo_rating(
+    sm: Sessionmaker, workspace_id: UUID, ticket_id: UUID, score: int, comment: str | None
+) -> Rating:
+    """Demo data only (md D1, `service/demo.py`): the rating a demo customer gives in the
+    portal. The survey is never emailed for a demo ticket (see `CsatHandler`)."""
+    score, text = _checked(score, comment)
+    async with workspace_session(sm, workspace_id) as s:
+        # Saved as "portal": hd_csat.source can't hold "demo" without a migration (its
+        # CHECK lists portal, email and the import sources). The rating is still told
+        # apart through its ticket (`hd_ticket.source = 'demo'`), and goes with it on reset.
+        return await _save(s, workspace_id, ticket_id, score, text, "portal")
+
+
 async def _by_link(s: AsyncSession, token: str) -> tuple[RowMapping, Rating | None]:
     ticket = await repo.link_ticket(s, auth_rules.token_hash(token))
     if ticket is None:
@@ -184,6 +197,8 @@ class CsatHandler:
                 return  # reopened before the worker got here
             if ticket["merged_into_id"] is not None:
                 return  # merged into another ticket: no survey (md X1)
+            if ticket["source"] == seeds.DEMO_SOURCE:
+                return  # demo data (md D1): nobody is asked
             email = str(ticket["contact_email"])
             if not rules.deliverable(email) or await repo.for_ticket(s, ticket_id):
                 return  # a chat customer, or already rated

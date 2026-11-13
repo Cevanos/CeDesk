@@ -49,6 +49,8 @@ services:
       CEDESK_SECRET_KEY: ${CEDESK_SECRET_KEY:?set CEDESK_SECRET_KEY in deploy/.env}
       CEDESK_CORS_ORIGINS: ${CEDESK_CORS_ORIGINS:-}
       CEDESK_APP_URL: ${CEDESK_APP_URL:-http://localhost:3000}
+      # The demo data routes: off unless true, never on production.
+      CEDESK_DEMO_ENABLED: ${CEDESK_DEMO_ENABLED:-false}
       # Single sign-on: the identity provider sends people back to this API address.
       CEDESK_API_URL: ${CEDESK_API_URL:-}
       CEDESK_MAIL_FROM_ADDRESS: ${CEDESK_MAIL_FROM_ADDRESS:-}

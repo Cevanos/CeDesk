@@ -100,6 +100,12 @@ class Settings(BaseSettings):
         description="Requests a minute per workspace with API keys, all its keys together "
         "(md PL2). Over it: 429 with Retry-After. Counted in each API process.",
     )
+    demo_enabled: bool = Field(
+        default=False,
+        description="Turns on the demo data routes (`/demo/seed`, `/demo/samples`, "
+        "`/demo/reset`, md D1-D3) for this server. Never on a production server, even "
+        "when set.",
+    )
     log_level: str = "INFO"
 
     # Uploaded files. One setting picks where they live; the rest belongs to that driver.

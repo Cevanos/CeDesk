@@ -20,6 +20,7 @@ from cedesk.helpdesk.domain import events, paging
 from cedesk.helpdesk.domain.auth import Caller
 from cedesk.helpdesk.domain.permissions import Action
 from cedesk.helpdesk.domain.placeholders import render
+from cedesk.helpdesk.domain.seeds import DEMO_SOURCE
 from cedesk.helpdesk.domain.tickets import label
 from cedesk.helpdesk.repo import catalog, outbox, tickets
 from cedesk.helpdesk.repo import messages as repo
@@ -99,8 +100,11 @@ async def add_message(
     )
     # Email and web form customers hear back by email (a web form ticket has no other way).
     # Tickets agents make themselves are `web` too, but not from the form: not emailed.
-    emailed = kind is MessageKind.reply and (
-        detail["channel"] == "email" or detail["source"] == WEB_FORM_SOURCE
+    # Demo tickets (md D1) never are: their customers don't exist.
+    emailed = (
+        kind is MessageKind.reply
+        and (detail["channel"] == "email" or detail["source"] == WEB_FORM_SOURCE)
+        and detail["source"] != DEMO_SOURCE
     )
     # Before the email is queued: the worker reads the files from the message.
     await attachments.attach_to_message(
