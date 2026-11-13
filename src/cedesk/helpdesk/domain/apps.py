@@ -1,8 +1,9 @@
 """Marketplace apps (md PL7) and the ticket sidebar's orders and payments cards (C12),
 the rules that need no database.
 
-- Apps here: Shopify (orders) and Stripe (payments), read only; Jira (issues from tickets)
-  and Slack alerts (Urgent and High tickets to a channel). Calendly is on the cut line.
+- Apps here: Shopify (orders) and Stripe (payments), read only; Jira (issues from tickets),
+  Slack alerts (Urgent and High tickets to a channel) and Slack side conversations (a bot
+  that posts in a channel and hears the thread's replies). Calendly is on the cut line.
 - An Admin installs an app with its credentials; CeDesk checks them with the provider,
   keeps them sealed (only the last 4 characters are shown), and audits install and
   uninstall. With Cevanos connected, orders and payments come from Cevanos's own
@@ -24,15 +25,17 @@ class App(StrEnum):
     stripe = "stripe"
     jira = "jira"
     slack_alerts = "slack_alerts"
+    slack = "slack"  # side conversations in Slack (md X5)
 
 
 @dataclass(frozen=True)
 class AppInfo:
     name: str
-    card: str  # what it adds: orders, payments, jira (on tickets) or alerts
+    card: str  # what it adds: orders, payments, jira (on tickets), alerts or side
     settings: tuple[str, ...]  # what the Admin types that isn't secret
     credential: str  # its name
     credential_help: str
+    second_credential: str | None = None  # also secret, sealed with the first
 
 
 CATALOG: dict[App, AppInfo] = {
@@ -68,6 +71,19 @@ CATALOG: dict[App, AppInfo] = {
         credential="webhook_url",
         credential_help="A Slack Incoming Webhook URL (https://hooks.slack.com/services/...) "
         "for the channel that gets Urgent and High tickets. Installing it posts a test line.",
+    ),
+    App.slack: AppInfo(
+        name="Slack side conversations",
+        card="side",
+        settings=(),
+        credential="bot_token",
+        credential_help="Make a Slack app (api.slack.com/apps) with the bot scopes "
+        "chat:write, channels:history, groups:history and users:read, install it in your "
+        "Slack, and paste its bot token (xoxb-...) and, as `signing_secret`, its signing "
+        "secret. Then, in the Slack app's Event Subscriptions, set the Request URL to "
+        "<CeDesk API>/api/v1/slack/events/<workspace id> and subscribe the bot to "
+        "message.channels and message.groups. Invite the bot to each channel it should use.",
+        second_credential="signing_secret",
     ),
 }
 CARD_LIMIT = 5  # orders or payments shown per customer

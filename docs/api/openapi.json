@@ -10486,10 +10486,77 @@
             "description": "No such ticket or side conversation"
           },
           "409": {
-            "description": "No support address yet, or 20 side conversations already"
+            "description": "No support address (or Slack app) yet, or 20 already"
           },
           "422": {
-            "description": "Not an address, the customer, one of our own addresses, empty"
+            "description": "Not an address, the customer, one of our own addresses, empty; Slack: no such channel, or the bot isn't in it"
+          },
+          "503": {
+            "description": "Slack didn't answer; try again"
+          }
+        }
+      }
+    },
+    "/api/v1/tickets/{ticket_id}/side-conversations/slack": {
+      "post": {
+        "tags": [
+          "side conversations"
+        ],
+        "summary": "Start a side conversation in a Slack channel",
+        "description": "Needs the Slack side conversations app. Its bot posts your message in the channel (invite it there first) with the ticket's number and subject, never the customer's messages. Replies in that thread come back here and the assignee is told (notification side_reply). The customer sees none of it. The ticket gets a system line.",
+        "operationId": "start_in_slack_api_v1_tickets__ticket_id__side_conversations_slack_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "ticket_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Ticket Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SlackStartIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SideOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Can't reply, or the ticket is another team's (view only)"
+          },
+          "404": {
+            "description": "No such ticket or side conversation"
+          },
+          "409": {
+            "description": "No support address (or Slack app) yet, or 20 already"
+          },
+          "422": {
+            "description": "Not an address, the customer, one of our own addresses, empty; Slack: no such channel, or the bot isn't in it"
+          },
+          "503": {
+            "description": "Slack didn't answer; try again"
           }
         }
       }
@@ -10500,7 +10567,7 @@
           "side conversations"
         ],
         "summary": "Write again in a side conversation",
-        "description": "Threaded under the earlier emails, to the same addresses.",
+        "description": "Email: threaded under the earlier emails, to the same addresses. Slack: another message in the same thread.",
         "operationId": "write_again_api_v1_side_conversations__side_id__messages_post",
         "security": [
           {
@@ -10547,10 +10614,64 @@
             "description": "No such ticket or side conversation"
           },
           "409": {
-            "description": "No support address yet, or 20 side conversations already"
+            "description": "No support address (or Slack app) yet, or 20 already"
           },
           "422": {
-            "description": "Not an address, the customer, one of our own addresses, empty"
+            "description": "Not an address, the customer, one of our own addresses, empty; Slack: no such channel, or the bot isn't in it"
+          },
+          "503": {
+            "description": "Slack didn't answer; try again"
+          }
+        }
+      }
+    },
+    "/api/v1/slack/events/{workspace_id}": {
+      "post": {
+        "tags": [
+          "side conversations"
+        ],
+        "summary": "Slack's Events API (the Slack side conversations app's Request URL)",
+        "description": "Public, for Slack only: every request must carry Slack's signature (X-Slack-Signature, X-Slack-Request-Timestamp, at most 5 minutes old), made with this workspace's signing secret, or it is refused before anything is read. Answers the URL check's challenge; a person's reply in a side conversation's thread is saved on it.",
+        "operationId": "slack_events_api_v1_slack_events__workspace_id__post",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Slack Events Api V1 Slack Events  Workspace Id  Post"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed by this workspace's Slack app"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
           }
         }
       }
@@ -11095,7 +11216,8 @@
           "shopify",
           "stripe",
           "jira",
-          "slack_alerts"
+          "slack_alerts",
+          "slack"
         ],
         "title": "App"
       },
@@ -11111,7 +11233,7 @@
           "card": {
             "type": "string",
             "title": "Card",
-            "description": "What it shows in the ticket sidebar: orders or payments."
+            "description": "What it adds: orders or payments (ticket sidebar), jira, alerts, or side (side conversations in Slack)."
           },
           "settings_fields": {
             "items": {
@@ -11129,6 +11251,18 @@
           "credential_help": {
             "type": "string",
             "title": "Credential Help"
+          },
+          "second_credential": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Second Credential",
+            "description": "A second secret to send at install (Slack side conversations: signing_secret), or null."
           },
           "installed": {
             "type": "boolean",
@@ -11195,6 +11329,7 @@
           "settings_fields",
           "credential",
           "credential_help",
+          "second_credential",
           "installed",
           "settings",
           "secret_hint",
@@ -14863,7 +14998,7 @@
             "type": "object",
             "maxProperties": 5,
             "title": "Settings",
-            "description": "Shopify: {\"shop\": \"acme\"}. Jira: {\"site\": \"acme\", \"email\": \"ops@acme.com\", \"project\": \"SUP\"}. Stripe and Slack alerts: none.",
+            "description": "Shopify: {\"shop\": \"acme\"}. Jira: {\"site\": \"acme\", \"email\": \"ops@acme.com\", \"project\": \"SUP\"}. Stripe and both Slack apps: none.",
             "default": {}
           },
           "secret": {
@@ -14871,7 +15006,20 @@
             "maxLength": 300,
             "minLength": 1,
             "title": "Secret",
-            "description": "The app's credential (Slack alerts: the Incoming Webhook URL)."
+            "description": "The app's credential (Slack alerts: the Incoming Webhook URL; Slack side conversations: the bot token, xoxb-...)."
+          },
+          "signing_secret": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 300
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Signing Secret",
+            "description": "Slack side conversations only: the Slack app's signing secret."
           }
         },
         "additionalProperties": false,
@@ -18765,7 +18913,8 @@
           },
           "from_address": {
             "type": "string",
-            "title": "From Address"
+            "title": "From Address",
+            "description": "Email: the sender's address. Slack: empty."
           },
           "created_at": {
             "type": "string",
@@ -18791,6 +18940,11 @@
             "format": "uuid",
             "title": "Id"
           },
+          "via": {
+            "type": "string",
+            "title": "Via",
+            "description": "email or slack."
+          },
           "subject": {
             "type": "string",
             "title": "Subject"
@@ -18800,12 +18954,13 @@
               "type": "string"
             },
             "type": "array",
-            "title": "To"
+            "title": "To",
+            "description": "Email: the addresses. Slack: the channel."
           },
           "from_address": {
             "type": "string",
             "title": "From Address",
-            "description": "The support address it goes out from."
+            "description": "Email: the support address it goes out from."
           },
           "created_at": {
             "type": "string",
@@ -18839,6 +18994,7 @@
         "type": "object",
         "required": [
           "id",
+          "via",
           "subject",
           "to",
           "from_address",
@@ -19062,6 +19218,30 @@
           "calendar"
         ],
         "title": "SlaSettingsOut"
+      },
+      "SlackStartIn": {
+        "properties": {
+          "channel": {
+            "type": "string",
+            "maxLength": 81,
+            "minLength": 1,
+            "title": "Channel",
+            "description": "#warehouse, or a channel id (C0123ABCD)."
+          },
+          "body": {
+            "type": "string",
+            "maxLength": 20000,
+            "minLength": 1,
+            "title": "Body"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "channel",
+          "body"
+        ],
+        "title": "SlackStartIn"
       },
       "Sort": {
         "type": "string",
