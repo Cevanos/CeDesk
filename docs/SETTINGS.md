@@ -16,9 +16,10 @@ file or `deploy/env.example` names one that doesn't exist.
 
 | Setting | Default | What it does | Read by | In compose |
 |---|---|---|---|---|
-| `CEDESK_ENV` | `dev` | `dev` (a developer's machine), `staging` (a shared test server) or `production`. Anything but `dev` refuses to start with the dev secret key or dev database password, `*` in CORS, or Cevanos over plain http; `production` also refuses `MAIL_BACKEND=log` and turns off test-only routes (simulated customer replies; demo data, once its PR is merged). | all | migrate, api, worker |
+| `CEDESK_ENV` | `dev` | `dev` (a developer's machine), `staging` (a shared test server) or `production`. Anything but `dev` refuses to start with the dev secret key or dev database password, `*` in CORS, or Cevanos over plain http; `production` also refuses `MAIL_BACKEND=log` and turns off test-only routes (simulated customer replies; demo data, even with `CEDESK_DEMO_ENABLED`). | all | migrate, api, worker |
 | `CEDESK_SECRET_KEY` | a dev-only value | Encrypts stored secrets (two-step sign-in, app credentials, the Cevanos key, webhook secrets, import credentials). Random, 32+ characters (`openssl rand -hex 32`). **Back it up; never change it**: a new key locks out everyone using two-step sign-in. | api, worker | api, worker |
 | `CEDESK_EDITION` | `cloud` | `cloud` or `self_hosted`. Only switches the cloud plan limits on: they apply just to a workspace given a plan with `cedesk set-plan`. `/readyz` shows it. | api, worker, cli | no |
+| `CEDESK_DEMO_ENABLED` | `false` | Turns on the demo data routes (`/demo/seed`, `/demo/samples`, `/demo/reset`) for Admins. Never on `production`, even when set. | api | api |
 | `CEDESK_LOG_LEVEL` | `INFO` | `DEBUG`, `INFO`, `WARNING` or `ERROR`. | api, worker, cli | no |
 
 ## Database
@@ -127,6 +128,8 @@ Over a limit: 429 with `Retry-After`. Counted in each API process.
 |---|---|---|---|---|
 | `CEDESK_PLANS` | (empty: the built-in free, growth and enterprise plans) | Plan limits as JSON, e.g. `{"free": {"agents": 3, "tickets_month": 1000, "storage_gb": 1, "history_days": 365}}`. Cloud edition only, for workspaces given a plan. | api, worker, cli | no |
 | `CEDESK_WORKER_INTERVAL_SECONDS` | `10` | How often the worker looks for work (up to 3600). | worker | no |
+| `CEDESK_PUSH_FCM_PROJECT_ID` | (empty: push off) | The Firebase project id for push notifications to the mobile app. Set it together with the next one, or the worker refuses to start. | api, worker | api, worker |
+| `CEDESK_PUSH_FCM_SERVICE_ACCOUNT` | (empty: push off) | The Firebase service account key (its JSON) used to send push notifications. Secret: never logged. | worker | worker |
 
 ## Deploy only (not CeDesk settings)
 
