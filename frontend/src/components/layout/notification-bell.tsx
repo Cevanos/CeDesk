@@ -1,6 +1,6 @@
 "use client";
 
-import { AlarmClock, AtSign, Bell, CheckCheck, UserPlus } from "lucide-react";
+import { AlarmClock, AtSign, Bell, CheckCheck, Hand, MessageSquare, UserPlus } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 import { MenuItem, Popover } from "@/components/ui/overlay";
@@ -78,6 +78,10 @@ export function NotificationBell() {
                       <AlarmClock className="size-3.5" aria-label="SLA breached" />
                     ) : n.kind === "mention" ? (
                       <AtSign className="size-3.5" />
+                    ) : n.kind === "handover" ? (
+                      <Hand className="size-3.5" aria-label="A chat is waiting for you" />
+                    ) : n.kind === "side_reply" ? (
+                      <MessageSquare className="size-3.5" aria-label="Side conversation reply" />
                     ) : (
                       <UserPlus className="size-3.5" />
                     )}

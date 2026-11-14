@@ -38,12 +38,13 @@ function StartForm({ ticketId, close }: { ticketId: string; close: () => void })
   const pending = email.isPending || slack.isPending;
 
   const onError = (e: unknown) => {
-    // Slack app not installed: 404/422. Show the server message inline.
-    setError(
-      e instanceof ApiError && [404, 422].includes(e.status) && via === "slack"
-        ? e.message || "Slack side conversations are not set up for this workspace."
-        : errText(e),
-    );
+    if (via === "slack" && e instanceof ApiError) {
+      if (e.status === 409) return setError("Install Slack in Settings → Apps.");
+      if (e.status === 422)
+        return setError("That channel doesn't exist, or the bot isn't in it. Check the name.");
+      if (e.status === 503) return setError("Slack didn't answer. Please try again.");
+    }
+    setError(errText(e));
   };
   const onSuccess = () => {
     toast.success("Side conversation started");
@@ -159,7 +160,11 @@ function Side({
           {slack ? "Slack" : "Email"}
         </span>
       </div>
-      {to && <div className="text-xs wrap-break-word text-muted-foreground">To {to}</div>}
+      {to && (
+        <div className="text-xs wrap-break-word text-muted-foreground">
+          {slack ? `Channel ${to}` : `To ${to}`}
+        </div>
+      )}
       <ul className="mt-2 space-y-2">
         {s.messages.map((m, i) => (
           <li key={m.id ?? i} className="rounded-lg bg-surface-2 px-2.5 py-2">

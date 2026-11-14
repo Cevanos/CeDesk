@@ -41,6 +41,25 @@ export interface ArchivedTicket extends ArchivedTicketRow {
   attachments?: { id?: string; name: string; size?: number }[];
   csat?: { score: number; comment?: string | null; rated_at?: string | null } | null;
   rating?: { score: number; comment?: string | null } | number | null;
+  /** Names as they were when the ticket was archived. */
+  team_name?: string | null;
+  assignee_name?: string | null;
+  tags?: string[];
+  fields?: Record<string, string | number | null>;
+  files?: { id?: string; name: string; size?: number; mime?: string }[];
+}
+
+/** Contact's archived tickets, shown on the customer page. */
+export function useContactArchive(contactId: string) {
+  return useQuery({
+    queryKey: archiveKeys.list({ contact_id: contactId }),
+    queryFn: async () =>
+      listOf<ArchivedTicketRow>(
+        await api.get<unknown>("archive/tickets", { contact_id: contactId }),
+      ),
+    retry: false,
+    staleTime: 60_000,
+  });
 }
 
 /** Turns one search box into the query the API wants. Returns null for an empty box. */

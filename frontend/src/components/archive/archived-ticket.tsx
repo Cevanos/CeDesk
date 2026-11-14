@@ -13,10 +13,35 @@ import { ApiError } from "@/lib/api/client";
 import type { Message } from "@/lib/api/types";
 import { cn, formatDateTime } from "@/lib/utils";
 
+const FOLLOWS = /(Follows archived ticket )(T-\d+)/;
+
+/** Turns "Follows archived ticket T-12" into a link to that archived ticket. */
+function Linked({ text }: { text: string }) {
+  const m = FOLLOWS.exec(text);
+  if (!m) return <>{text}</>;
+  return (
+    <>
+      {text.slice(0, m.index)}
+      {m[1]}
+      <Link
+        href={`/archive?q=${encodeURIComponent(m[2] ?? "")}`}
+        className="font-medium text-primary-ink underline"
+      >
+        {m[2]}
+      </Link>
+      {text.slice(m.index + m[0].length)}
+    </>
+  );
+}
+
 /** A message in the read-only thread: no delivery state, no actions, file names only. */
 function ReadOnlyMessage({ m }: { m: Message }) {
   if (m.kind === "system") {
-    return <p className="py-1 text-center text-xs text-subtle-foreground">{m.body}</p>;
+    return (
+      <p className="py-1 text-center text-xs text-subtle-foreground">
+        <Linked text={m.body} />
+      </p>
+    );
   }
   const customer = m.kind === "customer" || (m.kind !== "ai" && m.author_member_id === null);
   const note = m.kind === "note";
@@ -96,7 +121,7 @@ export function ArchivedTicketView({ id }: { id: string }) {
         ? { score: t.rating }
         : null);
   // Files that are not tied to a message (older data) are still listed by name.
-  const looseFiles = t.attachments ?? [];
+  const looseFiles = t.files ?? t.attachments ?? [];
 
   return (
     <div className="mx-auto w-full max-w-3xl px-3 py-5 sm:px-6 sm:py-8">
@@ -113,6 +138,26 @@ export function ArchivedTicketView({ id }: { id: string }) {
         {(t.customer_email ?? t.contact_email) ? ` · ${t.customer_email ?? t.contact_email}` : ""}
         {t.resolved_at ? ` · Resolved ${formatDateTime(t.resolved_at)}` : ""}
       </p>
+
+      {(t.team_name || t.assignee_name || (t.tags && t.tags.length > 0)) && (
+        <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+          {t.team_name && <span>Team: {t.team_name}</span>}
+          {t.assignee_name && <span>Assignee: {t.assignee_name}</span>}
+          {t.tags?.map((g) => (
+            <Badge key={g}>{g}</Badge>
+          ))}
+        </p>
+      )}
+      {t.fields && Object.keys(t.fields).length > 0 && (
+        <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
+          {Object.entries(t.fields).map(([k, v]) => (
+            <div key={k} className="contents">
+              <dt className="text-muted-foreground">{k}</dt>
+              <dd>{v == null ? "—" : String(v)}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
 
       <section aria-label="Conversation" className="mt-6 space-y-3">
         {messages.length === 0 ? (

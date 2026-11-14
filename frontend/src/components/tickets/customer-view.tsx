@@ -16,6 +16,7 @@ import Link from "next/link";
 
 import { PriorityBadge, StatusBadge } from "@/components/tickets/badges";
 import { Button, Card, EmptyState, Skeleton } from "@/components/ui/primitives";
+import { useContactArchive } from "@/hooks/use-archive";
 import { useCurrentUser } from "@/hooks/use-auth";
 import { useContactTickets, useUpdateContact } from "@/hooks/use-tickets";
 import { ApiError } from "@/lib/api/client";
@@ -58,6 +59,7 @@ export function CustomerView({ id }: { id: string }) {
   const { perms } = useCurrentUser();
   const q = useContactTickets(id);
   const update = useUpdateContact(id);
+  const archived = useContactArchive(id);
 
   if (q.isPending) {
     return (
@@ -221,6 +223,35 @@ export function CustomerView({ id }: { id: string }) {
           )}
         </ul>
       </Card>
+
+      {archived.data && archived.data.length > 0 && (
+        <>
+          <div className="mt-8 mb-3 flex items-center gap-2">
+            <h2 className="text-base font-semibold tracking-tight">Archived tickets</h2>
+            <span className="rounded-full bg-surface-3 px-2 py-0.5 text-xs font-medium text-muted-foreground">
+              {archived.data.length}
+            </span>
+          </div>
+          <Card className="overflow-hidden rounded-2xl">
+            <ul className="divide-y divide-border">
+              {archived.data.map((t) => (
+                <li key={t.id}>
+                  <Link
+                    href={`/archive/${encodeURIComponent(t.id)}`}
+                    className="flex items-center gap-3 px-4 py-3 hover:bg-surface-2 sm:px-5"
+                  >
+                    <span className="rounded-md bg-surface-2 px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground">
+                      {t.label ?? (t.number != null ? `T-${t.number}` : t.id.slice(0, 8))}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate font-medium">{t.subject}</span>
+                    <span className="text-xs text-muted-foreground">Archived</span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </Card>
+        </>
+      )}
     </div>
   );
 }

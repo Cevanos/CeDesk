@@ -1,9 +1,11 @@
 import { act, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { http, HttpResponse } from "msw";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { CommandPalette } from "@/components/layout/command-palette";
 import { renderWithProviders } from "@/test/render";
+import { server } from "@/test/server";
 
 const push = vi.fn();
 const setTheme = vi.fn();
@@ -16,9 +18,17 @@ vi.mock("@/hooks/use-auth", async () => {
   return { useCurrentUser: () => ({ perms: can(role) }) };
 });
 
+const API = "http://localhost:3000/api";
+const noSearchResults = () =>
+  server.use(
+    http.get(`${API}/tickets`, () => HttpResponse.json({ items: [] })),
+    http.get(`${API}/agents`, () => HttpResponse.json({ items: [] })),
+  );
+
 const open = () => act(() => void window.dispatchEvent(new Event("cdesk:palette")));
 
 beforeEach(() => {
+  noSearchResults();
   push.mockClear();
   setTheme.mockClear();
   role = "admin";
@@ -87,5 +97,55 @@ describe("CommandPalette", () => {
     await userEvent.type(await screen.findByRole("combobox"), "theme");
     await userEvent.keyboard("{Enter}");
     expect(setTheme).toHaveBeenCalledWith("dark");
+  });
+
+  it("finds tickets and agents as you type", async () => {
+    let q: string | null = null;
+    server.use(
+      http.get(`${API}/tickets`, ({ request }) => {
+        q = new URL(request.url).searchParams.get("q");
+        return HttpResponse.json({
+          items: [
+            { id: "t9", label: "#9", subject: "Refund for order", contact: { name: "Asha" } },
+          ],
+        });
+      }),
+      http.get(`${API}/agents`, () =>
+        HttpResponse.json({ items: [{ member_id: "m1", name: "Refunda Singh", open_tickets: 2 }] }),
+      ),
+    );
+    renderWithProviders(<CommandPalette />);
+    open();
+    await userEvent.type(await screen.findByRole("combobox"), "refund");
+
+    expect(await screen.findByText("Refund for order")).toBeInTheDocument();
+    expect(screen.getByText("Refunda Singh")).toBeInTheDocument();
+    expect(q).toBe("refund");
+
+    await userEvent.click(screen.getByText("Refund for order"));
+    expect(push).toHaveBeenCalledWith("/tickets/t9");
+  });
+
+  it("opens the agents page from an agent result", async () => {
+    server.use(
+      http.get(`${API}/agents`, () =>
+        HttpResponse.json({ items: [{ member_id: "m1", name: "Neha Rao", open_tickets: 1 }] }),
+      ),
+    );
+    renderWithProviders(<CommandPalette />);
+    open();
+    await userEvent.type(await screen.findByRole("combobox"), "neha");
+    await userEvent.click(await screen.findByText("Neha Rao"));
+    expect(push).toHaveBeenCalledWith("/agents");
+  });
+
+  it("does not hit the API for a single character", async () => {
+    const hit = vi.fn();
+    server.use(http.get(`${API}/tickets`, () => (hit(), HttpResponse.json({ items: [] }))));
+    renderWithProviders(<CommandPalette />);
+    open();
+    await userEvent.type(await screen.findByRole("combobox"), "r");
+    await new Promise((r) => setTimeout(r, 400));
+    expect(hit).not.toHaveBeenCalled();
   });
 });

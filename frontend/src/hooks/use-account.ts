@@ -91,3 +91,38 @@ export function useNewRecoveryCodes() {
     onSuccess: refresh,
   });
 }
+
+/* ---------- phones that get push notifications ---------- */
+
+export interface Device {
+  id: string;
+  platform: "ios" | "android" | (string & {});
+  /** The last 6 characters of the token. The full token is never returned. */
+  token_hint?: string | null;
+  created_at?: string;
+  last_seen_at?: string | null;
+}
+export interface DeviceList {
+  /** False: push isn't set up on this server. */
+  push_on: boolean;
+  devices: Device[];
+}
+
+export function useDevices() {
+  return useQuery({
+    queryKey: ["me", "devices"] as const,
+    queryFn: async (): Promise<DeviceList> => {
+      const d = await api.get<Partial<DeviceList> | null>("me/devices");
+      return { push_on: d?.push_on === true, devices: d?.devices ?? [] };
+    },
+    retry: false,
+  });
+}
+
+export function useRemoveDevice() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.delete<void>(`me/devices/${encodeURIComponent(id)}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["me", "devices"] }),
+  });
+}

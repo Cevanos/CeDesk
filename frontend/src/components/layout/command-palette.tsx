@@ -9,12 +9,16 @@ import { createPortal } from "react-dom";
 
 import { useCurrentUser } from "@/hooks/use-auth";
 import { useFocusTrap } from "@/hooks/use-focus-trap";
+import { MIN_SEARCH_CHARS, useDebouncedValue, useTicketSearch } from "@/hooks/use-global-search";
+import { useAgents } from "@/hooks/workspace/agents";
 import { cn } from "@/lib/utils";
 
 interface Cmd {
   id: string;
-  group: "navigate" | "actions";
+  group: "navigate" | "actions" | "tickets" | "agents";
   label: string;
+  /** Secondary text shown under the label (ticket number, contact, etc). */
+  hint?: string;
   run: () => void;
 }
 
@@ -100,10 +104,36 @@ export function CommandPalette() {
     return list;
   }, [perms.createTicket, perms.manageSettings, resolvedTheme, router, setTheme, t]);
 
-  const results = useMemo(() => {
+  const debounced = useDebouncedValue(query);
+  const needle = debounced.trim().toLowerCase();
+  const searching = open && needle.length >= MIN_SEARCH_CHARS;
+  const ticketSearch = useTicketSearch(debounced, open);
+  const agentList = useAgents({ enabled: searching });
+
+  const results = useMemo<Cmd[]>(() => {
     const q = query.trim().toLowerCase();
-    return q ? commands.filter((c) => c.label.toLowerCase().includes(q)) : commands;
-  }, [commands, query]);
+    const matched = q ? commands.filter((c) => c.label.toLowerCase().includes(q)) : commands;
+    if (!searching) return matched;
+
+    const agents: Cmd[] = (agentList.data ?? [])
+      .filter((a) => a.name.toLowerCase().includes(needle))
+      .slice(0, 5)
+      .map((a) => ({
+        id: `agent-${a.member_id}`,
+        group: "agents",
+        label: a.name,
+        hint: t("agentOpen", { count: a.open_tickets }),
+        run: () => router.push("/agents"),
+      }));
+    const tickets: Cmd[] = (ticketSearch.data ?? []).map((tk) => ({
+      id: `ticket-${tk.id}`,
+      group: "tickets",
+      label: tk.subject,
+      hint: [tk.label, tk.contact?.name].filter(Boolean).join(" · "),
+      run: () => router.push(`/tickets/${tk.id}`),
+    }));
+    return [...tickets, ...agents, ...matched];
+  }, [agentList.data, commands, needle, query, router, searching, t, ticketSearch.data]);
 
   const choose = (c: Cmd | undefined) => {
     if (!c) return;
@@ -166,7 +196,9 @@ export function CommandPalette() {
         </div>
         <ul id={listId} role="listbox" className="max-h-80 overflow-y-auto p-1.5">
           {results.length === 0 && (
-            <li className="px-3 py-8 text-center text-sm text-muted-foreground">{t("empty")}</li>
+            <li className="px-3 py-8 text-center text-sm text-muted-foreground">
+              {ticketSearch.isFetching || agentList.isFetching ? t("searching") : t("empty")}
+            </li>
           )}
           {results.map((c, i) => (
             // Keyboard use goes through the combobox input (aria-activedescendant).
@@ -183,9 +215,14 @@ export function CommandPalette() {
                 i === activeIndex ? "bg-primary-soft text-primary-ink" : "text-foreground-2",
               )}
             >
-              <span>{c.label}</span>
-              <span className="text-[11px] tracking-wide text-subtle-foreground uppercase">
-                {c.group === "navigate" ? t("navigate") : t("actions")}
+              <span className="min-w-0">
+                <span className="block truncate">{c.label}</span>
+                {c.hint && (
+                  <span className="block truncate text-xs text-muted-foreground">{c.hint}</span>
+                )}
+              </span>
+              <span className="flex-none text-[11px] tracking-wide text-subtle-foreground uppercase">
+                {t(c.group)}
               </span>
             </li>
           ))}

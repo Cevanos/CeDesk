@@ -2,6 +2,7 @@
 
 import { Archive, Search } from "lucide-react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
 import { Badge, Button, Card, EmptyState, Input, Skeleton } from "@/components/ui/primitives";
@@ -20,11 +21,13 @@ export function ticketName(t: ArchivedTicketRow): string {
   return t.id.slice(0, 8);
 }
 
-export function ArchiveSearchView() {
-  const [text, setText] = useState("");
+export function ArchiveSearchView({ initial }: { initial?: ArchiveSearch | null } = {}) {
+  const params = useSearchParams();
+  const start = params.get("q") ?? "";
+  const [text, setText] = useState(start);
   const ref = useRef<HTMLInputElement>(null);
   useEffect(() => ref.current?.focus(), []);
-  const [filters, setFilters] = useState<ArchiveSearch | null>(null);
+  const [filters, setFilters] = useState<ArchiveSearch | null>(initial ?? parseArchiveQuery(start));
   const q = useArchiveSearch(filters);
   const rows = q.data?.pages.flatMap((p) => p.items) ?? [];
 

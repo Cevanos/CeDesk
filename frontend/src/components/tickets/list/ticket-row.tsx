@@ -121,6 +121,7 @@ export function TicketRow({ t, showStatus }: { t: TicketSummary; showStatus: boo
               </span>
             ))}
             {tags.length > 2 && <span className="hidden sm:inline">+{tags.length - 2}</span>}
+            {t.source === "demo" && <Badge tone="info">Demo</Badge>}
             {t.sentiment && (
               <Badge className="hidden capitalize sm:inline-flex">{t.sentiment}</Badge>
             )}

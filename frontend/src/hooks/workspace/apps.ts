@@ -33,6 +33,13 @@ export interface WorkspaceApp {
   second_credential?: AppCredential | string | null;
   secret_hint?: string | null;
   blocked?: string | null;
+  /** Where the app shows up, e.g. `side` (Slack) or `book` (Calendly). */
+  card?: string | null;
+}
+
+/** The answer to installing or saving an app. `note` is a warning to show, when set. */
+export interface AppSaveResult {
+  note?: string | null;
 }
 
 export const appsKey = ["apps"] as const;
@@ -46,17 +53,25 @@ export function useApps() {
   });
 }
 
+/** The key a second credential is sent under, e.g. `signing_secret`. */
+export function secondKey(c: AppCredential | string | null | undefined): string {
+  return (typeof c === "string" ? c : c?.key) || "signing_secret";
+}
+
 export interface AppInstallInput {
   app: string;
   settings?: Record<string, unknown>;
-  credential?: string;
-  second_credential?: string;
+  /** Sent as `secret`. */
+  secret?: string;
+  /** Extra body fields, e.g. `{ signing_secret }`. */
+  extra?: Record<string, string>;
 }
 
 export function useSaveApp() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ app, ...body }: AppInstallInput) => api.put<unknown>(`apps/${app}`, body),
+    mutationFn: ({ app, extra, ...body }: AppInstallInput) =>
+      api.put<AppSaveResult | null>(`apps/${app}`, { ...body, ...extra }),
     onSuccess: () => qc.invalidateQueries({ queryKey: appsKey }),
   });
 }

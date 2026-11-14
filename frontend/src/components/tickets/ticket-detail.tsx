@@ -9,7 +9,7 @@ import { MacrosMenu } from "@/components/tickets/macros-menu";
 import { TicketSidebar } from "@/components/tickets/sidebar";
 import { SlaPill } from "@/components/tickets/sla";
 import { AcceptCard, Composer, HandoverCard, Thread } from "@/components/tickets/thread";
-import { Button, EmptyState, Skeleton } from "@/components/ui/primitives";
+import { Badge, Button, EmptyState, Skeleton } from "@/components/ui/primitives";
 import { useCurrentUser } from "@/hooks/use-auth";
 import { useResolveTicket, useTicket } from "@/hooks/use-tickets";
 import { ApiError } from "@/lib/api/client";
@@ -42,6 +42,13 @@ export function TicketDetail({ id }: { id: string }) {
               Back to tickets
             </Button>
           </Link>
+          {notFound && (
+            <Link href="/archive">
+              <Button variant="outline" size="sm">
+                Search the archive
+              </Button>
+            </Link>
+          )}
           {!notFound && (
             <Button size="sm" onClick={() => q.refetch()}>
               Retry
@@ -89,6 +96,7 @@ export function TicketDetail({ id }: { id: string }) {
                 {ticket.label}
               </span>
               <StatusBadge status={ticket.status} />
+              {ticket.source === "demo" && <Badge tone="info">Demo</Badge>}
               <PriorityBadge priority={ticket.priority} />
               {ticket.contact.vip && <VipBadge />}
               <SlaPill sla={ticket.sla} />

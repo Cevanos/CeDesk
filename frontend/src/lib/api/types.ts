@@ -39,6 +39,7 @@ export interface Me {
   role: Role;
   workspace_name?: string;
   workspace?: string;
+  workspace_id?: string;
   status?: AgentStatus | null;
   /** The workspace requires 2FA and this person has not set it up: send them to set it up. */
   two_factor_setup_required?: boolean;
@@ -173,7 +174,7 @@ export interface Attachment {
 
 export interface NotificationItem {
   id: string;
-  kind: "assigned" | "mention" | "sla_breach" | (string & {});
+  kind: "assigned" | "mention" | "sla_breach" | "handover" | "side_reply" | (string & {});
   text: string;
   ticket_id: string | null;
   read: boolean;

@@ -24,3 +24,4 @@ export * from "./workspace/roles";
 export * from "./workspace/privacy";
 export * from "./workspace/audit";
 export * from "./workspace/plan";
+export * from "./workspace/demo";

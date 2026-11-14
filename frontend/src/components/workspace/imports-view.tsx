@@ -1,7 +1,16 @@
 "use client";
 
-import { AlertTriangle, ArrowLeft, CheckCircle2, FileUp, Loader2, RefreshCw } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowLeft,
+  CheckCircle2,
+  FileSpreadsheet,
+  FileUp,
+  Loader2,
+  RefreshCw,
+} from "lucide-react";
 import { useRef, useState } from "react";
+import { SiHelpscout, SiHubspot, SiIntercom, SiZendesk, SiZoho } from "react-icons/si";
 import { toast } from "sonner";
 
 import { PasswordInput } from "@/components/auth/password-input";
@@ -133,6 +142,48 @@ const KINDS: { id: ImportKind; label: string }[] = [
 const label = (s: string) =>
   SOURCES.find((x) => x.id === s)?.label ?? (s === "csv" ? "CSV file" : s);
 
+const BRAND: Record<string, { color: string; Icon: React.ElementType }> = {
+  intercom: { color: "#1F8DED", Icon: SiIntercom },
+  zendesk: { color: "#03363D", Icon: SiZendesk },
+  freshdesk: { color: "#25C16F", Icon: FreshdeskMark },
+  gorgias: { color: "#E8505B", Icon: GorgiasMark },
+  helpscout: { color: "#1292EE", Icon: SiHelpscout },
+  hubspot: { color: "#FF7A59", Icon: SiHubspot },
+  zoho: { color: "#E42527", Icon: SiZoho },
+};
+
+/** Not in the simple-icons set, so drawn here as simple marks in the brand colour. */
+function FreshdeskMark(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" {...props}>
+      <path d="M12 2a9 9 0 0 0-9 9v5a3 3 0 0 0 3 3h1v-7H5v-1a7 7 0 1 1 14 0v1h-2v7h1a3 3 0 0 0 3-3v-5a9 9 0 0 0-9-9Zm-1 17h2a2 2 0 0 1 2 2v1h-6v-1a2 2 0 0 1 2-2Z" />
+    </svg>
+  );
+}
+function GorgiasMark(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" {...props}>
+      <path d="M12 2C6.5 2 2 6.2 2 11.5S6.5 21 12 21c1.5 0 2.9-.3 4.2-.9L21 22l-1.6-4.2A9.2 9.2 0 0 0 22 11.5C22 6.2 17.5 2 12 2Zm.2 4.5c1.6 0 3 .6 4 1.6l-1.5 1.6c-.7-.6-1.5-.9-2.5-.9-2 0-3.5 1.5-3.5 3.4s1.500 3.4 3.500 3.400c1.300 0 2.200-.5 2.700-1.300h-2.800v-2.100h5.200c.1.400.1.700.1 1.100 0 3-2.200 5.200-5.200 5.200S7 15.200 7 11.900s2.300-5.400 5.200-5.400Z" />
+    </svg>
+  );
+}
+
+export function SourceIcon({ id, className }: { id: string; className?: string }) {
+  const b = BRAND[id];
+  const Icon = b?.Icon ?? FileSpreadsheet;
+  return (
+    <span
+      aria-hidden
+      className={cn(
+        "grid size-10 flex-none place-items-center rounded-xl border border-border bg-white",
+        className,
+      )}
+    >
+      <Icon className="size-[55%]" style={{ color: b?.color ?? "#16A34A" }} />
+    </span>
+  );
+}
+
 type Stage =
   | { name: "source" }
   | { name: "connect"; source: SourceDef | "csv" }
@@ -188,11 +239,14 @@ function Wizard({ onHistory }: { onHistory: () => void }) {
             key={s?.id ?? "csv"}
             type="button"
             onClick={() => setStage({ name: "connect", source: s ?? "csv" })}
-            className="rounded-2xl border border-border bg-surface p-4 text-left shadow-card transition-all hover:-translate-y-0.5 hover:border-border-strong hover:shadow-pop"
+            className="flex items-center gap-3 rounded-2xl border border-border bg-surface p-4 text-left shadow-card transition-all hover:-translate-y-0.5 hover:border-border-strong hover:shadow-pop"
           >
-            <span className="block font-semibold">{s?.label ?? "CSV file"}</span>
-            <span className="mt-1 block text-xs text-muted-foreground">
-              {s ? "Connect with a key" : "Upload a spreadsheet"}
+            <SourceIcon id={s?.id ?? "csv"} />
+            <span className="min-w-0">
+              <span className="block font-semibold">{s?.label ?? "CSV file"}</span>
+              <span className="mt-0.5 block text-xs text-muted-foreground">
+                {s ? "Connect with a key" : "Upload a spreadsheet"}
+              </span>
             </span>
           </button>
         ))}
@@ -244,12 +298,21 @@ function Wizard({ onHistory }: { onHistory: () => void }) {
   );
 }
 
-function StepHeader({ title, onBack }: { title: string; onBack: () => void }) {
+function StepHeader({
+  title,
+  onBack,
+  icon,
+}: {
+  title: string;
+  onBack: () => void;
+  icon?: React.ReactNode;
+}) {
   return (
     <div className="flex items-center gap-2">
       <Button variant="ghost" size="sm" onClick={onBack}>
         <ArrowLeft className="size-4" /> Back
       </Button>
+      {icon}
       <h3 className="text-base font-semibold">{title}</h3>
     </div>
   );
@@ -277,7 +340,11 @@ function ConnectStep({
 
   return (
     <Card className="max-w-xl space-y-4 p-5">
-      <StepHeader title={`Connect ${def.label}`} onBack={onBack} />
+      <StepHeader
+        title={`Connect ${def.label}`}
+        onBack={onBack}
+        icon={<SourceIcon id={def.id} className="size-8" />}
+      />
       <p className="text-sm text-muted-foreground">{def.help}</p>
       <form
         className="space-y-3"
@@ -751,9 +818,84 @@ function RunBadge({ run }: { run: ImportRun }) {
   return <Badge tone="primary">Running</Badge>;
 }
 
+const pretty = (k: string) => k.replace(/_/g, " ");
+
+/** One panel per imported kind: the headline number (created) and the rest as small chips. */
+function KindStats({ run }: { run: ImportRun }) {
+  const rows = Object.entries(run.counts).filter(([k]) => k !== "sync");
+  if (rows.length === 0) {
+    return <p className="text-sm text-muted-foreground">Nothing imported yet.</p>;
+  }
+  return (
+    <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
+      {rows.map(([k, v]) => {
+        const detail = typeof v === "number" ? { total: v } : v;
+        const head = typeof v === "number" ? v : (v.created ?? 0);
+        const rest = Object.entries(detail).filter(
+          ([n]) => typeof v === "number" || n !== "created",
+        );
+        return (
+          <div key={k} className="rounded-xl border border-border bg-surface-2/60 p-3">
+            <div className="flex items-baseline justify-between gap-2">
+              <span className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+                {pretty(k)}
+              </span>
+              <span className="text-xl font-semibold tabular-nums">{head.toLocaleString()}</span>
+            </div>
+            {typeof v !== "number" && <p className="text-[11px] text-muted-foreground">created</p>}
+            {typeof v !== "number" && rest.length > 0 && (
+              <ul className="mt-2 flex flex-wrap gap-1">
+                {rest.map(([n, c]) => (
+                  <li
+                    key={n}
+                    className={cn(
+                      "rounded-md bg-surface px-1.5 py-0.5 text-[11px] ring-1 ring-border",
+                      c === 0 ? "text-muted-foreground/70" : "text-foreground-2",
+                    )}
+                  >
+                    <span className="capitalize">{pretty(n)}</span>{" "}
+                    <strong className="font-semibold tabular-nums">{c.toLocaleString()}</strong>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function duration(a?: string | null, b?: string | null) {
+  if (!a || !b) return null;
+  const sec = Math.max(0, Math.round((new Date(b).getTime() - new Date(a).getTime()) / 1000));
+  if (Number.isNaN(sec)) return null;
+  if (sec < 60) return `${sec}s`;
+  const m = Math.floor(sec / 60);
+  return m < 60 ? `${m}m ${sec % 60}s` : `${Math.floor(m / 60)}h ${m % 60}m`;
+}
+
+function Meta({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="min-w-0">
+      <dt className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
+        {label}
+      </dt>
+      <dd className="mt-0.5 truncate text-[13px] font-medium">{children}</dd>
+    </div>
+  );
+}
+
 function History() {
   const q = useImportHistory();
-  if (q.isPending) return <Skeleton className="h-40" />;
+  if (q.isPending) {
+    return (
+      <div className="space-y-3">
+        <Skeleton className="h-40" />
+        <Skeleton className="h-40" />
+      </div>
+    );
+  }
   if (q.isError) return <LoadError error={q.error} />;
   if (q.data.length === 0) {
     return (
@@ -765,43 +907,57 @@ function History() {
     );
   }
   return (
-    <Card className="overflow-x-auto">
-      <table className="w-full min-w-[46rem] text-sm">
-        <thead>
-          <tr className="border-b border-border text-left text-xs text-muted-foreground">
-            {["Source", "Result", "Started by", "Started", "Finished", "Imported", "Error"].map(
-              (h) => (
-                <th key={h} scope="col" className="px-4 py-2.5 font-medium">
-                  {h}
-                </th>
-              ),
-            )}
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-border">
-          {q.data.map((r) => (
-            <tr key={r.id} className="align-top hover:bg-surface-2/60">
-              <th scope="row" className="px-4 py-3 text-left font-medium">
-                {label(r.source)}
-                {r.label && (
-                  <span className="block text-xs font-normal text-muted-foreground">{r.label}</span>
+    <ul className="space-y-3">
+      {q.data.map((r) => {
+        const took = duration(r.started_at, r.finished_at);
+        return (
+          <li key={r.id}>
+            <Card className="space-y-4 p-4 sm:p-5">
+              <div className="flex flex-wrap items-center gap-3">
+                <SourceIcon id={r.source} />
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="text-[15px] font-semibold">{label(r.source)}</h3>
+                    <RunBadge run={r} />
+                  </div>
+                  {r.label && <p className="truncate text-xs text-muted-foreground">{r.label}</p>}
+                </div>
+                {r.kinds.length > 0 && (
+                  <ul className="flex flex-wrap gap-1">
+                    {r.kinds.map((k) => (
+                      <li
+                        key={k}
+                        className="rounded-full bg-primary-soft px-2 py-0.5 text-[11px] font-medium text-primary capitalize"
+                      >
+                        {k}
+                      </li>
+                    ))}
+                  </ul>
                 )}
-              </th>
-              <td className="px-4 py-3">
-                <RunBadge run={r} />
-              </td>
-              <td className="px-4 py-3">{r.started_by ?? "—"}</td>
-              <td className="px-4 py-3">{r.started_at ? formatDateTime(r.started_at) : "—"}</td>
-              <td className="px-4 py-3">{r.finished_at ? formatDateTime(r.finished_at) : "—"}</td>
-              <td className="px-4 py-3">
-                <span className="block text-xs text-muted-foreground">{r.kinds.join(", ")}</span>
-                <CountsList run={r} />
-              </td>
-              <td className="px-4 py-3 text-xs text-danger">{r.last_error ?? ""}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </Card>
+              </div>
+
+              <dl className="grid grid-cols-2 gap-x-4 gap-y-3 border-y border-border py-3 sm:grid-cols-4">
+                <Meta label="Started by">{r.started_by ?? "—"}</Meta>
+                <Meta label="Started">{r.started_at ? formatDateTime(r.started_at) : "—"}</Meta>
+                <Meta label="Finished">{r.finished_at ? formatDateTime(r.finished_at) : "—"}</Meta>
+                <Meta label="Duration">{took ?? "—"}</Meta>
+              </dl>
+
+              <KindStats run={r} />
+
+              {r.last_error && (
+                <p
+                  role="alert"
+                  className="flex gap-2 rounded-lg border border-danger/30 bg-danger-soft px-3 py-2 text-xs text-danger"
+                >
+                  <AlertTriangle className="mt-0.5 size-3.5 flex-none" aria-hidden />
+                  {r.last_error}
+                </p>
+              )}
+            </Card>
+          </li>
+        );
+      })}
+    </ul>
   );
 }

@@ -6,8 +6,9 @@ import { api, listOf } from "@/lib/api/client";
 import { queryKeys } from "@/lib/api/query-keys";
 import type { AgentRow, AgentStatus, ChannelGroup } from "@/lib/api/types";
 
-export function useAgents() {
+export function useAgents({ enabled = true }: { enabled?: boolean } = {}) {
   return useQuery({
+    enabled,
     queryKey: queryKeys.agents.all,
     queryFn: () => api.get<unknown>("agents"),
     // The id may arrive as `member_id` or `id`; the UI always reads `member_id`.

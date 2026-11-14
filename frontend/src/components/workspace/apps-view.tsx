@@ -4,6 +4,7 @@ import { Plug } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
+import { CopyButton } from "@/components/ui/copy-button";
 import { Dialog } from "@/components/ui/overlay";
 import {
   Badge,
@@ -15,7 +16,8 @@ import {
   Skeleton,
 } from "@/components/ui/primitives";
 import { FormError, fieldErrors, LoadError } from "@/components/workspace/list-shared";
-import { useApps, useSaveApp, useUninstallApp } from "@/hooks/use-workspace";
+import { useCurrentUser } from "@/hooks/use-auth";
+import { secondKey, useApps, useSaveApp, useUninstallApp } from "@/hooks/use-workspace";
 import type { AppCredential, AppField, WorkspaceApp } from "@/hooks/use-workspace";
 import { ApiError } from "@/lib/api/client";
 
@@ -117,6 +119,25 @@ export function AppsView() {
   );
 }
 
+/** The URL to paste into Slack's Event Subscriptions. */
+function SlackEventsUrl() {
+  const { user } = useCurrentUser();
+  const origin = typeof window === "undefined" ? "" : window.location.origin;
+  const url = `${origin}/api/v1/slack/events/${user?.workspace_id ?? "<workspace_id>"}`;
+  return (
+    <Field
+      label="Events Request URL"
+      htmlFor="app-events-url"
+      hint="Paste this into your Slack app under Event Subscriptions."
+    >
+      <div className="flex gap-2">
+        <Input id="app-events-url" readOnly value={url} onFocus={(e) => e.currentTarget.select()} />
+        <CopyButton text={url} label="Copy URL" />
+      </div>
+    </Field>
+  );
+}
+
 function AppForm({ app, onClose }: { app: WorkspaceApp; onClose: () => void }) {
   const save = useSaveApp();
   const fields: AppField[] = app.settings_fields ?? [];
@@ -145,12 +166,16 @@ function AppForm({ app, onClose }: { app: WorkspaceApp; onClose: () => void }) {
             app: app.app,
             settings: values,
             // Left blank on an installed app = keep the saved credential.
-            ...(credential.trim() ? { credential: credential.trim() } : {}),
-            ...(second.trim() ? { second_credential: second.trim() } : {}),
+            ...(credential.trim() ? { secret: credential.trim() } : {}),
+            ...(second.trim()
+              ? { extra: { [secondKey(app.second_credential)]: second.trim() } }
+              : {}),
           },
           {
-            onSuccess: () => {
+            onSuccess: (res) => {
               toast.success("App saved");
+              // A warning from the server, e.g. "/book was edited by hand".
+              if (res?.note) toast.warning(res.note, { duration: 12_000 });
               onClose();
             },
             onError: (err) =>
@@ -217,7 +242,8 @@ function AppForm({ app, onClose }: { app: WorkspaceApp; onClose: () => void }) {
           />
         </Field>
       )}
-      {fields.length === 0 && !app.credential && (
+      {app.second_credential && <SlackEventsUrl />}
+      {fields.length === 0 && !app.credential && !app.second_credential && (
         <p className="text-sm text-muted-foreground">This app needs no settings.</p>
       )}
       <FormError message={errs._form} />
