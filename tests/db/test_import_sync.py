@@ -188,11 +188,22 @@ async def test_a_sync_brings_new_tickets_and_only_new_messages(
     status = await sql(sm, w["ws"], "SELECT status FROM hd_ticket WHERE source_id = 'Z0'")
     assert status[0]["status"] == "open"
 
+    # In the source: only Z1's status changed (no new message). It counts as updated.
+    src.changed = [Fake.ticket(1, status="open")]
+    await sql(sm, w["ws"], "UPDATE hd_import_run SET next_run_at = now()")
+    await work(im, sm)
+    look = (await run_state(im, w, run_id))["counts"]["sync"]
+    assert look["created"] == 1 and look["updated"] == 2 and look["new_messages"] == 1
+    z1 = await sql(sm, w["ws"], "SELECT status, resolved_at FROM hd_ticket WHERE source_id = 'Z1'")
+    assert z1[0]["status"] == "open" and z1[0]["resolved_at"] is None
+    src.changed = [z0, Fake.ticket(9)]
+
     # The same changes again create nothing.
     await sql(sm, w["ws"], "UPDATE hd_import_run SET next_run_at = now()")
     await work(im, sm)
     again = (await run_state(im, w, run_id))["counts"]["sync"]
-    assert again["created"] == 1 and again["updated"] == 1 and again["new_messages"] == 1
+    # Nothing really changed this time, so nothing more is counted.
+    assert again["created"] == 1 and again["updated"] == 2 and again["new_messages"] == 1
     assert len(await sql(sm, w["ws"], "SELECT 1 FROM hd_ticket")) == 3
     # Each look starts a little before the last one, so a change made meanwhile is not missed.
     assert src.asked[1] < datetime.now(UTC)

@@ -3,6 +3,13 @@
 `openapi.json` next to this file is the API as served (`uv run cedesk openapi`). Every
 route is under `/api/v1`. Breaking changes only come in v2 (md 2B). Newest first.
 
+## 2026-11-16: Imports: a sync counts a status-only change as updated (Phase 2, M9)
+
+`GET /imports/runs/{id}`: in `counts.sync`, `updated` now also counts a ticket whose status,
+priority or resolved time changed in the source with no new message. Before, only tickets
+with new messages were counted (the change itself was always saved). A look that finds
+nothing really changed adds nothing. No route or field changes.
+
 ## 2026-11-16: Archived ticket page: the type and the rest of its history (Phase 3, O3)
 
 `GET /archive/tickets/{id}` now returns everything the archive keeps, typed:
