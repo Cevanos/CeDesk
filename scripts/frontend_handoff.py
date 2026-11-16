@@ -86,7 +86,8 @@ take (`read_ticket`, `create_ticket`, `reply`, `private_note`, `change_fields`,
 allow; the API refuses it anyway (403). Built-in roles: Admin (everything), Supervisor
 (adds assign others, approve, reports), Agent, Light agent (reads and adds notes only).
 `/me` also says `two_factor_setup_required` (the workspace requires 2FA: send them to set
-it up).
+it up) and `ai` (the workspace has Cevanos connected: show the AI buttons and the AI card
+in Reports; false: hide them, their routes answer 409 `cevanos_not_connected`).
 
 **Errors.** Every error is `{"error": {"code", "message", "details"?}}`. Show `message`:
 it is written for the person using the screen. `details` comes only on 422 validation
@@ -206,7 +207,9 @@ SCREENS: list[Screen] = [
         "- Related card: `GET /tickets/{id}/related` (parent, children, links, merges). "
         "Merge into another open ticket, link two similar tickets, or make a child ticket "
         "for another team.\n"
-        '- Approvals: ask a named person; they decide from "Waiting for my approval".\n'
+        '- Approvals: ask a named person; they decide from "Waiting for my approval". A '
+        "Cevanos Governance hold (`cevanos_hold_id` set; no requester or approver) is "
+        "decided by anyone who can approve, and the decision goes to Cevanos.\n"
         "- Tasks: add with a quick due time (`1h`, `4h`, `tomorrow`) or a date; the owner "
         "is told. Time log: minutes, a note, billable or not; the total is on the answer.",
         either(
@@ -222,10 +225,30 @@ SCREENS: list[Screen] = [
         "`side_reply` notification. `via` says `email` or `slack`.\n"
         "- Jira: create an issue from the ticket or link an existing one.\n"
         "- Orders and payments cards: `available: false` comes with a `message` to show "
-        "(not installed, Cevanos connected, provider down); the ticket still works.",
+        "(not installed, customer unknown, provider down); the ticket still works. With "
+        "Cevanos connected they come from Cevanos's stores (`source: cevanos`); a store it "
+        "couldn't read is named in `message` while the rest still show.",
         either(
             starts("/side-conversations"),
             matches(r"^/tickets/\{ticket_id\}/(side-conversations|jira|orders|payments)"),
+        ),
+    ),
+    Screen(
+        "Ticket page: AI help (Cevanos)",
+        "- Only when `GET /me` says `ai: true`; else hide the buttons. Nothing is saved: "
+        "show the answer, and let the agent use it.\n"
+        "- Summary: shows a summary of the conversation (notes included).\n"
+        "- Suggested reply: puts `text` in the reply box; **never send it by itself**. Needs "
+        "`reply` (not for light agents).\n"
+        "- Improve writing (reply box): `tone` professional, friendly, empathetic or "
+        "concise; replace the box's text with the answer for the agent to edit.\n"
+        "- Translate: a customer message (`to`: the agent's language) or the reply (`to`: "
+        "the ticket's `language`); `from` says the language found.\n"
+        "- 409 `cevanos_scope_missing`: show `message` (it names the scope an Admin must "
+        "add in Cevanos). 503: Cevanos is busy, try again.",
+        either(
+            matches(r"^/tickets/\{ticket_id\}/(summary|draft)$"),
+            starts("/assist"),
         ),
     ),
     Screen(
@@ -255,7 +278,9 @@ SCREENS: list[Screen] = [
         "Reports",
         "- Supervisors and Admins (`reports`). Team report, more metrics and help-article "
         "votes, for a period (`from`, `to`) and a team (`team_id`; not for articles). "
-        "Each one downloads as CSV with `format=csv`.",
+        "Each one downloads as CSV with `format=csv`.\n"
+        "- AI card (`GET /reports/ai`, only with `ai: true`): handover rate, resolved by "
+        "the AI, CSAT of AI answers, from Cevanos for the whole workspace.",
         starts("/reports"),
     ),
     Screen(
@@ -334,8 +359,9 @@ SCREENS: list[Screen] = [
     ),
     Screen(
         "Settings: plan, retention, archive and demo",
-        "- Usage and plan limits (cloud). Retention: delete resolved tickets after N days. "
-        "Archive age (default 120 days).\n"
+        "- Usage and plan limits (cloud). Retention: delete resolved tickets after N days, "
+        "and `export_before_delete` (write them to a file first, kept 30 days: Admins list "
+        "and download them under Retention exports). Archive age (default 120 days).\n"
         "- Demo (not on production servers): load the demo, load sample tickets (for an "
         "empty inbox), reset the demo.",
         either(starts("/usage", "/retention", "/archive/settings", "/demo")),

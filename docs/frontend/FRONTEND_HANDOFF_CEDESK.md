@@ -25,7 +25,8 @@ take (`read_ticket`, `create_ticket`, `reply`, `private_note`, `change_fields`,
 allow; the API refuses it anyway (403). Built-in roles: Admin (everything), Supervisor
 (adds assign others, approve, reports), Agent, Light agent (reads and adds notes only).
 `/me` also says `two_factor_setup_required` (the workspace requires 2FA: send them to set
-it up).
+it up) and `ai` (the workspace has Cevanos connected: show the AI buttons and the AI card
+in Reports; false: hide them, their routes answer 409 `cevanos_not_connected`).
 
 **Errors.** Every error is `{"error": {"code", "message", "details"?}}`. Show `message`:
 it is written for the person using the screen. `details` comes only on 422 validation
@@ -66,7 +67,7 @@ its own stream (`/portal/stream`) with only the customer's own messages and stat
 `{{customer.first_name}}` and the like; the API fills them when the reply is sent.
 Show them as they are in the editor.
 
-**227 routes**, all on `main`.
+**234 routes**, all on `main`.
 
 ## 2. Screens
 
@@ -153,7 +154,7 @@ Show them as they are in the editor.
 ### 2.5 Ticket page: related tickets, approvals, tasks and time
 
 - Related card: `GET /tickets/{id}/related` (parent, children, links, merges). Merge into another open ticket, link two similar tickets, or make a child ticket for another team.
-- Approvals: ask a named person; they decide from "Waiting for my approval".
+- Approvals: ask a named person; they decide from "Waiting for my approval". A Cevanos Governance hold (`cevanos_hold_id` set; no requester or approver) is decided by anyone who can approve, and the decision goes to Cevanos.
 - Tasks: add with a quick due time (`1h`, `4h`, `tomorrow`) or a date; the owner is told. Time log: minutes, a note, billable or not; the total is on the answer.
 
 | | Route | What it does |
@@ -177,7 +178,7 @@ Show them as they are in the editor.
 
 - Side conversations (agents only, never shown to the customer): by email (addresses), or in a Slack channel (needs the Slack side conversations app). Replies come back to the same side conversation, and the assignee gets a `side_reply` notification. `via` says `email` or `slack`.
 - Jira: create an issue from the ticket or link an existing one.
-- Orders and payments cards: `available: false` comes with a `message` to show (not installed, Cevanos connected, provider down); the ticket still works.
+- Orders and payments cards: `available: false` comes with a `message` to show (not installed, customer unknown, provider down); the ticket still works. With Cevanos connected they come from Cevanos's stores (`source: cevanos`); a store it couldn't read is named in `message` while the rest still show.
 
 | | Route | What it does |
 |---|---|---|
@@ -192,7 +193,23 @@ Show them as they are in the editor.
 | `POST` | `/tickets/{ticket_id}/side-conversations` | Start a side conversation by email |
 | `POST` | `/tickets/{ticket_id}/side-conversations/slack` | Start a side conversation in a Slack channel |
 
-### 2.7 Customers
+### 2.7 Ticket page: AI help (Cevanos)
+
+- Only when `GET /me` says `ai: true`; else hide the buttons. Nothing is saved: show the answer, and let the agent use it.
+- Summary: shows a summary of the conversation (notes included).
+- Suggested reply: puts `text` in the reply box; **never send it by itself**. Needs `reply` (not for light agents).
+- Improve writing (reply box): `tone` professional, friendly, empathetic or concise; replace the box's text with the answer for the agent to edit.
+- Translate: a customer message (`to`: the agent's language) or the reply (`to`: the ticket's `language`); `from` says the language found.
+- 409 `cevanos_scope_missing`: show `message` (it names the scope an Admin must add in Cevanos). 503: Cevanos is busy, try again.
+
+| | Route | What it does |
+|---|---|---|
+| `POST` | `/assist/improve` | Improve the writing of a reply or note (Cevanos AI) |
+| `POST` | `/assist/translate` | Translate a message or a reply (Cevanos AI) |
+| `POST` | `/tickets/{ticket_id}/draft` | Suggest a reply (Cevanos AI) |
+| `POST` | `/tickets/{ticket_id}/summary` | Summarise the ticket (Cevanos AI) |
+
+### 2.8 Customers
 
 - Customer card: `GET /contacts/{id}/tickets` (all their tickets, newest first). Change the name or VIP flag with `PATCH /contacts/{id}/profile`.
 
@@ -201,7 +218,7 @@ Show them as they are in the editor.
 | `PATCH` | `/contacts/{contact_id}/profile` | Change a customer's name or VIP flag |
 | `GET` | `/contacts/{contact_id}/tickets` | A customer's card and all their tickets, newest first |
 
-### 2.8 Archive
+### 2.9 Archive
 
 - Old resolved tickets live here: search by number (`1042` or `T-1042`) or by customer (`email`, `contact_id`); open one read only. No reply, change or reopen. A team-only role gets a 404 for another team's, as for a live ticket.
 - The page: `type_name`, `team_name` and `assignee_name` (as they were when archived), tags, fields, messages (notes too, with an email's headers), files' names and the rating. The rest of its history is in `related`, one list per kind: `time_log`, `tasks`, `approvals`, `links` (the other ticket's `label` and `ticket_id`), `side_conversations` (with their `messages`), `jira_issues`, `emails` (sent from it) and `cevanos_chat` (a handover's chat, or null). Fields are named as on a live ticket, so the same components can show both.
@@ -213,17 +230,19 @@ Show them as they are in the editor.
 | `GET` | `/archive/tickets` | Find archived tickets by number or customer |
 | `GET` | `/archive/tickets/{ticket_id}` | Open an archived ticket (read only) |
 
-### 2.9 Reports
+### 2.10 Reports
 
 - Supervisors and Admins (`reports`). Team report, more metrics and help-article votes, for a period (`from`, `to`) and a team (`team_id`; not for articles). Each one downloads as CSV with `format=csv`.
+- AI card (`GET /reports/ai`, only with `ai: true`): handover rate, resolved by the AI, CSAT of AI answers, from Cevanos for the whole workspace.
 
 | | Route | What it does |
 |---|---|---|
+| `GET` | `/reports/ai` | The AI card: handover rate, AI-resolved, CSAT of AI answers (Cevanos) |
 | `GET` | `/reports/articles` | Help-article votes (Supervisor, Admin) |
 | `GET` | `/reports/metrics` | More metrics (Supervisor, Admin) |
 | `GET` | `/reports/team` | Team report (Supervisor, Admin) |
 
-### 2.10 Settings: members, roles, teams and routing
+### 2.11 Settings: members, roles, teams and routing
 
 - Members: add (with a role and first password), change role or deactivate, set a new password, reset someone's 2FA (lost phone). Admins only (`manage_access`).
 - Custom roles: name, the five rights, scope (all, team edit, team only) and its team.
@@ -249,7 +268,7 @@ Show them as they are in the editor.
 | `PATCH` | `/teams/{team_id}` | Rename, change settings or replace members (Admin) |
 | `DELETE` | `/teams/{team_id}` | Delete a team; its tickets become team-less (Admin) |
 
-### 2.11 Settings: ticket types, SLA, rules, macros, saved replies, triage, sandbox
+### 2.12 Settings: ticket types, SLA, rules, macros, saved replies, triage, sandbox
 
 - Ticket types: fields (`text`, `number`, `select`), required skill, shown to customers or not; order matters (menus follow it).
 - SLA: targets per priority, ordered policies, business hours and holidays.
@@ -294,7 +313,7 @@ Show them as they are in the editor.
 | `GET` | `/triage-settings` | Topic keywords and card redaction (Admin) |
 | `PUT` | `/triage-settings` | Save topic keywords and card redaction (Admin) |
 
-### 2.12 Settings: email
+### 2.13 Settings: email
 
 - Support addresses: add, make default, signature, DKIM selector; DNS check (SPF, DKIM, DMARC), forwarding check, send yourself a test.
 - Failed emails: the list and Retry.
@@ -311,7 +330,7 @@ Show them as they are in the editor.
 | `GET` | `/email/failed` | Admin: emails that could not be sent after every retry |
 | `POST` | `/email/{email_id}/retry` | Admin: send a failed email again |
 
-### 2.13 Settings: customer portal and help center
+### 2.14 Settings: customer portal and help center
 
 - Portal settings: who may sign in (allowed email domains), the CSAT survey and the public web form on or off.
 - Help center: categories and articles (draft or published).
@@ -330,7 +349,7 @@ Show them as they are in the editor.
 | `GET` | `/portal-settings` | Portal settings (Admin) |
 | `PUT` | `/portal-settings` | Save the portal settings (Admin) |
 
-### 2.14 Settings: security, privacy and audit
+### 2.15 Settings: security, privacy and audit
 
 - Security: minimum password length, password expiry, session length, 2FA required, IP list (test my IP first, so nobody is locked out), files need sign-in, admin alerts; the security score. SSO settings.
 - Privacy: export everything about one customer (a JSON file kept 7 days) or erase them (type their email again to confirm; can't be undone).
@@ -352,7 +371,7 @@ Show them as they are in the editor.
 | `GET` | `/sso-settings` | Single sign-on settings (Admin) |
 | `PUT` | `/sso-settings` | Save single sign-on (Admin) |
 
-### 2.15 Settings: apps, API keys, webhooks, Cevanos
+### 2.16 Settings: apps, API keys, webhooks, Cevanos
 
 - Apps: `GET /apps` lists each app with what to ask for: `settings_fields`, `credential` (the credential to ask for; null when the app needs none) and `second_credential` (Slack side conversations: `signing_secret`). Credentials are never shown again, only `secret_hint`. `blocked` explains why an app can't be installed here.
 - API keys and webhook secrets are shown **once**, on creation: say so.
@@ -382,7 +401,7 @@ Show them as they are in the editor.
 | `POST` | `/webhooks/{webhook_id}/secret` | A new secret (Admin; shown once, the old one stops at once) |
 | `POST` | `/webhooks/{webhook_id}/test` | Send a test ping now (Admin) |
 
-### 2.16 Settings: imports
+### 2.17 Settings: imports
 
 - Connect a help desk (or upload a CSV), see what it holds and the team each group maps to, dry run, run, watch progress, sync now, go live (stop syncing), history.
 
@@ -399,9 +418,9 @@ Show them as they are in the editor.
 | `POST` | `/imports/runs/{run_id}/sync-now` | Ask the source for changes now instead of in 5 minutes (Admin) |
 | `POST` | `/imports/runs/{run_id}/sync-stop` | Go-live: stop syncing and delete the stored credentials (Admin) |
 
-### 2.17 Settings: plan, retention, archive and demo
+### 2.18 Settings: plan, retention, archive and demo
 
-- Usage and plan limits (cloud). Retention: delete resolved tickets after N days. Archive age (default 120 days).
+- Usage and plan limits (cloud). Retention: delete resolved tickets after N days, and `export_before_delete` (write them to a file first, kept 30 days: Admins list and download them under Retention exports). Archive age (default 120 days).
 - Demo (not on production servers): load the demo, load sample tickets (for an empty inbox), reset the demo.
 
 | | Route | What it does |
@@ -413,9 +432,11 @@ Show them as they are in the editor.
 | `POST` | `/demo/seed` | Load the demo |
 | `GET` | `/retention` | Retention (Settings) |
 | `PUT` | `/retention` | Set retention (Settings; audited) |
+| `GET` | `/retention/exports` | What retention wrote before deleting (Admin) |
+| `GET` | `/retention/exports/{export_id}/file` | Download a retention export (Admin; audited) |
 | `GET` | `/usage` | Usage and plan limits (Settings) |
 
-### 2.18 Customer portal (customers, signed in with an emailed code)
+### 2.19 Customer portal (customers, signed in with an emailed code)
 
 - Sign in: email, then the 6-digit code from the email. The customer's own tickets only; new ticket (types shown to customers), reply, rate a resolved ticket. Their own live stream.
 - The emailed CSAT survey link opens `/public/csat/{token}` (no sign-in).
@@ -439,7 +460,7 @@ Show them as they are in the editor.
 | `GET` | `/public/csat/{token}` | The rating page behind an emailed survey link (no sign-in) |
 | `POST` | `/public/csat/{token}` | Rate a ticket from the emailed survey link (no sign-in) |
 
-### 2.19 Public pages (no sign-in): help center and web form
+### 2.20 Public pages (no sign-in): help center and web form
 
 - Help center: categories, search, articles, "Was this helpful?".
 - Web form: the ticket types and fields to show, then send it (rate limited).
@@ -452,7 +473,7 @@ Show them as they are in the editor.
 | `GET` | `/public/{workspace}/form` | The web form: ticket types and their fields (no sign-in) |
 | `POST` | `/public/{workspace}/form` | Send the web form: makes a ticket (no sign-in) |
 
-### 2.20 Mobile app
+### 2.21 Mobile app
 
 - `GET /me/queue`: mine and unassigned, not resolved; mine first, then chats waiting to be accepted, then by SLA. Each item has the last message's first 140 characters.
 - `POST /tickets/{id}/mobile-reply`: one tap; accepts a waiting chat first; a light agent's text is saved as a note (`saved_as`). Everything else uses the web routes.
@@ -466,7 +487,7 @@ Show them as they are in the editor.
 | `GET` | `/me/queue` | Your mobile queue |
 | `POST` | `/tickets/{ticket_id}/mobile-reply` | Reply from the mobile app |
 
-### 2.21 Not for the frontend: server to server
+### 2.22 Not for the frontend: server to server
 
 - Called by other systems with their own keys or signatures: mail services, Cevanos, Slack, other systems through the inbound API, and health checks.
 

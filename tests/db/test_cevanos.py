@@ -45,6 +45,7 @@ class FakeCevanos:
         self.fail: dict[str, CevanosError] = {}
         self.scopes = ["conversations:read", "conversations:write", "chat"]
         self.reads = 0
+        self.contacts: dict[str, dict[str, Any]] = {}  # a chat's contact (AI6)
 
     def connect(self, connection: Connection) -> "FakeApi":
         return FakeApi(self, connection.api_key)
@@ -84,6 +85,26 @@ class FakeApi:
             raise CevanosError("Cevanos answered 404 conversation_not_found", permanent=True,
                                status=404)  # fmt: skip
         return {"data": list(self.world.chats[conversation_id])}
+
+    async def conversation(self, conversation_id: str) -> Any:
+        self._check("conversation")
+        if conversation_id not in self.world.chats:
+            raise CevanosError("Cevanos answered 404 conversation_not_found", permanent=True,
+                               status=404)  # fmt: skip
+        contact = self.world.contacts.get(conversation_id)
+        return {"data": {"id": conversation_id, "contact": contact}}
+
+    async def hold_decision(
+        self, hold_id: str, *, decision: str, note: str | None, decided_by: str, key: str
+    ) -> None:
+        self._check("hold_decision")
+        self.world.calls.append(
+            (
+                "hold_decision",
+                hold_id,
+                {"decision": decision, "note": note, "by": decided_by, "key": key},
+            )
+        )
 
     async def take_over(self, conversation_id: str, *, operator_name: str, key: str) -> None:
         self._check("take_over")
@@ -258,10 +279,18 @@ async def test_connection_settings(
     assert (
         got["close_on_resolve"] and got["api_key_hint"] == world.key[-4:] and got["team_id"] is None
     )
-    assert ok(await cv.post(f"{C}/check", headers=w["admin"]))["ok"] is True
+    # Handovers need conversations:read and :write; the AI features (md 16) three more.
+    ai = ["ai:assist", "contacts:read", "analytics:read"]
+    world.scopes = ["conversations:read", "conversations:write", *ai]
+    check = ok(await cv.post(f"{C}/check", headers=w["admin"]))
+    assert check == {"ok": True, "missing_scopes": [], "message": "The key works."}
+    world.scopes = ["conversations:read", "conversations:write", "chat"]
+    check = ok(await cv.post(f"{C}/check", headers=w["admin"]))
+    assert check == {"ok": True, "missing_scopes": ai, "message": "The key works. The AI "
+                     "features also need ai:assist, contacts:read, analytics:read."}  # fmt: skip
     world.scopes = ["conversations:read"]
     check = ok(await cv.post(f"{C}/check", headers=w["admin"]))
-    assert check == {"ok": False, "missing_scopes": ["conversations:write"],
+    assert check == {"ok": False, "missing_scopes": ["conversations:write", *ai],
                      "message": "The key works but lacks conversations:write."}  # fmt: skip
 
     assert (await cv.delete(C, headers=w["admin"])).status_code == 204
@@ -589,6 +618,141 @@ async def test_an_agent_turns_a_chat_into_a_ticket(
         f"{T}/from-conversation/{world.chat(('customer', 'x'))}", headers=other["asha"]
     )
     assert r.status_code == 404 and "isn't connected" in r.json()["error"]["message"]
+
+
+async def test_a_handover_gets_the_chats_real_customer(
+    cv: AsyncClient, app_sessionmaker: Sm, world: FakeCevanos
+) -> None:
+    """AI6: the chat's name and email from Cevanos, instead of "Chat customer"."""
+    w = await desk(cv, app_sessionmaker, world)
+    new = world.chat(("customer", "Where is order #10422?"))
+    world.contacts[new] = {"id": "c-1", "name": "Priya Sharma", "email": "Priya@Example.org"}
+    t = await hand_over(cv, w, new)
+    assert (t["contact"]["name"], t["contact"]["email"]) == ("Priya Sharma", "priya@example.org")
+
+    # Her email is already a customer here: the ticket joins her, the placeholder goes.
+    known = ok(await cv.post(T, headers=w["admin"], json={
+        "subject": "Invoice", "description": "Send the invoice",
+        "contact": {"email": "ravi@example.org", "name": "Ravi K"}}), 201)  # fmt: skip
+    again = world.chat(("customer", "Hi, Ravi again"))
+    world.contacts[again] = {"id": "c-2", "name": "R.", "email": "ravi@example.org"}
+    t = await hand_over(cv, w, again)
+    assert t["contact"]["id"] == known["contact"]["id"]
+    assert t["contact"]["name"] == "Ravi K"  # the name CeDesk had is kept
+    async with workspace_session(app_sessionmaker, w["ws"]) as s:
+        left = await s.execute(text("SELECT count(*) FROM hd_contact WHERE email LIKE "
+                                    "'%@cevanos.invalid'"))  # fmt: skip
+        assert left.scalar_one() == 0
+
+    # A name only; no contact; Cevanos failing; a fake email: the placeholder stays.
+    named = world.chat(("customer", "hello"))
+    world.contacts[named] = {"id": "c-3", "name": "Anu"}
+    t = await hand_over(cv, w, named)
+    assert (t["contact"]["name"], t["contact"]["email"].endswith("@cevanos.invalid")) == (
+        "Anu", True)  # fmt: skip
+    for contact, fail in (
+        (None, None),
+        ({"id": "c-4", "name": "X", "email": "x@y.z"}, CevanosError("down", permanent=False)),
+        ({"id": "c-5", "email": "chat-1@cevanos.invalid"}, None),
+    ):
+        conversation = world.chat(("customer", "hi"))
+        world.contacts[conversation] = contact  # type: ignore[assignment]
+        if fail is not None:
+            world.fail["conversation"] = fail
+        t = await hand_over(cv, w, conversation)
+        assert t["contact"]["name"] == "Chat customer"
+        assert t["contact"]["email"].endswith("@cevanos.invalid")
+
+
+HOLD = {"id": "hold_42", "action": "refund", "amount": 499, "currency": "inr"}
+
+
+async def approvals(c: AsyncClient, w: dict[str, Any], t: dict[str, Any]) -> list[Any]:
+    return ok(await c.get(f"{T}/{t['id']}/approvals", headers=w["admin"]))  # type: ignore[no-any-return]
+
+
+async def test_a_governance_hold_is_decided_here_and_told_to_cevanos(
+    cv: AsyncClient, app_sessionmaker: Sm, world: FakeCevanos
+) -> None:
+    """X7: Cevanos's AI hands over because Governance holds a refund; someone who can
+    approve decides it in CeDesk, and Cevanos is told, once."""
+    w = await desk(cv, app_sessionmaker, world)
+    conversation = world.chat(("customer", "Refund my order #10422 please"))
+    data = escalated(conversation, "approval_required") | {"hold": HOLD}
+    got = ok(await event(cv, w, "conversation.escalated", data))
+    t = ok(await cv.get(f"{T}/{got['ticket_id']}", headers=w["admin"]))
+    [hold] = await approvals(cv, w, t)
+    assert (hold["what"], hold["amount"], hold["currency"], hold["cevanos_hold_id"]) == (
+        "Refund 499.00 INR (Cevanos Governance hold)", "499.00", "INR", "hold_42")  # fmt: skip
+    assert (hold["requester_id"], hold["approver_id"], hold["state"]) == (None, None, "pending")
+    assert any("Cevanos asks for approval: Refund 499.00 INR" in m["body"]
+               for m in t["messages"])  # fmt: skip
+    # The same event again (or a second escalation with it) adds nothing.
+    ok(await event(cv, w, "conversation.escalated", data))
+    assert len(await approvals(cv, w, t)) == 1
+
+    # Who can approve sees it waiting; an agent can't decide it.
+    waiting = ok(await cv.get("/api/v1/approvals/waiting", headers=w["admin"]))
+    assert [a["id"] for a in waiting] == [hold["id"]]
+    assert ok(await cv.get("/api/v1/approvals/waiting", headers=w["asha"])) == []
+    decide = f"/api/v1/approvals/{hold['id']}/decide"
+    no = await cv.post(decide, headers=w["asha"], json={"decision": "approve"})
+    assert no.status_code == 403
+
+    # Cevanos down at first: retried; then told once, with the decision and who made it.
+    # A Supervisor can approve (no Admin needed): nobody was named for a hold.
+    token = w["admin"]["Authorization"].split()[1]
+    await add(cv, token, "sup@example.com", "supervisor", "Sunil")
+    sup = bearer(await sign_in(cv, w["slug"], "sup@example.com"))
+    assert [a["id"] for a in ok(await cv.get("/api/v1/approvals/waiting", headers=sup))] == [
+        hold["id"]]  # fmt: skip
+    done = ok(await cv.post(decide, headers=sup,
+                            json={"decision": "approve", "note": "Within policy"}))  # fmt: skip
+    assert done["state"] == "approved"
+    world.fail["hold_decision"] = CevanosError("Cevanos answered 503", permanent=False,
+                                               status=503)  # fmt: skip
+    await deliver(cv, app_sessionmaker)
+    assert [c for c in world.calls if c[0] == "hold_decision"] == []
+    async with workspace_session(app_sessionmaker, w["ws"]) as s:
+        await s.execute(text("UPDATE hd_outbox SET next_attempt_at = now()"))
+    await deliver(cv, app_sessionmaker)
+    await deliver(cv, app_sessionmaker)
+    [(_, hold_id, sent)] = [c for c in world.calls if c[0] == "hold_decision"]
+    assert hold_id == "hold_42" and sent["key"]
+    assert (sent["decision"], sent["note"], sent["by"]) == ("approved", "Within policy", "Sunil")
+    lines = [m["body"] for m in ok(await cv.get(f"{T}/{t['id']}", headers=w["admin"]))["messages"]]
+    decided = ("Approved by Sunil: Refund 499.00 INR (Cevanos Governance hold) · Within "
+               "policy · sending it to Cevanos")  # fmt: skip
+    assert decided in lines and "Cevanos was told: approved" in lines
+
+
+async def test_a_bad_hold_or_a_refusal(
+    cv: AsyncClient, app_sessionmaker: Sm, world: FakeCevanos
+) -> None:
+    w = await desk(cv, app_sessionmaker, world)
+    for bad in ({"action": "refund"}, {"id": "h 1", "action": "refund"},
+                {"id": "h1", "action": "refund", "amount": 10}, {"id": "h1", "action": "Re fund"},
+                {"id": "h1", "action": "refund", "amount": -5, "currency": "INR"}):  # fmt: skip
+        conversation = world.chat(("customer", "hi"))
+        r = await event(cv, w, "conversation.escalated", escalated(conversation) | {"hold": bad})
+        assert r.status_code == 422, bad
+    async with workspace_session(app_sessionmaker, w["ws"]) as s:
+        assert (await s.execute(text("SELECT count(*) FROM hd_ticket"))).scalar_one() == 0
+
+    # Cevanos refuses the decision for good: the ticket says so, nothing is retried.
+    conversation = world.chat(("customer", "Cancel my order"))
+    hold = {"id": "hold_7", "action": "cancel_order"}
+    got = ok(await event(cv, w, "conversation.escalated", escalated(conversation) | {"hold": hold}))
+    t = {"id": got["ticket_id"]}
+    [made] = await approvals(cv, w, t)
+    assert made["what"] == "Cancel order (Cevanos Governance hold)" and made["amount"] is None
+    ok(await cv.post(f"/api/v1/approvals/{made['id']}/decide", headers=w["admin"],
+                     json={"decision": "reject"}))  # fmt: skip
+    world.fail["hold_decision"] = CevanosError("Cevanos answered 409 hold_expired",
+                                               permanent=True, status=409)  # fmt: skip
+    await deliver(cv, app_sessionmaker)
+    lines = [m["body"] for m in ok(await cv.get(f"{T}/{t['id']}", headers=w["admin"]))["messages"]]
+    assert "Cevanos wasn't told the decision: Cevanos answered 409 hold_expired" in lines
 
 
 async def test_not_connected_changes_nothing(

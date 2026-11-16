@@ -214,3 +214,57 @@ async def message(session: AsyncSession, message_id: UUID) -> Row | None:
         {"id": message_id},
     )
     return result.mappings().first()
+
+
+# AI6: the chat's real customer
+
+
+async def placeholder_contact(session: AsyncSession, ticket_id: UUID, domain: str) -> UUID | None:
+    """The ticket's contact while it is still a chat placeholder (`...@<domain>`), locked
+    with the ticket; None once it is a real one (or an agent changed it)."""
+    result = await session.execute(
+        text(
+            "SELECT c.id FROM hd_ticket t JOIN hd_contact c ON c.id = t.contact_id "
+            "WHERE t.id = :t AND c.email LIKE '%@' || CAST(:domain AS text) "
+            "FOR UPDATE OF t, c"
+        ),
+        {"t": ticket_id, "domain": domain},
+    )
+    found = result.scalar()
+    return UUID(str(found)) if found is not None else None
+
+
+async def contact_with_email(session: AsyncSession, email: str) -> UUID | None:
+    result = await session.execute(text("SELECT id FROM hd_contact WHERE email = :e"), {"e": email})
+    found = result.scalar()
+    return UUID(str(found)) if found is not None else None
+
+
+async def move_ticket_to(
+    session: AsyncSession, ticket_id: UUID, contact_id: UUID, placeholder_id: UUID
+) -> None:
+    """The ticket to the customer CeDesk already knows; the placeholder goes once no
+    ticket names it."""
+    await session.execute(
+        text("UPDATE hd_ticket SET contact_id = :c WHERE id = :t"),
+        {"c": contact_id, "t": ticket_id},
+    )
+    await session.execute(
+        text(
+            "DELETE FROM hd_contact WHERE id = :p "
+            "AND NOT EXISTS (SELECT 1 FROM hd_ticket WHERE contact_id = :p)"
+        ),
+        {"p": placeholder_id},
+    )
+
+
+async def name_contact(
+    session: AsyncSession, contact_id: UUID, *, email: str | None, name: str | None
+) -> None:
+    await session.execute(
+        text(
+            "UPDATE hd_contact SET email = coalesce(:e, email), name = coalesce(:n, name), "
+            "updated_at = now() WHERE id = :c"
+        ),
+        {"c": contact_id, "e": email, "n": name},
+    )

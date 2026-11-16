@@ -203,9 +203,10 @@ _APPROVAL = (
     "SELECT p.id, p.ticket_id, t.number AS ticket_number, p.what, p.amount, p.currency, "
     "p.state, p.decision_note, p.requester_id, r.name AS requester_name, p.approver_id, "
     "a.name AS approver_name, p.decided_by, d.name AS decided_by_name, p.decided_at, "
-    "p.created_at "
+    "p.created_at, p.cevanos_hold_id "
     "FROM hd_approval p JOIN hd_ticket t ON t.id = p.ticket_id "
-    "JOIN member r ON r.id = p.requester_id JOIN member a ON a.id = p.approver_id "
+    # A Governance hold (X7) has no requester or approver: anyone who approves decides.
+    "LEFT JOIN member r ON r.id = p.requester_id LEFT JOIN member a ON a.id = p.approver_id "
     "LEFT JOIN member d ON d.id = p.decided_by "
 )
 
@@ -240,6 +241,38 @@ async def insert_approval(
     return UUID(str(result.scalar_one()))
 
 
+async def insert_hold(
+    session: AsyncSession,
+    workspace_id: UUID,
+    *,
+    ticket_id: UUID,
+    hold_id: str,
+    what: str,
+    amount: Decimal | None,
+    currency: str | None,
+) -> UUID | None:
+    """A Cevanos Governance hold as an approval request (X7); None when it is already one
+    (the same handover delivered again)."""
+    result = await session.execute(
+        text(
+            "INSERT INTO hd_approval (workspace_id, ticket_id, cevanos_hold_id, what, amount, "
+            "currency) VALUES (:ws, :t, :hold, :what, :amount, :currency) "
+            "ON CONFLICT (workspace_id, cevanos_hold_id) WHERE cevanos_hold_id IS NOT NULL "
+            "DO NOTHING RETURNING id"
+        ),
+        {
+            "ws": workspace_id,
+            "t": ticket_id,
+            "hold": hold_id,
+            "what": what,
+            "amount": amount,
+            "currency": currency,
+        },
+    )
+    found = result.scalar()
+    return UUID(str(found)) if found is not None else None
+
+
 async def get_approval(
     session: AsyncSession, approval_id: UUID, *, lock: bool = False
 ) -> Row | None:
@@ -256,13 +289,24 @@ async def ticket_approvals(session: AsyncSession, ticket_id: UUID) -> Sequence[R
     return result.mappings().all()
 
 
-async def waiting_for(session: AsyncSession, approver_id: UUID, limit: int) -> Sequence[Row]:
+async def waiting_for(
+    session: AsyncSession,
+    approver_id: UUID,
+    limit: int,
+    *,
+    holds: bool = False,
+    team: UUID | None = None,
+) -> Sequence[Row]:
+    """Asked of this member; with `holds`, also the Governance holds nobody decided yet
+    (only that team's tickets, for a team-only role)."""
     result = await session.execute(
         text(
-            _APPROVAL + "WHERE p.approver_id = :m AND p.state = 'pending' "
+            _APPROVAL + "WHERE p.state = 'pending' AND (p.approver_id = :m "
+            "OR (CAST(:holds AS boolean) AND p.cevanos_hold_id IS NOT NULL "
+            "    AND (CAST(:team AS uuid) IS NULL OR t.team_id = CAST(:team AS uuid)))) "
             "ORDER BY p.created_at, p.id LIMIT :limit"
         ),
-        {"m": approver_id, "limit": limit},
+        {"m": approver_id, "limit": limit, "holds": holds, "team": team},
     )
     return result.mappings().all()
 

@@ -102,6 +102,12 @@ class MeOut(BaseModel):
         description="True: the workspace requires two-step sign-in and you haven't set it up; "
         "only /me, /me/2fa, /me/2fa/setup, /me/2fa/confirm and sign-out work until then.",
     )
+    ai: bool = Field(
+        default=False,
+        description="True: the workspace has a Cevanos connection, so show the AI buttons "
+        "(summary, improve, translate, suggested reply) and the AI card in Reports. False: "
+        "hide them; their routes answer 409 `cevanos_not_connected`.",
+    )
 
 
 class MemberPage(BaseModel):

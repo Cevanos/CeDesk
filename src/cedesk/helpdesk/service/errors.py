@@ -3,6 +3,7 @@
 
 class ServiceError(Exception):
     status = 400
+    code: str | None = None  # the answer's error code; None: the class name
 
     def __init__(self, message: str) -> None:
         super().__init__(message)
@@ -75,3 +76,21 @@ class Unavailable(ServiceError):
     """A service we depend on (Cevanos) is down or slow: the caller tries again later."""
 
     status = 503
+
+
+class CevanosNotConnected(Conflict):
+    """409 `cevanos_not_connected`: an AI feature (md 16) without a Cevanos connection."""
+
+    code = "cevanos_not_connected"
+
+
+class CevanosScopeMissing(Conflict):
+    """409 `cevanos_scope_missing`: the workspace's Cevanos key lacks the scope this needs."""
+
+    code = "cevanos_scope_missing"
+
+
+class CevanosRefused(Conflict):
+    """409 `cevanos_refused`: Cevanos refused the key or the request (not a retry)."""
+
+    code = "cevanos_refused"

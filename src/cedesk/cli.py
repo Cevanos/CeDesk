@@ -237,7 +237,7 @@ def _worker(once: bool) -> int:
     from cedesk.helpdesk.service.imports.framework import make_importers
     from cedesk.helpdesk.service.imports.framework import run_due as run_imports
     from cedesk.helpdesk.service.jira import make_post
-    from cedesk.helpdesk.service.limits import run_retention
+    from cedesk.helpdesk.service.limits import remove_expired_retention_exports, run_retention
     from cedesk.helpdesk.service.password_reset import Sender
     from cedesk.helpdesk.service.portal_notice import PortalNoticeHandler
     from cedesk.helpdesk.service.privacy import remove_expired_exports
@@ -416,6 +416,10 @@ def _worker(once: bool) -> int:
                         await remove_expired_exports(sm, store)
                     except Exception:
                         logger.exception("Removing old privacy exports failed")
+                    try:  # retention exports past their 30 days (O2)
+                        await remove_expired_retention_exports(sm, store)
+                    except Exception:
+                        logger.exception("Removing old retention exports failed")
                     try:  # live-update events past their 24 hours, and old stream tickets (C11)
                         await prune_stream(sm)
                     except Exception:
