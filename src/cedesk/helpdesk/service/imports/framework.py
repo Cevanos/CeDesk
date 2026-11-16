@@ -478,7 +478,10 @@ async def dry_run(
     raw_options: Mapping[str, Any] | None,
 ) -> DryRun:
     """What a run would do, without doing any of it. `already_imported` counts what this
-    source brought before, so running again shows how much is new."""
+    source brought before, so running again shows how much is new. That is an estimate
+    (totals, not ids: asking the source for every id would take as long as the run), and
+    wrong when some came from another account of the same help desk or were deleted there,
+    so then a warning says so. The run itself checks each one by its id."""
     require(caller, Action.settings)
     ws = caller.workspace_id
     async with workspace_session(sm, ws) as s:
@@ -502,6 +505,7 @@ async def dry_run(
         "articles": found.articles, "replies": found.replies,
     }  # fmt: skip
     warnings = _warnings(connector)
+    warnings += _estimate_warnings(row["source"], chosen.kinds, discovered, already)
     if "tickets" in chosen.kinds:
         warnings += [
             f"No team picked for '{g.name}'."
@@ -515,6 +519,32 @@ async def dry_run(
         already_imported={k: already[k] if k in chosen.kinds else 0 for k in rules.KINDS},
         warnings=warnings,
     )
+
+
+def _estimate_warnings(
+    source: str, kinds: Sequence[str], discovered: Mapping[str, int], already: Mapping[str, int]
+) -> list[str]:
+    """When something from this help desk is here already, "to create" is a guess."""
+    label = rules.label(source)
+    out = []
+    for kind in kinds:
+        found, have = discovered.get(kind, 0), already.get(kind, 0)
+        if not have:
+            continue
+        if have > found:
+            out.append(
+                f"CeDesk already has {have} {kind} from {label}, more than this account has "
+                f"({found}): some came from another {label} account or were deleted there. "
+                f"So '{kind} to create' can't be counted ahead; the run checks each one: new "
+                "ones are created, ones already here are updated, none are copied twice."
+            )
+        else:
+            out.append(
+                f"'{kind} to create' assumes the {have} {kind} already here from {label} came "
+                "from this account. The run checks each one: new ones are created, ones "
+                "already here are updated, none are copied twice."
+            )
+    return out
 
 
 # Start and read a run

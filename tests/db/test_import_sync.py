@@ -472,3 +472,35 @@ async def fake_desk_second_run(
     run_id = await start(c, w, made, kinds=["tickets"])
     await work(c, sm)
     return run_id
+
+
+async def test_a_dry_run_says_when_its_count_is_a_guess(
+    im: AsyncClient,
+    app_sessionmaker: Sm,
+) -> None:
+    """Totals, not ids: with more already here than the account has (another account of the
+    same help desk, or deleted there), "to create" can't be counted, and the dry run says so
+    instead of a bare 0. The run itself still creates the new ones."""
+    sm = app_sessionmaker
+    src = Source(tickets=3)
+    w, conn = await fake_desk(im, sm, src)
+    ok(await im.post(f"{I}/connections/{conn['id']}/run", headers=w["admin"],
+                     json={"kinds": ["tickets"]}), 202)  # fmt: skip
+    await work(im, sm)
+
+    # Another account: two tickets, neither of them here.
+    src.tickets = [Fake.ticket(7), Fake.ticket(8)]
+    conn2 = ok(await im.post(f"{I}/connections", headers=w["admin"], json={
+        "source": "zendesk", "settings": {"subdomain": "other"},
+        "credentials": {"token": "tok-secret-1234"}}), 201)  # fmt: skip
+    dry = ok(await im.post(f"{I}/connections/{conn2['id']}/dry-run", headers=w["admin"],
+                           json={"kinds": ["tickets"]}))  # fmt: skip
+    assert dry["already_imported"]["tickets"] == 3
+    guess = [x for x in dry["warnings"] if "to create" in x]
+    assert len(guess) == 1 and "more than this account has (2)" in guess[0]
+
+    started = ok(await im.post(f"{I}/connections/{conn2['id']}/run", headers=w["admin"],
+                               json={"kinds": ["tickets"]}), 202)  # fmt: skip
+    await work(im, sm)
+    assert (await run_state(im, w, started["id"]))["counts"]["tickets"]["created"] == 2
+    await stop_all(sm, w["ws"])
