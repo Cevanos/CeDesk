@@ -37,8 +37,8 @@ const clientError = (e: unknown) => e instanceof ApiError && e.status >= 400 && 
 export function normalizeDiscovery(raw: unknown): ImportDiscovery {
   const r: Obj = isObj(raw) ? raw : {};
   const groups: ImportGroup[] = listOf<Obj>(r.groups).map((g) => ({
-    id: String(g.id ?? g.group_id ?? ""),
-    name: text(g.name) ?? text(g.label) ?? String(g.id ?? ""),
+    id: String(g.external_id ?? g.id ?? g.group_id ?? ""),
+    name: text(g.name) ?? text(g.label) ?? String(g.external_id ?? g.id ?? ""),
     suggested_team_id:
       text(g.suggested_team_id) ?? text(g.team_id) ?? text(g.suggested_team) ?? null,
   }));
@@ -75,15 +75,26 @@ export function normalizeRun(raw: unknown): ImportRun {
       else if (isObj(v)) counts[k] = numbers(v);
     }
   }
+  // History rows carry `result` (running / finished / syncing / failed) instead of `state`.
+  const resultMap: Record<string, ImportRun["state"]> = {
+    finished: "done",
+    syncing: "done",
+    failed: "failed",
+    running: "running",
+  };
+  const result = text(r.result);
+  const explicitState = text(r.state) ?? text(r.status);
+  const state = (explicitState ??
+    (result ? (resultMap[result] ?? result) : "queued")) as ImportRun["state"];
   return {
     id: String(r.id ?? ""),
     connection_id: text(r.connection_id),
     source: text(r.source) ?? "",
     label: text(r.label) ?? text(r.account),
-    state: (text(r.state) ?? text(r.status) ?? "queued") as ImportRun["state"],
+    state,
     kinds: strings(r.kinds),
     counts,
-    sync_on: r.sync_on === true,
+    sync_on: r.sync_on === true || (!explicitState && result === "syncing"),
     last_sync_at: text(r.last_sync_at),
     last_error: text(r.last_error),
     started_by: text(r.started_by_name) ?? text(r.started_by),

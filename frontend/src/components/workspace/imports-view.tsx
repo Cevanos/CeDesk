@@ -399,6 +399,29 @@ function ConnectStep({
             />
           </Field>
         ))}
+        {def.id === "freshdesk" && (
+          <div>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={settings.include_archived === "true"}
+                onChange={(e) =>
+                  setSettings((s) => {
+                    const next = { ...s };
+                    if (e.target.checked) next.include_archived = "true";
+                    else delete next.include_archived;
+                    return next;
+                  })
+                }
+              />
+              Include archived tickets
+            </label>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Also import tickets Freshdesk archived (closed over 120 days ago). Slow on large
+              accounts and uses your Freshdesk API quota.
+            </p>
+          </div>
+        )}
         <p className="text-xs text-muted-foreground">
           Keys are stored encrypted and never shown again; only the last 4 characters are.
         </p>
