@@ -6,10 +6,15 @@
   nothing here runs and the Cevanos features stay hidden.
 - **Handover in** (`receive_event`): Cevanos's signed `conversation.escalated` webhook
   becomes a ticket with the chat copied in, waiting for Accept. Rules and routing (W8) run
-  as for any new ticket. `classified` sets the mood, `reopened` / `closed` are noted.
+  as for any new ticket. Then the chat's real customer replaces "Chat customer" (AI6),
+  and a Governance hold that came with it becomes an approval request (X7).
+  `classified` sets the mood, `reopened` / `closed` are noted.
 - **Convert** (`convert`): an agent turns a Cevanos chat into a ticket the same way.
 - **Out** (`CevanosHandler`, run by the worker after commit): Accept takes the chat over
-  in Cevanos, an agent's reply is sent into the chat, and resolving can close it.
+  in Cevanos, an agent's reply is sent into the chat, resolving can close it, and a
+  Governance hold's decision is sent to Cevanos (X7).
+- **AI features** (md 16): `open_link` gives service/ai.py the workspace's client, or a
+  409 `cevanos_not_connected`.
 - **Customer messages in** (`ChatPoller`, run by the worker): Cevanos has no event for a
   new customer message, so open chats are read every few seconds, within the key's
   60-a-minute limit, and each new customer message runs the customer-reply logic.

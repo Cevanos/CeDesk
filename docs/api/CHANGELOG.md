@@ -3,6 +3,73 @@
 `openapi.json` next to this file is the API as served (`uv run cedesk openapi`). Every
 route is under `/api/v1`. Breaking changes only come in v2 (md 2B). Newest first.
 
+## 2026-11-16: Cevanos AI features, orders from Cevanos, Governance holds, retention export (Phase 3, AI1-AI7, X7, X11, C12, O2)
+
+Every AI feature works **only when the workspace has a Cevanos connection** (the gate is
+the connection, not `CEDESK_EDITION`; CeDesk itself has no AI). The Cevanos routes these
+call are in `docs/api/CEVANOS_V1_FOR_CEDESK.md`.
+
+- `GET /me` has `ai`: true with a Cevanos connection. Show the AI buttons and the AI card
+  only then.
+- Without a connection every AI route answers **409 `cevanos_not_connected`** ("Connect
+  Cevanos in Settings to use this."). Cevanos down or slow: **503**. The workspace's key
+  without the scope a route needs: **409 `cevanos_scope_missing`**, naming the scope.
+  Cevanos refusing the key: 409 `cevanos_refused`. Errors may now carry such a code
+  instead of the class name.
+- Nothing an AI answer says is stored or audited; card numbers are taken out of every
+  text before it leaves CeDesk. API keys can't use the AI help (403: it spends the
+  Cevanos workspace's AI credits).
+- `POST /tickets/{id}/summary` -> `{summary}` (AI1, X11): the conversation, internal notes
+  too (it is for agents), never system lines. Right to read the ticket; team scope.
+- `POST /tickets/{id}/draft` -> `{text}` (AI4): a suggested reply for the reply box, never
+  sent by itself. Written without internal notes, by the chat's Cevanos AI agent for a
+  ticket from a Cevanos chat. Needs `reply` (light agents: 403).
+- `POST /assist/improve {text, tone?}` -> `{text}` (AI2). `tone`: professional (default),
+  friendly, empathetic, concise. At most 8000 characters.
+- `POST /assist/translate {text, to}` -> `{text, from}` (AI3). `to` is a language code
+  (en, hi, pt-BR); `from` is what Cevanos found. A ticket's `language` (triage) says what
+  the customer writes in.
+- `GET /reports/ai?from&to` -> `{from, to, ai: {conversations, handed_over,
+  handover_rate, ai_resolved, ai_resolved_rate, ai_csat, ai_csat_responses}}` (AI7):
+  rates 0-1, CSAT 1-5, null when there is nothing to count. Needs `reports`; the period
+  as the other reports (default the last 30 days).
+- `POST /cevanos/connection/check` also lists the AI scopes a key lacks (`ai:assist`,
+  `contacts:read`, `analytics:read`) in `missing_scopes`; `ok` stays true (handovers work).
+- **Sidebar orders and payments from Cevanos** (AI5, C12): with a connection,
+  `GET /tickets/{id}/orders` and `/payments` read from the stores connected in Cevanos
+  (`source: "cevanos"`), for the chat's contact (a ticket from a Cevanos chat) or the
+  customer's email. A store Cevanos couldn't read is named in `message`
+  ("Not read from woocommerce just now."); Cevanos down, a missing `contacts:read` or an
+  unknown customer makes the card `available: false` with the reason, never the ticket.
+  `PaymentOut.url` may now be null.
+- **The chat's real customer** (AI6): after a handover (or a convert) is saved, CeDesk asks
+  Cevanos who the chat's customer is. Their email already a customer here: the ticket
+  joins them (their name kept) and the "Chat customer" placeholder is deleted. Else the
+  placeholder takes the real name and email. Best effort: anything failing keeps the
+  placeholder.
+- **Governance holds** (X7): a `conversation.escalated` webhook may carry
+  `data.hold {id, action, amount?, currency?}` when Cevanos's AI handed over because
+  Governance holds an action. It becomes an approval request on the ticket ("Refund
+  499.00 INR (Cevanos Governance hold)"), once per hold; a bad hold refuses the webhook
+  (422). `ApprovalOut` has `cevanos_hold_id`; for a hold `requester_*` and `approver_*`
+  are null: anyone with `approve` who sees the ticket decides it, and it is in their
+  `GET /approvals/waiting`. The decision goes to Cevanos by the worker (retried, with an
+  Idempotency-Key); the ticket says when Cevanos was told, or why not.
+- **Export before retention deletes** (O2): `PUT /retention` takes
+  `export_before_delete` (left out or null: unchanged; `GET /retention` shows it). When
+  on, each batch retention deletes (live and archived tickets) is first written to a
+  JSON file: the privacy export's ticket shape with each ticket's `customer`. Kept 30
+  days. `GET /retention/exports` (Admin) lists them; `GET /retention/exports/{id}/file`
+  downloads one (audited, area `retention`, action `downloaded`). Erasing a customer
+  deletes every export holding their tickets (erase `counts.retention_exports`). With the
+  switch on and no storage, or a file that can't be written, nothing is deleted. The
+  run's audit detail gets `exports`.
+
+Migration 0053 (after 0052): `hd_approval.cevanos_hold_id` (requester and approver
+nullable for holds only), outbox event `approval.decided`,
+`hd_retention.export_before_delete`, `hd_retention_export`. Downgrade refuses while hold
+approvals or retention exports exist.
+
 ## 2026-11-16: Archived ticket page: the type and the rest of its history (Phase 3, O3)
 
 `GET /archive/tickets/{id}` now returns everything the archive keeps, typed:

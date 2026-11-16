@@ -106,6 +106,39 @@ async def test_0049_wont_go_down_while_tickets_are_archived(owner_engine: Any) -
     await asyncio.to_thread(command.upgrade, cfg, "head")
 
 
+async def test_0053_wont_go_down_while_exports_or_holds_exist(owner_engine: Any) -> None:
+    """Going below 0053 would lose retention exports and Governance hold approvals: the
+    downgrade refuses and changes nothing; once they are gone it goes down and back up."""
+    import asyncio
+
+    from sqlalchemy import text
+
+    cfg = alembic_config()
+    await empty_archive_async()
+    async with owner_engine.begin() as conn:
+        for table in ("workspace", "hd_retention_export"):
+            await conn.execute(text(f"ALTER TABLE {table} NO FORCE ROW LEVEL SECURITY"))
+        ws = await conn.scalar(text("INSERT INTO workspace (name) VALUES ('O2') RETURNING id"))
+        await conn.execute(
+            text(
+                "INSERT INTO hd_retention_export (workspace_id, object_key, tickets, size, "
+                "expires_at) VALUES (:ws, 'k.json', 1, 2, now())"
+            ),
+            {"ws": ws},
+        )
+        for table in ("workspace", "hd_retention_export"):
+            await conn.execute(text(f"ALTER TABLE {table} FORCE ROW LEVEL SECURITY"))
+    with pytest.raises(RuntimeError, match="1 retention exports exist"):
+        await asyncio.to_thread(command.downgrade, cfg, "0052")
+    async with owner_engine.connect() as conn:  # rolled back: still there
+        assert await conn.scalar(text("SELECT to_regclass('hd_retention_export')")) is not None
+    await empty_archive_async()
+    await asyncio.to_thread(command.downgrade, cfg, "0052")
+    async with owner_engine.connect() as conn:
+        assert await conn.scalar(text("SELECT to_regclass('hd_retention_export')")) is None
+    await asyncio.to_thread(command.upgrade, cfg, "head")
+
+
 async def test_0052_upgrades_an_archive_from_0049s_first_version(owner_engine: Any) -> None:
     """Servers ran 0049 as first written. A ticket archived then: 0049 still refuses to go
     down while it is there, and 0052 fills `source_id` and `file_bytes` from what it kept
