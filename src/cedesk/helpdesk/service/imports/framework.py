@@ -1204,7 +1204,7 @@ async def _refresh(
         )  # fmt: skip
     state = rules.status(t.status, ctx.status_map)
     resolved_at = (t.resolved_at or t.updated_at or last) if state == "resolved" else None
-    await repo.refresh_ticket(
+    changed = await repo.refresh_ticket(
         s, ticket_id, status=state, priority=rules.priority(t.priority), resolved_at=resolved_at,
         first_reply_at=next((m.created_at for m in messages if m.kind == "agent"), None),
         updated_at=max(t.updated_at or t.created_at, last),
@@ -1218,8 +1218,9 @@ async def _refresh(
         )  # fmt: skip
     if fresh:
         await triage.retriage(s, ticket_id, cfg=cfg)
-        stats["updated"] += 1
         stats["new_messages"] += len(fresh)
+    if fresh or changed:  # a status-only change is an update too
+        stats["updated"] += 1
     return ticket_id
 
 
