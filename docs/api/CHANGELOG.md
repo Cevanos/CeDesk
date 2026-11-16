@@ -3,6 +3,14 @@
 `openapi.json` next to this file is the API as served (`uv run cedesk openapi`). Every
 route is under `/api/v1`. Breaking changes only come in v2 (md 2B). Newest first.
 
+## 2026-11-16: Imports: the dry run says when "to create" is only a guess (Phase 2, M4)
+
+- `POST /imports/connections/{id}/dry-run`: `will_create` is the source's total minus what
+  this help desk brought before (totals, not ids). When something from it is here already,
+  `warnings` now says the count is a guess, and when more is here than the account has
+  (another account of the same help desk, or deleted there) it says why the count shows 0.
+  The run itself checks each one by its id. No field changes.
+
 ## 2026-11-16: Imports: an import run again updates tickets, and sync brings owner, team and tags (Phase 2, M9)
 
 - An import run again on an account already imported no longer only skips the tickets that
