@@ -31,8 +31,8 @@ the source "what changed since the last look" every 5 minutes (`run_due`, the sa
 does imports): a new ticket is imported, a ticket already here gets only its new messages
 (found by their source ids), its new status, its owner and team when the source names ones
 CeDesk knows, and the tags it gained. An import run again does the same for every ticket
-already here, so changes made in the source between two imports aren't lost. `sync-now` makes the next look due at once;
-`sync-stop` turns it off and deletes the credentials.
+already here, so changes made in the source between two imports aren't lost. `sync-now`
+makes the next look due at once; `sync-stop` turns it off and deletes the credentials.
 """
 
 import json
