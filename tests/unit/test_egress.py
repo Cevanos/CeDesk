@@ -191,3 +191,42 @@ async def test_the_pinned_transport_connects_to_the_address_it_checked() -> None
     assert first.headers["Host"] == "hooks.example.com"
     assert first.extensions["sni_hostname"] == "hooks.example.com"
     assert v6.url.host == "2606:2800:220:1:248:1893:25c8:1946"
+
+
+async def test_the_pinned_transport_prefers_ipv4_and_tries_the_next_address() -> None:
+    """A host with IPv6 and IPv4 answers (sorted, the IPv6 one comes first) from a server
+    with no IPv6 route: the IPv4 address is used; an address that can't be reached is
+    skipped for the next checked one; when none can be reached, the error is raised."""
+    import httpx
+    import pytest
+
+    from cedesk.egress import PinnedTransport
+
+    answers = {
+        "files.example.com": ["2600:9000:208a::1", "65.8.131.128"],
+        "two.example.com": ["93.184.216.34", "93.184.216.35"],
+        "down.example.com": ["93.184.216.36"],
+    }
+    dead = {"93.184.216.34", "93.184.216.36", "2600:9000:208a::1"}
+
+    async def resolver(host: str) -> list[str]:
+        return answers.get(host, [])
+
+    tried: list[str] = []
+
+    def handler(r: httpx.Request) -> httpx.Response:
+        tried.append(r.url.host)
+        if r.url.host in dead:
+            raise httpx.ConnectError("Network is unreachable", request=r)
+        return httpx.Response(200)
+
+    pinned = PinnedTransport(resolver)
+    pinned._inner = httpx.MockTransport(handler)  # type: ignore[assignment]
+    async with httpx.AsyncClient(transport=pinned) as client:
+        assert (await client.get("https://files.example.com/a.pdf")).status_code == 200
+        assert tried == ["65.8.131.128"]
+        tried.clear()
+        assert (await client.get("https://two.example.com/")).status_code == 200
+        assert tried == ["93.184.216.34", "93.184.216.35"]
+        with pytest.raises(httpx.ConnectError):
+            await client.get("https://down.example.com/")
