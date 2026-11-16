@@ -99,35 +99,35 @@ class ArchivedMessage:
 
 @dataclass(frozen=True)
 class ArchivedTicket(ArchivedSummary):
+    type_name: str | None  # as it was when archived
     tags: list[str]
     fields: dict[str, Any]
     messages: list[ArchivedMessage]
     files: list[dict[str, Any]]  # every file on the ticket (name, size, type)
     rating: dict[str, Any] | None
-    time_log: list[dict[str, Any]]
-    tasks: list[dict[str, Any]]
-    approvals: list[dict[str, Any]]
-    links: list[dict[str, Any]]
-    side_conversations: list[dict[str, Any]]
-    jira_issues: list[dict[str, Any]]
-    emails: list[dict[str, Any]]
+    # The rest of its history: one list per kind in SHOWN, and `cevanos_chat` (or None).
+    related: dict[str, Any]
 
 
 # What the archive read shows of the history kept with a ticket (never ids of rows that
-# are gone, storage keys or delivery internals).
+# are gone, storage keys or delivery internals). Named as in the live API, so one view
+# shows live and archived tickets; STORED_AS: where the stored name differs.
 SHOWN: dict[str, tuple[str, ...]] = {
     "time_log": ("minutes", "billable", "note", "member_name", "logged_at"),
     "tasks": ("text", "owner_name", "due_at", "done_at", "created_at"),
     "approvals": ("what", "amount", "currency", "state", "decision_note", "requester_name",
                   "approver_name", "decided_by_name", "decided_at", "created_at"),
     "links": ("ticket_id", "number", "label", "kind", "created_at"),
-    "side_conversations": ("subject", "via", "to_addresses", "from_address", "created_at",
-                           "messages"),
-    "jira_issues": ("issue_key", "url", "made_here", "created_at"),
+    "side_conversations": ("subject", "via", "to", "from_address", "created_at",
+                           "last_message_at", "messages"),
+    "jira_issues": ("key", "url", "made_here", "created_at"),
     "emails": ("from_address", "to_addresses", "cc_addresses", "subject", "body_text",
-               "status", "sent_at", "created_at"),
+               "sensitive", "status", "sent_at", "created_at"),
 }  # fmt: skip
+STORED_AS = {("side_conversations", "to"): "to_addresses", ("jira_issues", "key"): "issue_key"}
 SIDE_MESSAGE = ("direction", "author_name", "from_address", "body", "created_at")
+CHAT = ("conversation_id", "agent_id", "channel_kind", "taken_over_at", "closed_at",
+        "created_at")  # fmt: skip
 
 
 def _shown(kind: str, rows: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
@@ -139,8 +139,29 @@ def _shown(kind: str, rows: list[dict[str, Any]] | None) -> list[dict[str, Any]]
             row = {**row, "messages": [
                 {k: m.get(k) for k in SIDE_MESSAGE} for m in row.get("messages") or []
             ]}  # fmt: skip
-        out.append({k: row.get(k) for k in SHOWN[kind]})
+        if kind == "emails":
+            # One that carried a secret (a reset link) is archived without its body; never
+            # shown even if one were kept.
+            row = {**row, "sensitive": bool(row.get("sensitive"))}
+            if row["sensitive"]:
+                row["body_text"] = None
+        out.append({k: row.get(STORED_AS.get((kind, k), k)) for k in SHOWN[kind]})
     return out
+
+
+def _chat(chat: dict[str, Any] | None, handover: dict[str, Any] | None) -> dict[str, Any] | None:
+    """The Cevanos chat a handover came from (its messages are the ticket's), with the
+    handover card; never its polling state."""
+    if not chat:
+        return None
+    return {k: chat.get(k) for k in CHAT} | {"handover": handover}
+
+
+def _related(related: dict[str, Any] | None, ticket: dict[str, Any]) -> dict[str, Any]:
+    kept = related or {}  # empty for tickets archived before 0052
+    return {k: _shown(k, kept.get(k)) for k in SHOWN} | {
+        "cevanos_chat": _chat(kept.get("cevanos_chat"), ticket.get("handover"))
+    }
 
 
 def _summary(r: Any) -> dict[str, Any]:
@@ -189,9 +210,10 @@ async def search(
 
 async def get(sm: Sessionmaker, caller: Caller, ticket_id: UUID) -> ArchivedTicket:
     """Read only, with its messages (notes too: agents only), files' names, rating and the
-    rest of its history (time logged, tasks, approvals, links, side conversations, Jira
-    issues, emails sent). The team's and assignee's names are as they were when it was
-    archived. A role that can't see the ticket's team gets a 404, as for a live ticket."""
+    rest of its history in `related` (time logged, tasks, approvals, links, side
+    conversations, Jira issues, emails sent and the Cevanos chat). The type's, team's and
+    assignee's names are as they were when it was archived. A role that can't see the
+    ticket's team gets a 404, as for a live ticket."""
     require(caller, Action.read_ticket)
     async with workspace_session(sm, caller.workspace_id) as s:
         r = await repo.get(s, ticket_id)
@@ -204,9 +226,9 @@ async def get(sm: Sessionmaker, caller: Caller, ticket_id: UUID) -> ArchivedTick
         files.setdefault(f.get("message_id"), []).append(shown)  # never the storage key
         every.append(shown)
     ticket = r["ticket"]
-    history: dict[str, Any] = {k: _shown(k, (r["related"] or {}).get(k)) for k in SHOWN}
     return ArchivedTicket(
         **_summary(r),
+        type_name=ticket.get("type_name"),
         tags=list(ticket.get("tags") or []),
         fields=dict(ticket.get("fields") or {}),
         messages=[
@@ -222,7 +244,7 @@ async def get(sm: Sessionmaker, caller: Caller, ticket_id: UUID) -> ArchivedTick
         ],
         files=every,
         rating=_rating(r["rating"]),
-        **history,
+        related=_related(r["related"], ticket),
     )
 
 

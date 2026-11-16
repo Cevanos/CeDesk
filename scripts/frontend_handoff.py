@@ -165,8 +165,8 @@ SCREENS: list[Screen] = [
         "- New ticket: `POST /tickets` (type, its fields, team, assignee, tags). The "
         "ticket types and their fields come from `GET /ticket-types`.\n"
         "- A team-only role only ever gets its team's tickets; nothing to filter on your "
-        "side. With the archive PR, resolved tickets older than the archive age (default "
-        "120 days) leave the list: see Archive.",
+        "side. Resolved tickets older than the archive age (default 120 days) leave the "
+        "list: see Archive.",
         exact("GET /tickets", "POST /tickets"),
     ),
     Screen(
@@ -217,9 +217,9 @@ SCREENS: list[Screen] = [
     Screen(
         "Ticket page: side conversations, Jira, orders and payments",
         "- Side conversations (agents only, never shown to the customer): by email "
-        "(addresses), or *(Slack PR)* in a Slack channel (needs the Slack side conversations "
-        "app). Replies come back to the same side conversation, and the assignee gets a "
-        "`side_reply` notification. *(Slack PR)* `via` says `email` or `slack`.\n"
+        "(addresses), or in a Slack channel (needs the Slack side conversations app). "
+        "Replies come back to the same side conversation, and the assignee gets a "
+        "`side_reply` notification. `via` says `email` or `slack`.\n"
         "- Jira: create an issue from the ticket or link an existing one.\n"
         "- Orders and payments cards: `available: false` comes with a `message` to show "
         "(not installed, Cevanos connected, provider down); the ticket still works.",
@@ -237,8 +237,18 @@ SCREENS: list[Screen] = [
     Screen(
         "Archive",
         "- Old resolved tickets live here: search by number (`1042` or `T-1042`) or by "
-        "customer (`email`, `contact_id`); open one read only (messages, files' names, "
-        "rating). No reply, change or reopen.",
+        "customer (`email`, `contact_id`); open one read only. No reply, change or "
+        "reopen. A team-only role gets a 404 for another team's, as for a live ticket.\n"
+        "- The page: `type_name`, `team_name` and `assignee_name` (as they were when "
+        "archived), tags, fields, messages (notes too, with an email's headers), files' "
+        "names and the rating. The rest of its history is in `related`, one list per "
+        "kind: `time_log`, `tasks`, `approvals`, `links` (the other ticket's `label` and "
+        "`ticket_id`), `side_conversations` (with their `messages`), `jira_issues`, "
+        "`emails` (sent from it) and `cevanos_chat` (a handover's chat, or null). Fields "
+        "are named as on a live ticket, so the same components can show both.\n"
+        "- An email that carried a secret (a reset link) has `sensitive: true` and "
+        '`body_text: null`: show "Not kept: it carried a secret".\n'
+        "- Tickets archived before `related` was kept have empty lists.",
         starts("/archive/tickets"),
     ),
     Screen(
@@ -306,8 +316,8 @@ SCREENS: list[Screen] = [
     Screen(
         "Settings: apps, API keys, webhooks, Cevanos",
         "- Apps: `GET /apps` lists each app with what to ask for: `settings_fields`, "
-        "`credential` (the credential to ask for; *(Calendly PR)* null when the app needs "
-        "none) and *(Slack PR)* `second_credential` (Slack side conversations: "
+        "`credential` (the credential to ask for; null when the app needs none) and "
+        "`second_credential` (Slack side conversations: "
         "`signing_secret`). Credentials are never shown again, only "
         "`secret_hint`. `blocked` explains why an app can't be installed here.\n"
         "- API keys and webhook secrets are shown **once**, on creation: say so.\n"
@@ -352,7 +362,7 @@ SCREENS: list[Screen] = [
         "- `POST /tickets/{id}/mobile-reply`: one tap; accepts a waiting chat first; a "
         "light agent's text is saved as a note (`saved_as`). Everything else uses the "
         "web routes.\n"
-        "- *(push PR)* `POST /me/devices` registers the phone for push banners after "
+        "- `POST /me/devices` registers the phone for push banners after "
         "sign-in; `DELETE /me/devices/{id}` on sign-out; `GET /me/devices` lists them and "
         "says whether push is on for this server.",
         exact(
@@ -415,8 +425,9 @@ def render(placed: dict[str, list[Route]], prs: list[tuple[str, Path]]) -> str:
     total = sum(len(v) for v in placed.values())
     pending = sum(1 for v in placed.values() for r in v if r.pr)
     parts = [INTRO]
-    parts.append(f"\n**{total} routes** ({pending} in PRs waiting for review: "
-                 f"{', '.join(label for label, _ in prs) or 'none'}).\n")  # fmt: skip
+    labels = ", ".join(label for label, _ in prs)
+    waiting = f" ({pending} in PRs waiting for review: {labels})" if prs else ", all on `main`"
+    parts.append(f"\n**{total} routes**{waiting}.\n")
     parts.append("\n## 2. Screens\n")
     for n, screen in enumerate(SCREENS, start=1):
         rows = sorted(placed[screen.title], key=lambda r: (r.path, ORDER[r.method]))
