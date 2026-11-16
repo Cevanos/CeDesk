@@ -700,7 +700,13 @@ async def test_a_governance_hold_is_decided_here_and_told_to_cevanos(
     assert no.status_code == 403
 
     # Cevanos down at first: retried; then told once, with the decision and who made it.
-    done = ok(await cv.post(decide, headers=w["admin"],
+    # A Supervisor can approve (no Admin needed): nobody was named for a hold.
+    token = w["admin"]["Authorization"].split()[1]
+    await add(cv, token, "sup@example.com", "supervisor", "Sunil")
+    sup = bearer(await sign_in(cv, w["slug"], "sup@example.com"))
+    assert [a["id"] for a in ok(await cv.get("/api/v1/approvals/waiting", headers=sup))] == [
+        hold["id"]]  # fmt: skip
+    done = ok(await cv.post(decide, headers=sup,
                             json={"decision": "approve", "note": "Within policy"}))  # fmt: skip
     assert done["state"] == "approved"
     world.fail["hold_decision"] = CevanosError("Cevanos answered 503", permanent=False,
@@ -713,9 +719,9 @@ async def test_a_governance_hold_is_decided_here_and_told_to_cevanos(
     await deliver(cv, app_sessionmaker)
     [(_, hold_id, sent)] = [c for c in world.calls if c[0] == "hold_decision"]
     assert hold_id == "hold_42" and sent["key"]
-    assert (sent["decision"], sent["note"], sent["by"]) == ("approved", "Within policy", "Admin")
+    assert (sent["decision"], sent["note"], sent["by"]) == ("approved", "Within policy", "Sunil")
     lines = [m["body"] for m in ok(await cv.get(f"{T}/{t['id']}", headers=w["admin"]))["messages"]]
-    decided = ("Approved by Admin: Refund 499.00 INR (Cevanos Governance hold) · Within "
+    decided = ("Approved by Sunil: Refund 499.00 INR (Cevanos Governance hold) · Within "
                "policy · sending it to Cevanos")  # fmt: skip
     assert decided in lines and "Cevanos was told: approved" in lines
 
