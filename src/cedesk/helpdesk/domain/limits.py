@@ -50,6 +50,9 @@ DEFAULT_PLANS: dict[str, Plan] = {
 MIN_RETENTION_DAYS = 30
 MAX_RETENTION_DAYS = 3650
 RETENTION_BATCH = 500
+KEEP_EXPORT_DAYS = 30
+"""A retention export (O2: the tickets retention deleted, written first when the Admin
+asks) is kept this long for the Admin to download, then deleted."""
 
 
 class BadPlans(ValueError):

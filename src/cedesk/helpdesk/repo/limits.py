@@ -63,7 +63,8 @@ async def storage_bytes(session: AsyncSession) -> int:
 async def retention(session: AsyncSession) -> RowMapping | None:
     result = await session.execute(
         text(
-            "SELECT r.closed_ticket_days, r.updated_at, m.name AS updated_by_name "
+            "SELECT r.closed_ticket_days, r.export_before_delete, r.updated_at, "
+            "m.name AS updated_by_name "
             "FROM hd_retention r LEFT JOIN member m ON m.id = r.updated_by"
         )
     )
@@ -71,16 +72,24 @@ async def retention(session: AsyncSession) -> RowMapping | None:
 
 
 async def save_retention(
-    session: AsyncSession, workspace_id: UUID, days: int | None, by: UUID
+    session: AsyncSession,
+    workspace_id: UUID,
+    days: int | None,
+    by: UUID,
+    *,
+    export: bool | None = None,
 ) -> None:
+    """`export` None keeps the saved switch (off the first time)."""
     await session.execute(
         text(
-            "INSERT INTO hd_retention (workspace_id, closed_ticket_days, updated_by) "
-            "VALUES (:ws, :days, :by) ON CONFLICT (workspace_id) DO UPDATE SET "
+            "INSERT INTO hd_retention (workspace_id, closed_ticket_days, updated_by, "
+            "export_before_delete) VALUES (:ws, :days, :by, coalesce(:export, false)) "
+            "ON CONFLICT (workspace_id) DO UPDATE SET "
             "closed_ticket_days = EXCLUDED.closed_ticket_days, "
+            "export_before_delete = coalesce(:export, hd_retention.export_before_delete), "
             "updated_by = EXCLUDED.updated_by, updated_at = now()"
         ),
-        {"ws": workspace_id, "days": days, "by": by},
+        {"ws": workspace_id, "days": days, "by": by, "export": export},
     )
 
 
@@ -129,3 +138,92 @@ async def delete_tickets(session: AsyncSession, ticket_ids: Sequence[UUID]) -> i
         {"ids": list(ticket_ids)},
     )
     return int(result.rowcount or 0)  # type: ignore[attr-defined]
+
+
+# ---- export before delete (O2) -------------------------------------------------------
+
+
+async def tickets_for_export(session: AsyncSession, ids: Sequence[UUID]) -> Sequence[RowMapping]:
+    """As the privacy export reads a ticket, with its customer."""
+    result = await session.execute(
+        text(
+            "SELECT t.id, t.number, t.subject, t.status, t.priority, t.channel, t.fields, "
+            "t.tags, t.created_at, t.resolved_at, ty.name AS type_name, t.contact_id, "
+            "c.email AS contact_email, c.name AS contact_name "
+            "FROM hd_ticket t LEFT JOIN hd_ticket_type ty ON ty.id = t.type_id "
+            "LEFT JOIN hd_contact c ON c.id = t.contact_id "
+            "WHERE t.id = ANY(:ids) ORDER BY t.number"
+        ),
+        {"ids": list(ids)},
+    )
+    return result.mappings().all()
+
+
+async def ratings_for_export(session: AsyncSession, ids: Sequence[UUID]) -> Sequence[RowMapping]:
+    result = await session.execute(
+        text(
+            "SELECT ticket_id, score, comment, source, rated_at FROM hd_csat "
+            "WHERE ticket_id = ANY(:ids) ORDER BY rated_at"
+        ),
+        {"ids": list(ids)},
+    )
+    return result.mappings().all()
+
+
+async def insert_export(
+    session: AsyncSession,
+    workspace_id: UUID,
+    *,
+    export_id: UUID,
+    key: str,
+    tickets: int,
+    size: int,
+    contact_ids: Sequence[UUID],
+    expires_at: datetime,
+) -> None:
+    await session.execute(
+        text(
+            "INSERT INTO hd_retention_export (id, workspace_id, object_key, tickets, size, "
+            "contact_ids, expires_at) VALUES (:id, :ws, :key, :tickets, :size, "
+            "CAST(:contacts AS uuid[]), :expires)"
+        ),
+        {
+            "id": export_id,
+            "ws": workspace_id,
+            "key": key,
+            "tickets": tickets,
+            "size": size,
+            "contacts": [str(c) for c in contact_ids],
+            "expires": expires_at,
+        },
+    )
+
+
+_EXPORT = "SELECT id, object_key, tickets, size, created_at, expires_at FROM hd_retention_export "
+
+
+async def exports(session: AsyncSession, limit: int) -> Sequence[RowMapping]:
+    result = await session.execute(
+        text(_EXPORT + "ORDER BY created_at DESC, id DESC LIMIT :limit"), {"limit": limit}
+    )
+    return result.mappings().all()
+
+
+async def export(session: AsyncSession, export_id: UUID) -> RowMapping | None:
+    result = await session.execute(text(_EXPORT + "WHERE id = :id"), {"id": export_id})
+    return result.mappings().first()
+
+
+async def expired_exports(session: AsyncSession, now: datetime) -> Sequence[RowMapping]:
+    result = await session.execute(text(_EXPORT + "WHERE expires_at <= :now"), {"now": now})
+    return result.mappings().all()
+
+
+async def forget_export(session: AsyncSession, export_id: UUID) -> None:
+    await session.execute(text("DELETE FROM hd_retention_export WHERE id = :id"), {"id": export_id})
+
+
+async def exports_naming(session: AsyncSession, contact_id: UUID) -> Sequence[RowMapping]:
+    """The retention exports that hold this customer's tickets (privacy erase)."""
+    result = await session.execute(text(_EXPORT + "WHERE :c = ANY(contact_ids)"), {"c": contact_id})
+    return result.mappings().all()

@@ -10,13 +10,13 @@ Erase: the words that could identify the customer are replaced and their files a
 deleted from storage; every row stays, so ticket counts, reply times, ratings and time
 logged are unchanged. The stored files go first (as in core-api's erasure.py): if the
 erase then fails, nothing in the database changed and running it again finds the same
-keys (deleting a missing key is not an error). A chat kept in Cevanos must be erased in
-Cevanos too.
+keys (deleting a missing key is not an error). A retention export (md O2) that holds the
+customer's tickets is deleted whole (one file names many customers). A chat kept in
+Cevanos must be erased in Cevanos too.
 """
 
 import json
 from collections.abc import Sequence
-from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID, uuid4
@@ -27,9 +27,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from cedesk.db import workspace_session
 from cedesk.helpdesk.domain.audit import Area
 from cedesk.helpdesk.domain.auth import Caller
+from cedesk.helpdesk.domain.exports import ExportFile, archived_export, export_tickets, when
 from cedesk.helpdesk.domain.permissions import Action
 from cedesk.helpdesk.repo import archive as archive_repo
 from cedesk.helpdesk.repo import auth as auth_repo
+from cedesk.helpdesk.repo import limits as limits_repo
 from cedesk.helpdesk.repo import privacy as repo
 from cedesk.helpdesk.repo.privacy import ERASED, ERASED_NAME
 from cedesk.helpdesk.service import audit
@@ -65,10 +67,6 @@ async def _contact(s: AsyncSession, contact_id: UUID | None, email: str | None) 
     return row
 
 
-def _when(value: datetime | None) -> str | None:
-    return value.astimezone(UTC).isoformat() if value else None
-
-
 def build_export(
     contact: RowMapping,
     tickets: Sequence[RowMapping],
@@ -79,25 +77,8 @@ def build_export(
     workspace: str,
     now: datetime,
 ) -> dict[str, Any]:
-    by_ticket: dict[UUID, list[dict[str, Any]]] = {t["id"]: [] for t in tickets}
-    files_by_message: dict[UUID | None, list[dict[str, Any]]] = {}
-    for f in files:
-        files_by_message.setdefault(f["message_id"], []).append(
-            {"name": f["name"], "size": f["size"], "type": f["mime"]}
-        )
-    for m in messages:
-        by_ticket[m["ticket_id"]].append(
-            {
-                "at": _when(m["created_at"]),
-                "kind": m["kind"],
-                "from": m["member_name"] or m["author_name"],
-                "text": m["body"],
-                "files": files_by_message.get(m["id"], []),
-            }
-        )
-    rating_of = {r["ticket_id"]: r for r in ratings}
     return {
-        "exported_at": _when(now),
+        "exported_at": when(now),
         "workspace": workspace,
         "about": "Everything this help desk holds about one customer. Messages of kind "
         "'note' are the team's internal notes.",
@@ -106,78 +87,11 @@ def build_export(
             "email": contact["email"],
             "name": contact["name"],
             "vip": contact["vip"],
-            "customer_since": _when(contact["customer_since"]),
-            "first_contact": _when(contact["created_at"]),
-            "erased_at": _when(contact["erased_at"]),
+            "customer_since": when(contact["customer_since"]),
+            "first_contact": when(contact["created_at"]),
+            "erased_at": when(contact["erased_at"]),
         },
-        "tickets": [
-            {
-                "number": t["number"],
-                "subject": t["subject"],
-                "status": t["status"],
-                "priority": t["priority"],
-                "channel": t["channel"],
-                "type": t["type_name"],
-                "fields": t["fields"],
-                "tags": list(t["tags"]),
-                "created_at": _when(t["created_at"]),
-                "resolved_at": _when(t["resolved_at"]),
-                "messages": by_ticket[t["id"]],
-                "rating": (
-                    {
-                        "score": rating_of[t["id"]]["score"],
-                        "comment": rating_of[t["id"]]["comment"],
-                        "rated_at": _when(rating_of[t["id"]]["rated_at"]),
-                    }
-                    if t["id"] in rating_of
-                    else None
-                ),
-            }
-            for t in tickets
-        ],
-    }
-
-
-def archived_export(a: RowMapping) -> dict[str, Any]:
-    """An archived ticket (md O3) in the export's ticket shape, marked `archived`."""
-    ticket = a["ticket"]
-    files: dict[Any, list[dict[str, Any]]] = {}
-    for f in a["files"]:
-        files.setdefault(f.get("message_id"), []).append(
-            {"name": f.get("name"), "size": f.get("size"), "type": f.get("mime")}
-        )
-    rating = a["rating"]
-    return {
-        "number": a["number"],
-        "subject": a["subject"],
-        "status": a["status"],
-        "priority": a["priority"],
-        "channel": a["channel"],
-        "type": ticket.get("type_name"),
-        "fields": ticket.get("fields") or {},
-        "tags": list(ticket.get("tags") or []),
-        "created_at": _when(a["created_at"]),
-        "resolved_at": _when(a["resolved_at"]),
-        "archived": True,
-        "messages": [
-            {
-                "at": m.get("created_at"),
-                "kind": m.get("kind"),
-                "from": m.get("author_name"),
-                "text": m.get("body"),
-                "files": files.get(m.get("id"), []),
-            }
-            for m in a["messages"]
-        ],
-        "rating": (
-            {
-                "score": rating.get("score"),
-                "comment": rating.get("comment"),
-                "rated_at": rating.get("rated_at"),
-            }
-            if rating
-            else None
-        ),
+        "tickets": export_tickets(tickets, messages, files, ratings),
     }
 
 
@@ -237,12 +151,6 @@ async def export(
     return row
 
 
-@dataclass(frozen=True)
-class ExportFile:
-    name: str
-    data: bytes
-
-
 async def export_file(
     sm: Sessionmaker, store: ObjectStore, caller: Caller, request_id: UUID
 ) -> ExportFile:
@@ -278,6 +186,9 @@ async def erase(
         ids = await repo.ticket_ids(s, contact_id)
         keys = await repo.file_keys(s, ids) + await repo.export_keys(s, contact_id)
         keys += await archive_repo.file_keys(s, contact_id)  # archived tickets (md O3)
+        # Retention exports (md O2) that hold their tickets go whole: one file names many.
+        retained = await limits_repo.exports_naming(s, contact_id)
+        keys += [str(r["object_key"]) for r in retained]
         for key in keys:  # first: see the module note
             await store.delete(key)
         counts = await repo.erase_tickets(s, ids)
@@ -286,6 +197,9 @@ async def erase(
         )
         counts |= await repo.erase_contact(s, contact_id, str(contact["email"]))
         counts["exports"] = await repo.forget_exports(s, contact_id)
+        for r in retained:
+            await limits_repo.forget_export(s, r["id"])
+        counts["retention_exports"] = len(retained)
         await repo.insert_request(
             s, caller.workspace_id, request_id=request_id, kind="erase",
             contact_id=contact_id, requested_by=caller.member_id, counts=counts,

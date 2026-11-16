@@ -3,6 +3,7 @@ means no limits; a plan's agents, tickets a month and storage give 402 (light ag
 customers' own requests are never refused); self-hosted has no limits; retention deletes
 resolved tickets and their files after N days, capped by the plan, and audits it."""
 
+import json
 from collections.abc import AsyncIterator, Iterator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -241,3 +242,125 @@ async def test_retention_counts_imported_tickets_from_their_import(
         kept = (await s.execute(text("SELECT count(*) FROM hd_outbox WHERE ticket_id = :t"),
                                 {"t": UUID(imported["id"])})).scalar_one()  # fmt: skip
     assert (events, hooks) == (0, 0) and kept >= 1
+
+
+R = "/api/v1/retention"
+
+
+class BrokenStore:
+    """Writing fails: retention must then delete nothing."""
+
+    def __init__(self, store: Any) -> None:
+        self.store = store
+
+    async def put(self, key: str, data: bytes, *, content_type: str) -> None:
+        raise OSError("disk full")
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self.store, name)
+
+
+async def test_retention_exports_before_it_deletes(
+    client: AsyncClient, app_sessionmaker: Sm, files: Path
+) -> None:
+    """O2: with export before delete on, the tickets retention deletes (live and archived)
+    are first written to a JSON file an Admin downloads for 30 days; erasing a customer
+    deletes the files that hold them; without storage, or when writing fails, nothing is
+    deleted."""
+    sm = app_sessionmaker
+    w = await desk(client, sm)
+    on = ok(await client.put(R, headers=w["h"], json={"closed_ticket_days": 90,
+                                                      "export_before_delete": True}))  # fmt: skip
+    assert on["export_before_delete"] is True
+    assert ok(await client.put(R, headers=w["h"], json={"closed_ticket_days": 90}))[
+        "export_before_delete"] is True  # left out: kept  # fmt: skip
+
+    old, archived = [ok(await ticket(client, w, s), 201) for s in ("Old parcel", "Older")]
+    plain = {**w["h"], "Content-Type": "text/plain"}
+    url = f"{T}/{old['id']}"
+    label = ok(await client.post(f"{url}/attachments", params={"name": "label.txt"},
+                                 content=b"label", headers=plain), 201)  # fmt: skip
+    for kind, body, sent in (("reply", "Found it", [label["id"]]),
+                             ("note", "Courier was late", [])):  # fmt: skip
+        said = {"kind": kind, "body": body, "attachment_ids": sent}
+        ok(await client.post(f"{url}/messages", headers=w["h"], json=said), 201)
+    now = datetime.now(UTC)
+    async with workspace_session(sm, w["ws"]) as s:
+        for t, ago in ((old, 100), (archived, 200)):
+            await s.execute(text("UPDATE hd_ticket SET status = 'resolved', resolved_at = :at "
+                                 "WHERE id = :id"), {"at": now - timedelta(days=ago),
+                                                      "id": UUID(t["id"])})  # fmt: skip
+    from cedesk.helpdesk.service import archive
+
+    assert await archive.archive_workspace(sm, w["ws"], now) == 1  # "Older" (200 days)
+    store = client._transport.app.state.store  # type: ignore[attr-defined]
+
+    # No storage, or writing fails: nothing is deleted (never without the export asked).
+    assert await limits.run_retention(sm, None) == 0
+    with pytest.raises(OSError):
+        await limits.run_retention(sm, BrokenStore(store))
+    ok(await client.get(f"{T}/{old['id']}", headers=w["h"]))
+    assert stored_files(files) == 1
+
+    assert await limits.run_retention(sm, store) == 2
+    assert (await client.get(f"{T}/{old['id']}", headers=w["h"])).status_code == 404
+    exports = ok(await client.get(f"{R}/exports", headers=w["h"]))
+    assert sorted(e["tickets"] for e in exports) == [1, 1]
+    assert all(e["expires_at"] > e["created_at"] for e in exports)
+    assert stored_files(files) == 2  # the two exports; the ticket's file went
+    got: list[dict[str, Any]] = []
+    for e in exports:
+        r = await client.get(f"{R}/exports/{e['id']}/file", headers=w["h"])
+        assert r.status_code == 200 and "attachment" in r.headers["content-disposition"]
+        got += json.loads(r.content)["tickets"]
+    by_subject = {t["subject"]: t for t in got}
+    live = by_subject["Old parcel"]
+    assert live["customer"]["email"] == "priya@example.org"
+    assert {m["text"] for m in live["messages"]} >= {"Found it", "Courier was late"}
+    assert [f["name"] for m in live["messages"] for f in m["files"]] == ["label.txt"]
+    assert by_subject["Older"]["archived"] is True
+    page = ok(await client.get("/api/v1/audit", headers=w["h"], params={"area": "retention"}))
+    assert {"deleted", "downloaded"} <= {e["action"] for e in page["entries"]}
+    deleted = next(e for e in page["entries"] if e["action"] == "deleted")
+    assert deleted["detail"]["exports"] == 2
+
+    # Admins only (they hold customer data).
+    await add(client, w["token"], "neha@example.com", "agent", "Neha")
+    agent = bearer(await sign_in(client, w["slug"], "neha@example.com"))
+    assert (await client.get(f"{R}/exports", headers=agent)).status_code == 403
+    first = exports[0]["id"]
+    assert (await client.get(f"{R}/exports/{first}/file", headers=agent)).status_code == 403
+
+    # Erasing the customer deletes every export that holds her tickets.
+    erase = {"contact_id": old["contact"]["id"], "confirm_email": "priya@example.org"}
+    done = ok(await client.post("/api/v1/privacy/erase", headers=w["h"], json=erase), 201)
+    assert done["counts"]["retention_exports"] == 2
+    assert ok(await client.get(f"{R}/exports", headers=w["h"])) == []
+    assert stored_files(files) == 0
+
+
+async def test_retention_exports_expire(
+    client: AsyncClient, app_sessionmaker: Sm, files: Path
+) -> None:
+    sm = app_sessionmaker
+    w = await desk(client, sm)
+    ok(await client.put(R, headers=w["h"], json={"closed_ticket_days": 30,
+                                                 "export_before_delete": True}))  # fmt: skip
+    made = ok(await ticket(client, w, "Old"), 201)
+    async with workspace_session(sm, w["ws"]) as s:
+        await s.execute(text("UPDATE hd_ticket SET status = 'resolved', resolved_at = :at "
+                             "WHERE id = :id"), {"at": datetime.now(UTC) - timedelta(days=40),
+                                                  "id": UUID(made["id"])})  # fmt: skip
+    store = client._transport.app.state.store  # type: ignore[attr-defined]
+    assert await limits.run_retention(sm, store) == 1
+    assert await limits.remove_expired_retention_exports(sm, store) == 0  # 30 days yet
+    async with workspace_session(sm, w["ws"]) as s:
+        expired = "UPDATE hd_retention_export SET expires_at = now() - interval '1 minute'"
+        await s.execute(text(expired))
+    assert await limits.remove_expired_retention_exports(sm, store) == 1
+    assert ok(await client.get(f"{R}/exports", headers=w["h"])) == []
+    assert stored_files(files) == 0
+    # Turned off: deletes without a file.
+    off = ok(await client.put(R, headers=w["h"], json={"closed_ticket_days": 30,
+                                                       "export_before_delete": False}))  # fmt: skip
+    assert off["export_before_delete"] is False
