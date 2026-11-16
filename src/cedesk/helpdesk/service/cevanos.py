@@ -25,6 +25,7 @@ from enum import StrEnum
 from typing import Any
 from uuid import UUID
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cedesk.cevanos_client import Cevanos, CevanosApi, CevanosError
@@ -468,7 +469,34 @@ async def _handover(
             await _line(s, ws, ticket_id, f"The chat couldn't be read from Cevanos: {unread}")
         # Its assignee, else the team's Available agents, hear of it (bell and phone).
         await push.tell_handover(s, ws, ticket_id, int(view.ticket["number"]))
+    await _real_customer(sm, link, ticket_id, conversation_id)
     return Received(Outcome.created, ticket_id)
+
+
+async def _real_customer(sm: Sessionmaker, link: Link, ticket_id: UUID, conversation: str) -> None:
+    """AI6: the chat's real customer instead of "Chat customer" at `@cevanos.invalid`.
+    Their email already known here: the ticket joins that customer (their history in one
+    place). Else the placeholder takes the name and email. Best effort, in its own
+    transaction after the handover is saved: a Cevanos that fails, a chat without a
+    contact, or the same email saved at the same moment keeps the placeholder."""
+    try:
+        found = ai_rules.contact(await link.api.conversation(conversation))
+    except (CevanosError, ai_rules.BadAnswer):
+        return
+    if found is None or (found.email is None and found.name is None):
+        return
+    try:
+        async with workspace_session(sm, link.workspace_id) as s:
+            placeholder = await repo.placeholder_contact(s, ticket_id, rules.CONTACT_DOMAIN)
+            if placeholder is None:
+                return
+            known = await repo.contact_with_email(s, found.email) if found.email else None
+            if known is not None and known != placeholder:
+                await repo.move_ticket_to(s, ticket_id, known, placeholder)
+            else:
+                await repo.name_contact(s, placeholder, email=found.email, name=found.name)
+    except IntegrityError:
+        logger.info("cevanos contact kept", extra={"event": "cevanos"})
 
 
 async def _again(
