@@ -24,8 +24,8 @@ notifications) uses the ordinary routes. Same rights and team scope as the web a
   `Idempotency-Key` is honoured, so a double tap with one key sends once. 403 on another
   team's ticket (view only), 404 on an unknown one.
 
-Push notifications to phones (device tokens, APNs/FCM) are on the md cut line: not in this
-release.
+Push notifications to phones came with this release: see "Push notifications to the mobile
+app" below.
 ## 2026-11-13: Demo and sample tickets (Phase 3, D1-D3)
 
 Three routes for sales demos and for trying CeDesk out. Admin only (a custom role with

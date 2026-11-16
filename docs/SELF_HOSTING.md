@@ -61,11 +61,11 @@ workspace our operators give a cloud plan (`cedesk set-plan`), which you never d
    API, the worker and Caddy. Check it:
 
    ```sh
-   curl https://help.example.com/readyz     # {"status":"ok","edition":"cloud"}
+   curl https://help.example.com/readyz     # {"status":"ok","edition":"self_hosted"}
    ```
 
-   (`edition` says `cloud` unless you add `CEDESK_EDITION` to the compose file; on your
-   own server it changes nothing, see above.)
+   (`edition` is `self_hosted`: `deploy/.env` sets `CEDESK_EDITION=self_hosted`, so the
+   cloud plan limits stay off.)
 
 5. Your first workspace and its Admin (asks for the Admin's password twice):
 
@@ -96,7 +96,7 @@ The API's own documentation, to try any route: `https://help.example.com/docs`.
 
 `deploy/docker-compose.yml` hands each service only the settings it lists (see the
 "In compose" column of [SETTINGS.md](SETTINGS.md)). To use another one (S3 storage, a
-longer download link, `CEDESK_EDITION`...), put it in `.env` **and** add it to the
+longer download link...), put it in `.env` **and** add it to the
 `environment:` list of both `api` and `worker`, the same way as the others:
 
 ```yaml
