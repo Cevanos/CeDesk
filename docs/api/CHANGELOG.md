@@ -3,6 +3,38 @@
 `openapi.json` next to this file is the API as served (`uv run cedesk openapi`). Every
 route is under `/api/v1`. Breaking changes only come in v2 (md 2B). Newest first.
 
+## 2026-11-16: Archived ticket page: the type and the rest of its history (Phase 3, O3)
+
+`GET /archive/tickets/{id}` now returns everything the archive keeps, typed:
+
+- `type_name`: the ticket type as it was when archived (the type may be gone).
+- `related`: one list per kind, oldest first, named as on a live ticket so the same
+  components show both:
+  - `time_log` (minutes, billable, note, member_name, logged_at)
+  - `tasks` (text, owner_name, due_at, done_at, created_at)
+  - `approvals` (what, amount, currency, state, decision_note, requester_name,
+    approver_name, decided_by_name, decided_at, created_at)
+  - `links` (the other ticket's `ticket_id`, `number`, `label`; kind, created_at)
+  - `side_conversations` (subject, via, `to`, from_address, created_at,
+    last_message_at, and `messages`: direction, author_name, from_address, body,
+    created_at)
+  - `jira_issues` (`key`, url, made_here, created_at)
+  - `emails` sent from it (from_address, to_addresses, cc_addresses, subject,
+    body_text, `sensitive`, status, sent_at, created_at)
+  - `cevanos_chat`: for a handover, the Cevanos chat it came from (conversation_id,
+    agent_id, channel_kind, `handover`: the handover card, taken_over_at, closed_at,
+    created_at); else null. Its messages are the ticket's messages. Never its polling
+    state.
+- An email that carried a secret (a reset link) has `sensitive: true` and `body_text`
+  null: it is archived without its body, and never shown even if one were kept.
+- Tickets archived before migration 0052 have empty lists and a null `cevanos_chat`.
+- Same rights and team scope as before: a team-only role gets 404 for another team's.
+
+Changed from the first version on `main` (2026-11-16, never used by the frontend): the
+lists were at the top level as untyped objects; they are now under `related`, and
+`side_conversations[].to_addresses` is `to` and `jira_issues[].issue_key` is `key`, as on
+live tickets. No migration.
+
 ## 2026-11-13: Mobile agent app: queue and one-tap reply (Phase 3, P8)
 
 Two routes for the mobile app. Everything else on a phone (the ticket screen, notes, status,
@@ -139,10 +171,10 @@ stay fast. They are still found by number or customer and open read only.
   sees its team's only.
 - `GET /archive/tickets/{id}`: read only, with everything that was on the ticket: every
   message (internal notes too; `email`: an email's headers), the files' names, sizes and
-  types (`files`, and per message), the tags, fields, the CSAT rating, and its history:
-  `time_log`, `tasks`, `approvals`, `links` (the other ticket's id, number and label),
-  `side_conversations` (with their `messages`), `jira_issues` and `emails` (sent from it;
-  `body_text` null for one that carried a secret). `team_name` and `assignee_name` are as
+  types (`files`, and per message), the tags, fields, the CSAT rating, and its history
+  (time logged, tasks, approvals, links, side conversations, Jira issues, emails sent and
+  the Cevanos chat: in `related` since 2026-11-16, see "Archived ticket page" above).
+  `team_name` and `assignee_name` are as
   they were when it was archived (the team or member may be gone). 404 when it isn't
   archived or is another team's. An archived ticket can't be changed, replied to or
   reopened; `GET /tickets/{id}` answers 404 for it.
