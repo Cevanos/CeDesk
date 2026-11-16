@@ -53,16 +53,26 @@ def _reachable() -> bool:
 
 
 async def empty_archive_async() -> None:
-    """Migration 0049 refuses to go down while tickets are archived (that would lose
-    them), and test runs leave some: emptied before a test goes below it. TRUNCATE is not
-    subject to row-level security."""
+    """Migration 0049 refuses to go down while tickets are archived, and 0053 while
+    Governance hold approvals or retention exports exist (that would lose them); test runs
+    leave some: removed before a test goes below them. TRUNCATE is not subject to
+    row-level security; the DELETE lifts it."""
     engine = make_engine(OWNER_URL)
     try:
         async with engine.begin() as conn:
             await conn.execute(
                 text(
-                    "DO $$ BEGIN IF to_regclass('hd_ticket_archive') IS NOT NULL THEN "
-                    "TRUNCATE hd_ticket_archive; END IF; END $$"
+                    "DO $$ BEGIN "
+                    "IF to_regclass('hd_ticket_archive') IS NOT NULL THEN "
+                    "TRUNCATE hd_ticket_archive; END IF; "
+                    "IF to_regclass('hd_retention_export') IS NOT NULL THEN "
+                    "TRUNCATE hd_retention_export; END IF; "
+                    "IF EXISTS (SELECT 1 FROM information_schema.columns WHERE "
+                    "table_name = 'hd_approval' AND column_name = 'cevanos_hold_id') THEN "
+                    "ALTER TABLE hd_approval NO FORCE ROW LEVEL SECURITY; "
+                    "DELETE FROM hd_approval WHERE cevanos_hold_id IS NOT NULL; "
+                    "ALTER TABLE hd_approval FORCE ROW LEVEL SECURITY; END IF; "
+                    "END $$"
                 )
             )
     finally:
