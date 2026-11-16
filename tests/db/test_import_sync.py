@@ -210,6 +210,104 @@ async def test_a_sync_brings_new_tickets_and_only_new_messages(
     await stop_all(sm, w["ws"])
 
 
+async def test_a_sync_brings_the_owner_team_and_new_tags(
+    im: AsyncClient,
+    app_sessionmaker: Sm,
+) -> None:
+    """A later assignment, team or tag in the source comes over; an owner the source doesn't
+    name (or one not in CeDesk) leaves the one here; tags are only added."""
+    sm = app_sessionmaker
+    src = Source(tickets=1)
+    w, conn = await fake_desk(im, sm, src)
+    started = ok(
+        await im.post(
+            f"{I}/connections/{conn['id']}/run",
+            headers=w["admin"],
+            json={"kinds": ["tickets"], "sync": True, "team_map": {"g1": None}},
+        ),
+        202,
+    )
+    await work(im, sm)
+    row = await sql(sm, w["ws"], "SELECT assignee_id, team_id, tags FROM hd_ticket")
+    assert row[0]["assignee_id"] is None and row[0]["team_id"] is None
+    await sql(sm, w["ws"], "UPDATE hd_ticket SET tags = tags || '{local}'")
+
+    # In the source: assigned to Asha, moved to the group mapped to Billing, tagged.
+    await sql(
+        sm, w["ws"],
+        "UPDATE hd_import_run SET options = jsonb_set(options, '{team_map}', "
+        "jsonb_build_object('g2', CAST(:team AS text))), next_run_at = now()",
+        team=str(w["team"]),
+    )  # fmt: skip
+    src.changed = [
+        Fake.ticket(0, assignee_email="asha@example.com", group_id="g2", tags=["Refund", "vip"])
+    ]
+    await work(im, sm)
+    look = (await run_state(im, w, started["id"]))["counts"]["sync"]
+    assert look["updated"] == 1 and look["new_messages"] == 0
+    row = await sql(sm, w["ws"], "SELECT assignee_id, team_id, tags FROM hd_ticket")
+    assert row[0]["assignee_id"] == w["asha_id"] and str(row[0]["team_id"]) == str(w["team"])
+    assert row[0]["tags"] == ["imported-zendesk", "local", "refund", "vip"]
+    line = await sql(
+        sm, w["ws"], "SELECT body FROM hd_message WHERE body LIKE 'Updated from%'"
+    )  # fmt: skip
+    assert [r["body"] for r in line] == [
+        "Updated from Zendesk: assigned to Asha; team g2; tags added: refund, vip"
+    ]
+
+    # The source no longer names an owner, or names one not in CeDesk: Asha stays. Tags the
+    # source dropped stay too. Nothing changed, so nothing is counted.
+    src.changed = [Fake.ticket(0, assignee_email="nobody@example.org", tags=[])]
+    await sql(sm, w["ws"], "UPDATE hd_import_run SET next_run_at = now()")
+    await work(im, sm)
+    look = (await run_state(im, w, started["id"]))["counts"]["sync"]
+    assert look["updated"] == 1
+    row = await sql(sm, w["ws"], "SELECT assignee_id, tags FROM hd_ticket")
+    assert row[0]["assignee_id"] == w["asha_id"] and "refund" in row[0]["tags"]
+    await stop_all(sm, w["ws"])
+
+
+async def test_an_import_run_again_updates_tickets_already_here(
+    im: AsyncClient,
+    app_sessionmaker: Sm,
+) -> None:
+    """Changes made in the source between two imports (with no sync on) are not lost: the
+    second import brings a ticket's new messages and status; one with nothing new is skipped."""
+    sm = app_sessionmaker
+    src = Source(tickets=2)
+    w, conn = await fake_desk(im, sm, src)
+    ok(await im.post(f"{I}/connections/{conn['id']}/run", headers=w["admin"],
+                     json={"kinds": ["tickets"]}), 202)  # fmt: skip
+    await work(im, sm)
+    at = datetime(2025, 2, 2, 8, 0, tzinfo=UTC)
+    src.tickets = [
+        Fake.ticket(
+            0, status="open", assignee_email="asha@example.com",
+            messages=[
+                Message("customer", "Hello 0", datetime(2025, 2, 1, 8, 0, tzinfo=UTC), "m0"),
+                Message("note", "Checked", at, "m0n", author_name="Old Agent"),
+            ],
+        ),
+        Fake.ticket(1),
+    ]  # fmt: skip
+    # The first run closed its connection: the Admin connects again (as in the app).
+    conn2 = ok(await im.post(f"{I}/connections", headers=w["admin"], json={
+        "source": "zendesk", "settings": {"subdomain": "acme"},
+        "credentials": {"token": "tok-secret-1234"}}), 201)  # fmt: skip
+    again = ok(await im.post(f"{I}/connections/{conn2['id']}/run", headers=w["admin"],
+                             json={"kinds": ["tickets"]}), 202)  # fmt: skip
+    await work(im, sm)
+    counts = (await run_state(im, w, again["id"]))["counts"]["tickets"]
+    assert (counts["created"], counts["updated"], counts["skipped"]) == (0, 1, 1)
+    assert counts["new_messages"] == 1
+    z0 = await sql(sm, w["ws"], "SELECT status, assignee_id FROM hd_ticket WHERE source_id = 'Z0'")
+    assert z0[0]["status"] == "open" and z0[0]["assignee_id"] == w["asha_id"]
+    notes = await sql(sm, w["ws"], "SELECT body FROM hd_message WHERE kind = 'note'")
+    assert [r["body"] for r in notes] == ["Checked"]
+    assert len(await sql(sm, w["ws"], "SELECT 1 FROM hd_ticket")) == 2
+    await stop_all(sm, w["ws"])
+
+
 async def test_sync_now_makes_the_next_look_due_and_sync_stop_ends_it(
     im: AsyncClient,
     app_sessionmaker: Sm,

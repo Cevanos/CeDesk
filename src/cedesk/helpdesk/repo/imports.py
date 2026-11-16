@@ -470,6 +470,46 @@ async def refresh_ticket(
     return bool(changed)
 
 
+async def refresh_people(
+    session: AsyncSession,
+    ticket_id: UUID,
+    *,
+    assignee_id: UUID | None,
+    team_id: UUID | None,
+    tags: Sequence[str],
+    tag_max: int,
+) -> tuple[bool, bool, list[str]]:
+    """Who a later look at the source says owns a ticket already imported, and its tags.
+    A source assignee or team that maps to CeDesk replaces the one here; none leaves it as
+    it is (nothing is cleared). Tags are only added, never removed, up to `tag_max`.
+    Returns (assignee changed, team changed, tags added)."""
+    old = (
+        (
+            await session.execute(
+                text("SELECT assignee_id, team_id, tags FROM hd_ticket WHERE id = :id FOR UPDATE"),
+                {"id": ticket_id},
+            )
+        )
+        .mappings()
+        .one()
+    )
+    have = list(old["tags"] or [])
+    added = [t for t in tags if t not in have][: max(0, tag_max - len(have))]
+    assignee = assignee_id if assignee_id is not None else old["assignee_id"]
+    team = team_id if team_id is not None else old["team_id"]
+    new_assignee = assignee != old["assignee_id"]
+    new_team = team != old["team_id"]
+    if new_assignee or new_team or added:
+        await session.execute(
+            text(
+                "UPDATE hd_ticket SET assignee_id = :assignee, team_id = :team, tags = :tags "
+                "WHERE id = :id"
+            ),
+            {"id": ticket_id, "assignee": assignee, "team": team, "tags": have + added},
+        )
+    return new_assignee, new_team, added
+
+
 async def contact_since(session: AsyncSession, contact_id: UUID, at: datetime) -> None:
     """The customer has been one since their earliest ticket, not since the import."""
     await session.execute(
