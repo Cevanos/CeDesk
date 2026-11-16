@@ -274,6 +274,22 @@ async def delete(session: AsyncSession, ticket_ids: Sequence[UUID]) -> int:
 # ---- privacy (md S11) -----------------------------------------------------------------
 
 
+async def for_export(session: AsyncSession, ids: Sequence[UUID]) -> Sequence[RowMapping]:
+    """Archived tickets as the privacy export reads them, with their customer (retention
+    export before delete, md O2)."""
+    result = await session.execute(
+        text(
+            "SELECT a.id, a.number, a.subject, a.status, a.priority, a.channel, a.created_at, "
+            "a.resolved_at, a.ticket, a.messages, a.files, a.rating, a.contact_id, "
+            "c.email AS contact_email, c.name AS contact_name FROM hd_ticket_archive a "
+            "LEFT JOIN hd_contact c ON c.id = a.contact_id WHERE a.id = ANY(:ids) "
+            "ORDER BY a.number"
+        ),
+        {"ids": list(ids)},
+    )
+    return result.mappings().all()
+
+
 async def for_contact(session: AsyncSession, contact_id: UUID) -> Sequence[RowMapping]:
     result = await session.execute(
         text(

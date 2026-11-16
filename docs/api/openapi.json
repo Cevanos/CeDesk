@@ -10199,7 +10199,7 @@
           "apps"
         ],
         "summary": "The customer's latest orders (sidebar)",
-        "description": "Read live from the Shopify app for the ticket's customer (by email), at most 5; nothing is stored. Never fails because of the shop: see `available`.",
+        "description": "Read live for the ticket's customer, at most 5; nothing is stored. With Cevanos connected, from the stores connected in Cevanos (`source: cevanos`; a store it couldn't read is named in `message`); else from the Shopify app, by email. Never fails because of the shop: see `available`.",
         "operationId": "ticket_orders_api_v1_tickets__ticket_id__orders_get",
         "security": [
           {
@@ -10248,7 +10248,7 @@
           "apps"
         ],
         "summary": "The customer's latest payments (sidebar)",
-        "description": "Read live from the Stripe app for the ticket's customer (by email), at most 5; nothing is stored. Never fails because of Stripe: see `available`.",
+        "description": "Read live for the ticket's customer, at most 5; nothing is stored. With Cevanos connected, from Cevanos (`source: cevanos`); else from the Stripe app, by email. Never fails because of the provider: see `available`.",
         "operationId": "ticket_payments_api_v1_tickets__ticket_id__payments_get",
         "security": [
           {
@@ -10912,6 +10912,84 @@
         ]
       }
     },
+    "/api/v1/retention/exports": {
+      "get": {
+        "tags": [
+          "usage and retention"
+        ],
+        "summary": "What retention wrote before deleting (Admin)",
+        "description": "One file per batch of deleted tickets, newest first, with export before delete on. Kept 30 days. Admins only: they hold customer data.",
+        "operationId": "retention_exports_api_v1_retention_exports_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RetentionExportOut"
+                  },
+                  "type": "array",
+                  "title": "Response Retention Exports Api V1 Retention Exports Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/retention/exports/{export_id}/file": {
+      "get": {
+        "tags": [
+          "usage and retention"
+        ],
+        "summary": "Download a retention export (Admin; audited)",
+        "description": "The deleted tickets as JSON: each with its customer, messages (internal notes too), files' names and rating. 409 when the file is gone.",
+        "operationId": "retention_export_file_api_v1_retention_exports__export_id__file_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "export_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Export Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/demo/seed": {
       "post": {
         "tags": [
@@ -11332,6 +11410,319 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/v1/tickets/{ticket_id}/summary": {
+      "post": {
+        "tags": [
+          "ai"
+        ],
+        "summary": "Summarise the ticket (Cevanos AI)",
+        "description": "Cevanos summarises the conversation (internal notes too; never system lines; card numbers taken out). Shown to the agent, never stored. Only when Cevanos is connected (`GET /me` `ai`); nothing is stored.",
+        "operationId": "summarise_api_v1_tickets__ticket_id__summary_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "ticket_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Ticket Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/cedesk__helpdesk__api__ai__SummaryOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "An API key (AI help is for people), or the role can't"
+          },
+          "409": {
+            "description": "`cevanos_not_connected` (connect Cevanos in Settings), `cevanos_scope_missing` (the key lacks a scope; the message names it) or `cevanos_refused`"
+          },
+          "503": {
+            "description": "Cevanos is down or slow: try again"
+          },
+          "404": {
+            "description": "No such ticket, or another team's"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tickets/{ticket_id}/draft": {
+      "post": {
+        "tags": [
+          "ai"
+        ],
+        "summary": "Suggest a reply (Cevanos AI)",
+        "description": "A suggested reply for the reply box, written from the conversation (no internal notes) by the chat's Cevanos AI agent when the ticket came from a Cevanos chat. It is **never sent by itself**: the agent edits and sends it. Needs `reply`. Only when Cevanos is connected (`GET /me` `ai`); nothing is stored.",
+        "operationId": "suggest_api_v1_tickets__ticket_id__draft_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "ticket_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Ticket Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TextOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "An API key (AI help is for people), or the role can't"
+          },
+          "409": {
+            "description": "`cevanos_not_connected` (connect Cevanos in Settings), `cevanos_scope_missing` (the key lacks a scope; the message names it) or `cevanos_refused`"
+          },
+          "503": {
+            "description": "Cevanos is down or slow: try again"
+          },
+          "404": {
+            "description": "No such ticket, or another team's"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/assist/improve": {
+      "post": {
+        "tags": [
+          "ai"
+        ],
+        "summary": "Improve the writing of a reply or note (Cevanos AI)",
+        "description": "Returns the text rewritten in the tone, for the agent to edit and send. Only when Cevanos is connected (`GET /me` `ai`); nothing is stored.",
+        "operationId": "improve_api_v1_assist_improve_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImproveIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TextOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "An API key (AI help is for people), or the role can't"
+          },
+          "409": {
+            "description": "`cevanos_not_connected` (connect Cevanos in Settings), `cevanos_scope_missing` (the key lacks a scope; the message names it) or `cevanos_refused`"
+          },
+          "503": {
+            "description": "Cevanos is down or slow: try again"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/assist/translate": {
+      "post": {
+        "tags": [
+          "ai"
+        ],
+        "summary": "Translate a message or a reply (Cevanos AI)",
+        "description": "Returns the text in `to` and the language it was in. Only when Cevanos is connected (`GET /me` `ai`); nothing is stored.",
+        "operationId": "translate_api_v1_assist_translate_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TranslateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TranslationOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "An API key (AI help is for people), or the role can't"
+          },
+          "409": {
+            "description": "`cevanos_not_connected` (connect Cevanos in Settings), `cevanos_scope_missing` (the key lacks a scope; the message names it) or `cevanos_refused`"
+          },
+          "503": {
+            "description": "Cevanos is down or slow: try again"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/reports/ai": {
+      "get": {
+        "tags": [
+          "ai"
+        ],
+        "summary": "The AI card: handover rate, AI-resolved, CSAT of AI answers (Cevanos)",
+        "description": "Read live from Cevanos for the period (default: the last 30 days), for the whole workspace. Needs `reports`. Only when Cevanos is connected (`GET /me` `ai`); nothing is stored.",
+        "operationId": "ai_report_api_v1_reports_ai_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Default: 30 days before `to`. With a time zone.",
+              "title": "From"
+            },
+            "description": "Default: 30 days before `to`. With a time zone."
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Default: now.",
+              "title": "To"
+            },
+            "description": "Default: now."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AiReportOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "An API key (AI help is for people), or the role can't"
+          },
+          "409": {
+            "description": "`cevanos_not_connected` (connect Cevanos in Settings), `cevanos_scope_missing` (the key lacks a scope; the message names it) or `cevanos_refused`"
+          },
+          "503": {
+            "description": "Cevanos is down or slow: try again"
+          },
+          "422": {
+            "description": "A bad period"
           }
         }
       }
@@ -11772,6 +12163,100 @@
         ],
         "title": "AgentTimeOut"
       },
+      "AiNumbersOut": {
+        "properties": {
+          "conversations": {
+            "type": "integer",
+            "title": "Conversations",
+            "description": "Cevanos chats in the period."
+          },
+          "handed_over": {
+            "type": "integer",
+            "title": "Handed Over",
+            "description": "Of them, handed over to a person."
+          },
+          "handover_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Handover Rate",
+            "description": "0-1; null with no chats."
+          },
+          "ai_resolved": {
+            "type": "integer",
+            "title": "Ai Resolved",
+            "description": "Resolved by the AI alone."
+          },
+          "ai_resolved_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ai Resolved Rate",
+            "description": "0-1; null with no chats."
+          },
+          "ai_csat": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ai Csat",
+            "description": "Average rating of AI answers, 1-5."
+          },
+          "ai_csat_responses": {
+            "type": "integer",
+            "title": "Ai Csat Responses"
+          }
+        },
+        "type": "object",
+        "required": [
+          "conversations",
+          "handed_over",
+          "handover_rate",
+          "ai_resolved",
+          "ai_resolved_rate",
+          "ai_csat",
+          "ai_csat_responses"
+        ],
+        "title": "AiNumbersOut"
+      },
+      "AiReportOut": {
+        "properties": {
+          "from": {
+            "type": "string",
+            "format": "date-time",
+            "title": "From"
+          },
+          "to": {
+            "type": "string",
+            "format": "date-time",
+            "title": "To"
+          },
+          "ai": {
+            "$ref": "#/components/schemas/AiNumbersOut"
+          }
+        },
+        "type": "object",
+        "required": [
+          "from",
+          "to",
+          "ai"
+        ],
+        "title": "AiReportOut"
+      },
       "App": {
         "type": "string",
         "enum": [
@@ -12037,21 +12522,52 @@
             "title": "Decision Note"
           },
           "requester_id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Requester Id"
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Requester Id",
+            "description": "Null for a Cevanos Governance hold."
           },
           "requester_name": {
-            "type": "string",
-            "title": "Requester Name"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Requester Name",
+            "description": "Null for a Cevanos Governance hold."
           },
           "approver_id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Approver Id"
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approver Id",
+            "description": "Null for a Cevanos Governance hold: anyone who can approve decides it."
           },
           "approver_name": {
-            "type": "string",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Approver Name"
           },
           "decided_by_name": {
@@ -12081,6 +12597,18 @@
             "type": "string",
             "format": "date-time",
             "title": "Created At"
+          },
+          "cevanos_hold_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cevanos Hold Id",
+            "description": "Set when Cevanos's Governance holds an action (a refund...) for this approval (md X7): the decision is sent to Cevanos, which then acts or not."
           }
         },
         "type": "object",
@@ -12099,7 +12627,8 @@
           "approver_name",
           "decided_by_name",
           "decided_at",
-          "created_at"
+          "created_at",
+          "cevanos_hold_id"
         ],
         "title": "ApprovalOut"
       },
@@ -16465,6 +16994,34 @@
         "type": "object",
         "title": "HolidayPatch"
       },
+      "ImproveIn": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "maxLength": 8000,
+            "minLength": 1,
+            "title": "Text"
+          },
+          "tone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tone",
+            "description": "One of professional, friendly, empathetic, concise; default professional."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "text"
+        ],
+        "title": "ImproveIn"
+      },
       "InboundMessageIn": {
         "properties": {
           "message": {
@@ -17105,6 +17662,12 @@
             "type": "boolean",
             "title": "Two Factor Setup Required",
             "description": "True: the workspace requires two-step sign-in and you haven't set it up; only /me, /me/2fa, /me/2fa/setup, /me/2fa/confirm and sign-out work until then.",
+            "default": false
+          },
+          "ai": {
+            "type": "boolean",
+            "title": "Ai",
+            "description": "True: the workspace has a Cevanos connection, so show the AI buttons (summary, improve, translate, suggested reply) and the AI card in Reports. False: hide them; their routes answer 409 `cevanos_not_connected`.",
             "default": false
           }
         },
@@ -18152,8 +18715,16 @@
             "title": "Description"
           },
           "url": {
-            "type": "string",
-            "title": "Url"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url",
+            "description": "The payment in Stripe; null when the store has none."
           }
         },
         "type": "object",
@@ -19592,6 +20163,45 @@
         ],
         "title": "ResultOut"
       },
+      "RetentionExportOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "tickets": {
+            "type": "integer",
+            "title": "Tickets",
+            "description": "How many tickets it holds."
+          },
+          "size": {
+            "type": "integer",
+            "title": "Size",
+            "description": "Bytes."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expires At",
+            "description": "Deleted then."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "tickets",
+          "size",
+          "created_at",
+          "expires_at"
+        ],
+        "title": "RetentionExportOut"
+      },
       "RetentionIn": {
         "properties": {
           "closed_ticket_days": {
@@ -19607,6 +20217,18 @@
             ],
             "title": "Closed Ticket Days",
             "description": "Delete resolved tickets (and their files) this many days after they were resolved; null keeps them for good. A cloud plan may cap it."
+          },
+          "export_before_delete": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Export Before Delete",
+            "description": "true: before deleting, write the tickets to a JSON file an Admin can download for 30 days (`GET /retention/exports`). Left out or null: unchanged."
           }
         },
         "additionalProperties": false,
@@ -19653,6 +20275,10 @@
             "title": "Effective Days",
             "description": "What the nightly job uses."
           },
+          "export_before_delete": {
+            "type": "boolean",
+            "title": "Export Before Delete"
+          },
           "updated_at": {
             "anyOf": [
               {
@@ -19682,6 +20308,7 @@
           "closed_ticket_days",
           "plan_history_days",
           "effective_days",
+          "export_before_delete",
           "updated_at",
           "updated_by_name"
         ],
@@ -21487,85 +22114,6 @@
         ],
         "title": "StreamTicketOut"
       },
-      "SummaryOut": {
-        "properties": {
-          "open": {
-            "type": "integer",
-            "title": "Open",
-            "description": "Open or Pending now."
-          },
-          "open_breaching": {
-            "type": "integer",
-            "title": "Open Breaching",
-            "description": "Open or Pending now and past their SLA time."
-          },
-          "created": {
-            "type": "integer",
-            "title": "Created"
-          },
-          "resolved": {
-            "type": "integer",
-            "title": "Resolved"
-          },
-          "avg_first_response_minutes": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Avg First Response Minutes",
-            "description": "Tickets created in the period: creation to the first agent reply."
-          },
-          "avg_resolution_minutes": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Avg Resolution Minutes",
-            "description": "Tickets resolved in the period: creation to resolution."
-          },
-          "first_reply_sla_met_percent": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "First Reply Sla Met Percent",
-            "description": "Of the tickets created in the period whose first-reply clock stopped or ran out, the share answered in time (business hours, as the SLA pill)."
-          },
-          "first_reply_sla_measured": {
-            "type": "integer",
-            "title": "First Reply Sla Measured",
-            "description": "How many tickets that % is out of."
-          },
-          "csat": {
-            "$ref": "#/components/schemas/CsatSummaryOut"
-          }
-        },
-        "type": "object",
-        "required": [
-          "open",
-          "open_breaching",
-          "created",
-          "resolved",
-          "avg_first_response_minutes",
-          "avg_resolution_minutes",
-          "first_reply_sla_met_percent",
-          "first_reply_sla_measured",
-          "csat"
-        ],
-        "title": "SummaryOut"
-      },
       "TargetIn": {
         "properties": {
           "priority": {
@@ -22028,7 +22576,7 @@
             "title": "Team Id"
           },
           "summary": {
-            "$ref": "#/components/schemas/SummaryOut"
+            "$ref": "#/components/schemas/cedesk__helpdesk__api__reports__SummaryOut"
           },
           "teams": {
             "items": {
@@ -22192,6 +22740,19 @@
           "allowed"
         ],
         "title": "TestIpOut"
+      },
+      "TextOut": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "title": "Text"
+          }
+        },
+        "type": "object",
+        "required": [
+          "text"
+        ],
+        "title": "TextOut"
       },
       "TicketIn": {
         "properties": {
@@ -23402,6 +23963,55 @@
         ],
         "title": "TopicOut"
       },
+      "TranslateIn": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "maxLength": 8000,
+            "minLength": 1,
+            "title": "Text"
+          },
+          "to": {
+            "type": "string",
+            "maxLength": 20,
+            "title": "To",
+            "description": "The language to translate into, as a code: en, hi, pt-BR. A ticket's `language` (from triage) says what the customer writes in."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "text",
+          "to"
+        ],
+        "title": "TranslateIn"
+      },
+      "TranslationOut": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "from": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "From",
+            "description": "The language found, e.g. hi."
+          }
+        },
+        "type": "object",
+        "required": [
+          "text",
+          "from"
+        ],
+        "title": "TranslationOut"
+      },
       "TriageSettingsIn": {
         "properties": {
           "topics": {
@@ -23960,6 +24570,19 @@
         ],
         "title": "WorkspaceOut"
       },
+      "cedesk__helpdesk__api__ai__SummaryOut": {
+        "properties": {
+          "summary": {
+            "type": "string",
+            "title": "Summary"
+          }
+        },
+        "type": "object",
+        "required": [
+          "summary"
+        ],
+        "title": "SummaryOut"
+      },
       "cedesk__helpdesk__api__cevanos__ConnectionOut": {
         "properties": {
           "connected": {
@@ -24110,6 +24733,85 @@
           "email"
         ],
         "title": "CodeBody"
+      },
+      "cedesk__helpdesk__api__reports__SummaryOut": {
+        "properties": {
+          "open": {
+            "type": "integer",
+            "title": "Open",
+            "description": "Open or Pending now."
+          },
+          "open_breaching": {
+            "type": "integer",
+            "title": "Open Breaching",
+            "description": "Open or Pending now and past their SLA time."
+          },
+          "created": {
+            "type": "integer",
+            "title": "Created"
+          },
+          "resolved": {
+            "type": "integer",
+            "title": "Resolved"
+          },
+          "avg_first_response_minutes": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avg First Response Minutes",
+            "description": "Tickets created in the period: creation to the first agent reply."
+          },
+          "avg_resolution_minutes": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avg Resolution Minutes",
+            "description": "Tickets resolved in the period: creation to resolution."
+          },
+          "first_reply_sla_met_percent": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Reply Sla Met Percent",
+            "description": "Of the tickets created in the period whose first-reply clock stopped or ran out, the share answered in time (business hours, as the SLA pill)."
+          },
+          "first_reply_sla_measured": {
+            "type": "integer",
+            "title": "First Reply Sla Measured",
+            "description": "How many tickets that % is out of."
+          },
+          "csat": {
+            "$ref": "#/components/schemas/CsatSummaryOut"
+          }
+        },
+        "type": "object",
+        "required": [
+          "open",
+          "open_breaching",
+          "created",
+          "resolved",
+          "avg_first_response_minutes",
+          "avg_resolution_minutes",
+          "first_reply_sla_met_percent",
+          "first_reply_sla_measured",
+          "csat"
+        ],
+        "title": "SummaryOut"
       },
       "cedesk__helpdesk__api__two_factor__CodeBody": {
         "properties": {

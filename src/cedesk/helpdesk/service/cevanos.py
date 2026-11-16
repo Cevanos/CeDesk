@@ -6,10 +6,15 @@
   nothing here runs and the Cevanos features stay hidden.
 - **Handover in** (`receive_event`): Cevanos's signed `conversation.escalated` webhook
   becomes a ticket with the chat copied in, waiting for Accept. Rules and routing (W8) run
-  as for any new ticket. `classified` sets the mood, `reopened` / `closed` are noted.
+  as for any new ticket. Then the chat's real customer replaces "Chat customer" (AI6),
+  and a Governance hold that came with it becomes an approval request (X7).
+  `classified` sets the mood, `reopened` / `closed` are noted.
 - **Convert** (`convert`): an agent turns a Cevanos chat into a ticket the same way.
 - **Out** (`CevanosHandler`, run by the worker after commit): Accept takes the chat over
-  in Cevanos, an agent's reply is sent into the chat, and resolving can close it.
+  in Cevanos, an agent's reply is sent into the chat, resolving can close it, and a
+  Governance hold's decision is sent to Cevanos (X7).
+- **AI features** (md 16): `open_link` gives service/ai.py the workspace's client, or a
+  409 `cevanos_not_connected`.
 - **Customer messages in** (`ChatPoller`, run by the worker): Cevanos has no event for a
   new customer message, so open chats are read every few seconds, within the key's
   60-a-minute limit, and each new customer message runs the customer-reply logic.
@@ -25,11 +30,13 @@ from enum import StrEnum
 from typing import Any
 from uuid import UUID
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cedesk.cevanos_client import Cevanos, CevanosApi, CevanosError
 from cedesk.crypto import CannotOpen
 from cedesk.db import workspace_session
+from cedesk.helpdesk.domain import ai as ai_rules
 from cedesk.helpdesk.domain import audit as audit_rules
 from cedesk.helpdesk.domain import cevanos as rules
 from cedesk.helpdesk.domain import events
@@ -40,11 +47,14 @@ from cedesk.helpdesk.domain.tickets import Channel, Status, label
 from cedesk.helpdesk.repo import auth as auth_repo
 from cedesk.helpdesk.repo import cevanos as repo
 from cedesk.helpdesk.repo import outbox
+from cedesk.helpdesk.repo import ticket_tools as tools_repo
 from cedesk.helpdesk.repo import tickets as ticket_repo
 from cedesk.helpdesk.service import audit, customer_replies, push, tickets
 from cedesk.helpdesk.service.auth import Sessionmaker
 from cedesk.helpdesk.service.delivery import Event, HandlerError
 from cedesk.helpdesk.service.errors import (
+    CevanosNotConnected,
+    CevanosRefused,
     Conflict,
     Invalid,
     NotFound,
@@ -206,9 +216,13 @@ async def check_key(sm: Sessionmaker, cevanos: Cevanos, caller: Caller) -> KeyCh
     scopes = data.get("scopes") if isinstance(data, dict) else None
     have = {str(x) for x in scopes} if isinstance(scopes, list) else set()
     missing = [x for x in rules.REQUIRED_SCOPES if x not in have]
+    for_ai = [x for x in ai_rules.AI_SCOPES if x not in have]
     if missing:
         text = "The key works but lacks " + ", ".join(missing) + "."
-        return KeyCheck(ok=False, missing_scopes=missing, message=text)
+        return KeyCheck(ok=False, missing_scopes=missing + for_ai, message=text)
+    if for_ai:  # handovers work; the AI features (md 16) answer 409 until it has them
+        text = "The key works. The AI features also need " + ", ".join(for_ai) + "."
+        return KeyCheck(ok=True, missing_scopes=for_ai, message=text)
     return KeyCheck(ok=True, missing_scopes=[], message="The key works.")
 
 
@@ -242,6 +256,17 @@ async def _open(s: AsyncSession, cevanos: Cevanos, workspace_id: UUID) -> Link:
         close_on_resolve=bool(row["close_on_resolve"]),
         team_id=row["team_id"],
     )
+
+
+async def open_link(s: AsyncSession, cevanos: Cevanos, workspace_id: UUID) -> Link:
+    """For the AI features (md 16): 409 `cevanos_not_connected` without a connection,
+    409 `cevanos_refused` when the saved key can't be read."""
+    try:
+        return await _open(s, cevanos, workspace_id)
+    except NotFound:
+        raise CevanosNotConnected(ai_rules.NOT_CONNECTED) from None
+    except Invalid as exc:
+        raise CevanosRefused(exc.message) from None
 
 
 async def _line(s: AsyncSession, workspace_id: UUID, ticket_id: UUID, body: str) -> None:
@@ -309,8 +334,15 @@ async def receive_event(
     if event.event == "conversation.escalated":
         if rules.is_echo(event):
             return Received(Outcome.ignored)  # someone took it over in Cevanos (or us)
+        try:
+            held = rules.hold(event)
+        except rules.BadEvent as exc:
+            raise Invalid(str(exc)) from exc
         handover = rules.handover(event)
-        return await _handover(sm, link, conversation_id, handover, event_id=event.event_id)
+        received = await _handover(sm, link, conversation_id, handover, event_id=event.event_id)
+        if held is not None and received.ticket_id is not None:
+            await _hold(sm, workspace_id, received.ticket_id, held)
+        return received
     async with workspace_session(sm, workspace_id) as s:
         chat = await repo.chat_by_conversation(s, conversation_id)
         if chat is None:
@@ -450,7 +482,48 @@ async def _handover(
             await _line(s, ws, ticket_id, f"The chat couldn't be read from Cevanos: {unread}")
         # Its assignee, else the team's Available agents, hear of it (bell and phone).
         await push.tell_handover(s, ws, ticket_id, int(view.ticket["number"]))
+    await _real_customer(sm, link, ticket_id, conversation_id)
     return Received(Outcome.created, ticket_id)
+
+
+async def _hold(sm: Sessionmaker, ws: UUID, ticket_id: UUID, held: rules.Hold) -> None:
+    """X7: a Governance hold becomes an approval request on the ticket, once (the same
+    handover delivered again adds nothing)."""
+    what = rules.hold_what(held)
+    async with workspace_session(sm, ws) as s:
+        made = await tools_repo.insert_hold(
+            s, ws, ticket_id=ticket_id, hold_id=held.id, what=what,
+            amount=held.amount, currency=held.currency,
+        )  # fmt: skip
+        if made is not None:
+            await _line(s, ws, ticket_id, f"Cevanos asks for approval: {what}. Approve or "
+                        "reject it here; the decision goes to Cevanos.")  # fmt: skip
+
+
+async def _real_customer(sm: Sessionmaker, link: Link, ticket_id: UUID, conversation: str) -> None:
+    """AI6: the chat's real customer instead of "Chat customer" at `@cevanos.invalid`.
+    Their email already known here: the ticket joins that customer (their history in one
+    place). Else the placeholder takes the name and email. Best effort, in its own
+    transaction after the handover is saved: a Cevanos that fails, a chat without a
+    contact, or the same email saved at the same moment keeps the placeholder."""
+    try:
+        found = ai_rules.contact(await link.api.conversation(conversation))
+    except (CevanosError, ai_rules.BadAnswer):
+        return
+    if found is None or (found.email is None and found.name is None):
+        return
+    try:
+        async with workspace_session(sm, link.workspace_id) as s:
+            placeholder = await repo.placeholder_contact(s, ticket_id, rules.CONTACT_DOMAIN)
+            if placeholder is None:
+                return
+            known = await repo.contact_with_email(s, found.email) if found.email else None
+            if known is not None and known != placeholder:
+                await repo.move_ticket_to(s, ticket_id, known, placeholder)
+            else:
+                await repo.name_contact(s, placeholder, email=found.email, name=found.name)
+    except IntegrityError:
+        logger.info("cevanos contact kept", extra={"event": "cevanos"})
 
 
 async def _again(
@@ -504,7 +577,7 @@ class CevanosHandler:
     name = "cevanos"
     events = frozenset(
         {events.Event.handover_accepted.value, events.Event.message_created.value,
-         events.Event.ticket_resolved.value}
+         events.Event.ticket_resolved.value, events.Event.approval_decided.value}
     )  # fmt: skip
 
     def __init__(self, sm: Sessionmaker, cevanos: Cevanos) -> None:
@@ -513,6 +586,9 @@ class CevanosHandler:
 
     async def handle(self, event: Event, effect_key: str) -> None:
         if event.ticket_id is None:
+            return
+        if event.event == events.Event.approval_decided.value:
+            await self._decision(event, effect_key)  # its ticket needn't be a chat (merges)
             return
         ws, ticket_id = event.workspace_id, event.ticket_id
         async with workspace_session(self._sm, ws) as s:
@@ -549,6 +625,38 @@ class CevanosHandler:
             elif action == "close":
                 await repo.update_chat(s, ticket_id, closed_at=now)
                 await _line(s, ws, ticket_id, "The chat was closed in Cevanos")
+
+    async def _decision(self, event: Event, effect_key: str) -> None:
+        """X7: a Governance hold's decision to Cevanos, which then acts (or not). A
+        refusal that won't change on a retry leaves a line on the ticket."""
+        ws = event.workspace_id
+        approval_id = UUID(str(event.payload.get("approval_id")))
+        problem: str | None = None
+        async with workspace_session(self._sm, ws) as s:
+            approval = await tools_repo.get_approval(s, approval_id)
+            if approval is None or approval["cevanos_hold_id"] is None:
+                return  # deleted with its ticket, or not a hold
+            ticket_id = approval["ticket_id"]
+            try:
+                link = await _open(s, self._cevanos, ws)
+            except (NotFound, Invalid) as exc:
+                problem = exc.message
+                await _line(s, ws, ticket_id, f"Cevanos wasn't told the decision: {problem}")
+        if problem is not None:
+            raise HandlerError(problem, permanent=True)
+        try:
+            await link.api.hold_decision(
+                str(approval["cevanos_hold_id"]), decision=str(approval["state"]),
+                note=approval["decision_note"],
+                decided_by=str(approval["decided_by_name"] or "CeDesk"), key=effect_key,
+            )  # fmt: skip
+        except CevanosError as exc:
+            if exc.permanent:
+                async with workspace_session(self._sm, ws) as s:
+                    await _line(s, ws, ticket_id, f"Cevanos wasn't told the decision: {exc}")
+            raise HandlerError(str(exc), permanent=exc.permanent) from None
+        async with workspace_session(self._sm, ws) as s:
+            await _line(s, ws, ticket_id, f"Cevanos was told: {approval['state']}")
 
     async def _what(
         self, s: AsyncSession, event: Event, chat: Any, link: Link

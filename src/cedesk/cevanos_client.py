@@ -1,15 +1,25 @@
 """Calls to Cevanos's public `/v1` API with a workspace's key (md 7.1).
 
-Routes (all but `/v1/me` are what Cevanos still has to add, md 14.19):
+Routes (all but `/v1/me` are what Cevanos still has to add, md 14.19 and section 16):
 - `GET  /v1/me`                            check a key
 - `GET  /v1/conversations/{id}/messages`  the chat, any channel, oldest first
 - `POST /v1/conversations/{id}/take-over` body `{"operator_name"}`: a person has it now
 - `POST /v1/conversations/{id}/reply`     body `{"body", "operator_name"}`
 - `POST /v1/conversations/{id}/close`
+- `GET  /v1/conversations/{id}`           the chat's contact (AI6, `conversations:read`)
+- `POST /v1/summaries`                    `{"text"}` -> `{"summary"}` (AI1, `ai:assist`)
+- `POST /v1/rewrite`                      `{"text", "tone"}` -> `{"text"}` (AI2)
+- `POST /v1/translate`                    `{"text", "to"}` -> `{"text", "from"}` (AI3)
+- `POST /v1/drafts`                       `{"text", "agent_id"}` -> `{"text"}` (AI4)
+- `GET  /v1/contacts?email=`              contacts with that email (AI5, `contacts:read`)
+- `GET  /v1/contacts/{id}/orders`         and `.../payments`: from its stores (AI5)
+- `GET  /v1/analytics/summary?from&to`    the AI numbers (AI7, `analytics:read`)
+- `POST /v1/governance/holds/{id}/decision` `{"decision", "note", "decided_by"}` (X7)
 
 Every success is `{"data": ...}`; every refusal `{"error": {"code", "message"}}`. Writes
 carry `Idempotency-Key` (the outbox effect's key), so a retry after a lost answer is not a
-second reply in the customer's chat.
+second reply in the customer's chat. The AI calls (summaries, rewrite, translate, drafts)
+change nothing in Cevanos but its credits, so they carry no key.
 """
 
 from collections.abc import Callable, Mapping
@@ -23,6 +33,7 @@ from cedesk.crypto import Sealer
 from cedesk.settings import Settings
 
 TIMEOUT_SECONDS = 20
+AI_TIMEOUT_SECONDS = 45  # a summary or a draft is written by a model while the agent waits
 USER_AGENT = "CeDesk/1 (+cevanos connector)"
 
 
@@ -56,6 +67,28 @@ class CevanosApi(Protocol):
     ) -> None: ...
 
     async def close(self, conversation_id: str, *, key: str) -> None: ...
+
+    async def conversation(self, conversation_id: str) -> Any: ...
+
+    async def summarize(self, *, text: str) -> Any: ...
+
+    async def rewrite(self, *, text: str, tone: str) -> Any: ...
+
+    async def translate(self, *, text: str, to: str) -> Any: ...
+
+    async def draft(self, *, text: str, agent_id: str | None) -> Any: ...
+
+    async def contacts(self, *, email: str) -> Any: ...
+
+    async def orders(self, contact_id: str) -> Any: ...
+
+    async def payments(self, contact_id: str) -> Any: ...
+
+    async def analytics(self, *, start: str, end: str) -> Any: ...
+
+    async def hold_decision(
+        self, hold_id: str, *, decision: str, note: str | None, decided_by: str, key: str
+    ) -> None: ...
 
 
 @dataclass(frozen=True)
@@ -100,16 +133,25 @@ class HttpCevanos:
         return f"{self._base}/v1/conversations/{quote(conversation_id, safe='')}/{action}"
 
     async def _call(
-        self, method: str, url: str, *, json: Mapping[str, Any] | None = None, key: str | None
+        self,
+        method: str,
+        url: str,
+        *,
+        json: Mapping[str, Any] | None = None,
+        key: str | None,
+        params: Mapping[str, str] | None = None,
+        wait_seconds: float = TIMEOUT_SECONDS,
     ) -> Any:
         headers = dict(self._headers)
         if key is not None:
             headers["Idempotency-Key"] = key
         try:
             async with httpx.AsyncClient(
-                timeout=TIMEOUT_SECONDS, follow_redirects=False, transport=self._transport
+                timeout=wait_seconds, follow_redirects=False, transport=self._transport
             ) as client:
-                response = await client.request(method, url, json=json, headers=headers)
+                response = await client.request(
+                    method, url, json=json, params=params, headers=headers
+                )
         except httpx.HTTPError as exc:
             raise CevanosError(
                 f"Cevanos can't be reached: {type(exc).__name__}", permanent=False
@@ -145,6 +187,50 @@ class HttpCevanos:
 
     async def close(self, conversation_id: str, *, key: str) -> None:
         await self._call("POST", self._url(conversation_id, "close"), json={}, key=key)
+
+    async def conversation(self, conversation_id: str) -> Any:
+        url = f"{self._base}/v1/conversations/{quote(conversation_id, safe='')}"
+        return await self._call("GET", url, key=None)
+
+    async def _ai(self, path: str, body: Mapping[str, Any]) -> Any:
+        url = f"{self._base}/v1/{path}"
+        return await self._call("POST", url, json=body, key=None, wait_seconds=AI_TIMEOUT_SECONDS)
+
+    async def summarize(self, *, text: str) -> Any:
+        return await self._ai("summaries", {"text": text})
+
+    async def rewrite(self, *, text: str, tone: str) -> Any:
+        return await self._ai("rewrite", {"text": text, "tone": tone})
+
+    async def translate(self, *, text: str, to: str) -> Any:
+        return await self._ai("translate", {"text": text, "to": to})
+
+    async def draft(self, *, text: str, agent_id: str | None) -> Any:
+        return await self._ai("drafts", {"text": text, "agent_id": agent_id})
+
+    async def contacts(self, *, email: str) -> Any:
+        return await self._call("GET", f"{self._base}/v1/contacts", key=None,
+                                params={"email": email})  # fmt: skip
+
+    def _contact(self, contact_id: str, what: str) -> str:
+        return f"{self._base}/v1/contacts/{quote(contact_id, safe='')}/{what}"
+
+    async def orders(self, contact_id: str) -> Any:
+        return await self._call("GET", self._contact(contact_id, "orders"), key=None)
+
+    async def payments(self, contact_id: str) -> Any:
+        return await self._call("GET", self._contact(contact_id, "payments"), key=None)
+
+    async def analytics(self, *, start: str, end: str) -> Any:
+        return await self._call("GET", f"{self._base}/v1/analytics/summary", key=None,
+                                params={"from": start, "to": end})  # fmt: skip
+
+    async def hold_decision(
+        self, hold_id: str, *, decision: str, note: str | None, decided_by: str, key: str
+    ) -> None:
+        url = f"{self._base}/v1/governance/holds/{quote(hold_id, safe='')}/decision"
+        body = {"decision": decision, "note": note, "decided_by": decided_by}
+        await self._call("POST", url, json=body, key=key)
 
 
 Connect = Callable[[Connection], CevanosApi]

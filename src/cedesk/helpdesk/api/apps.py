@@ -7,6 +7,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Request, Response, status
 from pydantic import BaseModel, Field
 
+from cedesk.cevanos_client import Cevanos
 from cedesk.helpdesk.api.deps import CallerDep, SealerDep, SessionmakerDep
 from cedesk.helpdesk.api.schemas import Body
 from cedesk.helpdesk.domain.apps import App
@@ -31,6 +32,12 @@ def get_post(request: Request) -> PostFactory:
 
 
 PostDep = Annotated[PostFactory, Depends(get_post)]
+
+
+def _cevanos(request: Request) -> Cevanos | None:
+    """The Cevanos connector (AI5), if this server has one."""
+    found: Cevanos | None = getattr(request.app.state, "cevanos", None)
+    return found
 
 
 class AppOut(BaseModel):
@@ -106,7 +113,7 @@ class PaymentOut(BaseModel):
     refunded: bool
     created_at: datetime | None
     description: str | None
-    url: str
+    url: str | None = Field(description="The payment in Stripe; null when the store has none.")
 
 
 class CardOut(BaseModel):
@@ -185,13 +192,20 @@ def _card(card: Card) -> dict[str, Any]:
     "/tickets/{ticket_id}/orders",
     response_model=OrdersOut,
     summary="The customer's latest orders (sidebar)",
-    description="Read live from the Shopify app for the ticket's customer (by email), at "
-    "most 5; nothing is stored. Never fails because of the shop: see `available`.",
+    description="Read live for the ticket's customer, at most 5; nothing is stored. With "
+    "Cevanos connected, from the stores connected in Cevanos (`source: cevanos`; a store "
+    "it couldn't read is named in `message`); else from the Shopify app, by email. Never "
+    "fails because of the shop: see `available`.",
 )
 async def ticket_orders(
-    ticket_id: UUID, caller: CallerDep, sm: SessionmakerDep, sealer: SealerDep, http: HttpDep
+    ticket_id: UUID,
+    request: Request,
+    caller: CallerDep,
+    sm: SessionmakerDep,
+    sealer: SealerDep,
+    http: HttpDep,
 ) -> OrdersOut:
-    card = await apps.orders(sm, sealer, http, caller, ticket_id)
+    card = await apps.orders(sm, sealer, http, caller, ticket_id, _cevanos(request))
     return OrdersOut(**_card(card), orders=[OrderOut(**o.__dict__) for o in card.orders])
 
 
@@ -199,11 +213,17 @@ async def ticket_orders(
     "/tickets/{ticket_id}/payments",
     response_model=PaymentsOut,
     summary="The customer's latest payments (sidebar)",
-    description="Read live from the Stripe app for the ticket's customer (by email), at "
-    "most 5; nothing is stored. Never fails because of Stripe: see `available`.",
+    description="Read live for the ticket's customer, at most 5; nothing is stored. With "
+    "Cevanos connected, from Cevanos (`source: cevanos`); else from the Stripe app, by "
+    "email. Never fails because of the provider: see `available`.",
 )
 async def ticket_payments(
-    ticket_id: UUID, caller: CallerDep, sm: SessionmakerDep, sealer: SealerDep, http: HttpDep
+    ticket_id: UUID,
+    request: Request,
+    caller: CallerDep,
+    sm: SessionmakerDep,
+    sealer: SealerDep,
+    http: HttpDep,
 ) -> PaymentsOut:
-    card = await apps.payments(sm, sealer, http, caller, ticket_id)
+    card = await apps.payments(sm, sealer, http, caller, ticket_id, _cevanos(request))
     return PaymentsOut(**_card(card), payments=[PaymentOut(**p.__dict__) for p in card.payments])

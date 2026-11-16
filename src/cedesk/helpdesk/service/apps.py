@@ -7,22 +7,28 @@ domain/apps.py.
   importers' HTTP client (`SourceHttp`: GET only, the egress guard before each call, no
   redirects, credentials only in headers), at most 10 s. A provider that fails or refuses
   gives `available: false` with a message; the card never fails the ticket.
-- With Cevanos connected (md D16), orders and payments come from Cevanos's integrations:
-  installing Shopify or Stripe is refused, and the cards say Cevanos will fill them once
-  it serves them over `/v1` (planned with the Cevanos AI features).
+- With Cevanos connected (md D16, AI5), orders and payments come from Cevanos's
+  connected stores (`GET /v1/contacts/{id}/orders`, `.../payments`, scope
+  `contacts:read`), so there is no second Shopify or Stripe login: installing them here is
+  refused. The Cevanos contact is the chat's for a ticket from a Cevanos chat, else found
+  by the customer's email. A store Cevanos couldn't read is named in `message`; Cevanos
+  itself down or refusing makes the card unavailable, never the ticket.
 """
 
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field, replace
 from datetime import datetime
+from functools import partial
 from typing import Any
 from uuid import UUID
 
 from sqlalchemy.exc import IntegrityError
 
+from cedesk.cevanos_client import Cevanos
 from cedesk.crypto import Sealer
 from cedesk.db import workspace_session
 from cedesk.egress import BadAddress, account_host, account_label
+from cedesk.helpdesk.domain import ai as ai_rules
 from cedesk.helpdesk.domain import apps as rules
 from cedesk.helpdesk.domain import jira as jira_rules
 from cedesk.helpdesk.domain import saved_replies as reply_rules
@@ -36,12 +42,19 @@ from cedesk.helpdesk.repo import apps as repo
 from cedesk.helpdesk.repo import cevanos as cevanos_repo
 from cedesk.helpdesk.repo import saved_replies as reply_repo
 from cedesk.helpdesk.repo import tickets as ticket_repo
-from cedesk.helpdesk.service import audit, scope, slack_bot
+from cedesk.helpdesk.service import ai, audit, scope, slack_bot
 from cedesk.helpdesk.service import jira as jira_service
 from cedesk.helpdesk.service import saved_replies as reply_service
 from cedesk.helpdesk.service.app_post import AppCallError
 from cedesk.helpdesk.service.auth import Sessionmaker
-from cedesk.helpdesk.service.errors import Conflict, Invalid, NotFound, Unavailable
+from cedesk.helpdesk.service.cevanos import Link, open_link
+from cedesk.helpdesk.service.errors import (
+    Conflict,
+    Invalid,
+    NotFound,
+    ServiceError,
+    Unavailable,
+)
 from cedesk.helpdesk.service.imports.http import SourceHttp, bearer
 from cedesk.helpdesk.service.jira import PostFactory
 from cedesk.helpdesk.service.members import require
@@ -50,10 +63,8 @@ SLACK_TEST_LINE = "CeDesk is connected: Urgent and High tickets will be posted h
 
 STRIPE_HOST = "api.stripe.com"
 CARD_TIMEOUT = 10.0
-CEVANOS_SOON = (
-    "Cevanos is connected: these come from its integrations once Cevanos serves them to CeDesk."
-)
 NO_EMAIL = "This customer has no email yet, so there is nothing to look up."
+NOT_IN_CEVANOS = "Cevanos has no customer with this email, so there is nothing to show."
 
 AppHttp = Callable[[str, Mapping[str, str], str], SourceHttp]
 """(host, headers, label) -> a client. The app state holds the real one; tests a fake."""
@@ -357,7 +368,12 @@ async def _install_calendly(
 
 
 async def _card_source(
-    sm: Sessionmaker, sealer: Sealer, caller: Caller, ticket_id: UUID, app: App
+    sm: Sessionmaker,
+    sealer: Sealer,
+    cevanos: Cevanos | None,
+    caller: Caller,
+    ticket_id: UUID,
+    app: App,
 ) -> tuple[Card | None, str, Any, str]:
     """(an answer already, or None to read), the customer's email, the app row, secret."""
     require(caller, Action.read_ticket)
@@ -368,9 +384,17 @@ async def _card_source(
         await scope.check(s, caller, ticket_id, edit=False)
         connected = await cevanos_repo.connection(s) is not None
         row = await repo.get(s, app.value) if not connected else None
+        chat = await cevanos_repo.chat_by_ticket(s, ticket_id) if connected else None
+        link: Link | ServiceError | None = None
+        if connected and cevanos is not None:
+            try:
+                link = await open_link(s, cevanos, caller.workspace_id)
+            except ServiceError as exc:
+                link = exc
     email = str(detail["contact_email"] or "")
     if connected:
-        return Card("cevanos", False, CEVANOS_SOON), email, None, ""
+        conversation = str(chat["conversation_id"]) if chat else None
+        return await _from_cevanos(link, conversation, email, app), email, None, ""
     if row is None:
         name = rules.CATALOG[app].name
         return Card(None, False, f"Install the {name} app to see them here."), email, None, ""
@@ -378,6 +402,52 @@ async def _card_source(
         return Card(app.value, False, NO_EMAIL), email, row, ""
     secret = sealer.open(bytes(row["secret_sealed"]), bound_to=_bound(caller.workspace_id, app))
     return None, email, row, secret
+
+
+def _newest(x: Order | Payment) -> float:
+    return x.created_at.timestamp() if x.created_at else 0
+
+
+async def _from_cevanos(
+    link: Link | ServiceError | None, conversation: str | None, email: str, app: App
+) -> Card:
+    """AI5: the card from Cevanos's stores. Never raises: a problem is the card's message."""
+    if link is None:
+        return Card("cevanos", False, "Cevanos isn't set up on this server.")
+    if isinstance(link, ServiceError):
+        return Card("cevanos", False, link.message)
+    try:
+        ids: list[str] = []
+        if conversation:  # a ticket from a Cevanos chat: that chat's contact
+            found = await ai.ask(lambda: link.api.conversation(conversation), ai_rules.contact,
+                                 ai_rules.CONVERSATIONS_READ)  # fmt: skip
+            ids = [found.id] if found is not None and found.id else []
+        if not ids and email and not email.endswith(".invalid"):
+            ids = await ai.ask(lambda: link.api.contacts(email=email), ai_rules.contact_ids,
+                               ai_rules.CONTACTS_READ)  # fmt: skip
+        if not ids:
+            return Card("cevanos", False, NOT_IN_CEVANOS if email else NO_EMAIL)
+        orders: list[Order] = []
+        payments: list[Payment] = []
+        unread: list[ai_rules.Unread] = []
+        for cid in ids:
+            if app is App.shopify:
+                got_o, missed = await ai.ask(partial(link.api.orders, cid), ai_rules.orders,
+                                             ai_rules.CONTACTS_READ)  # fmt: skip
+                orders += got_o
+            else:
+                got_p, missed = await ai.ask(partial(link.api.payments, cid),
+                                             ai_rules.payments, ai_rules.CONTACTS_READ)  # fmt: skip
+                payments += got_p
+            unread += missed
+    except ServiceError as exc:
+        return Card("cevanos", False, exc.message)
+    orders.sort(key=_newest, reverse=True)
+    payments.sort(key=_newest, reverse=True)
+    stores = sorted({u.source for u in unread})
+    note = f"Not read from {', '.join(stores)} just now." if stores else None
+    return Card("cevanos", True, note, orders=orders[: rules.CARD_LIMIT],
+                payments=payments[: rules.CARD_LIMIT])  # fmt: skip
 
 
 def _unavailable(app: App, exc: Exception) -> Card:
@@ -389,11 +459,19 @@ def _unavailable(app: App, exc: Exception) -> Card:
 
 
 async def orders(
-    sm: Sessionmaker, sealer: Sealer, http: AppHttp, caller: Caller, ticket_id: UUID
+    sm: Sessionmaker,
+    sealer: Sealer,
+    http: AppHttp,
+    caller: Caller,
+    ticket_id: UUID,
+    cevanos: Cevanos | None = None,
 ) -> Card:
-    """The customer's latest Shopify orders: the shop's customers with this exact email,
-    then each one's orders (Shopify's order list can't be filtered by email)."""
-    early, email, row, secret = await _card_source(sm, sealer, caller, ticket_id, App.shopify)
+    """The customer's latest orders: from Cevanos's stores when connected; else from the
+    Shopify app: the shop's customers with this exact email, then each one's orders
+    (Shopify's order list can't be filtered by email)."""
+    early, email, row, secret = await _card_source(
+        sm, sealer, cevanos, caller, ticket_id, App.shopify
+    )
     if early is not None:
         return early
     shop = str(row["settings"]["shop"])
@@ -423,11 +501,17 @@ async def orders(
 
 
 async def payments(
-    sm: Sessionmaker, sealer: Sealer, http: AppHttp, caller: Caller, ticket_id: UUID
+    sm: Sessionmaker,
+    sealer: Sealer,
+    http: AppHttp,
+    caller: Caller,
+    ticket_id: UUID,
+    cevanos: Cevanos | None = None,
 ) -> Card:
-    """The customer's latest Stripe charges, by email (one email can be several Stripe
-    customers: up to 3 are read, newest charges first)."""
-    early, email, _, secret = await _card_source(sm, sealer, caller, ticket_id, App.stripe)
+    """The customer's latest payments: from Cevanos's stores when connected; else Stripe
+    charges, by email (one email can be several Stripe customers: up to 3 are read,
+    newest charges first)."""
+    early, email, _, secret = await _card_source(sm, sealer, cevanos, caller, ticket_id, App.stripe)
     if early is not None:
         return early
     client = _client(http, App.stripe, {}, secret)
