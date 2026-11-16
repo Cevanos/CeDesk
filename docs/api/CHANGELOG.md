@@ -3,6 +3,15 @@
 `openapi.json` next to this file is the API as served (`uv run cedesk openapi`). Every
 route is under `/api/v1`. Breaking changes only come in v2 (md 2B). Newest first.
 
+## 2026-11-16: Outbound calls: IPv4 first, and the next address when one can't be reached
+
+Imports, webhooks and apps connect through the pinned transport. It used the first checked
+address, and IPv6 addresses sort first, so from a server or container with no IPv6 route a
+host with both (e.g. Intercom's `intercom-attachments-*.com`, where email files live) failed
+with "can't be reached: ConnectError" and the run retried forever. It now tries IPv4
+addresses first, then the next checked address when one can't be connected to (still only
+addresses that passed the public check). No route or field changes.
+
 ## 2026-11-16: Imports: a sync counts a status-only change as updated (Phase 2, M9)
 
 `GET /imports/runs/{id}`: in `counts.sync`, `updated` now also counts a ticket whose status,
