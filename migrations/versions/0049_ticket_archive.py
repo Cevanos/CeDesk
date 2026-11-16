@@ -7,8 +7,10 @@
   Found by number or customer; read only.
 - `hd_retention.archive_after_days`: the Admin's archive age (NULL: 120 days).
 
-Downgrade puts nothing back: archived tickets are dropped with the table (as retention
-would have deleted them later). Run it only where that is fine.
+0052 adds what the review asked for (`related`, `file_bytes`, `source_id`, `email_ids`
+and their indexes). This file stays as servers already ran it.
+
+Downgrade refuses while any ticket is archived (dropping the table would lose them).
 
 Revision ID: 0049
 Revises: 0048
@@ -16,6 +18,7 @@ Revises: 0048
 
 from collections.abc import Sequence
 
+import sqlalchemy as sa
 from alembic import op
 
 from cedesk.tenancy import tenant_rls_sql
@@ -68,5 +71,15 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    # Forced RLS: the owner sees no rows without a workspace, so lift it to count them.
+    # Refused (and rolled back) while any ticket is archived: dropping the table would
+    # lose them. Put them back or delete them on purpose first.
+    op.execute("ALTER TABLE hd_ticket_archive NO FORCE ROW LEVEL SECURITY")
+    count = op.get_bind().execute(sa.text("SELECT count(*) FROM hd_ticket_archive")).scalar_one()
+    if count:
+        raise RuntimeError(
+            f"hd_ticket_archive holds {count} archived tickets; downgrading 0049 would "
+            "delete them. Empty the archive on purpose first (nothing was changed)."
+        )
     op.execute("DROP TABLE hd_ticket_archive")
     op.execute("ALTER TABLE hd_retention DROP COLUMN archive_after_days")

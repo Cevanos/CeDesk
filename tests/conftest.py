@@ -52,6 +52,27 @@ def _reachable() -> bool:
     return True
 
 
+async def empty_archive_async() -> None:
+    """Migration 0049 refuses to go down while tickets are archived (that would lose
+    them), and test runs leave some: emptied before a test goes below it. TRUNCATE is not
+    subject to row-level security."""
+    engine = make_engine(OWNER_URL)
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(
+                text(
+                    "DO $$ BEGIN IF to_regclass('hd_ticket_archive') IS NOT NULL THEN "
+                    "TRUNCATE hd_ticket_archive; END IF; END $$"
+                )
+            )
+    finally:
+        await engine.dispose()
+
+
+def empty_archive() -> None:
+    asyncio.run(empty_archive_async())
+
+
 @pytest.fixture(scope="session")
 def migrated_db() -> Iterator[None]:
     if not _reachable():
@@ -59,6 +80,7 @@ def migrated_db() -> Iterator[None]:
             pytest.fail("Test Postgres is not reachable on CEDESK_TEST_OWNER_URL")
         pytest.skip("Test Postgres not running: `docker compose up -d db`")
     cfg = alembic_config()
+    empty_archive()
     command.downgrade(cfg, "base")
     command.upgrade(cfg, "head")
     yield
