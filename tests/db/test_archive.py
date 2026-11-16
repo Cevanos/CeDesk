@@ -8,6 +8,7 @@ import asyncio
 import json
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 from email.message import EmailMessage
 from pathlib import Path
 from typing import Any
@@ -257,6 +258,12 @@ async def test_another_workspace_or_team_cant_see_it(
     assert (await client.get(f"{A}/tickets/{old['id']}", headers=neha)).status_code == 404
     assert len(ok(await client.get(f"{A}/tickets", headers=w["h"], params=by_number))) == 1
 
+    # A team-only role for its own team opens it, with its history.
+    ok(await client.put(f"/api/v1/roles/{role['id']}", headers=w["h"], json={
+        "name": "Billing only", "scope": "team_only", "team_id": billing}))  # fmt: skip
+    got = ok(await client.get(f"{A}/tickets/{old['id']}", headers=neha))
+    assert got["team_name"] == "Billing" and got["related"]["cevanos_chat"] is None
+
 
 async def test_privacy_export_and_erase_cover_the_archive(
     client: AsyncClient, app_sessionmaker: Sm, files: Path
@@ -317,9 +324,10 @@ async def test_everything_on_the_ticket_moves_with_it(
     client: AsyncClient, app_sessionmaker: Sm
 ) -> None:
     """Nothing is lost: every message column (an email's headers too), time logged, tasks,
-    approvals, links, side conversations with their messages, Jira issues and the emails
-    sent are in the archive and in its read; the team's and assignee's names are as they
-    were, even after the team and the member are gone."""
+    approvals, links, side conversations with their messages, Jira issues, the emails
+    sent and the Cevanos chat are in the archive and in its read (`related`, one list per
+    kind); the type's, team's and assignee's names are as they were, even after the type,
+    the team and the member are gone. An email that carried a secret has no body."""
     sm = app_sessionmaker
     w = await desk(client, sm)
     ws = w["ws"]
@@ -330,8 +338,19 @@ async def test_everything_on_the_ticket_moves_with_it(
     other = await ticket(client, w, "Related, resolved lately")
     await resolved_ago(sm, ws, other["id"], 10)
     tid = UUID(old["id"])
-    await sql(sm, ws, "UPDATE hd_ticket SET team_id = :team, assignee_id = :neha WHERE id = :id",
-              team=UUID(team["id"]), neha=neha, id=tid)  # fmt: skip
+    [kind] = await sql(sm, ws, "INSERT INTO hd_ticket_type (workspace_id, name) "
+                       "VALUES (:ws, 'Lost parcel') RETURNING id", ws=ws)  # fmt: skip
+    handover = {"reason": "Customer asked for a person", "channel_kind": "web"}
+    await sql(sm, ws,
+        "UPDATE hd_ticket SET team_id = :team, assignee_id = :neha, type_id = :kind, "
+        "conversation_id = 'conv-77', handover = CAST(:h AS jsonb) WHERE id = :id",
+        team=UUID(team["id"]), neha=neha, kind=kind["id"], h=json.dumps(handover), id=tid,
+    )  # fmt: skip
+    await sql(sm, ws,
+        "INSERT INTO hd_cevanos_chat (workspace_id, ticket_id, conversation_id, agent_id, "
+        "channel_kind, last_message_id, poll_failures, taken_over_at, closed_at) VALUES "
+        "(:ws, :t, 'conv-77', 'agent-3', 'web', 'msg-poll-9', 2, now(), now())",
+        ws=ws, t=tid)  # fmt: skip
     email_head = {"message_id": "<late-1@mail.example.org>", "from": PRIYA, "to": ["s@x.test"]}
     await sql(sm, ws,
         "INSERT INTO hd_message (workspace_id, ticket_id, kind, author_name, body, email, "
@@ -370,10 +389,17 @@ async def test_everything_on_the_ticket_moves_with_it(
         "to_addresses, subject, body_text, status, sent_at) VALUES (:ws, :t, 's@x.test', "
         "'Acme', ARRAY[:to], 'Re: Old parcel', 'Found it, sending today.', 'sent', now())",
         ws=ws, t=tid, to=PRIYA)  # fmt: skip
+    # A reset link that failed to send: it still holds its secret until archived.
+    await sql(sm, ws,
+        "INSERT INTO hd_email_out (workspace_id, ticket_id, from_address, from_name, "
+        "to_addresses, subject, body_text, status, sensitive) VALUES (:ws, :t, 's@x.test', "
+        "'Acme', ARRAY[:to], 'Reset your password', 'https://x.test/reset/SECRET-77', "
+        "'failed', true)", ws=ws, t=tid, to=PRIYA)  # fmt: skip
 
     assert await archive.archive_workspace(sm, ws, datetime.now(UTC)) == 1
     ok(await client.get(f"{T}/{other['id']}", headers=w["h"]))  # the linked one stays live
-    # The team and the member go: the archive keeps their names from then.
+    # The type, the team and the member go: the archive keeps their names from then.
+    await sql(sm, ws, "DELETE FROM hd_ticket_type WHERE id = :id", id=kind["id"])
     gone = await client.delete(f"/api/v1/teams/{team['id']}", headers=w["h"])
     assert gone.status_code == 204
     await sql(sm, ws, "UPDATE member SET name = 'Neha (left)' WHERE id = :m", m=neha)
@@ -383,26 +409,48 @@ async def test_everything_on_the_ticket_moves_with_it(
     assert by_email["email"] == email_head
     assert by_email["channel_message_id"] == "<late-1@mail.example.org>"
     assert row["email_ids"] == ["<late-1@mail.example.org>"]
+    # Stored without the secret's body, not only hidden on the way out.
+    assert [e["body_text"] for e in row["related"]["emails"] if e["sensitive"]] == [None]
+    assert "SECRET-77" not in json.dumps(row["related"])
 
     got = ok(await client.get(f"{A}/tickets/{old['id']}", headers=w["agent"]))
-    assert (got["team_name"], got["assignee_name"]) == ("Returns", "Neha")
+    assert (got["type_name"], got["team_name"], got["assignee_name"]) == (
+        "Lost parcel", "Returns", "Neha")  # fmt: skip
     assert next(m for m in got["messages"] if m["body"] == "By email")["email"] == email_head
-    assert [(t["minutes"], t["note"], t["billable"], t["member_name"]) for t in got["time_log"]] \
-        == [(25, "Called the courier", True, "Neha")]  # fmt: skip
-    assert [(t["text"], t["owner_name"]) for t in got["tasks"]] == [("Refund the shipping", "Neha")]
-    [approval] = got["approvals"]
+    related = got["related"]
+    lists = ("time_log", "tasks", "approvals", "links", "side_conversations", "jira_issues",
+             "emails")  # fmt: skip
+    assert set(related) == {*lists, "cevanos_chat"}
+    assert all(related[k] for k in lists)  # every kind shows up
+    assert [(t["minutes"], t["note"], t["billable"], t["member_name"])
+            for t in related["time_log"]] == [(25, "Called the courier", True, "Neha")]  # fmt: skip
+    assert [(t["text"], t["owner_name"]) for t in related["tasks"]] == [
+        ("Refund the shipping", "Neha")]  # fmt: skip
+    [approval] = related["approvals"]
     assert (approval["what"], approval["state"], approval["requester_name"],
             approval["approver_name"]) == ("Refund 499", "approved", "Neha", "Admin")  # fmt: skip
-    assert [(x["ticket_id"], x["label"]) for x in got["links"]] == [
-        (other["id"], f"T-{other['number']}")]  # fmt: skip
-    [side_out] = got["side_conversations"]
-    assert side_out["subject"] == "Courier claim"
-    assert [(m["direction"], m["body"]) for m in side_out["messages"]] == [("in", "Claim accepted")]
-    assert [(j["issue_key"], j["made_here"]) for j in got["jira_issues"]] == [("SHIP-42", True)]
-    [sent] = got["emails"]
-    assert (sent["to_addresses"], sent["subject"], sent["status"]) == (
-        [PRIYA], "Re: Old parcel", "sent")  # fmt: skip
-    assert "object_key" not in json.dumps(got)
+    assert Decimal(approval["amount"]) == 499 and approval["currency"] == "INR"
+    assert [(x["ticket_id"], x["number"], x["label"]) for x in related["links"]] == [
+        (other["id"], other["number"], f"T-{other['number']}")]  # fmt: skip
+    [side_out] = related["side_conversations"]
+    assert (side_out["subject"], side_out["via"], side_out["to"]) == (
+        "Courier claim", "email", ["ops@courier.test"])  # fmt: skip
+    assert [(m["direction"], m["author_name"], m["body"]) for m in side_out["messages"]] == [
+        ("in", "Courier", "Claim accepted")]  # fmt: skip
+    assert [(j["key"], j["made_here"]) for j in related["jira_issues"]] == [("SHIP-42", True)]
+    sent, secret = related["emails"]
+    assert (sent["to_addresses"], sent["subject"], sent["status"], sent["body_text"]) == (
+        [PRIYA], "Re: Old parcel", "sent", "Found it, sending today.")  # fmt: skip
+    assert (secret["subject"], secret["sensitive"], secret["body_text"]) == (
+        "Reset your password", True, None)  # fmt: skip
+    chat = related["cevanos_chat"]
+    assert (chat["conversation_id"], chat["agent_id"], chat["channel_kind"]) == (
+        "conv-77", "agent-3", "web")  # fmt: skip
+    assert chat["handover"] == handover and chat["taken_over_at"] and chat["closed_at"]
+    shown = json.dumps(got)
+    for internal in ("object_key", "msg-poll-9", "poll_failures", "next_poll_at",
+                     "header_message_id", "<side-1@courier.test>", "SECRET-77"):  # fmt: skip
+        assert internal not in shown
 
 
 async def test_a_ticket_a_live_one_still_needs_waits(
