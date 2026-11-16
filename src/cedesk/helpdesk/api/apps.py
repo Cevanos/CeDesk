@@ -106,7 +106,7 @@ class PaymentOut(BaseModel):
     refunded: bool
     created_at: datetime | None
     description: str | None
-    url: str
+    url: str | None = Field(description="The payment in Stripe; null when the store has none.")
 
 
 class CardOut(BaseModel):

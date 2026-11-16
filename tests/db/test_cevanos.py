@@ -258,10 +258,18 @@ async def test_connection_settings(
     assert (
         got["close_on_resolve"] and got["api_key_hint"] == world.key[-4:] and got["team_id"] is None
     )
-    assert ok(await cv.post(f"{C}/check", headers=w["admin"]))["ok"] is True
+    # Handovers need conversations:read and :write; the AI features (md 16) three more.
+    ai = ["ai:assist", "contacts:read", "analytics:read"]
+    world.scopes = ["conversations:read", "conversations:write", *ai]
+    check = ok(await cv.post(f"{C}/check", headers=w["admin"]))
+    assert check == {"ok": True, "missing_scopes": [], "message": "The key works."}
+    world.scopes = ["conversations:read", "conversations:write", "chat"]
+    check = ok(await cv.post(f"{C}/check", headers=w["admin"]))
+    assert check == {"ok": True, "missing_scopes": ai, "message": "The key works. The AI "
+                     "features also need ai:assist, contacts:read, analytics:read."}  # fmt: skip
     world.scopes = ["conversations:read"]
     check = ok(await cv.post(f"{C}/check", headers=w["admin"]))
-    assert check == {"ok": False, "missing_scopes": ["conversations:write"],
+    assert check == {"ok": False, "missing_scopes": ["conversations:write", *ai],
                      "message": "The key works but lacks conversations:write."}  # fmt: skip
 
     assert (await cv.delete(C, headers=w["admin"])).status_code == 204
