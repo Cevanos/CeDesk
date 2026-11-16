@@ -58,6 +58,11 @@ class FakeAi:
             },
         }
 
+        # AI5: who Cevanos knows and what its stores hold
+        self.by_email: dict[str, list[dict[str, Any]]] = {}
+        self.chats: dict[str, dict[str, Any]] = {}
+        self.stores: dict[str, dict[str, Any]] = {}
+
     def connect(self, connection: Connection) -> "FakeAiApi":
         return FakeAiApi(self, connection.api_key)
 
@@ -92,6 +97,24 @@ class FakeAiApi:
 
     async def analytics(self, *, start: str, end: str) -> Any:
         return self._do("analytics", {"from": start, "to": end})
+
+    async def conversation(self, conversation_id: str) -> Any:
+        self._do("conversation", {"id": conversation_id})
+        return {"data": self.world.chats.get(conversation_id, {"id": conversation_id})}
+
+    async def contacts(self, *, email: str) -> Any:
+        self._do("contacts", {"email": email})
+        return {"data": self.world.by_email.get(email, [])}
+
+    async def orders(self, contact_id: str) -> Any:
+        self._do("orders", {"contact": contact_id})
+        store = self.world.stores.get(contact_id, {})
+        return {"data": {"orders": store.get("orders", []),
+                         "unavailable": store.get("unavailable", [])}}  # fmt: skip
+
+    async def payments(self, contact_id: str) -> Any:
+        self._do("payments", {"contact": contact_id})
+        return {"data": {"payments": self.world.stores.get(contact_id, {}).get("payments", [])}}
 
 
 @pytest.fixture
@@ -315,3 +338,70 @@ async def test_a_chat_tickets_draft_is_written_by_its_cevanos_agent(
         )  # fmt: skip
     ok(await cv.post(f"{T}/{w['ticket']}/draft", headers=w["admin"]))
     assert dict(world.sent)["draft"]["agent_id"] == "agent-77"
+
+
+# AI5: orders and payments from Cevanos's stores
+
+ORDER = {"id": "o-1", "number": "#1042", "created_at": "2026-11-10T09:00:00Z",
+         "payment": "paid", "fulfillment": None, "total": 1299, "currency": "inr",
+         "items": 2, "url": "https://acme.myshopify.com/admin/orders/1"}  # fmt: skip
+OLDER = ORDER | {"id": "o-0", "number": "#1001", "created_at": "2026-10-01T09:00:00Z"}
+PAYMENT = {"id": "ch_1", "amount": "1299.00", "currency": "INR", "status": "succeeded",
+           "refunded": False, "created_at": "2026-11-10T09:01:00Z",
+           "description": "Order #1042", "url": None}  # fmt: skip
+
+
+async def test_the_sidebar_reads_cevanos_stores(cv: AsyncClient, app_sessionmaker: Sm,
+                                                world: FakeAi) -> None:  # fmt: skip
+    w = await desk(cv, app_sessionmaker, world)
+    h, t = w["admin"], w["ticket"]
+    world.by_email["priya@example.org"] = [{"id": "c-7", "email": "priya@example.org"}]
+    world.stores["c-7"] = {
+        "orders": [OLDER, ORDER], "payments": [PAYMENT],
+        "unavailable": [{"source": "woocommerce", "message": "timed out"}],
+    }  # fmt: skip
+    card = ok(await cv.get(f"{T}/{t}/orders", headers=h))
+    assert (card["source"], card["available"]) == ("cevanos", True)
+    assert card["message"] == "Not read from woocommerce just now."
+    assert [o["number"] for o in card["orders"]] == ["#1042", "#1001"]  # newest first
+    assert card["orders"][0] | {"created_at": None} == {
+        "id": "o-1", "number": "#1042", "created_at": None, "payment": "paid",
+        "fulfillment": None, "total": "1299.00", "currency": "INR", "items": 2,
+        "url": "https://acme.myshopify.com/admin/orders/1"}  # fmt: skip
+    pay = ok(await cv.get(f"{T}/{t}/payments", headers=h))
+    assert (pay["source"], pay["available"], pay["message"]) == ("cevanos", True, None)
+    assert [(p["id"], p["amount"], p["url"]) for p in pay["payments"]] == [
+        ("ch_1", "1299.00", None)]  # fmt: skip
+    assert ("contacts", {"email": "priya@example.org"}) in world.sent
+
+    # A ticket from a Cevanos chat: that chat's contact, not a lookup by email.
+    world.sent.clear()
+    conversation = f"conv-{uuid4().hex[:8]}"
+    world.chats[conversation] = {"id": conversation, "contact": {"id": "c-9", "name": "Ravi"}}
+    world.stores["c-9"] = {"orders": [ORDER]}
+    async with workspace_session(app_sessionmaker, w["ws"]) as s:
+        await s.execute(text(
+            "INSERT INTO hd_cevanos_chat (workspace_id, ticket_id, conversation_id) "
+            "VALUES (:ws, :t, :conv)"),
+            {"ws": w["ws"], "t": UUID(t), "conv": conversation},
+        )  # fmt: skip
+    card = ok(await cv.get(f"{T}/{t}/orders", headers=h))
+    assert [o["id"] for o in card["orders"]] == ["o-1"]
+    assert [a for a, _ in world.sent] == ["conversation", "orders"]
+
+
+async def test_a_cevanos_problem_shows_on_the_card(cv: AsyncClient, app_sessionmaker: Sm,
+                                                   world: FakeAi) -> None:  # fmt: skip
+    w = await desk(cv, app_sessionmaker, world)
+    url = f"{T}/{w['ticket']}/orders"
+    card = ok(await cv.get(url, headers=w["admin"]))  # Cevanos doesn't know her
+    assert (card["available"], card["message"]) == (
+        False, "Cevanos has no customer with this email, so there is nothing to show.")  # fmt: skip
+    world.by_email["priya@example.org"] = [{"id": "c-7"}]
+    world.fail["orders"] = DOWN
+    card = ok(await cv.get(url, headers=w["admin"]))
+    assert card["available"] is False and "Try again" in card["message"]
+    world.fail["orders"] = NO_SCOPE
+    card = ok(await cv.get(url, headers=w["admin"]))
+    assert card["available"] is False and "lacks the contacts:read scope" in card["message"]
+    ok(await cv.get(f"{T}/{w['ticket']}", headers=w["admin"]))  # the ticket itself is fine
