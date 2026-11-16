@@ -104,3 +104,59 @@ async def test_0049_wont_go_down_while_tickets_are_archived(owner_engine: Any) -
     await empty_archive_async()
     await asyncio.to_thread(command.downgrade, cfg, "0048")
     await asyncio.to_thread(command.upgrade, cfg, "head")
+
+
+async def test_0052_upgrades_an_archive_from_0049s_first_version(owner_engine: Any) -> None:
+    """Servers ran 0049 as first written. A ticket archived then: 0049 still refuses to go
+    down while it is there, and 0052 fills `source_id` and `file_bytes` from what it kept
+    (its `related` and `email_ids` start empty: that version didn't keep them)."""
+    import asyncio
+    import json
+
+    from sqlalchemy import text
+
+    cfg = alembic_config()
+    await empty_archive_async()
+    await asyncio.to_thread(command.downgrade, cfg, "0051")
+    try:
+        async with owner_engine.begin() as conn:
+            for table in ("workspace", "hd_ticket_archive"):
+                await conn.execute(text(f"ALTER TABLE {table} NO FORCE ROW LEVEL SECURITY"))
+            ws = await conn.scalar(
+                text("INSERT INTO workspace (name) VALUES ('0052') RETURNING id")
+            )
+            await conn.execute(
+                text(
+                    "INSERT INTO hd_ticket_archive (workspace_id, id, number, subject, status, "
+                    "priority, channel, source, created_at, ticket, messages, files) VALUES "
+                    "(:ws, gen_random_uuid(), 7, 'Old', 'resolved', 'low', 'web', 'zendesk', "
+                    "now(), CAST(:ticket AS jsonb), '[]', CAST(:files AS jsonb))"
+                ),
+                {
+                    "ws": ws,
+                    "ticket": json.dumps({"source_id": "z-9"}),
+                    "files": json.dumps([{"name": "a", "size": 100}, {"name": "b", "size": 23}]),
+                },
+            )
+            for table in ("workspace", "hd_ticket_archive"):
+                await conn.execute(text(f"ALTER TABLE {table} FORCE ROW LEVEL SECURITY"))
+        with pytest.raises(RuntimeError, match="downgrading 0049 would"):
+            await asyncio.to_thread(command.downgrade, cfg, "0048")
+
+        await asyncio.to_thread(command.upgrade, cfg, "head")
+        async with owner_engine.begin() as conn:
+            await conn.execute(text("ALTER TABLE hd_ticket_archive NO FORCE ROW LEVEL SECURITY"))
+            row = (
+                await conn.execute(
+                    text(
+                        "SELECT source_id, file_bytes, related, email_ids FROM "
+                        "hd_ticket_archive WHERE workspace_id = :ws"
+                    ),
+                    {"ws": ws},
+                )
+            ).one()
+            await conn.execute(text("ALTER TABLE hd_ticket_archive FORCE ROW LEVEL SECURITY"))
+        assert tuple(row) == ("z-9", 123, {}, [])
+    finally:
+        await empty_archive_async()
+        await asyncio.to_thread(command.upgrade, cfg, "head")

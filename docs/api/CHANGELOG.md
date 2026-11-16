@@ -175,7 +175,10 @@ What leaves with a ticket and is not kept: its notifications and mentions (agent
 inboxes) and rating links (long expired). Reports count live tickets only, so periods
 older than the archive age show fewer tickets and ratings than before.
 
-Migration 0049 (after 0048). Its downgrade refuses while any ticket is archived.
+Migrations 0049 (after 0048) and 0052 (after 0051): 0052 adds the archive's `related`,
+`file_bytes`, `source_id` and `email_ids` and their indexes, for servers that already ran
+0049 (tickets archived before it get `source_id` and `file_bytes` from what they kept,
+and an empty history). Both downgrades refuse while any ticket is archived.
 
 ## 2026-11-13: Side conversations in Slack (Phase 3, X5, the Slack part)
 
