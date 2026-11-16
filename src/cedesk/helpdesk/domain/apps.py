@@ -196,7 +196,7 @@ class Payment:
     refunded: bool
     created_at: datetime | None
     description: str | None
-    url: str  # the payment in the Stripe dashboard
+    url: str | None  # the payment in the Stripe dashboard (None: the store has no link)
 
 
 def _when(value: Any) -> datetime | None:

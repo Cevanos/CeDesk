@@ -14,7 +14,7 @@ from cedesk.helpdesk.api.schemas import (
     SignInBody,
     WorkspaceOut,
 )
-from cedesk.helpdesk.service import auth, members, password_reset
+from cedesk.helpdesk.service import ai, auth, members, password_reset
 from cedesk.helpdesk.service.password_reset import Sender
 from cedesk.settings import Settings
 
@@ -104,6 +104,7 @@ async def me(caller: CallerDep, sm: SessionmakerDep) -> MeOut:
         access=AccessOut.of(caller.access),
         password_expired=caller.password_expired,
         two_factor_setup_required=caller.two_factor_setup_required,
+        ai=await ai.available(sm, caller),
     )
 
 

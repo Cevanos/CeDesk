@@ -30,6 +30,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from cedesk.cevanos_client import Cevanos, CevanosApi, CevanosError
 from cedesk.crypto import CannotOpen
 from cedesk.db import workspace_session
+from cedesk.helpdesk.domain import ai as ai_rules
 from cedesk.helpdesk.domain import audit as audit_rules
 from cedesk.helpdesk.domain import cevanos as rules
 from cedesk.helpdesk.domain import events
@@ -45,6 +46,8 @@ from cedesk.helpdesk.service import audit, customer_replies, push, tickets
 from cedesk.helpdesk.service.auth import Sessionmaker
 from cedesk.helpdesk.service.delivery import Event, HandlerError
 from cedesk.helpdesk.service.errors import (
+    CevanosNotConnected,
+    CevanosRefused,
     Conflict,
     Invalid,
     NotFound,
@@ -206,9 +209,13 @@ async def check_key(sm: Sessionmaker, cevanos: Cevanos, caller: Caller) -> KeyCh
     scopes = data.get("scopes") if isinstance(data, dict) else None
     have = {str(x) for x in scopes} if isinstance(scopes, list) else set()
     missing = [x for x in rules.REQUIRED_SCOPES if x not in have]
+    for_ai = [x for x in ai_rules.AI_SCOPES if x not in have]
     if missing:
         text = "The key works but lacks " + ", ".join(missing) + "."
-        return KeyCheck(ok=False, missing_scopes=missing, message=text)
+        return KeyCheck(ok=False, missing_scopes=missing + for_ai, message=text)
+    if for_ai:  # handovers work; the AI features (md 16) answer 409 until it has them
+        text = "The key works. The AI features also need " + ", ".join(for_ai) + "."
+        return KeyCheck(ok=True, missing_scopes=for_ai, message=text)
     return KeyCheck(ok=True, missing_scopes=[], message="The key works.")
 
 
@@ -242,6 +249,17 @@ async def _open(s: AsyncSession, cevanos: Cevanos, workspace_id: UUID) -> Link:
         close_on_resolve=bool(row["close_on_resolve"]),
         team_id=row["team_id"],
     )
+
+
+async def open_link(s: AsyncSession, cevanos: Cevanos, workspace_id: UUID) -> Link:
+    """For the AI features (md 16): 409 `cevanos_not_connected` without a connection,
+    409 `cevanos_refused` when the saved key can't be read."""
+    try:
+        return await _open(s, cevanos, workspace_id)
+    except NotFound:
+        raise CevanosNotConnected(ai_rules.NOT_CONNECTED) from None
+    except Invalid as exc:
+        raise CevanosRefused(exc.message) from None
 
 
 async def _line(s: AsyncSession, workspace_id: UUID, ticket_id: UUID, body: str) -> None:

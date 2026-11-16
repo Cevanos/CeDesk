@@ -21,6 +21,7 @@ from cedesk import logs
 from cedesk.cevanos_client import make_cevanos
 from cedesk.db import make_engine, make_sessionmaker
 from cedesk.dnscheck import DnsLookup
+from cedesk.helpdesk.api import ai as ai_api
 from cedesk.helpdesk.api import api_keys as api_keys_api
 from cedesk.helpdesk.api import apps as apps_api
 from cedesk.helpdesk.api import archive as archive_api
@@ -224,7 +225,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         headers = {"WWW-Authenticate": "Bearer"} if exc.status == 401 else None
         if isinstance(exc, TooManyAttempts):
             headers = {"Retry-After": str(exc.retry_after)}
-        return _error(exc.status, type(exc).__name__, exc.message, headers=headers)
+        return _error(exc.status, exc.code or type(exc).__name__, exc.message, headers=headers)
 
     @app.exception_handler(RequestValidationError)
     async def validation_error(request: Request, exc: RequestValidationError) -> JSONResponse:
@@ -320,6 +321,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(demo_api.router, prefix="/api/v1")
     app.include_router(archive_api.router, prefix="/api/v1")
     app.include_router(push_api.router, prefix="/api/v1")
+    app.include_router(ai_api.router, prefix="/api/v1")
 
     @app.get("/healthz", tags=["health"], summary="The process is up")
     async def healthz() -> dict[str, str]:
