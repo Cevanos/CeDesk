@@ -32,8 +32,9 @@ CeDesk asks for on Accept. Not a handover to CeDesk, so no ticket."""
 API_KEY = re.compile(r"^cvn_sk_[A-Za-z0-9_-]{8,200}$")
 SECRET_MIN, SECRET_MAX = 16, 200
 CONTACT_DOMAIN = "cevanos.invalid"
-"""Cevanos's /v1 chats are anonymous for now (md 7.1): the ticket's contact is
-`chat-<conversation>@cevanos.invalid`, a reserved domain that never receives mail."""
+"""A handover's ticket starts with the contact `chat-<conversation>@cevanos.invalid` (a
+reserved domain that never receives mail), "Chat customer", until Cevanos says who the
+chat's customer is (`GET /v1/conversations/{id}`, AI6); a chat with no contact keeps it."""
 SUBJECT_MAX = 120
 REPLY_MAX = 8000  # Cevanos's limit on one reply
 POLL_SECONDS = 5
