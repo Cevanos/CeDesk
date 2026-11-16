@@ -909,6 +909,43 @@ function Meta({ label, children }: { label: string; children: React.ReactNode })
   );
 }
 
+/** Sync now / stop syncing for a live run, straight from its History card. */
+function HistorySyncActions({ run }: { run: ImportRun }) {
+  const syncNow = useSyncNow(run.id);
+  const syncStop = useSyncStop(run.id);
+  return (
+    <div className="flex flex-wrap gap-2">
+      <Button
+        variant="outline"
+        size="sm"
+        loading={syncNow.isPending}
+        onClick={() =>
+          syncNow.mutate(undefined, {
+            onSuccess: () => toast.success("Sync started"),
+            onError: (e) => toast.error(e instanceof ApiError ? e.userMessage : "Couldn't sync"),
+          })
+        }
+      >
+        <RefreshCw className="size-4" /> Sync now
+      </Button>
+      <Button
+        variant="outline"
+        size="sm"
+        loading={syncStop.isPending}
+        onClick={() => {
+          if (!confirm("We're live: stop syncing? This deletes the stored key.")) return;
+          syncStop.mutate(undefined, {
+            onSuccess: () => toast.success("Syncing stopped"),
+            onError: (e) => toast.error(e instanceof ApiError ? e.userMessage : "Couldn't stop"),
+          });
+        }}
+      >
+        We&apos;re live: stop syncing
+      </Button>
+    </div>
+  );
+}
+
 function History() {
   const q = useImportHistory();
   if (q.isPending) {
@@ -967,6 +1004,8 @@ function History() {
               </dl>
 
               <KindStats run={r} />
+
+              {r.sync_on && r.source !== "csv" && <HistorySyncActions run={r} />}
 
               {r.last_error && (
                 <p
