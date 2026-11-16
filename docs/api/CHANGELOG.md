@@ -3,6 +3,18 @@
 `openapi.json` next to this file is the API as served (`uv run cedesk openapi`). Every
 route is under `/api/v1`. Breaking changes only come in v2 (md 2B). Newest first.
 
+## 2026-11-16: Imports: an import run again updates tickets, and sync brings owner, team and tags (Phase 2, M9)
+
+- An import run again on an account already imported no longer only skips the tickets that
+  are here: each one gets its new messages, status, owner, team and new tags, the same as a
+  sync look. In `counts.tickets`, such a ticket counts as `updated`; one with nothing new
+  stays `skipped`.
+- A sync look (and a re-import) now also sets the ticket's assignee when the source's
+  assignee is an active CeDesk member (matched by email), its team when the source's group is
+  mapped in `team_map`, and adds the source's new tags. An owner the source doesn't name, or
+  names but CeDesk doesn't know, is left as it is; tags are never removed. Each such change
+  adds a system line "Updated from <source>: ...". No route or field changes.
+
 ## 2026-11-16: Outbound calls: IPv4 first, and the next address when one can't be reached
 
 Imports, webhooks and apps connect through the pinned transport. It used the first checked

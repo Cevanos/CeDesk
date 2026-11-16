@@ -29,7 +29,9 @@ source no longer serves, is kept as a link in a system line under its message.
 credentials when its first import ends. It stays `done` with `sync_on`, and the worker asks
 the source "what changed since the last look" every 5 minutes (`run_due`, the same pass that
 does imports): a new ticket is imported, a ticket already here gets only its new messages
-(found by their source ids) and its new status. `sync-now` makes the next look due at once;
+(found by their source ids), its new status, its owner and team when the source names ones
+CeDesk knows, and the tags it gained. An import run again does the same for every ticket
+already here, so changes made in the source between two imports aren't lost. `sync-now` makes the next look due at once;
 `sync-stop` turns it off and deletes the credentials.
 """
 
@@ -806,7 +808,7 @@ async def _slice(sm: Sessionmaker, importers: Importers, run: Row, deadline: flo
     ctx = _Ctx(
         sm=sm, ws=ws, run_id=run_id, source=run["source"], started_by=run["started_by"],
         team_map=chosen.team_map, status_map=connector.status_map, group_names=groups,
-        store=importers.store,
+        store=importers.store, update_existing=True,
     )  # fmt: skip
     cursor: dict[str, Any] = dict(run["cursor"])
     counts: dict[str, Any] = dict(run["counts"])
@@ -1091,9 +1093,9 @@ async def _member(s: AsyncSession, ctx: _Ctx, email: str | None) -> Row | None:
 
 
 async def _tickets(s: AsyncSession, ctx: _Ctx, items: list[Ticket]) -> dict[str, int]:
-    """Writes a page prepared by `_prepare`: new tickets are created; ones already here are
-    skipped, or (a sync look) get their new messages and status. Archived ones (md O3) are
-    always skipped."""
+    """Writes a page prepared by `_prepare`: new tickets are created; ones already here get
+    their new messages, status, owner and new tags (an import run again, or a sync look), and
+    count as skipped when nothing changed. Archived ones (md O3) are always skipped."""
     unique = {t.external_id: t for t in items}
     fresh = [t for key, t in unique.items() if key not in ctx.have and key not in ctx.archived]
     stats = {
@@ -1114,8 +1116,10 @@ async def _tickets(s: AsyncSession, ctx: _Ctx, items: list[Ticket]) -> dict[str,
     if ctx.update_existing:
         for key, ticket in unique.items():
             if key in ctx.have:
-                stats["skipped"] -= 1
-                ids.append(await _refresh(s, ctx, cfg, ctx.have[key], ticket, stats))
+                ticket_id, changed = await _refresh(s, ctx, cfg, ctx.have[key], ticket, stats)
+                if changed:  # one with nothing new stays "skipped"
+                    stats["skipped"] -= 1
+                    ids.append(ticket_id)
     # An old open ticket has a due time in the past; the SLA code files that breach as
     # already alerted when a change (an import) makes it, so nobody is paged for it.
     if ids:
@@ -1184,10 +1188,12 @@ async def _refresh(
     ticket_id: UUID,
     t: Ticket,
     stats: dict[str, int],
-) -> UUID:
-    """A ticket already imported, seen again by a sync look: its messages that aren't here
-    yet, and where the source now has its status (M9). Nothing already here is changed or
-    removed."""
+) -> tuple[UUID, bool]:
+    """A ticket already imported, seen again (a sync look, or the import run again): its
+    messages that aren't here yet, where the source now has its status (M9), its assignee
+    and team when they map to CeDesk, and tags it gained. No message is changed or removed,
+    no tag is taken off, and an owner the source doesn't name is left as it is. Returns the
+    ticket and whether anything changed."""
     known = ctx.seen.get(ticket_id, (set(), set()))
     messages = sorted((m for m in t.messages if _worth_keeping(m)), key=lambda m: m.created_at)
     fresh = [m for m in messages if _is_new(m, known)]
@@ -1219,9 +1225,30 @@ async def _refresh(
     if fresh:
         await triage.retriage(s, ticket_id, cfg=cfg)
         stats["new_messages"] += len(fresh)
-    if fresh or changed:  # a status-only change is an update too
+    assignee = await _member(s, ctx, t.assignee_email)
+    team = ctx.team_map.get(t.group_id) if t.group_id else None
+    new_owner, new_team, tags_added = await repo.refresh_people(
+        s, ticket_id, assignee_id=assignee["id"] if assignee else None, team_id=team,
+        tags=rules.clean_tags(t.tags, ctx.source), tag_max=rules.TAG_MAX,
+    )  # fmt: skip
+    notes = []
+    if new_owner and assignee:
+        notes.append(f"assigned to {assignee['name'] or assignee['email']}")
+    if new_team:
+        notes.append(f"team {ctx.group_names.get(t.group_id or '', t.group_id)}")
+    if tags_added:
+        notes.append("tags added: " + ", ".join(tags_added))
+    if notes:
+        await repo.insert_message(
+            s, workspace_id=ctx.ws, ticket_id=ticket_id, kind="system",
+            body=f"Updated from {rules.label(ctx.source)}: " + "; ".join(notes),
+            created_at=datetime.now(UTC), author_member_id=None, author_name=None,
+            channel_message_id=None,
+        )  # fmt: skip
+    touched = bool(fresh or changed or notes)
+    if touched:  # a status-only change is an update too
         stats["updated"] += 1
-    return ticket_id
+    return ticket_id, touched
 
 
 async def _ticket(
