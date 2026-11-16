@@ -42,6 +42,7 @@ from cedesk.helpdesk.domain.tickets import Channel, Status, label
 from cedesk.helpdesk.repo import auth as auth_repo
 from cedesk.helpdesk.repo import cevanos as repo
 from cedesk.helpdesk.repo import outbox
+from cedesk.helpdesk.repo import ticket_tools as tools_repo
 from cedesk.helpdesk.repo import tickets as ticket_repo
 from cedesk.helpdesk.service import audit, customer_replies, push, tickets
 from cedesk.helpdesk.service.auth import Sessionmaker
@@ -328,8 +329,15 @@ async def receive_event(
     if event.event == "conversation.escalated":
         if rules.is_echo(event):
             return Received(Outcome.ignored)  # someone took it over in Cevanos (or us)
+        try:
+            held = rules.hold(event)
+        except rules.BadEvent as exc:
+            raise Invalid(str(exc)) from exc
         handover = rules.handover(event)
-        return await _handover(sm, link, conversation_id, handover, event_id=event.event_id)
+        received = await _handover(sm, link, conversation_id, handover, event_id=event.event_id)
+        if held is not None and received.ticket_id is not None:
+            await _hold(sm, workspace_id, received.ticket_id, held)
+        return received
     async with workspace_session(sm, workspace_id) as s:
         chat = await repo.chat_by_conversation(s, conversation_id)
         if chat is None:
@@ -473,6 +481,20 @@ async def _handover(
     return Received(Outcome.created, ticket_id)
 
 
+async def _hold(sm: Sessionmaker, ws: UUID, ticket_id: UUID, held: rules.Hold) -> None:
+    """X7: a Governance hold becomes an approval request on the ticket, once (the same
+    handover delivered again adds nothing)."""
+    what = rules.hold_what(held)
+    async with workspace_session(sm, ws) as s:
+        made = await tools_repo.insert_hold(
+            s, ws, ticket_id=ticket_id, hold_id=held.id, what=what,
+            amount=held.amount, currency=held.currency,
+        )  # fmt: skip
+        if made is not None:
+            await _line(s, ws, ticket_id, f"Cevanos asks for approval: {what}. Approve or "
+                        "reject it here; the decision goes to Cevanos.")  # fmt: skip
+
+
 async def _real_customer(sm: Sessionmaker, link: Link, ticket_id: UUID, conversation: str) -> None:
     """AI6: the chat's real customer instead of "Chat customer" at `@cevanos.invalid`.
     Their email already known here: the ticket joins that customer (their history in one
@@ -550,7 +572,7 @@ class CevanosHandler:
     name = "cevanos"
     events = frozenset(
         {events.Event.handover_accepted.value, events.Event.message_created.value,
-         events.Event.ticket_resolved.value}
+         events.Event.ticket_resolved.value, events.Event.approval_decided.value}
     )  # fmt: skip
 
     def __init__(self, sm: Sessionmaker, cevanos: Cevanos) -> None:
@@ -559,6 +581,9 @@ class CevanosHandler:
 
     async def handle(self, event: Event, effect_key: str) -> None:
         if event.ticket_id is None:
+            return
+        if event.event == events.Event.approval_decided.value:
+            await self._decision(event, effect_key)  # its ticket needn't be a chat (merges)
             return
         ws, ticket_id = event.workspace_id, event.ticket_id
         async with workspace_session(self._sm, ws) as s:
@@ -595,6 +620,38 @@ class CevanosHandler:
             elif action == "close":
                 await repo.update_chat(s, ticket_id, closed_at=now)
                 await _line(s, ws, ticket_id, "The chat was closed in Cevanos")
+
+    async def _decision(self, event: Event, effect_key: str) -> None:
+        """X7: a Governance hold's decision to Cevanos, which then acts (or not). A
+        refusal that won't change on a retry leaves a line on the ticket."""
+        ws = event.workspace_id
+        approval_id = UUID(str(event.payload.get("approval_id")))
+        problem: str | None = None
+        async with workspace_session(self._sm, ws) as s:
+            approval = await tools_repo.get_approval(s, approval_id)
+            if approval is None or approval["cevanos_hold_id"] is None:
+                return  # deleted with its ticket, or not a hold
+            ticket_id = approval["ticket_id"]
+            try:
+                link = await _open(s, self._cevanos, ws)
+            except (NotFound, Invalid) as exc:
+                problem = exc.message
+                await _line(s, ws, ticket_id, f"Cevanos wasn't told the decision: {problem}")
+        if problem is not None:
+            raise HandlerError(problem, permanent=True)
+        try:
+            await link.api.hold_decision(
+                str(approval["cevanos_hold_id"]), decision=str(approval["state"]),
+                note=approval["decision_note"],
+                decided_by=str(approval["decided_by_name"] or "CeDesk"), key=effect_key,
+            )  # fmt: skip
+        except CevanosError as exc:
+            if exc.permanent:
+                async with workspace_session(self._sm, ws) as s:
+                    await _line(s, ws, ticket_id, f"Cevanos wasn't told the decision: {exc}")
+            raise HandlerError(str(exc), permanent=exc.permanent) from None
+        async with workspace_session(self._sm, ws) as s:
+            await _line(s, ws, ticket_id, f"Cevanos was told: {approval['state']}")
 
     async def _what(
         self, s: AsyncSession, event: Event, chat: Any, link: Link

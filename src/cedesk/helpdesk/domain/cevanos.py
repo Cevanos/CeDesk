@@ -13,6 +13,7 @@ import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 SIGNATURE_HEADER = "CXOps-Signature"
@@ -246,3 +247,60 @@ def handover(event: WebhookEvent) -> dict[str, Any]:
 
 def poll_wait(failures: int) -> int:
     return POLL_BACKOFF_SECONDS[min(failures, len(POLL_BACKOFF_SECONDS) - 1)]
+
+
+# X7: a Governance hold that comes with a handover
+
+
+@dataclass(frozen=True)
+class Hold:
+    """An action Cevanos's AI may only take once a person approves it (a refund, a
+    cancel), held by Cevanos's Governance. Ids and enums only, as every webhook."""
+
+    id: str
+    action: str  # refund, cancel_order, discount, ... (Cevanos's words)
+    amount: Decimal | None
+    currency: str | None
+
+
+_HOLD_ID = re.compile(r"^[A-Za-z0-9_.:-]{1,100}$")
+_ACTION = re.compile(r"^[a-z][a-z0-9_]{0,49}$")
+_CURRENCY = re.compile(r"^[A-Z]{3}$")
+
+
+def hold(event: WebhookEvent) -> Hold | None:
+    """`data.hold: {"id", "action", "amount", "currency"}` on `conversation.escalated`, when
+    the AI handed over because Governance holds an action. None without one; a hold with
+    a bad id or action is refused (it can't be decided later)."""
+    found = event.data.get("hold")
+    if found is None:
+        return None
+    if not isinstance(found, Mapping):
+        raise BadEvent("hold must be an object.")
+    hold_id, action = found.get("id"), found.get("action")
+    if not isinstance(hold_id, str) or not _HOLD_ID.match(hold_id):
+        raise BadEvent("hold.id is missing or not an id.")
+    if not isinstance(action, str) or not _ACTION.match(action):
+        raise BadEvent("hold.action is missing or not a word.")
+    amount: Decimal | None = None
+    raw = found.get("amount")
+    if raw is not None:
+        try:
+            amount = Decimal(str(raw)).quantize(Decimal("0.01"))
+        except InvalidOperation:
+            raise BadEvent("hold.amount is not a number.") from None
+        if not amount > 0 or amount >= Decimal("1e12"):
+            raise BadEvent("hold.amount is out of range.")
+    currency = found.get("currency")
+    currency = currency.upper() if isinstance(currency, str) else None
+    if amount is not None and (currency is None or not _CURRENCY.match(currency)):
+        raise BadEvent("hold.currency must be a 3-letter code with an amount.")
+    return Hold(hold_id, action, amount, currency if amount is not None else None)
+
+
+def hold_what(found: Hold) -> str:
+    """The approval request's text: "Refund 499.00 INR (Cevanos Governance hold)"."""
+    what = found.action.replace("_", " ").capitalize()
+    if found.amount is not None:
+        what += f" {found.amount} {found.currency}"
+    return f"{what} (Cevanos Governance hold)"

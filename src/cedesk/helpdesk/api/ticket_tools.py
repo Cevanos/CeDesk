@@ -192,13 +192,19 @@ class ApprovalOut(BaseModel):
     currency: str | None
     state: str = Field(description="pending, approved or rejected.")
     decision_note: str | None
-    requester_id: UUID
-    requester_name: str
-    approver_id: UUID
-    approver_name: str
+    requester_id: UUID | None = Field(description="Null for a Cevanos Governance hold.")
+    requester_name: str | None = Field(description="Null for a Cevanos Governance hold.")
+    approver_id: UUID | None = Field(
+        description="Null for a Cevanos Governance hold: anyone who can approve decides it."
+    )
+    approver_name: str | None
     decided_by_name: str | None
     decided_at: datetime | None
     created_at: datetime
+    cevanos_hold_id: str | None = Field(
+        description="Set when Cevanos's Governance holds an action (a refund...) for this "
+        "approval (md X7): the decision is sent to Cevanos, which then acts or not."
+    )
 
 
 def _approval(row: Any) -> ApprovalOut:

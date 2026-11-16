@@ -6,8 +6,10 @@ Light agents can read all of it but change none of it (md 6.6): merging, linking
 child tickets need `change_fields`; approval requests, tasks and time need `reply`;
 deciding an approval needs `approve`.
 
-Not here yet: X7 (passing a decision to a Cevanos Governance hold) needs a Cevanos `/v1`
-route; until then CeDesk records the decision only.
+A Cevanos Governance hold (X7: an action Cevanos's AI may only take once approved, such
+as a refund) comes with the chat's handover as an approval request nobody here asked
+for. Anyone with `approve` who sees the ticket decides it, and the decision goes to
+Cevanos by the outbox (`approval.decided`, service/cevanos.py), which then acts or not.
 """
 
 from collections.abc import Mapping, Sequence
@@ -20,12 +22,14 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cedesk.db import workspace_session
+from cedesk.helpdesk.domain import events
 from cedesk.helpdesk.domain import ticket_tools as rules
 from cedesk.helpdesk.domain.auth import Caller
 from cedesk.helpdesk.domain.permissions import Action
 from cedesk.helpdesk.domain.ticket_tools import Decision, DueIn, ToolError
 from cedesk.helpdesk.domain.tickets import Channel, Status, label
 from cedesk.helpdesk.repo import messages as message_repo
+from cedesk.helpdesk.repo import outbox
 from cedesk.helpdesk.repo import ticket_tools as repo
 from cedesk.helpdesk.repo import tickets as ticket_repo
 from cedesk.helpdesk.repo.ticket_tools import Row
@@ -331,7 +335,8 @@ async def decide_approval(
     sm: Sessionmaker, caller: Caller, approval_id: UUID, *, decision: Decision, note: str | None
 ) -> Row:
     """Approve or reject (from the bell or the ticket). The named approver decides, or an
-    Admin; never the person who asked. A decision is final."""
+    Admin; never the person who asked. A Cevanos Governance hold (X7) is decided by anyone
+    who can approve and sees its ticket, and the decision goes to Cevanos. Final."""
     require(caller, Action.approve)
     try:
         text_note = rules.clean_text(note, "note", required=False)
@@ -341,9 +346,12 @@ async def decide_approval(
         approval = await repo.get_approval(s, approval_id, lock=True)
         if approval is None:
             raise NotFound("Approval request not found.")
-        if approval["requester_id"] == caller.member_id:
+        hold = approval["cevanos_hold_id"]
+        if hold is not None:
+            await scope.check(s, caller, approval["ticket_id"], edit=False)
+        elif approval["requester_id"] == caller.member_id:
             raise Forbidden("You can't decide your own request.")
-        if approval["approver_id"] != caller.member_id and not caller.can(Action.settings):
+        elif approval["approver_id"] != caller.member_id and not caller.can(Action.settings):
             raise Forbidden(f"Only {approval['approver_name']} or an Admin can decide this.")
         if approval["state"] != "pending":
             raise Conflict(
@@ -355,17 +363,25 @@ async def decide_approval(
         who = await _who(s, caller)
         ticket = await _ticket(s, approval["ticket_id"])
         said = f"{state.capitalize()} by {who}: {approval['what']}"
-        await _line(
-            s, caller.workspace_id, ticket["id"], said + (f" · {text_note}" if text_note else "")
-        )
-        await _notify(
-            s,
-            caller,
-            approval["requester_id"],
-            ticket,
-            "approval",
-            f"{said} (on {label(ticket['number'])})",
-        )
+        line = said + (f" · {text_note}" if text_note else "")
+        if hold is not None:
+            await _line(s, caller.workspace_id, ticket["id"], line + " · sending it to Cevanos")
+            detail = await ticket_repo.ticket_detail(s, ticket["id"])
+            assert detail is not None
+            extra = {"approval_id": str(approval_id), "decision": state}
+            await outbox.add(s, caller.workspace_id, events.Event.approval_decided.value,
+                             ticket["id"], events.payload(events.Event.approval_decided,
+                                                          detail, extra))  # fmt: skip
+        else:
+            await _line(s, caller.workspace_id, ticket["id"], line)
+            await _notify(
+                s,
+                caller,
+                approval["requester_id"],
+                ticket,
+                "approval",
+                f"{said} (on {label(ticket['number'])})",
+            )
         row = await repo.get_approval(s, approval_id)
         assert row is not None
         return row
@@ -380,10 +396,14 @@ async def ticket_approvals(sm: Sessionmaker, caller: Caller, ticket_id: UUID) ->
 
 
 async def waiting_approvals(sm: Sessionmaker, caller: Caller) -> Sequence[Row]:
-    """The requests waiting for the caller's decision, oldest first."""
+    """The requests waiting for the caller's decision, oldest first: asked of them, and
+    (with `approve`) the Cevanos Governance holds on tickets they see."""
     require(caller, Action.read_ticket)
     async with workspace_session(sm, caller.workspace_id) as s:
-        return await repo.waiting_for(s, caller.member_id, WAITING_LIMIT)
+        return await repo.waiting_for(
+            s, caller.member_id, WAITING_LIMIT, holds=caller.can(Action.approve),
+            team=scope.visible_team(caller),
+        )  # fmt: skip
 
 
 # --- Tasks (X8) ---
