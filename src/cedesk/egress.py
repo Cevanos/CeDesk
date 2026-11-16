@@ -159,9 +159,19 @@ class PinnedTransport(httpx.AsyncBaseTransport):
         addresses = list(await self._resolver(host))
         if not addresses or not all(is_public(a) for a in addresses):
             raise httpx.ConnectError(f"'{host}' isn't a public address.", request=request)
-        request.url = request.url.copy_with(host=addresses[0].split("%", 1)[0])
         request.extensions = {**request.extensions, "sni_hostname": host}
-        return await self._inner.handle_async_request(request)
+        url = request.url
+        # IPv4 first (a container often has no IPv6 route), then the next checked address
+        # when one can't be reached: never an address that wasn't checked above.
+        ordered = sorted(addresses, key=lambda a: ":" in a)
+        for i, address in enumerate(ordered):
+            request.url = url.copy_with(host=address.split("%", 1)[0])
+            try:
+                return await self._inner.handle_async_request(request)
+            except httpx.ConnectError:
+                if i == len(ordered) - 1:
+                    raise
+        raise AssertionError("unreachable")  # pragma: no cover
 
     async def aclose(self) -> None:
         await self._inner.aclose()
