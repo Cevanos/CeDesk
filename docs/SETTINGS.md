@@ -18,7 +18,7 @@ file or `deploy/env.example` names one that doesn't exist.
 |---|---|---|---|---|
 | `CEDESK_ENV` | `dev` | `dev` (a developer's machine), `staging` (a shared test server) or `production`. Anything but `dev` refuses to start with the dev secret key or dev database password, `*` in CORS, or Cevanos over plain http; `production` also refuses `MAIL_BACKEND=log` and turns off test-only routes (simulated customer replies; demo data, even with `CEDESK_DEMO_ENABLED`). | all | migrate, api, worker |
 | `CEDESK_SECRET_KEY` | a dev-only value | Encrypts stored secrets (two-step sign-in, app credentials, the Cevanos key, webhook secrets, import credentials). Random, 32+ characters (`openssl rand -hex 32`). **Back it up; never change it**: a new key locks out everyone using two-step sign-in. | api, worker | api, worker |
-| `CEDESK_EDITION` | `cloud` | `cloud` or `self_hosted`. Only switches the cloud plan limits on: they apply just to a workspace given a plan with `cedesk set-plan`. `/readyz` shows it. | api, worker, cli | no |
+| `CEDESK_EDITION` | `cloud` | `cloud` or `self_hosted`. Only switches the cloud plan limits on: they apply just to a workspace given a plan with `cedesk set-plan`. `/readyz` shows it. `deploy/` sets `self_hosted`; our own cloud servers set `cloud` in `deploy/.env`. | api, worker, cli | api, worker |
 | `CEDESK_DEMO_ENABLED` | `false` | Turns on the demo data routes (`/demo/seed`, `/demo/samples`, `/demo/reset`) for Admins. Never on `production`, even when set. | api | api |
 | `CEDESK_LOG_LEVEL` | `INFO` | `DEBUG`, `INFO`, `WARNING` or `ERROR`. | api, worker, cli | no |
 

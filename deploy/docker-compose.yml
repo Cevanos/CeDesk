@@ -45,6 +45,8 @@ services:
         condition: service_completed_successfully
     environment:
       CEDESK_ENV: ${CEDESK_ENV:-staging}
+      # self_hosted: no cloud plan limits. Our own cloud servers set cloud in deploy/.env.
+      CEDESK_EDITION: ${CEDESK_EDITION:-self_hosted}
       CEDESK_DATABASE_URL: postgresql+asyncpg://cedesk_app:${CEDESK_APP_PASSWORD}@db:5432/cedesk
       CEDESK_SECRET_KEY: ${CEDESK_SECRET_KEY:?set CEDESK_SECRET_KEY in deploy/.env}
       CEDESK_CORS_ORIGINS: ${CEDESK_CORS_ORIGINS:-}
@@ -85,6 +87,8 @@ services:
         condition: service_completed_successfully
     environment:
       CEDESK_ENV: ${CEDESK_ENV:-staging}
+      # self_hosted: no cloud plan limits. Our own cloud servers set cloud in deploy/.env.
+      CEDESK_EDITION: ${CEDESK_EDITION:-self_hosted}
       CEDESK_DATABASE_URL: postgresql+asyncpg://cedesk_app:${CEDESK_APP_PASSWORD}@db:5432/cedesk
       CEDESK_SECRET_KEY: ${CEDESK_SECRET_KEY:?set CEDESK_SECRET_KEY in deploy/.env}
       # Links in the CSAT survey email open <portal url>/rate (empty: the app's address);
