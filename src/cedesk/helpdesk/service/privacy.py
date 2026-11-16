@@ -153,7 +153,7 @@ def archived_export(a: RowMapping) -> dict[str, Any]:
         "status": a["status"],
         "priority": a["priority"],
         "channel": a["channel"],
-        "type": None,
+        "type": ticket.get("type_name"),
         "fields": ticket.get("fields") or {},
         "tags": list(ticket.get("tags") or []),
         "created_at": _when(a["created_at"]),
@@ -209,6 +209,8 @@ async def export(
         )
         archived = await archive_repo.for_contact(s, contact["id"])
         data["tickets"] += [archived_export(a) for a in archived]  # md O3
+        n_tickets = len(tickets) + len(archived)
+        n_messages = len(messages) + sum(len(a["messages"]) for a in archived)
         body = json.dumps(data, ensure_ascii=False, indent=2).encode()
         await store.put(key, body, content_type="application/json")
         try:
@@ -216,7 +218,7 @@ async def export(
                 s, caller.workspace_id, request_id=request_id, kind="export",
                 contact_id=contact["id"], requested_by=caller.member_id, object_key=key,
                 size=len(body), expires_at=now + KEEP_EXPORT,
-                counts={"tickets": len(tickets), "messages": len(messages)},
+                counts={"tickets": n_tickets, "messages": n_messages},
             )  # fmt: skip
             await audit.record(
                 s,
@@ -225,7 +227,7 @@ async def export(
                 "exported",
                 f"Customer {contact['id']}",
                 target_id=contact["id"],
-                detail={"tickets": len(tickets)},
+                detail={"tickets": n_tickets},
             )
             row = await repo.request(s, request_id)
         except BaseException:

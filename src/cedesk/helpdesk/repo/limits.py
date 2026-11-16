@@ -49,7 +49,14 @@ async def tickets_since(session: AsyncSession, since: datetime, imported: Sequen
 
 
 async def storage_bytes(session: AsyncSession) -> int:
-    result = await session.execute(text("SELECT coalesce(sum(size), 0) FROM hd_attachment"))
+    """Every stored file: on live tickets, and on archived ones (md O3; their total is kept
+    with them, and an erase, which deletes the files, sets it to 0)."""
+    result = await session.execute(
+        text(
+            "SELECT (SELECT coalesce(sum(size), 0) FROM hd_attachment) "
+            "+ (SELECT coalesce(sum(file_bytes), 0) FROM hd_ticket_archive)"
+        )
+    )
     return int(result.scalar_one())
 
 
@@ -101,10 +108,9 @@ async def resolved_before(
     return result.mappings().all()
 
 
-async def delete_tickets(session: AsyncSession, ticket_ids: Sequence[UUID]) -> int:
-    """Their messages, files' rows, tasks and the rest go with them (ON DELETE CASCADE).
-    Their events and webhook deliveries name the ticket (with its subject) without a
-    foreign key, so they are deleted here too."""
+async def delete_ticket_events(session: AsyncSession, ticket_ids: Sequence[UUID]) -> None:
+    """The events and webhook deliveries of these tickets (live or archived): they name the
+    ticket, with its subject, without a foreign key."""
     ids = {"ids": list(ticket_ids), "texts": [str(i) for i in ticket_ids]}
     await session.execute(
         text("DELETE FROM hd_webhook_delivery WHERE body->'ticket'->>'id' = ANY(:texts)"), ids
@@ -112,6 +118,12 @@ async def delete_tickets(session: AsyncSession, ticket_ids: Sequence[UUID]) -> i
     await session.execute(
         text("DELETE FROM hd_outbox WHERE ticket_id = ANY(CAST(:ids AS uuid[]))"), ids
     )
+
+
+async def delete_tickets(session: AsyncSession, ticket_ids: Sequence[UUID]) -> int:
+    """Their messages, files' rows, tasks and the rest go with them (ON DELETE CASCADE),
+    and their events and webhook deliveries (`delete_ticket_events`)."""
+    await delete_ticket_events(session, ticket_ids)
     result = await session.execute(
         text("DELETE FROM hd_ticket WHERE id = ANY(CAST(:ids AS uuid[]))"),
         {"ids": list(ticket_ids)},

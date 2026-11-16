@@ -94,6 +94,7 @@ class ArchivedMessage:
     body: str
     created_at: str
     files: list[dict[str, Any]]
+    email: dict[str, Any] | None  # an email's headers (from, to, subject, message ids)
 
 
 @dataclass(frozen=True)
@@ -103,6 +104,43 @@ class ArchivedTicket(ArchivedSummary):
     messages: list[ArchivedMessage]
     files: list[dict[str, Any]]  # every file on the ticket (name, size, type)
     rating: dict[str, Any] | None
+    time_log: list[dict[str, Any]]
+    tasks: list[dict[str, Any]]
+    approvals: list[dict[str, Any]]
+    links: list[dict[str, Any]]
+    side_conversations: list[dict[str, Any]]
+    jira_issues: list[dict[str, Any]]
+    emails: list[dict[str, Any]]
+
+
+# What the archive read shows of the history kept with a ticket (never ids of rows that
+# are gone, storage keys or delivery internals).
+SHOWN: dict[str, tuple[str, ...]] = {
+    "time_log": ("minutes", "billable", "note", "member_name", "logged_at"),
+    "tasks": ("text", "owner_name", "due_at", "done_at", "created_at"),
+    "approvals": ("what", "amount", "currency", "state", "decision_note", "requester_name",
+                  "approver_name", "decided_by_name", "decided_at", "created_at"),
+    "links": ("ticket_id", "number", "label", "kind", "created_at"),
+    "side_conversations": ("subject", "via", "to_addresses", "from_address", "created_at",
+                           "messages"),
+    "jira_issues": ("issue_key", "url", "made_here", "created_at"),
+    "emails": ("from_address", "to_addresses", "cc_addresses", "subject", "body_text",
+               "status", "sent_at", "created_at"),
+}  # fmt: skip
+SIDE_MESSAGE = ("direction", "author_name", "from_address", "body", "created_at")
+
+
+def _shown(kind: str, rows: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+    out = []
+    for row in rows or []:
+        if kind == "links" and row.get("number") is not None:
+            row = {**row, "label": label(int(row["number"]))}
+        if kind == "side_conversations":
+            row = {**row, "messages": [
+                {k: m.get(k) for k in SIDE_MESSAGE} for m in row.get("messages") or []
+            ]}  # fmt: skip
+        out.append({k: row.get(k) for k in SHOWN[kind]})
+    return out
 
 
 def _summary(r: Any) -> dict[str, Any]:
@@ -150,8 +188,10 @@ async def search(
 
 
 async def get(sm: Sessionmaker, caller: Caller, ticket_id: UUID) -> ArchivedTicket:
-    """Read only, with its messages (notes too: agents only), files' names and rating.
-    A role that can't see the ticket's team gets a 404, as for a live ticket."""
+    """Read only, with its messages (notes too: agents only), files' names, rating and the
+    rest of its history (time logged, tasks, approvals, links, side conversations, Jira
+    issues, emails sent). The team's and assignee's names are as they were when it was
+    archived. A role that can't see the ticket's team gets a 404, as for a live ticket."""
     require(caller, Action.read_ticket)
     async with workspace_session(sm, caller.workspace_id) as s:
         r = await repo.get(s, ticket_id)
@@ -164,6 +204,7 @@ async def get(sm: Sessionmaker, caller: Caller, ticket_id: UUID) -> ArchivedTick
         files.setdefault(f.get("message_id"), []).append(shown)  # never the storage key
         every.append(shown)
     ticket = r["ticket"]
+    history: dict[str, Any] = {k: _shown(k, (r["related"] or {}).get(k)) for k in SHOWN}
     return ArchivedTicket(
         **_summary(r),
         tags=list(ticket.get("tags") or []),
@@ -175,12 +216,20 @@ async def get(sm: Sessionmaker, caller: Caller, ticket_id: UUID) -> ArchivedTick
                 body=str(m.get("body") or ""),
                 created_at=str(m.get("created_at")),
                 files=files.get(m.get("id"), []),
+                email=m.get("email"),
             )
             for m in r["messages"]
         ],
         files=every,
-        rating=dict(r["rating"]) if r["rating"] else None,
+        rating=_rating(r["rating"]),
+        **history,
     )
+
+
+def _rating(rating: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not rating:
+        return None
+    return {k: rating.get(k) for k in ("score", "comment", "source", "rated_at")}
 
 
 @dataclass(frozen=True)

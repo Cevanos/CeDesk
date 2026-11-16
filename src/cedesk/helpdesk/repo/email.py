@@ -322,11 +322,13 @@ async def is_support_address(session: AsyncSession, address: str) -> bool:
 
 
 async def email_seen(session: AsyncSession, workspace_id: UUID, message_id: str) -> bool:
-    """An email with this Message-ID is already on some ticket (in or out)."""
+    """An email with this Message-ID is already on some ticket (in or out), live or
+    archived (md O3)."""
     result = await session.execute(
         text(
             "SELECT 1 FROM hd_message WHERE workspace_id = :ws AND email IS NOT NULL "
-            "AND email->>'message_id' = :mid LIMIT 1"
+            "AND email->>'message_id' = :mid UNION ALL SELECT 1 FROM hd_ticket_archive "
+            "WHERE workspace_id = :ws AND email_ids @> ARRAY[CAST(:mid AS text)] LIMIT 1"
         ),
         {"ws": workspace_id, "mid": message_id},
     )

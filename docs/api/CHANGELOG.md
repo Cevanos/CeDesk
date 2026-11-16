@@ -137,26 +137,48 @@ stay fast. They are still found by number or customer and open read only.
 - `GET /archive/tickets?number=1042` (or `T-1042`), `?email=`, `?contact_id=`: at least
   one, else 422. Newest first, at most 50. Same rights as reading tickets; a team-only role
   sees its team's only.
-- `GET /archive/tickets/{id}`: read only, with every message (internal notes too), the
-  files' names, sizes and types (`files`, and per message), the tags, fields and the CSAT
-  rating. 404 when it isn't archived or is another team's. An archived ticket can't be
-  changed, replied to or reopened; `GET /tickets/{id}` answers 404 for it.
+- `GET /archive/tickets/{id}`: read only, with everything that was on the ticket: every
+  message (internal notes too; `email`: an email's headers), the files' names, sizes and
+  types (`files`, and per message), the tags, fields, the CSAT rating, and its history:
+  `time_log`, `tasks`, `approvals`, `links` (the other ticket's id, number and label),
+  `side_conversations` (with their `messages`), `jira_issues` and `emails` (sent from it;
+  `body_text` null for one that carried a secret). `team_name` and `assignee_name` are as
+  they were when it was archived (the team or member may be gone). 404 when it isn't
+  archived or is another team's. An archived ticket can't be changed, replied to or
+  reopened; `GET /tickets/{id}` answers 404 for it.
 - `GET /archive/settings`, `PUT /archive/settings {"after_days": 30-3650 | null}`
   (null: 120). Settings right, audited (area `archive`).
 - The worker moves them in batches with `FOR UPDATE SKIP LOCKED`, so several workers never
   move a ticket twice. Each run is audited (area `archive`, action `archived`). An
   imported ticket counts from when it was imported, as for retention.
-- Retention deletes from the archive too, with the files; its audit detail gets
-  `archived` (how many came from the archive).
-- Privacy: a customer's export lists their archived tickets (`"archived": true`), and
-  erasing a customer blanks those too and deletes their files (erase `counts` get
-  `archived_tickets`).
+- A ticket a live one still needs waits, however old: one a ticket still in the list
+  names as its parent (`parent_id`) or as what it was merged into (`merged_into_id`), one
+  linked to a live ticket that isn't resolved, or one with an email still waiting to be
+  sent. Children and merged tickets (named by nobody) move first; the ticket they named
+  moves on a later run, once they are archived. So no live ticket ever loses its parent,
+  merge target or open link.
+- A customer's late email answer to an archived ticket (its `In-Reply-To`/`References`, or
+  `[T-1234]` in the subject from that ticket's customer) becomes a new ticket, tagged
+  `archived-follow-up`, with the line "Follows archived ticket T-1234". The same email
+  delivered twice is still a duplicate.
+- Retention deletes from the archive too, with the files, events (`hd_outbox`) and
+  webhook deliveries, as for live tickets; its audit detail gets `archived` (how many came
+  from the archive).
+- Privacy: a customer's export lists their archived tickets (`"archived": true`; the
+  export's `counts` include them), and erasing a customer blanks those too (messages and
+  their email headers, emails sent, tasks, approvals, time notes), deletes their files and
+  erases their events and webhook deliveries (erase `counts` get `archived_tickets`).
+- Usage: `storage_bytes` counts archived tickets' files too (until erased or deleted).
+- Imports: a ticket already imported and since archived is skipped, never imported again.
 
-What leaves with a ticket: its tasks, notifications, links, approvals and time logs (they
-belong to live work). Reports count live tickets only, so periods older than the archive
-age show fewer tickets and ratings than before.
+What leaves with a ticket and is not kept: its notifications and mentions (agents'
+inboxes) and rating links (long expired). Reports count live tickets only, so periods
+older than the archive age show fewer tickets and ratings than before.
 
-Migration 0049 (after 0048).
+Migrations 0049 (after 0048) and 0052 (after 0051): 0052 adds the archive's `related`,
+`file_bytes`, `source_id` and `email_ids` and their indexes, for servers that already ran
+0049 (tickets archived before it get `source_id` and `file_bytes` from what they kept,
+and an empty history). Both downgrades refuse while any ticket is archived.
 
 ## 2026-11-13: Side conversations in Slack (Phase 3, X5, the Slack part)
 
