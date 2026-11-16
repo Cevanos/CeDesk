@@ -2,6 +2,7 @@
 or customer and opened read only; and the archive age setting."""
 
 from datetime import datetime
+from decimal import Decimal
 from typing import Annotated, Any
 from uuid import UUID
 
@@ -45,34 +46,118 @@ class ArchivedMessageOut(BaseModel):
     )
 
 
+class ArchivedTimeOut(BaseModel):
+    minutes: int
+    billable: bool
+    note: str | None
+    member_name: str | None = Field(description="As it was when archived.")
+    logged_at: datetime
+
+
+class ArchivedTaskOut(BaseModel):
+    text: str
+    owner_name: str | None
+    due_at: datetime | None
+    done_at: datetime | None
+    created_at: datetime
+
+
+class ArchivedApprovalOut(BaseModel):
+    what: str
+    amount: Decimal | None
+    currency: str | None
+    state: str = Field(description="pending, approved or rejected.")
+    decision_note: str | None
+    requester_name: str | None
+    approver_name: str | None
+    decided_by_name: str | None
+    decided_at: datetime | None
+    created_at: datetime
+
+
+class ArchivedLinkOut(BaseModel):
+    ticket_id: UUID = Field(
+        description="The other ticket: open it live, or in the archive if it moved too."
+    )
+    number: int
+    label: str
+    kind: str
+    created_at: datetime
+
+
+class ArchivedSideMessageOut(BaseModel):
+    direction: str = Field(description="out: sent from CeDesk; in: their reply.")
+    author_name: str | None
+    from_address: str = Field(description="Email: the sender's address. Slack: empty.")
+    body: str
+    created_at: datetime
+
+
+class ArchivedSideOut(BaseModel):
+    subject: str
+    via: str = Field(description="email or slack.")
+    to: list[str] = Field(description="Email: the addresses. Slack: the channel.")
+    from_address: str = Field(description="Email: the support address it went out from.")
+    created_at: datetime
+    last_message_at: datetime | None
+    messages: list[ArchivedSideMessageOut]
+
+
+class ArchivedJiraIssueOut(BaseModel):
+    key: str
+    url: str
+    made_here: bool = Field(description="Created from CeDesk; false: an existing one linked.")
+    created_at: datetime
+
+
+class ArchivedEmailOut(BaseModel):
+    from_address: str
+    to_addresses: list[str]
+    cc_addresses: list[str]
+    subject: str
+    body_text: str | None = Field(description="Null for one that carried a secret.")
+    sensitive: bool = Field(
+        description="It carried a secret (a reset link), so its body isn't kept."
+    )
+    status: str = Field(description="sent or failed.")
+    sent_at: datetime | None
+    created_at: datetime
+
+
+class ArchivedCevanosChatOut(BaseModel):
+    conversation_id: str = Field(description="The Cevanos chat it was handed over from.")
+    agent_id: str | None
+    channel_kind: str | None
+    handover: dict[str, Any] | None = Field(description="The handover card: reason and more.")
+    taken_over_at: datetime | None
+    closed_at: datetime | None
+    created_at: datetime
+
+
+class ArchivedRelatedOut(BaseModel):
+    """The rest of the ticket's history, kept when it was archived. Lists are oldest
+    first; empty for tickets archived before this was kept."""
+
+    time_log: list[ArchivedTimeOut]
+    tasks: list[ArchivedTaskOut]
+    approvals: list[ArchivedApprovalOut]
+    links: list[ArchivedLinkOut] = Field(description="The tickets it was linked to.")
+    side_conversations: list[ArchivedSideOut] = Field(description="With their messages.")
+    jira_issues: list[ArchivedJiraIssueOut]
+    emails: list[ArchivedEmailOut] = Field(description="The emails sent from it.")
+    cevanos_chat: ArchivedCevanosChatOut | None = Field(
+        description="A handover's Cevanos chat (its messages are the ticket's); else null."
+    )
+
+
 class ArchivedTicketOut(ArchivedOut):
+    type_name: str | None = Field(description="As it was when archived.")
     tags: list[str]
     fields: dict[str, Any]
     messages: list[ArchivedMessageOut]
     files: list[dict[str, Any]] = Field(description="Every file on the ticket: name, size, type.")
     rating: dict[str, Any] | None = Field(description="score, comment, source, rated_at.")
-    time_log: list[dict[str, Any]] = Field(
-        description="minutes, billable, note, member_name, logged_at."
-    )
-    tasks: list[dict[str, Any]] = Field(
-        description="text, owner_name, due_at, done_at, created_at."
-    )
-    approvals: list[dict[str, Any]] = Field(
-        description="what, amount, currency, state, decision_note, requester_name, "
-        "approver_name, decided_by_name, decided_at, created_at."
-    )
-    links: list[dict[str, Any]] = Field(
-        description="The linked tickets: ticket_id, number, label, kind, created_at."
-    )
-    side_conversations: list[dict[str, Any]] = Field(
-        description="subject, via, to_addresses, from_address, created_at and messages "
-        "(direction, author_name, from_address, body, created_at)."
-    )
-    jira_issues: list[dict[str, Any]] = Field(description="issue_key, url, made_here, created_at.")
-    emails: list[dict[str, Any]] = Field(
-        description="The emails sent from it: from_address, to_addresses, cc_addresses, "
-        "subject, body_text (null for one that carried a secret), status, sent_at, created_at."
-    )
+    related: ArchivedRelatedOut
 
 
 class SettingOut(BaseModel):
@@ -115,15 +200,19 @@ async def find(
     response_model=ArchivedTicketOut,
     summary="Open an archived ticket (read only)",
     description="Everything that was on it: messages (internal notes too, with an email's "
-    "headers), files' names, rating, time logged, tasks, approvals, links, side "
-    "conversations, Jira issues and emails sent. The team's and assignee's names are as "
-    "they were when it was archived. It can't be changed, replied to or reopened; a "
+    "headers), files' names, rating, and in `related`: time logged, tasks, approvals, "
+    "links, side conversations, Jira issues, emails sent and the Cevanos chat. The type's, "
+    "team's and assignee's names are as they were when it was archived. A role that sees "
+    "one team only gets a 404 for another team's. It can't be changed, replied to or reopened; a "
     "customer's late email answer to it becomes a new ticket that follows it.",
     responses={404: {"description": "Not in the archive, or another team's"}},
 )
 async def open_one(ticket_id: UUID, caller: CallerDep, sm: SessionmakerDep) -> ArchivedTicketOut:
     got = await archive.get(sm, caller, ticket_id)
-    data = got.__dict__ | {"messages": [ArchivedMessageOut(**m.__dict__) for m in got.messages]}
+    data = got.__dict__ | {
+        "messages": [ArchivedMessageOut(**m.__dict__) for m in got.messages],
+        "related": ArchivedRelatedOut.model_validate(got.related),
+    }
     return ArchivedTicketOut(**data)
 
 

@@ -66,7 +66,7 @@ its own stream (`/portal/stream`) with only the customer's own messages and stat
 `{{customer.first_name}}` and the like; the API fills them when the reply is sent.
 Show them as they are in the editor.
 
-**227 routes** (14 in PRs waiting for review: PR #42 mobile, demo seed PR, Slack PR, archive PR, push PR).
+**227 routes**, all on `main`.
 
 ## 2. Screens
 
@@ -117,7 +117,7 @@ Show them as they are in the editor.
 
 - Tabs Open, Pending, Resolved with counts (`counts` on the answer). Filters: scope (`everyone`, `mine`, `unassigned`), priority, team, `imported` (tickets brought from another help desk). Search box: `q` (number, subject, customer, field value, tag). Sort: `priority` (default), `sla`, `newest`, `oldest`, `updated`.
 - New ticket: `POST /tickets` (type, its fields, team, assignee, tags). The ticket types and their fields come from `GET /ticket-types`.
-- A team-only role only ever gets its team's tickets; nothing to filter on your side. With the archive PR, resolved tickets older than the archive age (default 120 days) leave the list: see Archive.
+- A team-only role only ever gets its team's tickets; nothing to filter on your side. Resolved tickets older than the archive age (default 120 days) leave the list: see Archive.
 
 | | Route | What it does |
 |---|---|---|
@@ -175,7 +175,7 @@ Show them as they are in the editor.
 
 ### 2.6 Ticket page: side conversations, Jira, orders and payments
 
-- Side conversations (agents only, never shown to the customer): by email (addresses), or *(Slack PR)* in a Slack channel (needs the Slack side conversations app). Replies come back to the same side conversation, and the assignee gets a `side_reply` notification. *(Slack PR)* `via` says `email` or `slack`.
+- Side conversations (agents only, never shown to the customer): by email (addresses), or in a Slack channel (needs the Slack side conversations app). Replies come back to the same side conversation, and the assignee gets a `side_reply` notification. `via` says `email` or `slack`.
 - Jira: create an issue from the ticket or link an existing one.
 - Orders and payments cards: `available: false` comes with a `message` to show (not installed, Cevanos connected, provider down); the ticket still works.
 
@@ -190,7 +190,7 @@ Show them as they are in the editor.
 | `GET` | `/tickets/{ticket_id}/payments` | The customer's latest payments (sidebar) |
 | `GET` | `/tickets/{ticket_id}/side-conversations` | Side conversations on a ticket (agents only; never shown to the customer) |
 | `POST` | `/tickets/{ticket_id}/side-conversations` | Start a side conversation by email |
-| `POST` | `/tickets/{ticket_id}/side-conversations/slack` | Start a side conversation in a Slack channel *(Slack PR)* |
+| `POST` | `/tickets/{ticket_id}/side-conversations/slack` | Start a side conversation in a Slack channel |
 
 ### 2.7 Customers
 
@@ -203,12 +203,15 @@ Show them as they are in the editor.
 
 ### 2.8 Archive
 
-- Old resolved tickets live here: search by number (`1042` or `T-1042`) or by customer (`email`, `contact_id`); open one read only (messages, files' names, rating). No reply, change or reopen.
+- Old resolved tickets live here: search by number (`1042` or `T-1042`) or by customer (`email`, `contact_id`); open one read only. No reply, change or reopen. A team-only role gets a 404 for another team's, as for a live ticket.
+- The page: `type_name`, `team_name` and `assignee_name` (as they were when archived), tags, fields, messages (notes too, with an email's headers), files' names and the rating. The rest of its history is in `related`, one list per kind: `time_log`, `tasks`, `approvals`, `links` (the other ticket's `label` and `ticket_id`), `side_conversations` (with their `messages`), `jira_issues`, `emails` (sent from it) and `cevanos_chat` (a handover's chat, or null). Fields are named as on a live ticket, so the same components can show both.
+- An email that carried a secret (a reset link) has `sensitive: true` and `body_text: null`: show "Not kept: it carried a secret".
+- Tickets archived before `related` was kept have empty lists.
 
 | | Route | What it does |
 |---|---|---|
-| `GET` | `/archive/tickets` | Find archived tickets by number or customer *(archive PR)* |
-| `GET` | `/archive/tickets/{ticket_id}` | Open an archived ticket (read only) *(archive PR)* |
+| `GET` | `/archive/tickets` | Find archived tickets by number or customer |
+| `GET` | `/archive/tickets/{ticket_id}` | Open an archived ticket (read only) |
 
 ### 2.9 Reports
 
@@ -351,7 +354,7 @@ Show them as they are in the editor.
 
 ### 2.15 Settings: apps, API keys, webhooks, Cevanos
 
-- Apps: `GET /apps` lists each app with what to ask for: `settings_fields`, `credential` (the credential to ask for; *(Calendly PR)* null when the app needs none) and *(Slack PR)* `second_credential` (Slack side conversations: `signing_secret`). Credentials are never shown again, only `secret_hint`. `blocked` explains why an app can't be installed here.
+- Apps: `GET /apps` lists each app with what to ask for: `settings_fields`, `credential` (the credential to ask for; null when the app needs none) and `second_credential` (Slack side conversations: `signing_secret`). Credentials are never shown again, only `secret_hint`. `blocked` explains why an app can't be installed here.
 - API keys and webhook secrets are shown **once**, on creation: say so.
 - Webhooks: events, delivery log, retry, test ping, new secret.
 - Cevanos: connect with a key, check, disconnect. Failed events list (outbox).
@@ -403,11 +406,11 @@ Show them as they are in the editor.
 
 | | Route | What it does |
 |---|---|---|
-| `GET` | `/archive/settings` | The archive age (Settings) *(archive PR)* |
-| `PUT` | `/archive/settings` | Set the archive age (Settings; audited) *(archive PR)* |
-| `POST` | `/demo/reset` | Reset the demo *(demo seed PR)* |
-| `POST` | `/demo/samples` | Load sample tickets *(demo seed PR)* |
-| `POST` | `/demo/seed` | Load the demo *(demo seed PR)* |
+| `GET` | `/archive/settings` | The archive age (Settings) |
+| `PUT` | `/archive/settings` | Set the archive age (Settings; audited) |
+| `POST` | `/demo/reset` | Reset the demo |
+| `POST` | `/demo/samples` | Load sample tickets |
+| `POST` | `/demo/seed` | Load the demo |
 | `GET` | `/retention` | Retention (Settings) |
 | `PUT` | `/retention` | Set retention (Settings; audited) |
 | `GET` | `/usage` | Usage and plan limits (Settings) |
@@ -453,15 +456,15 @@ Show them as they are in the editor.
 
 - `GET /me/queue`: mine and unassigned, not resolved; mine first, then chats waiting to be accepted, then by SLA. Each item has the last message's first 140 characters.
 - `POST /tickets/{id}/mobile-reply`: one tap; accepts a waiting chat first; a light agent's text is saved as a note (`saved_as`). Everything else uses the web routes.
-- *(push PR)* `POST /me/devices` registers the phone for push banners after sign-in; `DELETE /me/devices/{id}` on sign-out; `GET /me/devices` lists them and says whether push is on for this server.
+- `POST /me/devices` registers the phone for push banners after sign-in; `DELETE /me/devices/{id}` on sign-out; `GET /me/devices` lists them and says whether push is on for this server.
 
 | | Route | What it does |
 |---|---|---|
-| `GET` | `/me/devices` | My phones that get banners *(push PR)* |
-| `POST` | `/me/devices` | Register this phone for banners *(push PR)* |
-| `DELETE` | `/me/devices/{device_id}` | Stop banners on this phone (call it on sign-out) *(push PR)* |
-| `GET` | `/me/queue` | Your mobile queue *(PR #42 mobile)* |
-| `POST` | `/tickets/{ticket_id}/mobile-reply` | Reply from the mobile app *(PR #42 mobile)* |
+| `GET` | `/me/devices` | My phones that get banners |
+| `POST` | `/me/devices` | Register this phone for banners |
+| `DELETE` | `/me/devices/{device_id}` | Stop banners on this phone (call it on sign-out) |
+| `GET` | `/me/queue` | Your mobile queue |
+| `POST` | `/tickets/{ticket_id}/mobile-reply` | Reply from the mobile app |
 
 ### 2.21 Not for the frontend: server to server
 
@@ -475,4 +478,4 @@ Show them as they are in the editor.
 | `POST` | `/inbound/tickets` | A customer's new request from another system (API key) |
 | `POST` | `/inbound/tickets/{ticket_id}/messages` | The customer's next message from another system (API key) |
 | `GET` | `/readyz` | The database answers |
-| `POST` | `/slack/events/{workspace_id}` | Slack's Events API (the Slack side conversations app's Request URL) *(Slack PR)* |
+| `POST` | `/slack/events/{workspace_id}` | Slack's Events API (the Slack side conversations app's Request URL) |

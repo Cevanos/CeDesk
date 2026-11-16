@@ -11101,7 +11101,7 @@
           "archive"
         ],
         "summary": "Open an archived ticket (read only)",
-        "description": "Everything that was on it: messages (internal notes too, with an email's headers), files' names, rating, time logged, tasks, approvals, links, side conversations, Jira issues and emails sent. The team's and assignee's names are as they were when it was archived. It can't be changed, replied to or reopened; a customer's late email answer to it becomes a new ticket that follows it.",
+        "description": "Everything that was on it: messages (internal notes too, with an email's headers), files' names, rating, and in `related`: time logged, tasks, approvals, links, side conversations, Jira issues, emails sent and the Cevanos chat. The type's, team's and assignee's names are as they were when it was archived. A role that sees one team only gets a 404 for another team's. It can't be changed, replied to or reopened; a customer's late email answer to it becomes a new ticket that follows it.",
         "operationId": "open_one_api_v1_archive_tickets__ticket_id__get",
         "security": [
           {
@@ -12103,6 +12103,344 @@
         ],
         "title": "ApprovalOut"
       },
+      "ArchivedApprovalOut": {
+        "properties": {
+          "what": {
+            "type": "string",
+            "title": "What"
+          },
+          "amount": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount"
+          },
+          "currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
+          },
+          "state": {
+            "type": "string",
+            "title": "State",
+            "description": "pending, approved or rejected."
+          },
+          "decision_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decision Note"
+          },
+          "requester_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Requester Name"
+          },
+          "approver_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approver Name"
+          },
+          "decided_by_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided By Name"
+          },
+          "decided_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided At"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "what",
+          "amount",
+          "currency",
+          "state",
+          "decision_note",
+          "requester_name",
+          "approver_name",
+          "decided_by_name",
+          "decided_at",
+          "created_at"
+        ],
+        "title": "ArchivedApprovalOut"
+      },
+      "ArchivedCevanosChatOut": {
+        "properties": {
+          "conversation_id": {
+            "type": "string",
+            "title": "Conversation Id",
+            "description": "The Cevanos chat it was handed over from."
+          },
+          "agent_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agent Id"
+          },
+          "channel_kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channel Kind"
+          },
+          "handover": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Handover",
+            "description": "The handover card: reason and more."
+          },
+          "taken_over_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Taken Over At"
+          },
+          "closed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closed At"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "conversation_id",
+          "agent_id",
+          "channel_kind",
+          "handover",
+          "taken_over_at",
+          "closed_at",
+          "created_at"
+        ],
+        "title": "ArchivedCevanosChatOut"
+      },
+      "ArchivedEmailOut": {
+        "properties": {
+          "from_address": {
+            "type": "string",
+            "title": "From Address"
+          },
+          "to_addresses": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "To Addresses"
+          },
+          "cc_addresses": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Cc Addresses"
+          },
+          "subject": {
+            "type": "string",
+            "title": "Subject"
+          },
+          "body_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Body Text",
+            "description": "Null for one that carried a secret."
+          },
+          "sensitive": {
+            "type": "boolean",
+            "title": "Sensitive",
+            "description": "It carried a secret (a reset link), so its body isn't kept."
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "description": "sent or failed."
+          },
+          "sent_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sent At"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "from_address",
+          "to_addresses",
+          "cc_addresses",
+          "subject",
+          "body_text",
+          "sensitive",
+          "status",
+          "sent_at",
+          "created_at"
+        ],
+        "title": "ArchivedEmailOut"
+      },
+      "ArchivedJiraIssueOut": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "url": {
+            "type": "string",
+            "title": "Url"
+          },
+          "made_here": {
+            "type": "boolean",
+            "title": "Made Here",
+            "description": "Created from CeDesk; false: an existing one linked."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "url",
+          "made_here",
+          "created_at"
+        ],
+        "title": "ArchivedJiraIssueOut"
+      },
+      "ArchivedLinkOut": {
+        "properties": {
+          "ticket_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Ticket Id",
+            "description": "The other ticket: open it live, or in the archive if it moved too."
+          },
+          "number": {
+            "type": "integer",
+            "title": "Number"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ticket_id",
+          "number",
+          "label",
+          "kind",
+          "created_at"
+        ],
+        "title": "ArchivedLinkOut"
+      },
       "ArchivedMessageOut": {
         "properties": {
           "kind": {
@@ -12293,6 +12631,247 @@
         ],
         "title": "ArchivedOut"
       },
+      "ArchivedRelatedOut": {
+        "properties": {
+          "time_log": {
+            "items": {
+              "$ref": "#/components/schemas/ArchivedTimeOut"
+            },
+            "type": "array",
+            "title": "Time Log"
+          },
+          "tasks": {
+            "items": {
+              "$ref": "#/components/schemas/ArchivedTaskOut"
+            },
+            "type": "array",
+            "title": "Tasks"
+          },
+          "approvals": {
+            "items": {
+              "$ref": "#/components/schemas/ArchivedApprovalOut"
+            },
+            "type": "array",
+            "title": "Approvals"
+          },
+          "links": {
+            "items": {
+              "$ref": "#/components/schemas/ArchivedLinkOut"
+            },
+            "type": "array",
+            "title": "Links",
+            "description": "The tickets it was linked to."
+          },
+          "side_conversations": {
+            "items": {
+              "$ref": "#/components/schemas/ArchivedSideOut"
+            },
+            "type": "array",
+            "title": "Side Conversations",
+            "description": "With their messages."
+          },
+          "jira_issues": {
+            "items": {
+              "$ref": "#/components/schemas/ArchivedJiraIssueOut"
+            },
+            "type": "array",
+            "title": "Jira Issues"
+          },
+          "emails": {
+            "items": {
+              "$ref": "#/components/schemas/ArchivedEmailOut"
+            },
+            "type": "array",
+            "title": "Emails",
+            "description": "The emails sent from it."
+          },
+          "cevanos_chat": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ArchivedCevanosChatOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "A handover's Cevanos chat (its messages are the ticket's); else null."
+          }
+        },
+        "type": "object",
+        "required": [
+          "time_log",
+          "tasks",
+          "approvals",
+          "links",
+          "side_conversations",
+          "jira_issues",
+          "emails",
+          "cevanos_chat"
+        ],
+        "title": "ArchivedRelatedOut",
+        "description": "The rest of the ticket's history, kept when it was archived. Lists are oldest\nfirst; empty for tickets archived before this was kept."
+      },
+      "ArchivedSideMessageOut": {
+        "properties": {
+          "direction": {
+            "type": "string",
+            "title": "Direction",
+            "description": "out: sent from CeDesk; in: their reply."
+          },
+          "author_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author Name"
+          },
+          "from_address": {
+            "type": "string",
+            "title": "From Address",
+            "description": "Email: the sender's address. Slack: empty."
+          },
+          "body": {
+            "type": "string",
+            "title": "Body"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "direction",
+          "author_name",
+          "from_address",
+          "body",
+          "created_at"
+        ],
+        "title": "ArchivedSideMessageOut"
+      },
+      "ArchivedSideOut": {
+        "properties": {
+          "subject": {
+            "type": "string",
+            "title": "Subject"
+          },
+          "via": {
+            "type": "string",
+            "title": "Via",
+            "description": "email or slack."
+          },
+          "to": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "To",
+            "description": "Email: the addresses. Slack: the channel."
+          },
+          "from_address": {
+            "type": "string",
+            "title": "From Address",
+            "description": "Email: the support address it went out from."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "last_message_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Message At"
+          },
+          "messages": {
+            "items": {
+              "$ref": "#/components/schemas/ArchivedSideMessageOut"
+            },
+            "type": "array",
+            "title": "Messages"
+          }
+        },
+        "type": "object",
+        "required": [
+          "subject",
+          "via",
+          "to",
+          "from_address",
+          "created_at",
+          "last_message_at",
+          "messages"
+        ],
+        "title": "ArchivedSideOut"
+      },
+      "ArchivedTaskOut": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "owner_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Name"
+          },
+          "due_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due At"
+          },
+          "done_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Done At"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "text",
+          "owner_name",
+          "due_at",
+          "done_at",
+          "created_at"
+        ],
+        "title": "ArchivedTaskOut"
+      },
       "ArchivedTicketOut": {
         "properties": {
           "id": {
@@ -12402,6 +12981,18 @@
             "format": "date-time",
             "title": "Archived At"
           },
+          "type_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Type Name",
+            "description": "As it was when archived."
+          },
           "tags": {
             "items": {
               "type": "string"
@@ -12443,68 +13034,8 @@
             "title": "Rating",
             "description": "score, comment, source, rated_at."
           },
-          "time_log": {
-            "items": {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            "type": "array",
-            "title": "Time Log",
-            "description": "minutes, billable, note, member_name, logged_at."
-          },
-          "tasks": {
-            "items": {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            "type": "array",
-            "title": "Tasks",
-            "description": "text, owner_name, due_at, done_at, created_at."
-          },
-          "approvals": {
-            "items": {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            "type": "array",
-            "title": "Approvals",
-            "description": "what, amount, currency, state, decision_note, requester_name, approver_name, decided_by_name, decided_at, created_at."
-          },
-          "links": {
-            "items": {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            "type": "array",
-            "title": "Links",
-            "description": "The linked tickets: ticket_id, number, label, kind, created_at."
-          },
-          "side_conversations": {
-            "items": {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            "type": "array",
-            "title": "Side Conversations",
-            "description": "subject, via, to_addresses, from_address, created_at and messages (direction, author_name, from_address, body, created_at)."
-          },
-          "jira_issues": {
-            "items": {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            "type": "array",
-            "title": "Jira Issues",
-            "description": "issue_key, url, made_here, created_at."
-          },
-          "emails": {
-            "items": {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            "type": "array",
-            "title": "Emails",
-            "description": "The emails sent from it: from_address, to_addresses, cc_addresses, subject, body_text (null for one that carried a secret), status, sent_at, created_at."
+          "related": {
+            "$ref": "#/components/schemas/ArchivedRelatedOut"
           }
         },
         "type": "object",
@@ -12524,20 +13055,64 @@
           "created_at",
           "resolved_at",
           "archived_at",
+          "type_name",
           "tags",
           "fields",
           "messages",
           "files",
           "rating",
-          "time_log",
-          "tasks",
-          "approvals",
-          "links",
-          "side_conversations",
-          "jira_issues",
-          "emails"
+          "related"
         ],
         "title": "ArchivedTicketOut"
+      },
+      "ArchivedTimeOut": {
+        "properties": {
+          "minutes": {
+            "type": "integer",
+            "title": "Minutes"
+          },
+          "billable": {
+            "type": "boolean",
+            "title": "Billable"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "member_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Member Name",
+            "description": "As it was when archived."
+          },
+          "logged_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Logged At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "minutes",
+          "billable",
+          "note",
+          "member_name",
+          "logged_at"
+        ],
+        "title": "ArchivedTimeOut"
       },
       "Area": {
         "type": "string",
