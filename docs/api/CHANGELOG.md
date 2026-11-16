@@ -70,6 +70,13 @@ nullable for holds only), outbox event `approval.decided`,
 `hd_retention.export_before_delete`, `hd_retention_export`. Downgrade refuses while hold
 approvals or retention exports exist.
 
+## 2026-11-16: Imports: a sync counts a status-only change as updated (Phase 2, M9)
+
+`GET /imports/runs/{id}`: in `counts.sync`, `updated` now also counts a ticket whose status,
+priority or resolved time changed in the source with no new message. Before, only tickets
+with new messages were counted (the change itself was always saved). A look that finds
+nothing really changed adds nothing. No route or field changes.
+
 ## 2026-11-16: Archived ticket page: the type and the rest of its history (Phase 3, O3)
 
 `GET /archive/tickets/{id}` now returns everything the archive keeps, typed:

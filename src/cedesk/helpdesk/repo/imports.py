@@ -446,20 +446,28 @@ async def refresh_ticket(
     resolved_at: datetime | None,
     first_reply_at: datetime | None,
     updated_at: datetime,
-) -> None:
+) -> bool:
     """What a later look at the source changed on a ticket already imported (M9). The
-    time only moves forward; the first reply is only filled, never replaced."""
-    await session.execute(
+    time only moves forward; the first reply is only filled, never replaced. True when
+    the status, priority or resolved time really changed (so a status-only change counts
+    as an update)."""
+    changed = await session.scalar(
         text(
-            "UPDATE hd_ticket SET status = :status, priority = :priority, "
-            "resolved_at = :resolved, first_reply_at = coalesce(first_reply_at, :first), "
-            "updated_at = GREATEST(updated_at, :updated) WHERE id = :id"
+            "UPDATE hd_ticket t SET status = :status, priority = :priority, "
+            "resolved_at = :resolved, first_reply_at = coalesce(t.first_reply_at, :first), "
+            "updated_at = GREATEST(t.updated_at, :updated) "
+            "FROM (SELECT status, priority, resolved_at FROM hd_ticket WHERE id = :id "
+            "FOR UPDATE) old WHERE t.id = :id "
+            "RETURNING (old.status IS DISTINCT FROM t.status "
+            "OR old.priority IS DISTINCT FROM t.priority "
+            "OR old.resolved_at IS DISTINCT FROM t.resolved_at)"
         ),
         {
             "id": ticket_id, "status": status, "priority": priority, "resolved": resolved_at,
             "first": first_reply_at, "updated": updated_at,
         },
     )  # fmt: skip
+    return bool(changed)
 
 
 async def contact_since(session: AsyncSession, contact_id: UUID, at: datetime) -> None:
