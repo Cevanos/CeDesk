@@ -179,6 +179,52 @@ async def test_vip_customers_get_their_policy_and_an_event(
     assert count == 1
 
 
+def vip_lines(t: dict[str, Any]) -> list[str]:
+    return [m["body"] for m in t["messages"] if m["kind"] == "system" and "VIP" in m["body"]]
+
+
+async def test_a_vip_change_leaves_a_line_on_every_open_ticket(
+    client: AsyncClient, app_sessionmaker: Sm
+) -> None:
+    """Plan 3.7.3 (bug B-10): the VIP policy applied but the timeline said nothing."""
+    w = await desk(client, app_sessionmaker)
+    one = await new(client, w, "medium", "vip@shop.test")
+    two = await new(client, w, "high", "vip@shop.test")  # the same customer
+    done = await new(client, w, "low", "vip@shop.test")
+    ok(await client.post(f"{T}/{done['id']}/resolve", headers=w["admin"]))
+    stranger = await new(client, w, "medium", "someone@shop.test")  # another customer
+    profile = f"/api/v1/contacts/{one['contact']['id']}/profile"
+
+    async def lines(t: dict[str, Any]) -> list[str]:
+        return vip_lines(ok(await client.get(f"{T}/{t['id']}", headers=w["admin"])))
+
+    ok(await client.patch(profile, headers=w["admin"], json={"vip": True}))
+    assert await lines(one) == ["Customer marked VIP by Admin"]
+    assert await lines(two) == ["Customer marked VIP by Admin"]
+    assert await lines(done) == []  # resolved: the new policy does not reach it
+    assert await lines(stranger) == []
+
+    ok(await client.patch(profile, headers=w["admin"], json={"vip": False}))
+    assert await lines(one) == ["Customer marked VIP by Admin", "VIP removed by Admin"]
+    assert await lines(done) == []
+
+
+async def test_changing_a_name_or_repeating_the_vip_value_writes_no_line(
+    client: AsyncClient, app_sessionmaker: Sm
+) -> None:
+    w = await desk(client, app_sessionmaker)
+    t = await new(client, w, "medium", "vip@shop.test")
+    profile = f"/api/v1/contacts/{t['contact']['id']}/profile"
+    ok(await client.patch(profile, headers=w["admin"], json={"name": "Ana Rao"}))
+    ok(await client.patch(profile, headers=w["admin"], json={"vip": False}))  # already false
+    assert vip_lines(ok(await client.get(f"{T}/{t['id']}", headers=w["admin"]))) == []
+    ok(await client.patch(profile, headers=w["admin"], json={"vip": True}))
+    ok(await client.patch(profile, headers=w["admin"], json={"vip": True}))  # the same again
+    assert vip_lines(ok(await client.get(f"{T}/{t['id']}", headers=w["admin"]))) == [
+        "Customer marked VIP by Admin"
+    ]
+
+
 async def test_admins_change_the_targets(client: AsyncClient, app_sessionmaker: Sm) -> None:
     w = await desk(client, app_sessionmaker)
     settings = ok(await client.get("/api/v1/sla", headers=w["neha"]))  # everyone can read

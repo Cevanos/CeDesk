@@ -313,7 +313,9 @@ async def get_contact(session: AsyncSession, contact_id: UUID) -> Row | None:
     result = await session.execute(
         text(
             "SELECT c.id, c.name, c.email, c.vip, c.customer_since, "
-            "(SELECT count(*) FROM hd_ticket t WHERE t.contact_id = c.id) AS ticket_count "
+            "(SELECT count(*) FROM hd_ticket t WHERE t.contact_id = c.id) AS ticket_count, "
+            "(SELECT round(avg(score), 1) FROM hd_csat WHERE contact_id = c.id) AS csat_average, "
+            "(SELECT count(*) FROM hd_csat WHERE contact_id = c.id) AS csat_count "
             "FROM hd_contact c WHERE c.id = :id"
         ),
         {"id": contact_id},
@@ -332,6 +334,19 @@ async def update_contact(
         {"id": contact_id, "name": name, "vip": vip},
     )
     return result.first() is not None
+
+
+async def open_ticket_ids(session: AsyncSession, contact_id: UUID) -> list[UUID]:
+    """A customer's tickets that are not resolved, oldest first: the ones a VIP change
+    touches (the same set the SLA refresh walks)."""
+    result = await session.execute(
+        text(
+            "SELECT id FROM hd_ticket WHERE contact_id = :c AND status <> 'resolved' "
+            "ORDER BY number"
+        ),
+        {"c": contact_id},
+    )
+    return [row[0] for row in result.all()]
 
 
 async def other_ticket_count(session: AsyncSession, contact_id: UUID, ticket_id: UUID) -> int:

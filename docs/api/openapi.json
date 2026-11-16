@@ -15018,6 +15018,23 @@
           "ticket_count": {
             "type": "integer",
             "title": "Ticket Count"
+          },
+          "csat_average": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Csat Average",
+            "description": "Average of this customer's ratings, 1-5; null: none yet."
+          },
+          "csat_count": {
+            "type": "integer",
+            "title": "Csat Count",
+            "default": 0
           }
         },
         "type": "object",
@@ -24649,6 +24666,14 @@
             "type": "string",
             "title": "Webhook Path",
             "description": "Add this path, on the API's address, in Cevanos."
+          },
+          "webhook_events": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Webhook Events",
+            "description": "In Cevanos, subscribe that webhook to exactly these events."
           }
         },
         "type": "object",
@@ -24660,7 +24685,8 @@
           "team_id",
           "team_name",
           "updated_at",
-          "webhook_path"
+          "webhook_path",
+          "webhook_events"
         ],
         "title": "ConnectionOut"
       },
