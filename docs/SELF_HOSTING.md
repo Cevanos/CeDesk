@@ -159,7 +159,9 @@ Without Cevanos, CeDesk has its own channels: email, the customer portal and web
 and the inbound API. With it, a workspace also gets the Cevanos AI agent's handovers and
 its chat channels. Each workspace connects itself: an Admin enters the Cevanos API key and
 webhook secret in Settings > Cevanos, and in Cevanos adds a webhook to the address shown
-there. `CEDESK_CEVANOS_URL` and `CEDESK_CEVANOS_APP_URL` only change if Cevanos gives you
+there, for the four events listed with it (`conversation.escalated`, `conversation.classified`,
+`conversation.reopened`, `conversation.closed`; the connection's `webhook_events`). Without
+that webhook no AI handover reaches CeDesk. `CEDESK_CEVANOS_URL` and `CEDESK_CEVANOS_APP_URL` only change if Cevanos gives you
 other addresses.
 
 ## Single sign-on

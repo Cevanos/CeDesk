@@ -124,6 +124,34 @@ async def test_the_survey_link_rates_the_ticket(client: AsyncClient, app_session
         assert (await client.post(f"{PUBLIC}/{token}", json=bad)).status_code == 422
 
 
+async def test_the_customer_profile_shows_the_same_rating_as_the_ticket(
+    client: AsyncClient, app_sessionmaker: Sm
+) -> None:
+    """Bug B-12 (plan 3.7.2): the ticket's customer card showed 4.0 while the customer's own
+    profile (`GET /contacts/{id}/tickets`) had no rating field and read 'No ratings'."""
+    w = await desk(client, app_sessionmaker)
+    t = await resolved(client, w)
+    contact = t["contact"]["id"]
+    profile = f"/api/v1/contacts/{contact}/tickets"
+
+    unrated = ok(await client.get(profile, headers=w["admin"]))["contact"]
+    assert (unrated["csat_average"], unrated["csat_count"]) == (None, 0)
+
+    await run_survey(app_sessionmaker, w, t["id"])
+    [mail] = await surveys(app_sessionmaker, w, t["id"])
+    ok(await client.post(f"{PUBLIC}/{token_in(mail['body_text'])}", json={"score": 4}))
+
+    rated = ok(await client.get(profile, headers=w["admin"]))["contact"]
+    assert (rated["csat_average"], rated["csat_count"]) == (4.0, 1)
+    ticket_card = ok(await client.get(f"{T}/{t['id']}", headers=w["admin"]))["contact"]
+    assert (ticket_card["csat_average"], ticket_card["csat_count"]) == (4.0, 1)  # the same
+
+    # Editing the customer returns the same numbers.
+    edited = ok(await client.patch(f"/api/v1/contacts/{contact}/profile", headers=w["admin"],
+                                   json={"name": "Priya S"}))  # fmt: skip
+    assert (edited["csat_average"], edited["csat_count"]) == (4.0, 1)
+
+
 async def test_bad_expired_and_reopened_links(client: AsyncClient, app_sessionmaker: Sm) -> None:
     w = await desk(client, app_sessionmaker)
     t = await resolved(client, w)

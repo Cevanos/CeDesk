@@ -376,7 +376,7 @@ Show them as they are in the editor.
 - Apps: `GET /apps` lists each app with what to ask for: `settings_fields`, `credential` (the credential to ask for; null when the app needs none) and `second_credential` (Slack side conversations: `signing_secret`). Credentials are never shown again, only `secret_hint`. `blocked` explains why an app can't be installed here.
 - API keys and webhook secrets are shown **once**, on creation: say so.
 - Webhooks: events, delivery log, retry, test ping, new secret.
-- Cevanos: connect with a key, check, disconnect. Failed events list (outbox).
+- Cevanos: connect with a key, check, disconnect. Failed events list (outbox). Under "Webhook address" show the full address and list `webhook_events` (the four events to subscribe the webhook to in Cevanos), so the Admin knows exactly what to choose there.
 
 | | Route | What it does |
 |---|---|---|

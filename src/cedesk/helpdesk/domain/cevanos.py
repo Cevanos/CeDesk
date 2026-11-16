@@ -22,10 +22,14 @@ MAX_SKEW_SECONDS = 300
 replayed later."""
 BODY_MAX = 256 * 1024
 
-HANDLED_EVENTS = frozenset(
-    {"conversation.escalated", "conversation.classified", "conversation.reopened",
-     "conversation.closed"}
-)  # fmt: skip
+WEBHOOK_EVENTS = (
+    "conversation.escalated",
+    "conversation.classified",
+    "conversation.reopened",
+    "conversation.closed",
+)
+"""What the Admin subscribes the webhook to in Cevanos: exactly these four."""
+HANDLED_EVENTS = frozenset(WEBHOOK_EVENTS)
 TAKEOVER_REASON = "manual_takeover"
 """Cevanos's reason when a person took the chat in its Inbox, including the take-over
 CeDesk asks for on Accept. Not a handover to CeDesk, so no ticket."""
