@@ -8832,6 +8832,73 @@
         }
       }
     },
+    "/api/v1/imports/runs/{run_id}/resume": {
+      "post": {
+        "tags": [
+          "imports"
+        ],
+        "summary": "Resume a failed import where it stopped (Admin)",
+        "description": "The same run is queued again and the worker carries on from its last saved page: the page that failed is read again, the ones before it are not, and nothing is made twice. Counts, options, team mapping, the sync setting and the run's failures are kept; `retry_attempts` starts from 0. 409 when the run isn't failed (in progress, finished or syncing), when its connection was closed or its credentials can't be read (connect again and start a new import), or when another run of the connection is in progress or syncing. 404 for an unknown run. Two resumes at once queue it once. Accepts `Idempotency-Key`: a repeat returns the run the first one queued.",
+        "operationId": "resume_run_api_v1_imports_runs__run_id__resume_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Run Id"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional, any unique string (a UUID is good), up to 255 characters. Send the same key when you retry: a repeat returns what the first request made (header `Idempotent-Replayed: true`) instead of making it twice. The same key with a different request is 422. Keys last 24 hours, per member.",
+              "title": "Idempotency-Key"
+            },
+            "description": "Optional, any unique string (a UUID is good), up to 255 characters. Send the same key when you retry: a repeat returns what the first request made (header `Idempotent-Replayed: true`) instead of making it twice. The same key with a different request is 422. Keys last 24 hours, per member."
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/imports/runs/{run_id}/failures": {
       "get": {
         "tags": [

@@ -9,15 +9,17 @@ from uuid import UUID
 from sqlalchemy import RowMapping, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from cedesk.helpdesk.domain.imports import Failure
+from cedesk.helpdesk.domain.imports import Failure, LeaseLost
 
 Row = RowMapping
 
 _RUN = (
     "SELECT id, workspace_id, connection_id, source, state, options, cursor, counts, sync_on, "
     "last_sync_at, next_run_at, lease_until, last_error, started_by, started_at, finished_at, "
-    "retry_attempts FROM hd_import_run"
-)
+    "retry_attempts, lease_token FROM hd_import_run"
+)  # lease_token: for the worker's own checks; never in a response (`_run_view` picks fields)
+_RUN_ONE = _RUN + " WHERE id = :id"
+_RUN_LOCKED = _RUN_ONE + " FOR UPDATE"
 
 
 # Connections
@@ -49,14 +51,20 @@ async def insert_connection(
     )  # fmt: skip
 
 
-async def connection(session: AsyncSession, connection_id: UUID) -> Row | None:
+_CONNECTION = (
+    "SELECT id, workspace_id, source, label, settings, credentials_sealed, credentials_hint, "
+    "state, created_by, created_at FROM hd_import_connection WHERE id = :id"
+)
+_CONNECTION_LOCKED = _CONNECTION + " FOR UPDATE"
+
+
+async def connection(
+    session: AsyncSession, connection_id: UUID, *, lock: bool = False
+) -> Row | None:
+    """`lock`: held until the transaction ends, so starting, resuming and closing runs of one
+    connection happen one after the other."""
     result = await session.execute(
-        text(
-            "SELECT id, workspace_id, source, label, settings, credentials_sealed, "
-            "credentials_hint, state, created_by, created_at FROM hd_import_connection "
-            "WHERE id = :id"
-        ),
-        {"id": connection_id},
+        text(_CONNECTION_LOCKED if lock else _CONNECTION), {"id": connection_id}
     )
     return result.mappings().first()
 
@@ -102,8 +110,10 @@ async def insert_run(
     return UUID(str(result.scalar_one()))
 
 
-async def run(session: AsyncSession, run_id: UUID) -> Row | None:
-    result = await session.execute(text(_RUN + " WHERE id = :id"), {"id": run_id})
+async def run(session: AsyncSession, run_id: UUID, *, lock: bool = False) -> Row | None:
+    """`lock`: held until the transaction ends (the worker ending an import, so a sync stop
+    waits for it and then sees the run as it left it)."""
+    result = await session.execute(text(_RUN_LOCKED if lock else _RUN_ONE), {"id": run_id})
     return result.mappings().first()
 
 
@@ -120,13 +130,14 @@ async def claim_due(session: AsyncSession, now: datetime, lease_until: datetime)
     LOCKED), so two workers never take the same run."""
     result = await session.execute(
         text(
-            "UPDATE hd_import_run SET state = 'running', lease_until = :lease "
+            "UPDATE hd_import_run SET state = 'running', lease_until = :lease, "
+            "lease_token = gen_random_uuid() "
             "WHERE id = (SELECT id FROM hd_import_run WHERE state IN ('queued', 'running') "
             "AND next_run_at <= :now AND (lease_until IS NULL OR lease_until <= :now) "
             "ORDER BY next_run_at LIMIT 1 FOR UPDATE SKIP LOCKED) "
             "RETURNING id, workspace_id, connection_id, source, state, options, cursor, counts, "
             "sync_on, last_sync_at, next_run_at, lease_until, last_error, started_by, "
-            "started_at, finished_at, retry_attempts"
+            "started_at, finished_at, retry_attempts, lease_token"
         ),
         {"now": now, "lease": lease_until},
     )
@@ -147,17 +158,26 @@ async def claim_sync(session: AsyncSession, now: datetime, lease_until: datetime
     locking as `claim_due`."""
     result = await session.execute(
         text(
-            "UPDATE hd_import_run SET lease_until = :lease "
+            "UPDATE hd_import_run SET lease_until = :lease, lease_token = gen_random_uuid() "
             "WHERE id = (SELECT id FROM hd_import_run WHERE state = 'done' AND sync_on "
             "AND next_run_at <= :now AND (lease_until IS NULL OR lease_until <= :now) "
             "ORDER BY next_run_at LIMIT 1 FOR UPDATE SKIP LOCKED) "
             "RETURNING id, workspace_id, connection_id, source, state, options, cursor, counts, "
             "sync_on, last_sync_at, next_run_at, lease_until, last_error, started_by, "
-            "started_at, finished_at, retry_attempts"
+            "started_at, finished_at, retry_attempts, lease_token"
         ),
         {"now": now, "lease": lease_until},
     )
     return result.mappings().first()
+
+
+async def _owned(session: AsyncSession, sql: str, values: Mapping[str, Any]) -> None:
+    """A worker's write about its run (`sql` ends with `WHERE id = :id`): it applies only
+    while the run carries the worker's `token`, else `LeaseLost` (the transaction is the
+    caller's to roll back)."""
+    result = await session.execute(text(sql + " AND lease_token = :token"), values)
+    if result.rowcount != 1:  # type: ignore[attr-defined]
+        raise LeaseLost("Another worker has taken this import run.")
 
 
 async def finish_to_sync(
@@ -167,18 +187,19 @@ async def finish_to_sync(
     last_sync_at: datetime,
     next_run_at: datetime,
     counts: Mapping[str, Any],
+    token: UUID,
 ) -> None:
     """The first import is done and the run goes on syncing: it is `done`, the credentials
     stay, and the next look at the source is `next_run_at`."""
-    await session.execute(
-        text(
-            "UPDATE hd_import_run SET state = 'done', lease_until = NULL, finished_at = now(), "
-            "last_error = NULL, cursor = '{}'::jsonb, counts = CAST(:counts AS jsonb), "
-            "last_sync_at = :last, next_run_at = :next, retry_attempts = 0 WHERE id = :id"
-        ),
+    await _owned(
+        session,
+        "UPDATE hd_import_run SET state = 'done', lease_until = NULL, lease_token = NULL, "
+        "finished_at = now(), last_error = NULL, cursor = '{}'::jsonb, "
+        "counts = CAST(:counts AS jsonb), last_sync_at = :last, next_run_at = :next, "
+        "retry_attempts = 0 WHERE id = :id",
         {
             "id": run_id, "last": last_sync_at, "next": next_run_at,
-            "counts": json.dumps(dict(counts)),
+            "counts": json.dumps(dict(counts)), "token": token,
         },
     )  # fmt: skip
 
@@ -190,28 +211,30 @@ async def sync_pass_done(
     last_sync_at: datetime,
     next_run_at: datetime,
     counts: Mapping[str, Any],
+    token: UUID,
 ) -> None:
-    await session.execute(
-        text(
-            "UPDATE hd_import_run SET lease_until = NULL, last_error = NULL, "
-            "cursor = '{}'::jsonb, counts = CAST(:counts AS jsonb), last_sync_at = :last, "
-            "next_run_at = :next, retry_attempts = 0 WHERE id = :id"
-        ),
+    await _owned(
+        session,
+        "UPDATE hd_import_run SET lease_until = NULL, lease_token = NULL, last_error = NULL, "
+        "cursor = '{}'::jsonb, counts = CAST(:counts AS jsonb), last_sync_at = :last, "
+        "next_run_at = :next, retry_attempts = 0 WHERE id = :id",
         {
             "id": run_id, "last": last_sync_at, "next": next_run_at,
-            "counts": json.dumps(dict(counts)),
+            "counts": json.dumps(dict(counts)), "token": token,
         },
     )  # fmt: skip
 
 
 async def sync_error(
-    session: AsyncSession, run_id: UUID, *, next_run_at: datetime, error: str
+    session: AsyncSession, run_id: UUID, *, next_run_at: datetime, error: str, token: UUID
 ) -> None:
     """A sync pass that could not finish: the run stays syncing and is tried again later,
     with a fresh count of tries."""
-    await release(session, run_id, next_run_at=next_run_at, error=error)
-    await session.execute(
-        text("UPDATE hd_import_run SET retry_attempts = 0 WHERE id = :id"), {"id": run_id}
+    await _owned(
+        session,
+        "UPDATE hd_import_run SET lease_until = NULL, lease_token = NULL, next_run_at = :at, "
+        "last_error = :error, retry_attempts = 0 WHERE id = :id",
+        {"id": run_id, "at": next_run_at, "error": error[:500], "token": token},
     )
 
 
@@ -227,16 +250,18 @@ async def sync_now(session: AsyncSession, run_id: UUID) -> bool:
     return result.first() is not None
 
 
-async def stop_sync(session: AsyncSession, run_id: UUID) -> bool:
-    """Turns syncing off. False when it was already off."""
+async def stop_sync(session: AsyncSession, run_id: UUID) -> str | None:
+    """Turns syncing off and returns the run's state as it is now (None: it was already off).
+    The lease is left alone: a worker on the run (the first import, or a look) keeps it until
+    it is done, so no other worker can take the run meanwhile. The state is read by this
+    UPDATE, after any worker that held the row committed, so the caller decides on the run
+    as it really is."""
     result = await session.execute(
-        text(
-            "UPDATE hd_import_run SET sync_on = false, lease_until = NULL "
-            "WHERE id = :id AND sync_on RETURNING id"
-        ),
+        text("UPDATE hd_import_run SET sync_on = false WHERE id = :id AND sync_on RETURNING state"),
         {"id": run_id},
     )
-    return result.first() is not None
+    found = result.first()
+    return str(found[0]) if found is not None else None
 
 
 async def save_progress(
@@ -246,59 +271,91 @@ async def save_progress(
     cursor: Mapping[str, Any],
     counts: Mapping[str, Any],
     lease_until: datetime,
+    token: UUID,
 ) -> None:
     """The cursor and counts, in the same transaction as the page they describe (and the
-    failures noted on it). A page saved ends the tries of the one before."""
-    await session.execute(
-        text(
-            "UPDATE hd_import_run SET cursor = CAST(:cursor AS jsonb), "
-            "counts = CAST(:counts AS jsonb), lease_until = :lease, retry_attempts = 0 "
-            "WHERE id = :id"
-        ),
+    failures noted on it). A page saved ends the tries of the one before. Only by the worker
+    that holds the run (`LeaseLost` otherwise: the page's records roll back with it)."""
+    await _owned(
+        session,
+        "UPDATE hd_import_run SET cursor = CAST(:cursor AS jsonb), "
+        "counts = CAST(:counts AS jsonb), lease_until = :lease, retry_attempts = 0 "
+        "WHERE id = :id",
         {
             "id": run_id, "cursor": json.dumps(dict(cursor)), "counts": json.dumps(dict(counts)),
-            "lease": lease_until,
+            "lease": lease_until, "token": token,
         },
     )  # fmt: skip
 
 
 async def release(
-    session: AsyncSession, run_id: UUID, *, next_run_at: datetime, error: str | None = None
+    session: AsyncSession,
+    run_id: UUID,
+    *,
+    next_run_at: datetime,
+    token: UUID,
+    error: str | None = None,
 ) -> None:
     """Gives the run back to be taken again at `next_run_at` (a pause, or end of a slice)."""
-    await session.execute(
-        text(
-            "UPDATE hd_import_run SET lease_until = NULL, next_run_at = :at, "
-            "last_error = :error WHERE id = :id"
-        ),
-        {"id": run_id, "at": next_run_at, "error": error[:500] if error else None},
+    await _owned(
+        session,
+        "UPDATE hd_import_run SET lease_until = NULL, lease_token = NULL, next_run_at = :at, "
+        "last_error = :error WHERE id = :id",
+        {"id": run_id, "at": next_run_at, "error": error[:500] if error else None, "token": token},
     )
+
+
+async def resume(session: AsyncSession, run_id: UUID) -> bool:
+    """A failed run is queued again where it stopped: its cursor, counts, options, sync
+    setting and start time stay; its tries start from 0. Only from `failed` and with no live
+    lease, in one statement, so two resumes (or a worker) can't both take it. False when the
+    run was not failed any more."""
+    result = await session.execute(
+        text(
+            "UPDATE hd_import_run SET state = 'queued', next_run_at = now(), lease_until = NULL, "
+            "lease_token = NULL, finished_at = NULL, last_error = NULL, retry_attempts = 0 "
+            "WHERE id = :id AND state = 'failed' "
+            "AND (lease_until IS NULL OR lease_until <= now()) RETURNING id"
+        ),
+        {"id": run_id},
+    )
+    return result.first() is not None
 
 
 async def retry_later(
-    session: AsyncSession, run_id: UUID, *, next_run_at: datetime, error: str, attempts: int
+    session: AsyncSession,
+    run_id: UUID,
+    *,
+    next_run_at: datetime,
+    error: str,
+    attempts: int,
+    token: UUID,
 ) -> None:
     """A try of the page failed with a temporary error: the run waits until `next_run_at`
     and remembers it has had `attempts` failed tries (so a restart doesn't reset them)."""
-    await session.execute(
-        text(
-            "UPDATE hd_import_run SET lease_until = NULL, next_run_at = :at, "
-            "last_error = :error, retry_attempts = :attempts WHERE id = :id"
-        ),
-        {"id": run_id, "at": next_run_at, "error": error[:500], "attempts": attempts},
-    )
+    await _owned(
+        session,
+        "UPDATE hd_import_run SET lease_until = NULL, lease_token = NULL, next_run_at = :at, "
+        "last_error = :error, retry_attempts = :attempts WHERE id = :id",
+        {
+            "id": run_id, "at": next_run_at, "error": error[:500], "attempts": attempts,
+            "token": token,
+        },
+    )  # fmt: skip
 
 
 async def finish(
-    session: AsyncSession, run_id: UUID, *, state: str, error: str | None = None
+    session: AsyncSession, run_id: UUID, *, state: str, token: UUID, error: str | None = None
 ) -> None:
-    await session.execute(
-        text(
-            "UPDATE hd_import_run SET state = :state, lease_until = NULL, finished_at = now(), "
-            "last_error = :error, retry_attempts = 0 WHERE id = :id"
-        ),
-        {"id": run_id, "state": state, "error": error[:500] if error else None},
-    )
+    await _owned(
+        session,
+        "UPDATE hd_import_run SET state = :state, lease_until = NULL, lease_token = NULL, "
+        "finished_at = now(), last_error = :error, retry_attempts = 0 WHERE id = :id",
+        {
+            "id": run_id, "state": state, "error": error[:500] if error else None,
+            "token": token,
+        },
+    )  # fmt: skip
 
 
 # Records a run could not read (P0-2)

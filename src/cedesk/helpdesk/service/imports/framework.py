@@ -72,6 +72,7 @@ from cedesk.helpdesk.domain.imports import (
     ChangeSource,
     Contact,
     FileSource,
+    LeaseLost,
     Message,
     RateLimited,
     Reply,
@@ -433,8 +434,8 @@ async def upload_csv(
     return _connection_view(row)
 
 
-async def _connection(s: AsyncSession, connection_id: UUID) -> Row:
-    row = await repo.connection(s, connection_id)
+async def _connection(s: AsyncSession, connection_id: UUID, *, lock: bool = False) -> Row:
+    row = await repo.connection(s, connection_id, lock=lock)
     if row is None:
         raise NotFound("No such connection.")
     return row
@@ -447,7 +448,7 @@ async def close_connection(
     require(caller, Action.settings)
     ws = caller.workspace_id
     async with workspace_session(sm, ws) as s:
-        row = await _connection(s, connection_id)
+        row = await _connection(s, connection_id, lock=True)
         if await repo.active_run(s, connection_id) is not None:
             raise Conflict("A run is in progress on this connection.")
         file_key = row["settings"].get("file_key")
@@ -621,7 +622,7 @@ async def start_run(
             again = await repo.run(s, earlier)
             assert again is not None
             return _run_view(again)
-        row = await _connection(s, connection_id)
+        row = await _connection(s, connection_id, lock=True)
         if row["state"] == "closed":
             raise Conflict("This connection was closed. Connect again.")
         chosen = await _checked_options(s, raw_options)
@@ -704,6 +705,111 @@ async def dismiss_failure(
     return _failure_view(found)
 
 
+async def resume_run(
+    sm: Sessionmaker,
+    importers: Importers,
+    caller: Caller,
+    run_id: UUID,
+    idem: Idempotency | None = None,
+) -> RunView:
+    """Queues a failed import again where it stopped: the worker carries on from its last
+    saved page (the page that failed is read again; the ones before it are not). The same run
+    keeps its counts, options, team mapping, sync setting and failure notes; its tries start
+    from 0. Only a failed run whose connection still has readable credentials (or its file),
+    and no other run of that connection in progress or syncing. Nothing changes when it is
+    refused. The connection row is locked meanwhile, and the run moves out of `failed` in one
+    statement, so two resumes at once queue it once."""
+    require(caller, Action.settings)
+    ws = caller.workspace_id
+    async with workspace_session(sm, ws) as s:
+        earlier = await begin(s, caller, idem)
+        if earlier is not None:
+            again = await repo.run(s, earlier)
+            assert again is not None
+            return _run_view(again)
+        first = await repo.run(s, run_id)
+        if first is None:
+            raise NotFound("No such run.")
+        conn = await repo.connection(s, first["connection_id"], lock=True)
+        row = await repo.run(s, run_id)  # read again now that the connection is ours
+        assert row is not None
+        _resumable(row)
+        _credentials_kept(importers, ws, conn)
+        others = await repo.active_run(s, row["connection_id"])
+        if others is not None or await repo.syncing_run(s, row["connection_id"]) is not None:
+            raise Conflict(
+                "Another run on this connection is in progress or syncing. Let it finish (or "
+                "stop the sync) before resuming this one."
+            )
+        if not await repo.resume(s, run_id):
+            raise Conflict("This run is in progress.")
+        detail = _resume_detail(row)
+        await repo.add_event(
+            s, ws, row["connection_id"], "resumed", run_id=run_id, member_id=caller.member_id,
+            detail=detail,
+        )  # fmt: skip
+        await audit.record(
+            s, caller, Area.imports, "resumed", f"Import from {rules.label(row['source'])}",
+            target_id=run_id, detail=detail,
+        )  # fmt: skip
+        await remember(s, caller, idem, run_id)
+        found = await repo.run(s, run_id)
+    assert found is not None
+    return _run_view(found)
+
+
+def _resumable(row: Mapping[Any, Any]) -> None:
+    if row["state"] in ("queued", "running"):
+        raise Conflict("This run is in progress.")
+    if row["state"] == "done":
+        if row["sync_on"]:
+            raise Conflict("This run finished and is syncing; there is nothing to resume.")
+        raise Conflict("This run finished; there is nothing to resume.")
+
+
+def _credentials_kept(importers: Importers, ws: UUID, conn: Mapping[Any, Any] | None) -> None:
+    """The connection can still be read: never reconnected, nothing new asked for, nothing
+    about the credentials said back."""
+    gone = Conflict(
+        "This run's connection was closed and its credentials deleted. Connect again and start "
+        "a new import: what is already here is skipped."
+    )
+    if conn is None or conn["state"] == "closed":
+        raise gone
+    if conn["source"] == "csv":
+        if not conn["settings"].get("file_key"):
+            raise gone
+        return
+    if conn["credentials_sealed"] is None:
+        raise gone
+    try:
+        importers.sealer.open(conn["credentials_sealed"], bound_to=_bound(ws, conn["id"]))
+    except (CannotOpen, ValueError):
+        raise Conflict(
+            "This run's stored credentials can't be read any more. Connect again and start a "
+            "new import: what is already here is skipped."
+        ) from None
+
+
+def _resume_detail(row: Mapping[Any, Any]) -> dict[str, Any]:
+    """Where the run carries on from, in words safe to keep: the kinds already done, whether
+    a page of the next was saved, what it made so far and why it had stopped. Never the raw
+    cursor (a source's paging token)."""
+    cursor = row["cursor"] or {}
+    counts = row["counts"] or {}
+    created = {
+        kind: int(c["created"])
+        for kind, c in counts.items()
+        if isinstance(c, Mapping) and "created" in c
+    }
+    return {
+        "kinds_done": list(cursor.get("done", [])),
+        "page_saved": "page" in cursor,
+        "created": created,
+        "error": (row["last_error"] or "")[:300],
+    }
+
+
 async def sync_now(sm: Sessionmaker, caller: Caller, run_id: UUID) -> RunView:
     """Makes the next look at the source due now (the worker does it within its next pass)."""
     require(caller, Action.settings)
@@ -726,14 +832,17 @@ async def sync_stop(
 ) -> RunView:
     """Go-live: stops asking the source and deletes the stored credentials, so CeDesk keeps
     no access to the old help desk. While the first import is still running, only the sync
-    is turned off; the credentials go when the import ends."""
+    is turned off; the credentials go when the import ends. A worker on the run keeps its
+    lease; whichever of the stop and the import's end commits first, the other sees it (the
+    worker reads the run locked, the stop decides on the state its update returns)."""
     require(caller, Action.settings)
     ws = caller.workspace_id
     async with workspace_session(sm, ws) as s:
         row = await repo.run(s, run_id)
         if row is None:
             raise NotFound("No such run.")
-        if not await repo.stop_sync(s, run_id):
+        state = await repo.stop_sync(s, run_id)  # waits for a worker ending the import
+        if state is None:
             raise Conflict("This run isn't syncing.")
         label = rules.label(row["source"])
         await repo.add_event(
@@ -742,7 +851,7 @@ async def sync_stop(
         await audit.record(
             s, caller, Area.imports, "sync_stopped", f"Import from {label}", target_id=run_id
         )
-        if row["state"] == "done" and await repo.close_connection(s, row["connection_id"]):
+        if state == "done" and await repo.close_connection(s, row["connection_id"]):
             await repo.add_event(
                 s, ws, row["connection_id"], "credentials_deleted", run_id=run_id,
                 member_id=caller.member_id,
@@ -856,7 +965,17 @@ async def run_due(
 
 
 async def _work(sm: Sessionmaker, importers: Importers, run: Row, deadline: float) -> None:
-    ws, run_id = run["workspace_id"], run["id"]
+    """One slice of a run this worker took. If its lease ran out and another worker took the
+    run meanwhile, every write it tries raises `LeaseLost` and changes nothing: it stops here
+    and leaves the run to its new owner."""
+    try:
+        await _work_owned(sm, importers, run, deadline)
+    except LeaseLost:
+        logger.warning("import run taken over by another worker", extra={"event": "import"})
+
+
+async def _work_owned(sm: Sessionmaker, importers: Importers, run: Row, deadline: float) -> None:
+    ws = run["workspace_id"]
     syncing = run["state"] == "done"  # a finished run being asked for changes (M9)
     try:
         if syncing:
@@ -865,7 +984,7 @@ async def _work(sm: Sessionmaker, importers: Importers, run: Row, deadline: floa
             await _slice(sm, importers, run, deadline)
     except RateLimited as exc:
         wait = rules.wait_seconds(exc.retry_after)
-        await _pause(sm, ws, run_id, wait, "The source is rate limiting this import.")
+        await _pause(sm, run, wait, "The source is rate limiting this import.")
     except SourceError as exc:
         if exc.permanent:
             await _stop(sm, ws, run, str(exc))
@@ -875,6 +994,8 @@ async def _work(sm: Sessionmaker, importers: Importers, run: Row, deadline: floa
         await _stop(sm, ws, run, str(exc))
     except ObjectMissing:
         await _stop(sm, ws, run, "The uploaded file is no longer stored. Upload it again.")
+    except LeaseLost:
+        raise  # not a failure of the run: `_work` stops this worker
     except Exception as exc:
         # Never the message: a database error can quote the customer's data.
         logger.error("import run failed: %s", type(exc).__name__, extra={"event": "import"})
@@ -892,7 +1013,7 @@ async def _stop(sm: Sessionmaker, workspace_id: UUID, run: Row, message: str) ->
         return
     async with workspace_session(sm, workspace_id) as s:
         await repo.sync_error(
-            s, run["id"], error=message,
+            s, run["id"], error=message, token=run["lease_token"],
             next_run_at=datetime.now(UTC) + timedelta(seconds=SYNC_RETRY_SECONDS),
         )  # fmt: skip
         if run["last_error"] != message[:500]:
@@ -915,24 +1036,23 @@ async def _retry(sm: Sessionmaker, policy: rules.RetryPolicy, run: Row, exc: Sou
             wait = policy.delay(attempts, exc.retry_after)
             await repo.retry_later(
                 s, run_id, next_run_at=datetime.now(UTC) + timedelta(seconds=wait),
-                error=str(exc), attempts=attempts,
+                error=str(exc), attempts=attempts, token=run["lease_token"],
             )  # fmt: skip
             return
     await _stop(sm, ws, run, rules.gave_up(run["source"], attempts, str(exc), run["state"]))
 
 
-async def _pause(
-    sm: Sessionmaker, workspace_id: UUID, run_id: UUID, seconds: int, why: str
-) -> None:
-    async with workspace_session(sm, workspace_id) as s:
+async def _pause(sm: Sessionmaker, run: Row, seconds: int, why: str) -> None:
+    async with workspace_session(sm, run["workspace_id"]) as s:
         await repo.release(
-            s, run_id, next_run_at=datetime.now(UTC) + timedelta(seconds=seconds), error=why
-        )
+            s, run["id"], next_run_at=datetime.now(UTC) + timedelta(seconds=seconds),
+            token=run["lease_token"], error=why,
+        )  # fmt: skip
 
 
 async def _fail(sm: Sessionmaker, workspace_id: UUID, run: Row, message: str) -> None:
     async with workspace_session(sm, workspace_id) as s:
-        await repo.finish(s, run["id"], state="failed", error=message)
+        await repo.finish(s, run["id"], state="failed", token=run["lease_token"], error=message)
         await repo.add_event(
             s, workspace_id, run["connection_id"], "failed", run_id=run["id"],
             detail={"error": message[:300]},
@@ -969,7 +1089,9 @@ async def _slice(sm: Sessionmaker, importers: Importers, run: Row, deadline: flo
             return
         if time.monotonic() >= deadline:
             async with workspace_session(sm, ws) as s:
-                await repo.release(s, run_id, next_run_at=datetime.now(UTC))
+                await repo.release(
+                    s, run_id, next_run_at=datetime.now(UTC), token=run["lease_token"]
+                )
             return
         page = await connector.page(kind, cursor.get("page"))
         items = list(page.items)
@@ -992,6 +1114,7 @@ async def _slice(sm: Sessionmaker, importers: Importers, run: Row, deadline: flo
                 await repo.save_progress(
                     s, run_id, cursor=cursor, counts=counts,
                     lease_until=datetime.now(UTC) + timedelta(seconds=rules.LEASE_SECONDS),
+                    token=run["lease_token"],
                 )  # fmt: skip
         except Exception:
             await _discard(importers.store, kept)
@@ -1036,7 +1159,9 @@ async def _sync_slice(sm: Sessionmaker, importers: Importers, run: Row, deadline
     while True:
         if time.monotonic() >= deadline:
             async with workspace_session(sm, ws) as s:
-                await repo.release(s, run_id, next_run_at=datetime.now(UTC))
+                await repo.release(
+                    s, run_id, next_run_at=datetime.now(UTC), token=run["lease_token"]
+                )
             return
         page = await connector.changed_tickets(since, page_cursor)
         items = list(page.items)
@@ -1054,6 +1179,7 @@ async def _sync_slice(sm: Sessionmaker, importers: Importers, run: Row, deadline
                     await repo.sync_pass_done(
                         s, run_id, last_sync_at=started, counts=counts,
                         next_run_at=done_at + timedelta(seconds=rules.SYNC_EVERY_SECONDS),
+                        token=run["lease_token"],
                     )  # fmt: skip
                 else:
                     page_cursor = dict(page.cursor)
@@ -1064,6 +1190,7 @@ async def _sync_slice(sm: Sessionmaker, importers: Importers, run: Row, deadline
                     await repo.save_progress(
                         s, run_id, cursor={"sync": mark}, counts=counts,
                         lease_until=datetime.now(UTC) + timedelta(seconds=rules.LEASE_SECONDS),
+                        token=run["lease_token"],
                     )  # fmt: skip
         except Exception:
             await _discard(importers.store, kept)
@@ -1215,16 +1342,19 @@ async def _complete(
 ) -> None:
     file_key = conn["settings"].get("file_key")
     async with workspace_session(sm, ws) as s:
-        current = await repo.run(s, run["id"])  # sync may have been stopped while it ran
+        # Locked: a sync stop sent now waits, then sees the run done and deletes the
+        # credentials; one sent before shows here as sync off.
+        current = await repo.run(s, run["id"], lock=True)
         syncing = bool(current and current["sync_on"])
         if syncing:
             now = datetime.now(UTC)
             await repo.finish_to_sync(
                 s, run["id"], last_sync_at=run["started_at"], counts=counts,
                 next_run_at=now + timedelta(seconds=rules.SYNC_EVERY_SECONDS),
+                token=run["lease_token"],
             )  # fmt: skip
         else:
-            await repo.finish(s, run["id"], state="done")
+            await repo.finish(s, run["id"], state="done", token=run["lease_token"])
         await repo.add_event(
             s, ws, run["connection_id"], "finished", run_id=run["id"], detail=counts
         )

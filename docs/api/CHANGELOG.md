@@ -3,6 +3,31 @@
 `openapi.json` next to this file is the API as served (`uv run cedesk openapi`). Every
 route is under `/api/v1`. Breaking changes only come in v2 (md 2B). Newest first.
 
+## 2026-11-17: Imports: resume a failed import where it stopped
+
+- New `POST /imports/runs/{run_id}/resume` (Admin, 202, returns the run): queues a `failed`
+  run again; the worker carries on from its last saved page (the failed page is read again,
+  the ones before it are not). The same run keeps its id, counts, options, team mapping, sync
+  setting, start time and failures; `retry_attempts` starts from 0 and `last_error` is
+  cleared. 409 when the run isn't failed (in progress, finished or syncing), when its
+  connection was closed or its stored credentials can't be read, or when another run of the
+  connection is in progress or syncing; nothing changes then. 404 for an unknown run (or one
+  in another workspace). Two resumes at once queue it once; accepts `Idempotency-Key`.
+- The import history records a `resumed` event (who, and where it carries on from: kinds
+  done, whether a page was saved, what was made so far, why it had stopped; never the
+  source's raw cursor). The audit log has a `resumed` entry under imports.
+- Starting a run, resuming one and closing a connection now take turns on the connection,
+  so they can't interleave. Existing responses are unchanged.
+- Fix: `POST /imports/runs/{id}/sync-stop` no longer clears the run's lease. Stopping the
+  sync while the first import (or a sync look) was running let a second worker take the same
+  run. And a stop at the very moment the import ended could leave the run finished, not
+  syncing, but with its credentials kept; the stop now waits for the worker and deletes them.
+  Responses are unchanged (200 with the run; 409 when the run isn't syncing).
+- Workers: each run now carries a lease token (migration 0056). A worker that stalled
+  past its lease, after another worker took the run, can no longer save a page, move the
+  cursor, pause, retry, fail or finish the run; its page is rolled back and its copied files
+  deleted. No API change.
+
 ## 2026-11-17: Imports: one record that can't be read never stops a run; retries end (P0-2)
 
 - New `GET /imports/runs/{run_id}/failures` (Admin, cursor pages, last failed first): the
