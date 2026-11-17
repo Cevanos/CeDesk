@@ -3,6 +3,7 @@ touches only their own tickets (another's is 404), sees only customer, agent and
 messages, opens tickets that run rules and routing like any other, and a reply on a
 resolved ticket reopens it."""
 
+import json
 import re
 from collections.abc import AsyncIterator
 from pathlib import Path
@@ -322,3 +323,32 @@ async def test_the_customer_is_emailed_when_an_agent_replies(
     ok(await client.post(f"{T}/{phone['id']}/messages", headers=w["neha"],
                          json={"kind": "reply", "body": "Hi"}), 201)  # fmt: skip
     assert await notices(app_sessionmaker, w, phone["id"]) == []
+
+
+async def test_a_customer_never_sees_internal_or_imported_fields(
+    client: AsyncClient, app_sessionmaker: Sm
+) -> None:
+    """Before, the portal showed every field on the ticket: an internal field set by an
+    agent, or what an import brought (the old help desk's custom fields, its tags, the link
+    to its agent view). Now only the fields of the ticket's type, if customers can pick it."""
+    sm = app_sessionmaker
+    w = await desk(client, sm)
+    priya = await customer(client, sm, w, "priya@example.org")
+    new = {"message": "Refund please", "type_id": w["refund"], "fields": {"order_id": "A-77"}}
+    typed = ok(await client.post(f"{P}/tickets", headers=priya, json=new), 201)
+    plain = ok(await client.post(f"{P}/tickets", headers=priya, json={"message": "Hi"}), 201)
+    internal = {"source_url": "https://acme.zendesk.com/agent/tickets/9",
+                "more_tags": "vip, churn-risk", "fraud_score": 92}  # fmt: skip
+    async with workspace_session(sm, w["ws"]) as s:
+        await s.execute(
+            text("UPDATE hd_ticket SET fields = fields || CAST(:f AS jsonb)"),
+            {"f": json.dumps(internal)},
+        )
+    assert ok(await client.get(f"{P}/tickets/{typed['id']}", headers=priya))["fields"] == {
+        "order_id": "A-77"
+    }
+    assert ok(await client.get(f"{P}/tickets/{plain['id']}", headers=priya))["fields"] == {}
+    listed = ok(await client.get(f"{P}/tickets", headers=priya))["tickets"]
+    assert "fraud_score" not in str(listed) and "zendesk" not in str(listed)
+    agent = ok(await client.get(f"{T}/{typed['id']}", headers=w["admin"]))
+    assert agent["fields"]["fraud_score"] == 92  # agents still see everything
