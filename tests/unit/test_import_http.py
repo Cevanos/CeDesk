@@ -83,6 +83,9 @@ def test_statuses_are_permanent_or_worth_retrying(status: int, permanent: bool) 
     with pytest.raises(SourceError) as caught:
         get(client(lambda r: httpx.Response(status, json={})))
     assert caught.value.permanent is permanent
+    # A connector tells a refused key by the status, never by the wording (Zoho, Freshdesk).
+    assert caught.value.status == status
+    assert caught.value.refused is (status in (401, 403))
 
 
 def test_credentials_never_appear_in_an_error() -> None:

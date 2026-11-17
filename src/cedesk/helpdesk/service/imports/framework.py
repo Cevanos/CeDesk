@@ -1232,6 +1232,7 @@ async def _slice(sm: Sessionmaker, importers: Importers, run: Row, deadline: flo
                 stats = await _note(s, ctx, run, noted, stats)
                 counts[kind] = _add(counts.get(kind, {}), stats)
                 counts["losses"] = rules.merge_losses(counts.get("losses"), losses.take())
+                counts["warnings"] = _more_warnings(connector, counts.get("warnings"))
                 skipped = getattr(connector, "bad_rows", None)
                 if skipped is not None:
                     counts["rows_left_out"] = len(skipped)
@@ -1272,6 +1273,25 @@ async def _baseline(connector: SourceConnector) -> dict[str, Any]:
         except (SourceError, RateLimited):
             pass
     return out
+
+
+WARNINGS_MAX = 50
+
+
+def _more_warnings(connector: SourceConnector, had: Any) -> list[str]:
+    """The run's warnings, plus any the connector found while reading (C21): a part of the
+    source it was refused mid-run (ratings on a plan without them, a scope the key lacks).
+    Before, those reached only a dry run. Each line once, in order, at most 50."""
+    out = [str(w) for w in (had or [])]
+    warn = getattr(connector, "warnings", None)
+    if callable(warn):
+        try:
+            said = warn()
+        except Exception:  # a connector's own report never stops the page being saved
+            said = []
+        if isinstance(said, list | tuple):
+            out += [str(w)[:300] for w in said]
+    return list(dict.fromkeys(out))[:WARNINGS_MAX]
 
 
 async def _sync_slice(sm: Sessionmaker, importers: Importers, run: Row, deadline: float) -> None:
@@ -1330,6 +1350,7 @@ async def _sync_slice(sm: Sessionmaker, importers: Importers, run: Row, deadline
                 total, this_look = _add(total, stats), _add(this_look, stats)
                 counts["sync"] = total
                 counts["losses"] = rules.merge_losses(counts.get("losses"), losses.take())
+                counts["warnings"] = _more_warnings(connector, counts.get("warnings"))
                 if page.cursor is None:
                     done_at = datetime.now(UTC)
                     await repo.sync_pass_done(

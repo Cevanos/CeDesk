@@ -242,13 +242,8 @@ def _stamp(value: object) -> str:
 
 def _refused(exc: SourceError) -> bool:
     """A 401/403: the account or the key's role may not read this (a plan without the
-    feature answers 403 `require_feature` / `access_denied`). `SourceHttp` gives the status
-    only in its message, so that is what is looked at (a `status` attribute wins if the
-    shared error ever carries one)."""
-    status = getattr(exc, "status", None)
-    if isinstance(status, int):
-        return status in (401, 403)
-    return not isinstance(exc, rules.RecordGone) and "refused these credentials" in str(exc)
+    feature answers 403 `require_feature` / `access_denied`)."""
+    return exc.refused
 
 
 def _fresh(raw: Mapping[str, Any], edge_at: str, edge_ids: set[int]) -> bool:
