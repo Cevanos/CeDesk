@@ -232,6 +232,16 @@ class LeaseLost(Exception):
     and it stops quietly."""
 
 
+class FileUnusable(Exception):
+    """A connector's `fetch` says a file can't be copied and why (`key`, one of
+    `LOSS_KEYS`), e.g. the source answered a placeholder image instead of the file. The
+    framework keeps a link line with that reason and counts it once."""
+
+    def __init__(self, key: str) -> None:
+        super().__init__(key)
+        self.key = key
+
+
 class RecordGone(SourceError):
     """A 404 on a call about one record the source listed a moment ago (its messages, its
     details): it was deleted since. Only that record is left out (`RecordFailures`). Raised

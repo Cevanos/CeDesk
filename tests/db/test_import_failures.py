@@ -28,6 +28,7 @@ from httpx import ASGITransport, AsyncClient
 
 from cedesk.helpdesk.domain.imports import (
     Attachment,
+    FileUnusable,
     Message,
     Page,
     RateLimited,
@@ -71,6 +72,7 @@ class Flaky(Fake):
         self.files: dict[str, bytes] = {}
         self.file_down: dict[str, int] = {}
         self.file_limited: dict[str, int] = {}  # a 429 for that file, this many times
+        self.placeholders: set[str] = set()  # the source answers a placeholder picture
         self.changed: list[Ticket] = []
         self.partial: set[str] = set()  # only the first message can be read (the rest: 404)
 
@@ -117,6 +119,8 @@ class Flaky(Fake):
         return ticket
 
     async def fetch(self, attachment: Attachment, limit: int) -> bytes | None:
+        if attachment.url in self.placeholders:
+            raise FileUnusable("file_placeholder")
         if self.file_limited.get(attachment.url, 0) > 0:
             self.file_limited[attachment.url] -= 1
             raise RateLimited(30)
@@ -622,4 +626,26 @@ async def test_an_admin_can_dismiss_a_failure_and_it_stays_dismissed(
     assert (await run_row(sm, w["ws"], again))["state"] == "done"
     [kept] = await failures(sm, w["ws"])
     assert kept["status"] == "dismissed"
+    await end_runs(sm, w["ws"])
+
+
+async def test_a_file_the_source_answers_with_a_placeholder_is_linked_and_counted_once(
+    im: AsyncClient, app_sessionmaker: Sm
+) -> None:
+    """Live B-36 (Gorgias): a PDF came back as a "file is private" picture and was saved as
+    the customer's file. The connector says so (`FileUnusable`); the file is a link line
+    with that reason, counted once, and the ticket is noted."""
+    sm = app_sessionmaker
+    src = Flaky()
+    src.tickets = [with_files(0, Attachment("r.pdf", "https://files.example/r", 9, None))]
+    src.placeholders = {"https://files.example/r"}
+    w, conn, importers = await flaky_desk(im, sm, src)
+    run_id = await start(im, w, conn, kinds=["tickets"])
+    await pass_(sm, importers, w["ws"])
+    run = await run_state(im, w, run_id)
+    assert run["state"] == "done" and run["counts"]["tickets"]["files"] == 0
+    assert [(x["key"], x["count"]) for x in run["report"]["losses"]] == [("file_placeholder", 1)]
+    [line] = await sql(sm, w["ws"], "SELECT body FROM hd_message WHERE body LIKE '%r.pdf%'")
+    assert "placeholder picture" in line["body"]
+    assert await sql(sm, w["ws"], "SELECT 1 FROM hd_attachment") == []
     await end_runs(sm, w["ws"])
