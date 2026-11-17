@@ -34,6 +34,7 @@ name the category by its id because the collection name needs another endpoint);
 import re
 from collections.abc import Mapping, Sequence
 from datetime import datetime
+from functools import partial
 from html.parser import HTMLParser
 from typing import Any
 
@@ -53,6 +54,7 @@ from cedesk.helpdesk.domain.imports import (
     Group,
     Message,
     Page,
+    RecordGone,
     SourceConnector,
     Ticket,
 )
@@ -118,6 +120,7 @@ class IntercomConnector:
         self._http = http
         self._admins: dict[str, tuple[str | None, str | None]] | None = None
         self._contacts: dict[str, Contact | None] = {}
+        self.failures = rules.RecordFailures()  # conversations deleted mid-import (P0-2)
 
     async def check(self) -> AccountInfo:
         me = _dict(await self._http.get("/me"))
@@ -194,13 +197,24 @@ class IntercomConnector:
                 continue
             if since is not None and _older(stub, since):
                 return Page(tickets, None)
-            full = await self._http.get(f"/conversations/{segment(stub['id'])}", missing_ok=True)
-            if not isinstance(full, Mapping):
-                continue
+            read = await self.failures.guard(
+                "ticket", str(stub["id"]), partial(self._conversation, stub["id"])
+            )
+            if read is None:
+                continue  # deleted since it was listed (noted), or isolated
+            full, ticket = read
             if since is not None and _older(full, since):
                 return Page(tickets, None)
-            tickets.append(await self._ticket(full))
+            tickets.append(ticket)
         return Page(tickets, _after(listing))
+
+    async def _conversation(self, conversation_id: object) -> tuple[Mapping[str, Any], Ticket]:
+        """One conversation with all it says. A 404 is `RecordGone` (deleted since it was
+        listed)."""
+        full = await self._http.get(f"/conversations/{segment(conversation_id)}", record=True)
+        if not isinstance(full, Mapping) or full.get("id") is None:
+            raise RecordGone("Intercom sent no conversation for this record.")
+        return full, await self._ticket(full)
 
     async def changed_tickets(
         self, since: datetime, cursor: Mapping[str, Any] | None

@@ -52,6 +52,7 @@ particular role (any 401/403 is a permanent error here).
 import re
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
+from functools import partial
 from html.parser import HTMLParser
 from typing import Any, ClassVar
 
@@ -140,11 +141,15 @@ class GorgiasConnector:
 
     def __init__(self, http: SourceHttp) -> None:
         self._http = http
+        self.failures = rules.RecordFailures()  # tickets deleted mid-import (P0-2)
 
     # Reading
 
-    async def _list(self, path: str, params: Mapping[str, Any]) -> tuple[list[Any], str | None]:
-        found = await self._http.get(path, params)
+    async def _list(
+        self, path: str, params: Mapping[str, Any], *, record: bool = False
+    ) -> tuple[list[Any], str | None]:
+        """`record`: the list belongs to one ticket, so a 404 means that ticket is gone."""
+        found = await self._http.get(path, params, record=record)
         data = found.get("data") if isinstance(found, dict) else None
         meta = found.get("meta") if isinstance(found, dict) else None
         nxt = meta.get("next_cursor") if isinstance(meta, dict) else None
@@ -253,7 +258,7 @@ class GorgiasConnector:
         for row in rows:
             if row.get("id") is None or row.get("spam") or row.get("trashed_datetime"):
                 continue
-            items.append(await self._ticket(row))
+            await self._read(items, row)
         return Page(items, {"cursor": nxt} if nxt else None)
 
     async def _messages(self, ticket_id: object) -> list[Message]:
@@ -268,6 +273,7 @@ class GorgiasConnector:
                     "cursor": cursor,
                     "order_by": "created_datetime:asc",
                 },
+                record=True,
             )
             for row in rows:
                 message = self._message(row)
@@ -357,7 +363,7 @@ class GorgiasConnector:
                 break
             if row.get("id") is None or row.get("spam") or row.get("trashed_datetime"):
                 continue
-            items.append(await self._ticket(row))
+            await self._read(items, row)
         return Page(items, {"cursor": nxt} if nxt else None)
 
     @staticmethod
@@ -390,6 +396,13 @@ class GorgiasConnector:
             comment.strip() if isinstance(comment, str) and comment.strip() else None,
             when(raw.get("scored_datetime")),
         )
+
+    async def _read(self, items: list[Ticket], row: Mapping[str, Any]) -> None:
+        """Adds the ticket to `items`, or notes it in `failures` when it was deleted after it
+        was listed (or keeps failing while the run isolates records)."""
+        ticket = await self.failures.guard("ticket", str(row["id"]), partial(self._ticket, row))
+        if ticket is not None:
+            items.append(ticket)
 
     async def _ticket(self, row: Mapping[str, Any]) -> Ticket:
         tid = str(row["id"])

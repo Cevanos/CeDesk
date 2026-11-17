@@ -20,10 +20,12 @@ Endpoints (all GET):
 - replies: `/api/v2/macros.json?active=true`, those with a `comment_value` action.
 
 Decisions: tickets with status `deleted` are skipped (the export includes them). A comments
-request that answers 404 (an archived ticket the comments endpoint no longer serves) is treated
-as "no comments" (`missing_ok=True`), and the ticket's description is used as its one customer
-message so the ticket is not empty. `public: false` comments are notes; agent/admin authors are
-agent messages, everyone else customer. CSAT: good -> 5, bad -> 1, offered/unoffered -> none.
+request that answers 404 (an archived ticket the comments endpoint no longer serves, or one
+deleted since) keeps the ticket, with its description as its one customer message so it is
+not empty, and notes it as `incomplete` in the run's failures (P0-2): its history is not
+passed off as complete, and a later read that gets the comments resolves it. `public:
+false` comments are notes; agent/admin authors are agent messages, everyone else customer.
+CSAT: good -> 5, bad -> 1, offered/unoffered -> none.
 `resolved_at` is `updated_at` for solved/closed tickets (the export has no solved time).
 
 Docs used:
@@ -49,6 +51,7 @@ import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
+from functools import partial
 from typing import Any
 
 import httpx
@@ -67,6 +70,7 @@ from cedesk.helpdesk.domain.imports import (
     Group,
     Message,
     Page,
+    RecordGone,
     Reply,
     SourceConnector,
     SourceError,
@@ -133,6 +137,7 @@ class ZendeskConnector:
         self._http = http
         self._users: dict[int, _User] = {}
         self._field_titles: dict[int, str] | None = None
+        self.failures = rules.RecordFailures()  # tickets that keep failing (P0-2)
 
     # Connection
 
@@ -302,13 +307,26 @@ class ZendeskConnector:
         )
         raw_tickets = [t for t in data.get("tickets") or [] if t.get("status") != _SKIPPED_STATUS]
         titles = await self._titles()
-        comments = {int(t["id"]): await self._comments(int(t["id"])) for t in raw_tickets}
+        comments: dict[int, list[Mapping[str, Any]]] = {}
+        for t in raw_tickets:
+            read = await self.failures.guard(
+                "ticket", str(t["id"]), partial(self._comments, int(t["id"]))
+            )
+            if read is not None:
+                comments[int(t["id"])] = read
+        raw_tickets = [t for t in raw_tickets if int(t["id"]) in comments]
         ids: set[int] = set()
         for t in raw_tickets:
             ids.update(i for i in (t.get("requester_id"), t.get("assignee_id")) if i)
             ids.update(int(c["author_id"]) for c in comments[int(t["id"])] if c.get("author_id"))
         await self._resolve(ids)
-        items = [self._ticket(t, comments[int(t["id"])], titles) for t in raw_tickets]
+        items: list[Ticket] = []
+        for t in raw_tickets:
+            try:
+                items.append(self._ticket(t, comments[int(t["id"])], titles))
+            except SourceError as exc:  # a ticket the source can't describe (no created_at)
+                if not self.failures.absorb("ticket", str(t["id"]), exc):
+                    raise
         after = data.get("after_cursor")
         done = bool(data.get("end_of_stream")) or not after
         return Page(items, None if done else {"cursor": str(after)})
@@ -318,11 +336,17 @@ class ZendeskConnector:
         token: str | None = None
         path = f"/api/v2/tickets/{segment(ticket_id)}/comments.json"
         for _ in range(_MAX_PAGES):
-            data = await self._http.get(
-                path, {"page[size]": _SIZE, "page[after]": token}, missing_ok=True
-            )
-            if data is None:
-                break  # archived (or gone): no comments
+            try:
+                data = await self._http.get(
+                    path, {"page[size]": _SIZE, "page[after]": token}, record=True
+                )
+            except RecordGone:  # archived (or deleted since): the ticket is kept, noted
+                self.failures.incomplete(
+                    "ticket", str(ticket_id),
+                    "Zendesk sent no comments for this ticket (404): only what was read "
+                    "(or its description) was imported.",
+                )  # fmt: skip
+                break
             out.extend(data.get("comments") or [])
             token = _after(data)
             if token is None:

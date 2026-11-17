@@ -11,8 +11,9 @@ shapes they share and the rules that decide how a source record becomes a CeDesk
   run resumes from after a crash or a pause.
 """
 
+import random
 import re
-from collections.abc import Mapping, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Protocol, runtime_checkable
@@ -185,11 +186,129 @@ class RateLimited(Exception):
 
 class SourceError(Exception):
     """The source can't be read. `permanent`: retrying won't help (bad credentials, no
-    such account); otherwise it is down or slow and the run tries again."""
+    such account); otherwise it is down or slow and the run tries again, waiting at least
+    `retry_after` seconds when the source said so."""
 
-    def __init__(self, message: str, *, permanent: bool) -> None:
+    def __init__(self, message: str, *, permanent: bool, retry_after: int | None = None) -> None:
         super().__init__(message)
         self.permanent = permanent
+        self.retry_after = retry_after
+
+
+class RecordGone(SourceError):
+    """A 404 on a call about one record the source listed a moment ago (its messages, its
+    details): it was deleted since. Only that record is left out (`RecordFailures`). Raised
+    only for calls made with `record=True`; a 404 anywhere else, and a 401/403 always, is an
+    account problem that stops the run."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message, permanent=True)
+
+
+# Records that could not be read (P0-2)
+
+FAILURE_CATEGORIES: tuple[str, ...] = ("not_found", "temporary", "incomplete")
+"""`not_found`: the source no longer has it (a 404 after listing it). `temporary`: it kept
+failing (a 5xx, a timeout) after every retry of its page, so it was set aside. `incomplete`:
+it was imported, but part of its history could not be read (a Zendesk ticket whose comments
+answer 404 is imported with its description only); it stays open until a later read brings
+the rest, or an Admin dismisses it."""
+
+
+@dataclass(frozen=True)
+class Failure:
+    kind: str  # contact | ticket | article | reply
+    external_id: str
+    category: str  # one of FAILURE_CATEGORIES
+    error: str  # our own words (`SourceError` messages): never a credential or customer text
+
+
+class RecordFailures:
+    """What a connector couldn't read, one record at a time, while it builds a page.
+
+    A connector reads a ticket's messages with `guard(...)`. A record that is gone is noted
+    and left out, and the rest of the page goes on. A temporary error is raised again, so the
+    whole page is retried with backoff, until `isolate` is set: the framework sets it for the
+    one last try after the run's retries ran out, and then the record that keeps failing is
+    noted and left out too. Credentials refused (401/403), any other permanent error and a 429
+    are never noted: they are about the account, not the record, and stop or pause the run.
+
+    The framework takes the notes with `take()` and writes them in the same transaction as
+    the page and its cursor, so a page never moves on without them."""
+
+    def __init__(self, *, isolate: bool = False) -> None:
+        self.isolate = isolate
+        self._noted: list[Failure] = []
+
+    def absorb(self, kind: str, external_id: str, exc: SourceError) -> bool:
+        """Notes `exc` against the record when it is about that record alone; False when the
+        caller must raise it."""
+        if isinstance(exc, RecordGone):
+            category = "not_found"
+        elif not exc.permanent and self.isolate:
+            category = "temporary"
+        else:
+            return False
+        self._noted.append(Failure(kind, str(external_id)[:200], category, str(exc)[:500]))
+        return True
+
+    async def guard[T](
+        self, kind: str, external_id: str, call: Callable[[], Awaitable[T]]
+    ) -> T | None:
+        """`call()`, or None when it failed for this record alone (and that was noted)."""
+        try:
+            return await call()
+        except SourceError as exc:
+            if not self.absorb(kind, external_id, exc):
+                raise
+        return None
+
+    def incomplete(self, kind: str, external_id: str, error: str) -> None:
+        """Notes a record that is imported without part of its history (the record is kept;
+        what is missing is not passed off as complete)."""
+        self._noted.append(Failure(kind, str(external_id)[:200], "incomplete", error[:500]))
+
+    def take(self) -> list[Failure]:
+        noted, self._noted = self._noted, []
+        return noted
+
+
+# Retrying a page that failed for a while (P0-2)
+
+
+@dataclass(frozen=True)
+class RetryPolicy:
+    """How long a run keeps trying a page that fails with a temporary error (a 5xx, a
+    timeout, a connection error) before it gives up on the record that fails.
+
+    The wait doubles from `base_seconds` up to `max_seconds`, each time with jitter (between
+    half and all of it, so many runs that failed together don't retry together), and never
+    less than the source's own Retry-After. The defaults (8 tries: 30 s, 1, 2, 4, 8, 16 and
+    32 min, then 1 h, about 1 to 2 h in all) ride out a typical outage of a help desk's API
+    without holding a run for good. After `attempts` failed tries, one more try isolates the
+    records that fail (`RecordFailures.isolate`); if the page itself still can't be read,
+    the run stops with a message that says so. A 429 is not a failure: it waits for
+    Retry-After and uses up no try. Set from `Settings.import_retry_*`."""
+
+    attempts: int = 8
+    base_seconds: float = 30.0
+    max_seconds: float = 3600.0
+
+    def __post_init__(self) -> None:
+        if self.attempts < 1:
+            raise ValueError("A retry policy needs at least one attempt.")
+        if self.base_seconds <= 0 or self.max_seconds < self.base_seconds:
+            raise ValueError("A retry policy needs 0 < base_seconds <= max_seconds.")
+
+    def delay(
+        self, attempt: int, retry_after: int | None, *, rand: Callable[[], float] = random.random
+    ) -> int:
+        """Seconds to wait after the `attempt`-th failed try (1 is the first)."""
+        backoff = min(self.max_seconds, self.base_seconds * 2 ** max(0, attempt - 1))
+        wait = backoff * (0.5 + 0.5 * rand())
+        if retry_after is not None and retry_after > 0:
+            wait = max(wait, float(retry_after))
+        return max(1, min(int(wait), MAX_RATE_WAIT))
 
 
 class SourceConnector(Protocol):
@@ -229,6 +348,18 @@ class ChangeSource(Protocol):
         """Tickets created or updated at or after `since`, with all their messages, one page
         at a time (the same shape as `page("tickets", cursor)`)."""
         ...
+
+
+def gave_up(source: str, tries: int, error: str, state: str) -> str:
+    """What a run says when a page still can't be read after every retry and the isolating
+    try (`RetryPolicy`). `state` `done` is a sync look (it is tried again later)."""
+    head = f"{label(source)} kept failing after {tries} tries ({error[:200]})."
+    if state == "done":
+        return f"{head} This look at the source is tried again in an hour."
+    return (
+        f"{head} Nothing after the last saved page was imported. Start the import again "
+        "when the source works: what is already here is skipped."
+    )
 
 
 def wait_seconds(retry_after: int | None) -> int:

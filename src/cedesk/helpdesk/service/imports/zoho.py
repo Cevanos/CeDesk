@@ -48,6 +48,7 @@ token).
 import time
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
+from functools import partial
 from typing import Any
 
 import httpx
@@ -64,6 +65,7 @@ from cedesk.helpdesk.domain.imports import (
     Group,
     Message,
     Page,
+    RecordGone,
     SourceError,
     Ticket,
 )
@@ -139,6 +141,7 @@ class ZohoDeskConnector:
         self._token: str | None = None
         self._expires_at = 0.0
         self._departments: list[Group] | None = None
+        self.failures = rules.RecordFailures()  # tickets deleted mid-import (P0-2)
 
     # Sign-in
 
@@ -186,19 +189,27 @@ class ZohoDeskConnector:
         return self._api(self._token, with_org=with_org)
 
     async def _get(
-        self, path: str, params: Mapping[str, Any] | None = None, *, missing_ok: bool = False
+        self,
+        path: str,
+        params: Mapping[str, Any] | None = None,
+        *,
+        missing_ok: bool = False,
+        record: bool = False,
     ) -> Any:
         """A GET with the token got on first use and when it has expired; one refused with
-        a token that was not just got is tried once more with a new one."""
+        a token that was not just got is tried once more with a new one (a record that is
+        gone is not a refusal). `record`: see `SourceHttp.get`."""
         was = self._token
         api = await self._client()
         try:
-            return await api.get(path, params, missing_ok=missing_ok)
+            return await api.get(path, params, missing_ok=missing_ok, record=record)
         except SourceError as exc:
             if not exc.permanent or self._token != was or was is None:
                 raise
+            if isinstance(exc, RecordGone):
+                raise
         api = await self._client(fresh=True)
-        return await api.get(path, params, missing_ok=missing_ok)
+        return await api.get(path, params, missing_ok=missing_ok, record=record)
 
     async def _find_org(self) -> None:
         api = await self._client(with_org=False)
@@ -286,7 +297,10 @@ class ZohoDeskConnector:
                     },
                 )
             )
-            items = [await self._ticket(r) for r in rows if r.get("id") is not None]
+            items: list[Ticket] = []
+            for r in rows:
+                if r.get("id") is not None:
+                    await self._read(items, r)
             return Page(items, _next(start, rows))
         if kind == "articles":
             rows = _data(await self._get("/articles", {"from": start, "limit": LIMIT}))
@@ -318,7 +332,7 @@ class ZohoDeskConnector:
                 nxt = None  # ordered by change time: everything after is older still
                 break
             if row.get("id") is not None:
-                items.append(await self._ticket(row))
+                await self._read(items, row)
         return Page(items, nxt)
 
     # Records
@@ -363,11 +377,12 @@ class ZohoDeskConnector:
         api = await self._client()
         return await api.download(attachment.url, limit)
 
-    async def _paged(self, path: str) -> list[Mapping[str, Any]]:
+    async def _paged(self, path: str, *, record: bool = False) -> list[Mapping[str, Any]]:
+        """`record`: the list belongs to one ticket, so a 404 means that ticket is gone."""
         out: list[Mapping[str, Any]] = []
         start = 0
         for _ in range(DETAIL_PAGES_MAX):
-            rows = _data(await self._get(path, {"from": start, "limit": LIMIT}))
+            rows = _data(await self._get(path, {"from": start, "limit": LIMIT}, record=record))
             out += rows
             nxt = _next(start, rows)
             if nxt is None:
@@ -377,12 +392,19 @@ class ZohoDeskConnector:
 
     async def _messages(self, tid: str) -> list[Message]:
         out: list[Message] = []
-        for ref in await self._paged(f"/tickets/{segment(tid)}/threads"):
+        for ref in await self._paged(f"/tickets/{segment(tid)}/threads", record=True):
             if ref.get("id") is None:
                 continue
-            detail = await self._get(
-                f"/tickets/{segment(tid)}/threads/{segment(ref['id'])}", missing_ok=True
-            )
+            try:
+                detail = await self._get(
+                    f"/tickets/{segment(tid)}/threads/{segment(ref['id'])}", record=True
+                )
+            except RecordGone:  # deleted since it was listed: its summary is kept, noted
+                detail = None
+                self.failures.incomplete(
+                    "ticket", tid, "Zoho Desk no longer has one of its threads (404): only "
+                    "that thread's summary was imported.",
+                )  # fmt: skip
             row = detail if isinstance(detail, dict) else ref
             text = _text(row.get("content")) or rules.body(_str(ref.get("summary")))
             files = self._files(row.get("attachments"))
@@ -409,7 +431,7 @@ class ZohoDeskConnector:
                     attachments=files,
                 )
             )
-        for row in await self._paged(f"/tickets/{segment(tid)}/comments"):
+        for row in await self._paged(f"/tickets/{segment(tid)}/comments", record=True):
             text = _text(row.get("content"))
             if row.get("id") is None or not text:
                 continue
@@ -427,6 +449,13 @@ class ZohoDeskConnector:
             )
         out.sort(key=lambda m: m.created_at)
         return out
+
+    async def _read(self, items: list[Ticket], row: Mapping[str, Any]) -> None:
+        """Adds the ticket to `items`, or notes it in `failures` when it was deleted after it
+        was listed (or keeps failing while the run isolates records)."""
+        ticket = await self.failures.guard("ticket", str(row["id"]), partial(self._ticket, row))
+        if ticket is not None:
+            items.append(ticket)
 
     async def _ticket(self, row: Mapping[str, Any]) -> Ticket:
         tid = str(row["id"])

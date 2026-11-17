@@ -11,6 +11,18 @@
   the page it was on. A slice lasts `BUDGET_SECONDS`, then the worker's other work gets its
   turn and the run goes on next pass. A 429 pauses the run for the source's Retry-After.
 
+**One record never stops a run** (audit P0-2): a ticket the source deleted after listing it
+(a 404 on its messages) is left out, written to `hd_import_failure` (`not_found`) in the same
+transaction as the page and its cursor, and the rest of the page goes on. A temporary error
+(a 5xx, a timeout) retries the page with exponential backoff and jitter (`RetryPolicy`,
+never less than the source's Retry-After); the count of tries is kept on the run
+(`retry_attempts`), so a worker restart doesn't reset it. When the tries run out, one last try
+isolates the records that keep failing (noted as `temporary`, their files kept as links) and
+saves the rest; a page that still can't be read stops the run with a message that says so,
+and its cursor never moves past it. Refused credentials and other permanent errors still stop
+the run at once; a record imported later (an import run again, a sync look) resolves its
+failure.
+
 What an imported ticket is (md 8.2 step 5): its own dates, status, tags, custom fields and
 CSAT; `source` and `source_id` (so running again creates no duplicates); the tag
 `imported-<source>`; a first system line saying where it came from. Triage and card
@@ -98,9 +110,25 @@ class Importers:
     sealer: Sealer
     store: ObjectStore
     build: Build
+    retry: rules.RetryPolicy = field(default_factory=rules.RetryPolicy)
 
 
-def make_importers(secret_key: str, store: ObjectStore, build: Build | None = None) -> Importers:
+def retry_policy(settings: Any) -> rules.RetryPolicy:
+    """The import retry policy from `Settings.import_retry_*` (raises ValueError when the cap
+    is under the base, so a bad setting stops the process at start)."""
+    return rules.RetryPolicy(
+        attempts=settings.import_retry_attempts,
+        base_seconds=settings.import_retry_base_seconds,
+        max_seconds=settings.import_retry_max_seconds,
+    )
+
+
+def make_importers(
+    secret_key: str,
+    store: ObjectStore,
+    build: Build | None = None,
+    retry: rules.RetryPolicy | None = None,
+) -> Importers:
     async def default(
         source: str, settings: Mapping[str, Any], secret: str | None
     ) -> SourceConnector:
@@ -108,7 +136,7 @@ def make_importers(secret_key: str, store: ObjectStore, build: Build | None = No
             return await CsvConnector.load(store, settings)
         return await build_connector(source, settings, secret)
 
-    return Importers(Sealer(secret_key), store, build or default)
+    return Importers(Sealer(secret_key), store, build or default, retry or rules.RetryPolicy())
 
 
 def _bound(workspace_id: UUID, connection_id: UUID) -> str:
@@ -165,6 +193,28 @@ class RunView:
     finished_at: datetime | None
     last_error: str | None
     last_sync_at: datetime | None = None
+    retry_attempts: int = 0  # failed tries of the page it is on (P0-2)
+
+
+@dataclass(frozen=True)
+class FailureView:
+    id: UUID
+    kind: str
+    external_id: str
+    category: str
+    attempts: int
+    last_error: str
+    first_failed_at: datetime
+    last_failed_at: datetime
+    status: str
+    resolved_at: datetime | None
+    resolved_by_id: UUID | None = None
+
+
+@dataclass(frozen=True)
+class FailurePage:
+    failures: list[FailureView]
+    next_cursor: str | None
 
 
 @dataclass(frozen=True)
@@ -213,6 +263,7 @@ def _run_view(row: Mapping[Any, Any]) -> RunView:
         finished_at=row["finished_at"],
         last_error=row["last_error"],
         last_sync_at=row["last_sync_at"],
+        retry_attempts=int(row.get("retry_attempts") or 0),
     )
 
 
@@ -607,6 +658,52 @@ async def get_run(sm: Sessionmaker, caller: Caller, run_id: UUID) -> RunView:
     return _run_view(row)
 
 
+async def run_failures(
+    sm: Sessionmaker, caller: Caller, run_id: UUID, *, cursor: str | None = None, limit: int = 50
+) -> FailurePage:
+    """The records a run could not read and left out, last failed first (P0-2). They stay
+    after the run ends; one imported later shows as resolved."""
+    require(caller, Action.settings)
+    before = None
+    if cursor:
+        try:
+            before = paging.decode_time(cursor, "import_failure")
+        except paging.CursorError as exc:
+            raise Invalid(str(exc)) from None
+    async with workspace_session(sm, caller.workspace_id) as s:
+        if await repo.run(s, run_id) is None:
+            raise NotFound("No such run.")
+        rows = await repo.failures(s, run_id, before=before, limit=limit + 1)
+    page, next_cursor = paging.time_page(rows, limit, "import_failure")
+    return FailurePage(failures=[_failure_view(r) for r in page], next_cursor=next_cursor)
+
+
+def _failure_view(r: Mapping[Any, Any]) -> FailureView:
+    return FailureView(
+        id=r["id"], kind=r["kind"], external_id=r["external_id"], category=r["category"],
+        attempts=r["attempts"], last_error=r["last_error"],
+        first_failed_at=r["first_failed_at"], last_failed_at=r["last_failed_at"],
+        status=r["status"], resolved_at=r["resolved_at"], resolved_by_id=r["resolved_by_id"],
+    )  # fmt: skip
+
+
+async def dismiss_failure(
+    sm: Sessionmaker, caller: Caller, run_id: UUID, failure_id: UUID
+) -> FailureView:
+    """An Admin accepts that a record (or part of its history) will not come: the failure
+    ends as `dismissed`, with who decided. Only an open one; a later read never reopens it."""
+    require(caller, Action.settings)
+    async with workspace_session(sm, caller.workspace_id) as s:
+        if await repo.failure(s, run_id, failure_id) is None:
+            raise NotFound("No such failure on this run.")
+        if not await repo.dismiss_failure(s, failure_id, caller.member_id):
+            raise Conflict("This failure is not open any more.")
+        found = await repo.failure(s, run_id, failure_id)
+    if found is None:  # the run was deleted meanwhile
+        raise NotFound("No such failure on this run.")
+    return _failure_view(found)
+
+
 async def sync_now(sm: Sessionmaker, caller: Caller, run_id: UUID) -> RunView:
     """Makes the next look at the source due now (the worker does it within its next pass)."""
     require(caller, Action.settings)
@@ -729,6 +826,8 @@ class _Ctx:
     ticket_ids: dict[str, UUID] = field(default_factory=dict)  # source id -> ticket id to use
     seen: dict[UUID, tuple[set[str], set[tuple[str, int]]]] = field(default_factory=dict)
     files: dict[int, list[_Kept | _Linked]] = field(default_factory=dict)  # by id(message)
+    isolate: bool = False  # the last try after retries ran out: a file that fails is linked
+    unresolved: set[str] = field(default_factory=set)  # this page's noted tickets (P0-2)
 
 
 async def run_due(
@@ -771,7 +870,7 @@ async def _work(sm: Sessionmaker, importers: Importers, run: Row, deadline: floa
         if exc.permanent:
             await _stop(sm, ws, run, str(exc))
         else:
-            await _pause(sm, ws, run_id, rules.DEFAULT_RATE_WAIT, str(exc))
+            await _retry(sm, importers.retry, run, exc)
     except (CannotOpen, BadFile) as exc:
         await _stop(sm, ws, run, str(exc))
     except ObjectMissing:
@@ -801,6 +900,25 @@ async def _stop(sm: Sessionmaker, workspace_id: UUID, run: Row, message: str) ->
                 s, workspace_id, run["connection_id"], "failed", run_id=run["id"],
                 detail={"error": message[:300], "sync": True},
             )  # fmt: skip
+
+
+async def _retry(sm: Sessionmaker, policy: rules.RetryPolicy, run: Row, exc: SourceError) -> None:
+    """A temporary error: the page is tried again after a backoff, up to `policy.attempts`
+    failed tries, then once more isolating the records that fail (`_slice`). When even that
+    try fails, the page can't be read: the run stops there (an import fails; a sync look is
+    tried again in an hour), with its cursor still before the page."""
+    ws, run_id = run["workspace_id"], run["id"]
+    async with workspace_session(sm, ws) as s:
+        current = await repo.run(s, run_id)  # pages saved this slice set the count back to 0
+        attempts = int((current or run)["retry_attempts"] or 0) + 1
+        if attempts <= policy.attempts:
+            wait = policy.delay(attempts, exc.retry_after)
+            await repo.retry_later(
+                s, run_id, next_run_at=datetime.now(UTC) + timedelta(seconds=wait),
+                error=str(exc), attempts=attempts,
+            )  # fmt: skip
+            return
+    await _stop(sm, ws, run, rules.gave_up(run["source"], attempts, str(exc), run["state"]))
 
 
 async def _pause(
@@ -840,6 +958,7 @@ async def _slice(sm: Sessionmaker, importers: Importers, run: Row, deadline: flo
         team_map=chosen.team_map, status_map=connector.status_map, group_names=groups,
         store=importers.store, update_existing=True,
     )  # fmt: skip
+    noter = _isolating(connector, ctx, run, importers.retry)
     cursor: dict[str, Any] = dict(run["cursor"])
     counts: dict[str, Any] = dict(run["counts"])
     done: list[str] = list(cursor.get("done", []))
@@ -854,10 +973,13 @@ async def _slice(sm: Sessionmaker, importers: Importers, run: Row, deadline: flo
             return
         page = await connector.page(kind, cursor.get("page"))
         items = list(page.items)
+        noted = noter.take() if noter is not None else []
+        ctx.unresolved = {f.external_id for f in noted if f.kind == "ticket"}
         kept = await _prepare(ctx, connector, items) if kind == "tickets" else []
         try:
             async with workspace_session(sm, ws) as s:
                 stats = await _write(s, ctx, kind, items)
+                stats = await _note(s, ctx, run, noted, stats)
                 counts[kind] = _add(counts.get(kind, {}), stats)
                 skipped = getattr(connector, "bad_rows", None)
                 if skipped is not None:
@@ -874,6 +996,7 @@ async def _slice(sm: Sessionmaker, importers: Importers, run: Row, deadline: flo
         except Exception:
             await _discard(importers.store, kept)
             raise
+        _isolate(noter, ctx, False)  # the page is saved: the next one starts with fresh tries
 
 
 async def _sync_slice(sm: Sessionmaker, importers: Importers, run: Row, deadline: float) -> None:
@@ -896,6 +1019,7 @@ async def _sync_slice(sm: Sessionmaker, importers: Importers, run: Row, deadline
         team_map=chosen.team_map, status_map=connector.status_map, group_names=groups,
         store=importers.store, update_existing=True,
     )  # fmt: skip
+    noter = _isolating(connector, ctx, run, importers.retry)
     mark: dict[str, Any] = dict((run["cursor"] or {}).get("sync") or {})
     now = datetime.now(UTC)
     started = datetime.fromisoformat(mark["started"]) if mark.get("started") else now
@@ -916,10 +1040,13 @@ async def _sync_slice(sm: Sessionmaker, importers: Importers, run: Row, deadline
             return
         page = await connector.changed_tickets(since, page_cursor)
         items = list(page.items)
+        noted = noter.take() if noter is not None else []
+        ctx.unresolved = {f.external_id for f in noted if f.kind == "ticket"}
         kept = await _prepare(ctx, connector, items)
         try:
             async with workspace_session(sm, ws) as s:
                 stats = await _tickets(s, ctx, items)
+                stats = await _note(s, ctx, run, noted, stats)
                 total, this_look = _add(total, stats), _add(this_look, stats)
                 counts["sync"] = total
                 if page.cursor is None:
@@ -941,8 +1068,45 @@ async def _sync_slice(sm: Sessionmaker, importers: Importers, run: Row, deadline
         except Exception:
             await _discard(importers.store, kept)
             raise
+        _isolate(noter, ctx, False)
         if page.cursor is None:
             return
+
+
+# Records left out (P0-2)
+
+
+def _isolate(noter: rules.RecordFailures | None, ctx: _Ctx, on: bool) -> None:
+    ctx.isolate = on
+    if noter is not None:
+        noter.isolate = on
+
+
+def _isolating(
+    connector: SourceConnector, ctx: _Ctx, run: Row, policy: rules.RetryPolicy
+) -> rules.RecordFailures | None:
+    """The connector's notes of records it left out (None: it notes none, as CSV), set to
+    isolate failing records when this slice is the last try after the run's retries."""
+    found = getattr(connector, "failures", None)
+    noter = found if isinstance(found, rules.RecordFailures) else None
+    _isolate(noter, ctx, int(run["retry_attempts"] or 0) >= policy.attempts)
+    return noter
+
+
+async def _note(
+    s: AsyncSession, ctx: _Ctx, run: Row, noted: Sequence[rules.Failure], stats: dict[str, int]
+) -> dict[str, int]:
+    """Writes the page's noted records in its own transaction, before its cursor moves, and
+    counts them: `failed` (left out) and `incomplete` (imported without all its history)."""
+    if not noted:
+        return stats
+    await repo.note_failures(
+        s, ctx.ws, ctx.run_id, ctx.source, noted, attempts=int(run["retry_attempts"] or 0) + 1
+    )
+    last = {(f.kind, f.external_id): f.category for f in noted}  # noted twice: the last
+    partial = sum(1 for category in last.values() if category == "incomplete")
+    extra = {"failed": len(last) - partial, "incomplete": partial}
+    return _add(stats, {k: n for k, n in extra.items() if n})
 
 
 # Files
@@ -1018,7 +1182,14 @@ async def _copy_files(
         elif att.size is not None and att.size > rules.FILE_MAX:
             out.append(_Linked(rules.link_line(att.name, att.size, att.url, "over 25 MB")))
         else:
-            data = await connector.fetch(att, rules.FILE_MAX)
+            try:
+                data = await connector.fetch(att, rules.FILE_MAX)
+            except SourceError as exc:
+                if exc.permanent or not ctx.isolate:
+                    raise
+                why = "the source kept failing"
+                out.append(_Linked(rules.link_line(att.name, att.size, att.url, why)))
+                continue
             if data is None:
                 why = "over 25 MB or no longer in the source"
                 out.append(_Linked(rules.link_line(att.name, att.size, att.url, why)))
@@ -1154,6 +1325,10 @@ async def _tickets(s: AsyncSession, ctx: _Ctx, items: list[Ticket]) -> dict[str,
     # already alerted when a change (an import) makes it, so nobody is paged for it.
     if ids:
         await sla.refresh(s, ticket_ids=ids)
+    # Their failures are resolved only when this read got all of them: a ticket noted on this
+    # page (part of its history missing) stays open however often it is imported (P0-2).
+    complete = [key for key in unique if key not in ctx.unresolved]
+    await repo.resolve_failures(s, ctx.source, "ticket", complete)
     return stats
 
 

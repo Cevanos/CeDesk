@@ -119,7 +119,8 @@ class RunOut(BaseModel):
     kinds: list[str]
     counts: dict[str, Any] = Field(
         description="Per kind: created and skipped (and, for tickets, unknown_agent_messages); "
-        "rows_left_out for a CSV."
+        "failed: records left out because the source could not give them (listed by "
+        "GET /imports/runs/{id}/failures); rows_left_out for a CSV."
     )
     sync_on: bool
     started_at: datetime
@@ -128,6 +129,40 @@ class RunOut(BaseModel):
     last_sync_at: datetime | None = Field(
         default=None, description="When the source was last asked for changes (sync on)."
     )
+    retry_attempts: int = Field(
+        default=0,
+        description="Failed tries of the page the run is on (a temporary error at the source). "
+        "Back to 0 when a page is saved.",
+    )
+
+
+class FailureOut(BaseModel):
+    id: UUID
+    kind: Literal["contact", "ticket", "article", "reply"]
+    external_id: str = Field(description="The record's id in the source.")
+    category: Literal["not_found", "temporary", "incomplete"] = Field(
+        description="not_found: the source no longer has it (deleted after it was listed). "
+        "temporary: it kept failing after every retry, so it was set aside. incomplete: it "
+        "was imported, but part of its history could not be read (for example a Zendesk "
+        "ticket whose comments answered 404: only its description came)."
+    )
+    attempts: int = Field(description="How many tries it got.")
+    last_error: str = Field(description="What the source answered, in words.")
+    first_failed_at: datetime
+    last_failed_at: datetime
+    status: Literal["open", "resolved", "dismissed"] = Field(
+        description="resolved: read in full later (an import run again, or a sync look). "
+        "dismissed: an Admin accepted what is missing."
+    )
+    resolved_at: datetime | None
+    resolved_by_id: UUID | None = Field(
+        default=None, description="The Admin who dismissed it (null otherwise, or if removed)."
+    )
+
+
+class FailuresOut(BaseModel):
+    failures: list[FailureOut]
+    next_cursor: str | None
 
 
 class HistoryRunOut(BaseModel):
@@ -352,6 +387,39 @@ async def get_run(run_id: UUID, caller: CallerDep, sm: SessionmakerDep) -> RunOu
     return _run_out(await framework.get_run(sm, caller, run_id))
 
 
+@router.get(
+    "/imports/runs/{run_id}/failures",
+    response_model=FailuresOut,
+    summary="Records a run could not read and left out (Admin)",
+    description="Last failed first, cursor pages. A ticket deleted in the source after it was "
+    "listed, or one that kept failing after every retry, is left out so the rest of the import "
+    "goes on; one imported without all its history is listed as incomplete. They stay here "
+    "after the run ends. Import again (or let a sync look run) to bring what comes back: the "
+    "row shows resolved only once the record is read in full. 404 for an unknown run.",
+)
+async def run_failures(
+    run_id: UUID, caller: CallerDep, sm: SessionmakerDep, cursor: Cursor = None, limit: Limit = 50
+) -> FailuresOut:
+    page = await framework.run_failures(sm, caller, run_id, cursor=cursor, limit=limit)
+    return FailuresOut(
+        failures=[FailureOut(**f.__dict__) for f in page.failures], next_cursor=page.next_cursor
+    )
+
+
+@router.post(
+    "/imports/runs/{run_id}/failures/{failure_id}/dismiss",
+    response_model=FailureOut,
+    summary="Accept a record's loss: the failure ends as dismissed (Admin)",
+    description="For an open failure only (409 otherwise; 404 for an unknown one). It records "
+    "who decided. A later read of the record does not reopen or resolve it.",
+)
+async def dismiss_failure(
+    run_id: UUID, failure_id: UUID, caller: CallerDep, sm: SessionmakerDep
+) -> FailureOut:
+    view = await framework.dismiss_failure(sm, caller, run_id, failure_id)
+    return FailureOut(**view.__dict__)
+
+
 @router.post(
     "/imports/runs/{run_id}/sync-now",
     response_model=RunOut,
@@ -408,4 +476,5 @@ def _run_out(view: framework.RunView) -> RunOut:
         finished_at=view.finished_at,
         last_error=view.last_error,
         last_sync_at=view.last_sync_at,
+        retry_attempts=view.retry_attempts,
     )

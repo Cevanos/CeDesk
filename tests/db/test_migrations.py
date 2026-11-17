@@ -193,3 +193,29 @@ async def test_0052_upgrades_an_archive_from_0049s_first_version(owner_engine: A
     finally:
         await empty_archive_async()
         await asyncio.to_thread(command.upgrade, cfg, "head")
+
+
+async def test_0054_goes_down_and_back_up(owner_engine: Any) -> None:
+    """0054 adds the import failures table and the run's retry count; going down drops both
+    (only notes are lost, nothing imported), and going up brings them back with RLS on."""
+    import asyncio
+
+    from sqlalchemy import text
+
+    retry_column = (
+        "SELECT count(*) FROM information_schema.columns "
+        "WHERE table_name = 'hd_import_run' AND column_name = 'retry_attempts'"
+    )
+    cfg = alembic_config()
+    await asyncio.to_thread(command.downgrade, cfg, "0053")
+    async with owner_engine.connect() as conn:
+        assert await conn.scalar(text("SELECT to_regclass('hd_import_failure')")) is None
+        assert await conn.scalar(text(retry_column)) == 0
+    await asyncio.to_thread(command.upgrade, cfg, "head")
+    async with owner_engine.connect() as conn:
+        assert await conn.scalar(text("SELECT to_regclass('hd_import_failure')")) is not None
+        assert await conn.scalar(text(retry_column)) == 1
+        forced = await conn.scalar(
+            text("SELECT relforcerowsecurity FROM pg_class WHERE relname = 'hd_import_failure'")
+        )
+        assert forced is True

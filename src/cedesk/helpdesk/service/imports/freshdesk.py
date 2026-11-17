@@ -80,6 +80,7 @@ import re
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime, timedelta
 from email.utils import parseaddr
+from functools import partial
 from html.parser import HTMLParser
 from typing import Any
 
@@ -193,15 +194,21 @@ class FreshdeskConnector:
         self._agents: dict[str, tuple[str | None, str | None]] | None = None
         self._contacts: dict[str, Contact] = {}
         self._csat_ok = True
+        self.failures = rules.RecordFailures()  # tickets deleted or failing mid-import (P0-2)
 
     # Helpers
 
-    async def _all(self, path: str, params: Mapping[str, Any] | None = None) -> list[Any]:
-        """Every row of a paginated list (carries on while a page has 30 rows or more)."""
+    async def _all(
+        self, path: str, params: Mapping[str, Any] | None = None, *, record: bool = False
+    ) -> list[Any]:
+        """Every row of a paginated list (carries on while a page has 30 rows or more).
+        `record`: the list belongs to one ticket, so a 404 means that ticket is gone."""
         out: list[Any] = []
         for page in range(1, LIST_PAGE_CAP + 1):
             rows = _rows(
-                await self._http.get(path, {**(params or {}), "per_page": PER_PAGE, "page": page})
+                await self._http.get(
+                    path, {**(params or {}), "per_page": PER_PAGE, "page": page}, record=record
+                )
             )
             out.extend(rows)
             if len(rows) < FULL_PAGE:
@@ -388,7 +395,7 @@ class FreshdeskConnector:
             else:
                 edge_at, edge_ids = stamp, [ticket_id]
             if ticket_id not in skip:
-                items.append(await self._ticket(raw, archived=False))
+                await self._read(items, raw, archived=False)
         if len(_rows(data)) < FULL_PAGE:
             if max_id < 1 or not self._archived:
                 return Page(items, None)
@@ -429,7 +436,9 @@ class FreshdeskConnector:
             },
         )
         rows = [r for r in _rows(data) if isinstance(r, dict) and "id" in r]
-        items = [await self._ticket(raw, archived=False) for raw in rows]
+        items: list[Ticket] = []
+        for raw in rows:
+            await self._read(items, raw, archived=False)
         if len(_rows(data)) < FULL_PAGE:
             return Page(items, None)
         if c["page"] < LIST_PAGE_CAP:
@@ -455,9 +464,18 @@ class FreshdeskConnector:
                     return Page([], None)  # no archive API on this plan
                 raise
             if isinstance(raw, dict) and "id" in raw:
-                items.append(await self._ticket(raw, archived=True))
+                await self._read(items, raw, archived=True)
         more = {"phase": "archive", "next_id": end + 1, "max_id": last}
         return Page(items, more if end < last else None)
+
+    async def _read(self, items: list[Ticket], raw: Mapping[str, Any], *, archived: bool) -> None:
+        """Adds the ticket to `items`, or notes it in `failures` when it was deleted after it
+        was listed (or keeps failing while the run isolates records)."""
+        ticket = await self.failures.guard(
+            "ticket", str(raw["id"]), partial(self._ticket, raw, archived=archived)
+        )
+        if ticket is not None:
+            items.append(ticket)
 
     async def _ticket(self, raw: Mapping[str, Any], *, archived: bool) -> Ticket:
         ticket_id = str(raw["id"])
@@ -484,7 +502,7 @@ class FreshdeskConnector:
                 )
             )
         base = "/api/v2/tickets/archived" if archived else "/api/v2/tickets"
-        for conv in await self._all(f"{base}/{segment(ticket_id)}/conversations"):
+        for conv in await self._all(f"{base}/{segment(ticket_id)}/conversations", record=True):
             message = await self._message(conv, requester)
             if message is not None:
                 messages.append(message)

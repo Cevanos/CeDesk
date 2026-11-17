@@ -9,12 +9,14 @@ from uuid import UUID
 from sqlalchemy import RowMapping, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from cedesk.helpdesk.domain.imports import Failure
+
 Row = RowMapping
 
 _RUN = (
     "SELECT id, workspace_id, connection_id, source, state, options, cursor, counts, sync_on, "
-    "last_sync_at, next_run_at, lease_until, last_error, started_by, started_at, finished_at "
-    "FROM hd_import_run"
+    "last_sync_at, next_run_at, lease_until, last_error, started_by, started_at, finished_at, "
+    "retry_attempts FROM hd_import_run"
 )
 
 
@@ -124,7 +126,7 @@ async def claim_due(session: AsyncSession, now: datetime, lease_until: datetime)
             "ORDER BY next_run_at LIMIT 1 FOR UPDATE SKIP LOCKED) "
             "RETURNING id, workspace_id, connection_id, source, state, options, cursor, counts, "
             "sync_on, last_sync_at, next_run_at, lease_until, last_error, started_by, "
-            "started_at, finished_at"
+            "started_at, finished_at, retry_attempts"
         ),
         {"now": now, "lease": lease_until},
     )
@@ -151,7 +153,7 @@ async def claim_sync(session: AsyncSession, now: datetime, lease_until: datetime
             "ORDER BY next_run_at LIMIT 1 FOR UPDATE SKIP LOCKED) "
             "RETURNING id, workspace_id, connection_id, source, state, options, cursor, counts, "
             "sync_on, last_sync_at, next_run_at, lease_until, last_error, started_by, "
-            "started_at, finished_at"
+            "started_at, finished_at, retry_attempts"
         ),
         {"now": now, "lease": lease_until},
     )
@@ -172,7 +174,7 @@ async def finish_to_sync(
         text(
             "UPDATE hd_import_run SET state = 'done', lease_until = NULL, finished_at = now(), "
             "last_error = NULL, cursor = '{}'::jsonb, counts = CAST(:counts AS jsonb), "
-            "last_sync_at = :last, next_run_at = :next WHERE id = :id"
+            "last_sync_at = :last, next_run_at = :next, retry_attempts = 0 WHERE id = :id"
         ),
         {
             "id": run_id, "last": last_sync_at, "next": next_run_at,
@@ -193,7 +195,7 @@ async def sync_pass_done(
         text(
             "UPDATE hd_import_run SET lease_until = NULL, last_error = NULL, "
             "cursor = '{}'::jsonb, counts = CAST(:counts AS jsonb), last_sync_at = :last, "
-            "next_run_at = :next WHERE id = :id"
+            "next_run_at = :next, retry_attempts = 0 WHERE id = :id"
         ),
         {
             "id": run_id, "last": last_sync_at, "next": next_run_at,
@@ -205,8 +207,12 @@ async def sync_pass_done(
 async def sync_error(
     session: AsyncSession, run_id: UUID, *, next_run_at: datetime, error: str
 ) -> None:
-    """A sync pass that could not finish: the run stays syncing and is tried again later."""
+    """A sync pass that could not finish: the run stays syncing and is tried again later,
+    with a fresh count of tries."""
     await release(session, run_id, next_run_at=next_run_at, error=error)
+    await session.execute(
+        text("UPDATE hd_import_run SET retry_attempts = 0 WHERE id = :id"), {"id": run_id}
+    )
 
 
 async def sync_now(session: AsyncSession, run_id: UUID) -> bool:
@@ -241,11 +247,13 @@ async def save_progress(
     counts: Mapping[str, Any],
     lease_until: datetime,
 ) -> None:
-    """The cursor and counts, in the same transaction as the page they describe."""
+    """The cursor and counts, in the same transaction as the page they describe (and the
+    failures noted on it). A page saved ends the tries of the one before."""
     await session.execute(
         text(
             "UPDATE hd_import_run SET cursor = CAST(:cursor AS jsonb), "
-            "counts = CAST(:counts AS jsonb), lease_until = :lease WHERE id = :id"
+            "counts = CAST(:counts AS jsonb), lease_until = :lease, retry_attempts = 0 "
+            "WHERE id = :id"
         ),
         {
             "id": run_id, "cursor": json.dumps(dict(cursor)), "counts": json.dumps(dict(counts)),
@@ -267,16 +275,109 @@ async def release(
     )
 
 
+async def retry_later(
+    session: AsyncSession, run_id: UUID, *, next_run_at: datetime, error: str, attempts: int
+) -> None:
+    """A try of the page failed with a temporary error: the run waits until `next_run_at`
+    and remembers it has had `attempts` failed tries (so a restart doesn't reset them)."""
+    await session.execute(
+        text(
+            "UPDATE hd_import_run SET lease_until = NULL, next_run_at = :at, "
+            "last_error = :error, retry_attempts = :attempts WHERE id = :id"
+        ),
+        {"id": run_id, "at": next_run_at, "error": error[:500], "attempts": attempts},
+    )
+
+
 async def finish(
     session: AsyncSession, run_id: UUID, *, state: str, error: str | None = None
 ) -> None:
     await session.execute(
         text(
             "UPDATE hd_import_run SET state = :state, lease_until = NULL, finished_at = now(), "
-            "last_error = :error WHERE id = :id"
+            "last_error = :error, retry_attempts = 0 WHERE id = :id"
         ),
         {"id": run_id, "state": state, "error": error[:500] if error else None},
     )
+
+
+# Records a run could not read (P0-2)
+
+
+async def note_failures(
+    session: AsyncSession,
+    workspace_id: UUID,
+    run_id: UUID,
+    source: str,
+    failures: Sequence[Failure],
+    *,
+    attempts: int,
+) -> None:
+    """Writes what a page noted, in the page's transaction. The same record noted again in
+    the same run (a later sync look) adds its tries and is open again, unless an Admin
+    dismissed it: that decision stays."""
+    for failure in failures:
+        await session.execute(
+            text(
+                "INSERT INTO hd_import_failure (workspace_id, run_id, source, kind, external_id, "
+                "category, attempts, last_error) VALUES (:ws, :run, :source, :kind, :ext, "
+                ":category, :attempts, :error) "
+                "ON CONFLICT (workspace_id, run_id, kind, external_id) DO UPDATE SET "
+                "category = EXCLUDED.category, last_error = EXCLUDED.last_error, "
+                "attempts = hd_import_failure.attempts + EXCLUDED.attempts, "
+                "last_failed_at = now(), "
+                "status = CASE WHEN hd_import_failure.status = 'dismissed' THEN 'dismissed' "
+                "ELSE 'open' END, "
+                "resolved_at = CASE WHEN hd_import_failure.status = 'dismissed' "
+                "THEN hd_import_failure.resolved_at END"
+            ),
+            {
+                "ws": workspace_id, "run": run_id, "source": source, "kind": failure.kind,
+                "ext": failure.external_id[:200], "category": failure.category,
+                "attempts": attempts if failure.category == "temporary" else 1,
+                "error": failure.error[:500],
+            },
+        )  # fmt: skip
+
+
+async def resolve_failures(
+    session: AsyncSession, source: str, kind: str, external_ids: Sequence[str]
+) -> None:
+    """Records read in full now: any open failure noted for them earlier is resolved (a
+    dismissed one stays dismissed). Never called for a record noted on the same page."""
+    if not external_ids:
+        return
+    await session.execute(
+        text(
+            "UPDATE hd_import_failure SET status = 'resolved', resolved_at = now() "
+            "WHERE source = :source AND kind = :kind AND external_id = ANY(:ids) "
+            "AND status = 'open'"
+        ),
+        {"source": source, "kind": kind, "ids": [e[:200] for e in external_ids]},
+    )
+
+
+async def failures(
+    session: AsyncSession,
+    run_id: UUID,
+    *,
+    before: tuple[datetime, UUID] | None,
+    limit: int,
+) -> Sequence[Row]:
+    """A run's failures, last failed first."""
+    at, row_id = before if before else (None, None)
+    result = await session.execute(
+        text(
+            "SELECT id, run_id, source, kind, external_id, category, attempts, last_error, "
+            "first_failed_at, last_failed_at, last_failed_at AS created_at, status, resolved_at, "
+            "resolved_by AS resolved_by_id FROM hd_import_failure WHERE run_id = :run "
+            "AND (CAST(:at AS timestamptz) IS NULL "
+            "     OR (last_failed_at, id) < (CAST(:at AS timestamptz), CAST(:row AS uuid))) "
+            "ORDER BY last_failed_at DESC, id DESC LIMIT :limit"
+        ),
+        {"run": run_id, "at": at, "row": row_id, "limit": limit},
+    )
+    return result.mappings().all()
 
 
 # Which source records are already here
@@ -649,3 +750,28 @@ async def add_event(
             "member": member_id, "detail": json.dumps(dict(detail or {})),
         },
     )  # fmt: skip
+
+
+async def failure(session: AsyncSession, run_id: UUID, failure_id: UUID) -> Row | None:
+    result = await session.execute(
+        text(
+            "SELECT id, run_id, source, kind, external_id, category, attempts, last_error, "
+            "first_failed_at, last_failed_at, status, resolved_at, resolved_by AS resolved_by_id "
+            "FROM hd_import_failure WHERE run_id = :run AND id = :id"
+        ),
+        {"run": run_id, "id": failure_id},
+    )
+    return result.mappings().first()
+
+
+async def dismiss_failure(session: AsyncSession, failure_id: UUID, member_id: UUID) -> bool:
+    """An Admin accepts what is missing: the failure ends as `dismissed`. False when it was
+    not open any more."""
+    result = await session.execute(
+        text(
+            "UPDATE hd_import_failure SET status = 'dismissed', resolved_at = now(), "
+            "resolved_by = :member WHERE id = :id AND status = 'open' RETURNING id"
+        ),
+        {"id": failure_id, "member": member_id},
+    )
+    return result.first() is not None
