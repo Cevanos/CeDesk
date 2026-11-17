@@ -21,5 +21,12 @@
    "size": "5",
    "href": "http://desk.zoho.in/insecure"
   }
- ]
+ ],
+ "to": "\"Priya Sharma\" <priya@example.org>",
+ "cc": "ops@sharma-traders.example, priya@example.org",
+ "bcc": "audit@acme.com",
+ "fromEmailAddress": "support@acme.zohodesk.in",
+ "visibility": "public",
+ "isContentTruncated": false,
+ "channel": "EMAIL"
 }

@@ -1,0 +1,14 @@
+{
+ "id": "art2",
+ "title": "Empty",
+ "answer": "",
+ "status": "Draft",
+ "locale": "en",
+ "modifiedTime": "2025-01-10T08:00:00.000Z",
+ "category": {
+  "id": "k1",
+  "name": "Billing",
+  "locale": "en"
+ },
+ "categoryId": "k1"
+}

@@ -3,20 +3,38 @@
   {
    "id": "k1",
    "content": "<b>Call</b> the courier",
+   "contentType": "html",
    "commentedTime": "2025-03-01T10:45:00.000Z",
+   "modifiedTime": null,
    "isPublic": false,
+   "commenterId": "a1",
    "commenter": {
-    "name": "Neha"
+    "name": "Neha",
+    "type": "AGENT",
+    "email": "neha@acme.com"
    }
   },
   {
    "id": "k2",
    "content": "Public update",
+   "contentType": "html",
    "commentedTime": "2025-03-01T12:00:00.000Z",
+   "modifiedTime": null,
    "isPublic": true,
+   "commenterId": "a1",
    "commenter": {
-    "name": "Neha"
-   }
+    "name": "Neha",
+    "type": "AGENT",
+    "email": "neha@acme.com"
+   },
+   "attachments": [
+    {
+     "id": "ca1",
+     "name": "proof.png",
+     "size": "12734",
+     "href": "https://desk.zoho.in/api/v1/tickets/z1/comments/k2/attachments/ca1/content"
+    }
+   ]
   }
  ]
 }
