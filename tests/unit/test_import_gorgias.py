@@ -335,14 +335,17 @@ def test_fetch_never_keeps_the_placeholder_image() -> None:
     losses = rules.Losses()
     with rules.collecting(losses):
         # the download route answers the placeholder too: a link line, not a fake file
-        assert run(connector(file_host("placeholder")).fetch(REPORT, rules.FILE_MAX)) is None
+        with pytest.raises(rules.FileUnusable, match="file_placeholder"):
+            run(connector(file_host("placeholder")).fetch(REPORT, rules.FILE_MAX))
         # a file not on the upload host, declared a CSV, answered with a PNG
         csv = rules.Attachment("rows.csv", "https://files.example.com/a/rows.csv", 120, "text/csv")
-        assert run(connector(png).fetch(csv, rules.FILE_MAX)) is None
+        with pytest.raises(rules.FileUnusable, match="file_placeholder"):
+            run(connector(png).fetch(csv, rules.FILE_MAX))
         # declared as an image, but the PNG is the placeholder's size, far from 2,048 bytes
         image = rules.Attachment("p.png", "https://files.example.com/a/p.png", 2048, "image/png")
-        assert run(connector(png).fetch(image, rules.FILE_MAX)) is None
-    assert losses.counts == {"file_placeholder": 3}
+        with pytest.raises(rules.FileUnusable, match="file_placeholder"):
+            run(connector(png).fetch(image, rules.FILE_MAX))
+    assert losses.counts == {}  # the framework counts it, once
 
 
 def test_fetch_keeps_a_real_image_and_files_without_a_declared_type() -> None:
@@ -364,8 +367,9 @@ def test_fetch_does_not_read_a_non_https_file_and_counts_it() -> None:
     losses = rules.Losses()
     with rules.collecting(losses):
         plain = rules.Attachment("x.txt", "http://files.example.com/a/x.txt", 3, "text/plain")
-        assert run(connector(seen=seen).fetch(plain, rules.FILE_MAX)) is None
-    assert seen == [] and losses.counts == {"file_unreachable": 1}
+        with pytest.raises(rules.FileUnusable, match="file_unreachable"):
+            run(connector(seen=seen).fetch(plain, rules.FILE_MAX))
+    assert seen == [] and losses.counts == {}
 
 
 # P1-18 / C17: the dry run says what is not brought

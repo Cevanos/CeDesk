@@ -534,12 +534,10 @@ class GorgiasConnector:
 
     async def fetch(self, attachment: Attachment, limit: int) -> bytes | None:
         if not attachment.url.lower().startswith("https://"):
-            rules.loss("file_unreachable")
-            return None
+            raise rules.FileUnusable("file_unreachable")
         data = await self._http.download(self._download_url(attachment.url), limit)
         if data is not None and placeholder(attachment, data):
-            rules.loss("file_placeholder")
-            return None
+            raise rules.FileUnusable("file_placeholder")
         return data
 
     async def changed_tickets(

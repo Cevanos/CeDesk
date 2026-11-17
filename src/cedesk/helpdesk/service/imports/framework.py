@@ -1398,6 +1398,8 @@ async def _fetch(connector: FileSource, att: rules.Attachment) -> tuple[bytes | 
     for attempt in range(1, FILE_TRIES + 1):
         try:
             data = await connector.fetch(att, rules.FILE_MAX)
+        except rules.FileUnusable as exc:
+            return None, exc.key
         except rules.RecordGone:
             return None, "file_gone"
         except SourceError as exc:
@@ -1418,6 +1420,7 @@ _LINK_WHY = {
     "file_unreachable": "the file's host couldn't be reached",
     "file_empty": "an empty file",
     "file_no_access": "this source's files can't be read by the importer",
+    "file_placeholder": "the source sent a placeholder picture instead of the file",
 }
 
 
@@ -1448,10 +1451,11 @@ async def _copy_files(
             if data is not None and not data:
                 why = "file_empty"
         if why:
-            out.append(_Linked(rules.link_line(att.name, att.size, att.url, _LINK_WHY[why])))
+            text = _LINK_WHY.get(why, rules.LOSS_KEYS.get(why, "it couldn't be copied"))
+            out.append(_Linked(rules.link_line(att.name, att.size, att.url, text)))
             if why in rules.LOSS_KEYS:
                 rules.loss(why)
-            if why in ("file_gone", "file_unreachable"):
+            if why in ("file_gone", "file_unreachable", "file_placeholder"):
                 trouble[why] = trouble.get(why, 0) + 1
             continue
         assert data is not None
@@ -1462,7 +1466,7 @@ async def _copy_files(
         stored.append(key)
         out.append(_Kept(attachment_id, key, clean_name(att.name), len(data), mime))
     if trouble:
-        said = "; ".join(f"{n} {_LINK_WHY[w]}" for w, n in sorted(trouble.items()))
+        said = "; ".join(f"{n} {_LINK_WHY.get(w, w)}" for w, n in sorted(trouble.items()))
         ctx.file_notes.append(
             rules.Failure("ticket", external_id[:200], "incomplete",
                           f"Files kept as links instead of copies: {said}.")
