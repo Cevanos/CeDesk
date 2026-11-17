@@ -4,7 +4,7 @@
    "id": "101",
    "properties": {
     "subject": "Order 1042 not delivered",
-    "content": "Where is my order?",
+    "content": "Hi, my order 1042 hasn't come.",
     "hs_pipeline": "0",
     "hs_pipeline_stage": "2",
     "hs_ticket_priority": "HIGH",

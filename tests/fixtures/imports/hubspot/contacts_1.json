@@ -5,7 +5,10 @@
    "properties": {
     "email": "priya@example.org",
     "firstname": "Priya",
-    "lastname": "Sharma"
+    "lastname": "Sharma",
+    "phone": "+91 98200 00000",
+    "mobilephone": null,
+    "company": "Sharma Traders"
    }
   },
   {
@@ -13,7 +16,10 @@
    "properties": {
     "email": "sam@example.org",
     "firstname": null,
-    "lastname": null
+    "lastname": null,
+    "phone": null,
+    "mobilephone": "+1 415 555 0100",
+    "company": null
    }
   }
  ],

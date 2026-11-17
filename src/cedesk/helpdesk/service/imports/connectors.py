@@ -43,9 +43,10 @@ WHERE = {
     "gorgias": "your email and an API key (Settings > REST API)",
     "helpscout": "an app id and secret (Your Profile > My Apps)",
     "hubspot": (
-        "a private app's access token (Settings > Integrations > Private apps) with the "
-        "scopes tickets, crm.objects.contacts.read, crm.objects.owners.read, "
-        "sales-email-read and files"
+        "a private app's access token or a service key (Settings > Integrations > Private "
+        "apps, or Service Keys) with the scopes crm.objects.tickets.read, "
+        "crm.objects.contacts.read, crm.objects.owners.read, sales-email-read and files.read "
+        "(optional: crm.objects.calls.read, crm.objects.meetings.read, conversations.read)"
     ),
     "zoho": (
         "a Self Client's client id and secret and a refresh token (api-console.zoho.com) "
