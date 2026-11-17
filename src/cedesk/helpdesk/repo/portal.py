@@ -190,8 +190,14 @@ async def prune_sessions(session: AsyncSession, before: datetime) -> None:
 
 # Portal tickets: always filtered by the signed-in customer's contact.
 
+# A customer sees only the fields of the ticket's type when that type is offered to
+# customers: never what agents keep on a ticket (an internal field, or what an import
+# brought from the old help desk: its custom fields, tags, link to the agent view).
 _TICKET = (
-    "SELECT t.id, t.number, t.subject, t.status, t.channel, t.fields, t.created_at, "
+    "SELECT t.id, t.number, t.subject, t.status, t.channel, "
+    "COALESCE((SELECT jsonb_object_agg(f.key, f.value) FROM jsonb_each(t.fields) f "
+    "WHERE y.for_customers AND EXISTS (SELECT 1 FROM jsonb_array_elements(y.fields) d "
+    "WHERE d->>'key' = f.key)), '{}'::jsonb) AS fields, t.created_at, "
     "t.updated_at, t.resolved_at, y.name AS type_name, "
     "(SELECT to_jsonb(r) FROM (SELECT score, comment, source, rated_at FROM hd_csat "
     "WHERE ticket_id = t.id) r) AS csat "
