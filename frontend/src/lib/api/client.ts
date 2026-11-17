@@ -170,6 +170,62 @@ export async function request<T>(path: string, opts: RequestOptions = {}): Promi
   return { data: (text ? JSON.parse(text) : undefined) as T, etag };
 }
 
+/** File name from a `Content-Disposition` header, or null. */
+export function fileNameFrom(header: string | null): string | null {
+  if (!header) return null;
+  const star = /filename\*=(?:UTF-8'')?([^;]+)/i.exec(header);
+  if (star?.[1]) {
+    try {
+      return decodeURIComponent(star[1].trim().replace(/^"|"$/g, ""));
+    } catch {
+      /* fall through to the plain form */
+    }
+  }
+  const plain = /filename="?([^";]+)"?/i.exec(header);
+  return plain?.[1]?.trim() || null;
+}
+
+/**
+ * Fetch a file through the proxy with the session and hand it to the browser as a download.
+ * A plain link or a new tab would not carry the session, so it would get a 401.
+ */
+export async function downloadFile(
+  path: string,
+  fallbackName: string,
+  query?: Query,
+): Promise<void> {
+  let res: Response;
+  try {
+    res = await fetch(`/api/${path.replace(/^\/+/, "")}${qs(query)}`, {
+      credentials: "same-origin",
+      cache: "no-store",
+    });
+  } catch {
+    throw new ApiError({
+      status: 0,
+      code: "Network",
+      message: "You appear to be offline. Check your connection and try again.",
+    });
+  }
+  if (!res.ok) {
+    const err = await parseError(res);
+    if (res.status === 401 && !path.startsWith("portal/")) onUnauthorized?.();
+    // No `If-Match` on a download, so a 409 always carries its own message.
+    if (res.status === 409) err.specificConflict = true;
+    throw err;
+  }
+  const blob = await res.blob();
+  const name = fileNameFrom(res.headers.get("content-disposition")) ?? fallbackName;
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 export const api = {
   get: <T>(path: string, query?: Query, signal?: AbortSignal) =>
     request<T>(path, { query, signal }).then((r) => r.data),

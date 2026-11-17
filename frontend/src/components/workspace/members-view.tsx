@@ -1,7 +1,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { KeyRound, Loader2, Lock, UserPlus } from "lucide-react";
+import { KeyRound, Loader2, Lock, ShieldOff, UserPlus } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
@@ -24,6 +24,7 @@ import { useCurrentUser } from "@/hooks/use-auth";
 import {
   useAddMember,
   useMembers,
+  useResetMember2fa,
   useResetMemberPassword,
   useUpdateMember,
 } from "@/hooks/use-workspace";
@@ -37,6 +38,7 @@ export function MembersView() {
   const { user } = useCurrentUser();
   const q = useMembers();
   const update = useUpdateMember();
+  const reset2fa = useResetMember2fa();
   const [adding, setAdding] = useState(false);
   const [resetFor, setResetFor] = useState<Member | null>(null);
   const rows = useMemo(() => q.data?.pages.flatMap((p) => p.items) ?? [], [q.data]);
@@ -105,6 +107,26 @@ export function MembersView() {
                     {!self && (
                       <Button size="sm" variant="outline" onClick={() => setResetFor(m)}>
                         <KeyRound className="size-3.5" /> Reset password
+                      </Button>
+                    )}
+                    {!self && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={reset2fa.isPending}
+                        onClick={() => {
+                          if (
+                            !confirm(
+                              `Turn off two-step sign-in for ${m.name}? They'll be signed out everywhere and set it up again at next sign-in.`,
+                            )
+                          )
+                            return;
+                          reset2fa.mutate(m.id, {
+                            onSuccess: () => toast.success(`2FA reset for ${m.name}.`),
+                          });
+                        }}
+                      >
+                        <ShieldOff className="size-3.5" /> Reset 2FA
                       </Button>
                     )}
                     <Button

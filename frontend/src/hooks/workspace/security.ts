@@ -4,41 +4,56 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api } from "@/lib/api/client";
 
-/** Field names are inferred from the handoff doc; the server may send more, which we keep. */
+export type SessionLength = "1h_idle" | "8h" | "12h" | "7d";
+
+/** GET/PUT /security-settings. A PUT sends only what changed; omitted fields keep their value. */
 export interface SecuritySettings {
-  min_password_length?: number | null;
-  password_expiry_days?: number | null;
-  session_hours?: number | null;
-  require_2fa?: boolean;
-  ip_allowlist?: string[];
-  files_require_signin?: boolean;
-  admin_alerts?: boolean;
-  [key: string]: unknown;
+  password_min: number;
+  /** null = never expires. */
+  password_expiry_days: number | null;
+  session_length: SessionLength;
+  require_2fa: boolean;
+  attachments_need_sign_in: boolean;
+  admin_alerts: boolean;
+  /** Empty = everyone may sign in. */
+  ip_allowlist: string[];
+  updated_by_name?: string | null;
+  updated_at?: string | null;
 }
 
+export type SecuritySettingsInput = Partial<
+  Omit<SecuritySettings, "updated_by_name" | "updated_at">
+>;
+
+export type ScoreLevel = "healthy" | "recommended" | "critical";
+
 export interface SecurityScore {
-  score?: number;
-  max?: number;
-  checks?: { key?: string; label?: string; ok?: boolean; passed?: boolean; hint?: string }[];
-  [key: string]: unknown;
+  score: number;
+  level: ScoreLevel;
+  items: { key: string; points: number; on: boolean; status?: string }[];
 }
 
 export interface TestIpResult {
-  ip?: string;
-  allowed?: boolean;
-  [key: string]: unknown;
+  ip: string;
+  allowed: boolean;
 }
 
+/** GET/PUT /sso-settings (SAML). `sp_entity_id`, `acs_url` and `metadata_url` are read-only. */
 export interface SsoSettings {
-  enabled?: boolean;
-  provider?: string;
-  issuer?: string;
-  client_id?: string;
-  client_secret?: string;
-  secret_hint?: string;
-  required?: boolean;
-  [key: string]: unknown;
+  enabled: boolean;
+  enforced: boolean;
+  idp_entity_id: string | null;
+  idp_sso_url: string | null;
+  idp_cert: string | null;
+  sp_entity_id?: string;
+  acs_url?: string;
+  metadata_url?: string;
 }
+
+export type SsoSettingsInput = Pick<
+  SsoSettings,
+  "enabled" | "enforced" | "idp_entity_id" | "idp_sso_url" | "idp_cert"
+>;
 
 export const securityKeys = {
   settings: ["security", "settings"] as const,
@@ -56,7 +71,9 @@ export function useSecuritySettings() {
 export function useSaveSecuritySettings() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: SecuritySettings) => api.put<SecuritySettings>("security-settings", body),
+    mutationFn: (body: SecuritySettingsInput) =>
+      api.put<SecuritySettings>("security-settings", body),
+    // The score depends on these settings, so reload it after every save.
     onSuccess: () => qc.invalidateQueries({ queryKey: ["security"] }),
   });
 }
@@ -86,7 +103,7 @@ export function useSsoSettings() {
 export function useSaveSsoSettings() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: SsoSettings) => api.put<SsoSettings>("sso-settings", body),
-    onSuccess: () => qc.invalidateQueries({ queryKey: securityKeys.sso }),
+    mutationFn: (body: SsoSettingsInput) => api.put<SsoSettings>("sso-settings", body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["security"] }),
   });
 }

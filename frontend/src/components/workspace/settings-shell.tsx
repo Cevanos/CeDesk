@@ -213,6 +213,12 @@ const GROUPS: Group[] = [
         description: "Your plan, usage and how long data is kept.",
       },
       {
+        href: "/settings/sandbox",
+        label: "Sandbox",
+        icon: FlaskConical,
+        description: "Try rule, macro and saved-reply changes before they go live.",
+      },
+      {
         href: "/settings/demo",
         label: "Demo data",
         icon: FlaskConical,

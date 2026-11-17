@@ -25,3 +25,4 @@ export * from "./workspace/privacy";
 export * from "./workspace/audit";
 export * from "./workspace/plan";
 export * from "./workspace/demo";
+export * from "./workspace/sandbox";

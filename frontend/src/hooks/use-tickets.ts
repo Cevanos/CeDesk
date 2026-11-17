@@ -11,7 +11,15 @@ import {
 import { useState } from "react";
 
 import { applyTicketPatch, type TicketPatch } from "@/lib/api/apply-ticket-patch";
-import { ApiError, api, createIdempotency, listOf, request, type Query } from "@/lib/api/client";
+import {
+  ApiError,
+  api,
+  createIdempotency,
+  downloadFile,
+  listOf,
+  request,
+  type Query,
+} from "@/lib/api/client";
 import { queryKeys } from "@/lib/api/query-keys";
 import { ticketSummarySchema, validateList } from "@/lib/api/schemas";
 import type { TicketFilters } from "@/lib/api/ticket-filters";
@@ -263,12 +271,25 @@ export function useUploadAttachment(id: string) {
  * Signed URL expires quickly: fetch it at click time and open straight away.
  * A 409 means the virus scan is still running ("Checking…"): the caller shows
  * `ApiError.userMessage` and lets the user try again.
+ *
+ * When the workspace has "Files need sign-in" on (`needs_sign_in`), a new tab would carry no
+ * session and get a 401, so the file is fetched through the proxy and saved from here instead.
  */
 export async function downloadAttachment(
   id: string,
   area: "attachments" | "portal/attachments" = "attachments",
+  fileName = "download",
 ) {
-  const { url } = await api.get<{ url: string; expires_at: string }>(`${area}/${id}`);
+  const { url, needs_sign_in } = await api.get<{
+    url: string;
+    expires_at: string;
+    needs_sign_in?: boolean;
+    attachment?: { name?: string };
+  }>(`${area}/${id}`);
+  if (needs_sign_in) {
+    await downloadFile(`${area}/${id}/content`, fileName);
+    return;
+  }
   // The URL comes from the API; never open anything but a plain web link
   // (blocks javascript:, data: and similar schemes if the response is tampered with).
   let target: URL;

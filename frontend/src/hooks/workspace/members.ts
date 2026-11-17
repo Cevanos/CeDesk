@@ -65,3 +65,12 @@ export function useResetMemberPassword() {
     onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.members.all }),
   });
 }
+
+/** Turns off two-step sign-in for a member (204). They set it up again at next sign-in. */
+export function useResetMember2fa() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.post<void>(`members/${id}/2fa/reset`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.members.all }),
+  });
+}

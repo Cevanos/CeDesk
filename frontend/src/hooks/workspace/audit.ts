@@ -2,39 +2,32 @@
 
 import { useInfiniteQuery, useMutation } from "@tanstack/react-query";
 
-import { api, listOf, qs } from "@/lib/api/client";
+import { api } from "@/lib/api/client";
 
+/** One row of GET /audit. `detail.changes` is { field: [before, after] }. */
 export interface AuditEntry {
   id?: string;
-  at?: string;
-  created_at?: string;
-  actor?: string | { name?: string; email?: string } | null;
-  actor_name?: string;
-  area?: string;
-  action?: string;
-  summary?: string;
-  target?: string;
-  [key: string]: unknown;
+  at: string;
+  actor_name?: string | null;
+  ip?: string | null;
+  area: string;
+  action: string;
+  target?: string | null;
+  detail?: { changes?: Record<string, [unknown, unknown]> } | null;
 }
 
 export interface AuditPage {
-  items: AuditEntry[];
-  next: string | null;
+  entries: AuditEntry[];
+  /** Pass as `before` for the next page; null when there are no older entries. */
+  next_before: string | null;
+  areas: string[];
 }
 
 export interface AuditVerifyResult {
-  ok?: boolean;
-  valid?: boolean;
-  checked?: number;
+  ok: boolean;
+  checked: number;
   broken_at?: string | number | null;
   message?: string;
-  [key: string]: unknown;
-}
-
-export function toAuditPage(d: unknown): AuditPage {
-  const o = (d && typeof d === "object" ? d : {}) as Record<string, unknown>;
-  const next = o.next_cursor ?? o.cursor ?? o.next;
-  return { items: listOf<AuditEntry>(d), next: typeof next === "string" && next ? next : null };
 }
 
 export function useAuditLog(area: string) {
@@ -42,15 +35,20 @@ export function useAuditLog(area: string) {
     queryKey: ["audit", area],
     initialPageParam: "",
     queryFn: ({ pageParam, signal }) =>
-      api.get<unknown>("audit", { area, cursor: pageParam, limit: 50 }, signal).then(toAuditPage),
-    getNextPageParam: (last) => last.next ?? undefined,
+      api
+        .get<Partial<AuditPage>>("audit", { area, limit: 50, before: pageParam }, signal)
+        .then((d): AuditPage => ({
+          entries: d.entries ?? [],
+          next_before: d.next_before ?? null,
+          areas: d.areas ?? [],
+        })),
+    getNextPageParam: (last) => last.next_before ?? undefined,
   });
 }
 
 export function useVerifyAudit() {
-  return useMutation({ mutationFn: () => api.post<AuditVerifyResult>("audit/verify", {}) });
-}
-
-export function auditExportUrl(area: string) {
-  return `/api/audit/export.csv${qs({ area })}`;
+  return useMutation({
+    meta: { silent: true },
+    mutationFn: () => api.post<AuditVerifyResult>("audit/verify", {}),
+  });
 }

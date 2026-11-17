@@ -7,14 +7,10 @@ import { toast } from "sonner";
 import { downloadAttachment } from "@/hooks/use-tickets";
 import { ApiError } from "@/lib/api/client";
 import type { ScanStatus } from "@/lib/api/types";
+import { formatBytes } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
-export function formatBytes(n?: number): string {
-  if (!n && n !== 0) return "";
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${Math.round(n / 1024)} KB`;
-  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
-}
+export { formatBytes };
 
 /** `infected` and `scan_failed` are blocked; everything else may be downloaded. */
 export const isBlocked = (s?: ScanStatus) => s === "infected" || s === "scan_failed";
@@ -59,7 +55,7 @@ export function FileChip({
       disabled={busy}
       onClick={() => {
         setBusy(true);
-        downloadAttachment(file.id, portal ? "portal/attachments" : "attachments")
+        downloadAttachment(file.id, portal ? "portal/attachments" : "attachments", file.name)
           .catch((e) => {
             if (e instanceof ApiError && e.status === 409) {
               toast.info(e.message || "Checking this file for viruses… try again in a moment.");

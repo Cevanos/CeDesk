@@ -1,9 +1,11 @@
 "use client";
 
+import { Check, Minus } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
-import { Badge, Button, Card, Field, Input, Skeleton, Textarea } from "@/components/ui/primitives";
+import { CopyButton } from "@/components/ui/copy-button";
+import { Button, Card, Field, Input, Select, Skeleton, Textarea } from "@/components/ui/primitives";
 import { Switch } from "@/components/ui/switch";
 import { FormError, fieldErrors, LoadError } from "@/components/workspace/list-shared";
 import { parseIntIn, parseIpList } from "@/components/workspace/security-helpers";
@@ -14,7 +16,10 @@ import {
   useSecuritySettings,
   useSsoSettings,
   useTestMyIp,
+  type ScoreLevel,
   type SecuritySettings,
+  type SecuritySettingsInput,
+  type SessionLength,
   type SsoSettings,
 } from "@/hooks/use-workspace";
 
@@ -28,41 +33,82 @@ export function SecurityView() {
   );
 }
 
+const ITEM_LABEL: Record<string, string> = {
+  sso: "Single sign-on",
+  two_factor: "Two-factor sign-in for everyone",
+  ip_allowlist: "IP allowlist",
+  passwords: "Strong password rules",
+  redaction: "Sensitive data hidden",
+  session_length: "Short sign-in sessions",
+  attachments_sign_in: "Files need sign-in",
+  admin_alerts: "Email Admins about security events",
+  portal_domains: "Customer portal limited to your domains",
+};
+
+const LEVEL: Record<ScoreLevel, { label: string; stroke: string; text: string }> = {
+  healthy: { label: "Healthy", stroke: "stroke-success", text: "text-success" },
+  recommended: { label: "Could be stronger", stroke: "stroke-warning", text: "text-warning" },
+  critical: { label: "Needs attention", stroke: "stroke-danger", text: "text-danger" },
+};
+
 function ScoreCard() {
   const q = useSecurityScore();
   if (q.isPending) return <Skeleton className="h-24" />;
   if (q.isError) return <LoadError error={q.error} />;
-  const s = q.data ?? {};
-  const checks = Array.isArray(s.checks) ? s.checks : [];
+  const s = q.data;
+  const score = Math.max(0, Math.min(100, s.score));
+  const level = LEVEL[s.level] ?? LEVEL.recommended;
+  const r = 32;
+  const c = 2 * Math.PI * r;
   return (
     <Card className="p-5">
-      <div className="flex items-baseline gap-2">
-        <h2 className="text-[15px] font-semibold">Security score</h2>
-        {typeof s.score === "number" && (
-          <span className="text-2xl font-semibold tabular-nums">
-            {s.score}
-            {typeof s.max === "number" && (
-              <span className="text-sm text-muted-foreground"> / {s.max}</span>
-            )}
+      <div className="flex flex-wrap items-center gap-5">
+        <div className="relative size-20 flex-none">
+          <svg viewBox="0 0 80 80" className="size-20 -rotate-90" aria-hidden>
+            <circle
+              cx="40"
+              cy="40"
+              r={r}
+              fill="none"
+              strokeWidth="8"
+              className="stroke-surface-3"
+            />
+            <circle
+              cx="40"
+              cy="40"
+              r={r}
+              fill="none"
+              strokeWidth="8"
+              strokeLinecap="round"
+              strokeDasharray={c}
+              strokeDashoffset={c * (1 - score / 100)}
+              className={level.stroke}
+            />
+          </svg>
+          <span className="absolute inset-0 grid place-items-center text-xl font-semibold tabular-nums">
+            {score}
           </span>
-        )}
+        </div>
+        <div>
+          <h2 className="text-[15px] font-semibold">Security score</h2>
+          <p className={`text-sm font-medium ${level.text}`}>{level.label}</p>
+          <p className="text-sm text-muted-foreground">Out of 100. It updates when you save.</p>
+        </div>
       </div>
-      {checks.length > 0 && (
-        <ul className="mt-3 space-y-1.5 text-sm">
-          {checks.map((c, i) => {
-            const ok = c.ok ?? c.passed ?? false;
-            return (
-              <li key={c.key ?? i} className="flex items-start gap-2">
-                <Badge tone={ok ? "success" : "warning"}>{ok ? "Good" : "To do"}</Badge>
-                <span>
-                  {c.label ?? c.key}
-                  {c.hint && !ok && <span className="text-muted-foreground"> — {c.hint}</span>}
-                </span>
-              </li>
-            );
-          })}
-        </ul>
-      )}
+      <ul className="mt-4 grid gap-x-6 gap-y-1.5 text-sm sm:grid-cols-2">
+        {s.items.map((i) => (
+          <li key={i.key} className="flex items-center gap-2">
+            {i.on ? (
+              <Check className="size-4 flex-none text-success" aria-label="On" />
+            ) : (
+              <Minus className="size-4 flex-none text-muted-foreground" aria-label="Off" />
+            )}
+            <span className={i.on ? "" : "text-muted-foreground"}>
+              {ITEM_LABEL[i.key] ?? i.key.replace(/_/g, " ")}
+            </span>
+          </li>
+        ))}
+      </ul>
     </Card>
   );
 }
@@ -104,36 +150,46 @@ function SettingsCard() {
   const q = useSecuritySettings();
   if (q.isPending) return <Skeleton className="h-64" />;
   if (q.isError) return <LoadError error={q.error} />;
-  return <SettingsForm initial={q.data ?? {}} />;
+  return <SettingsForm initial={q.data} />;
 }
+
+const SESSION_OPTIONS: { value: SessionLength; label: string }[] = [
+  { value: "1h_idle", label: "1 hour idle" },
+  { value: "8h", label: "8 hours" },
+  { value: "12h", label: "12 hours" },
+  { value: "7d", label: "7 days" },
+];
+const EXPIRY_OPTIONS = [
+  { value: "", label: "Never" },
+  { value: "90", label: "90 days" },
+  { value: "180", label: "180 days" },
+];
+
+const sameList = (a: string[], b: string[]) =>
+  a.length === b.length && a.every((v, i) => v === b[i]);
 
 function SettingsForm({ initial }: { initial: SecuritySettings }) {
   const save = useSaveSecuritySettings();
   const testIp = useTestMyIp();
-  const [minLen, setMinLen] = useState(String(initial.min_password_length ?? ""));
+  const [minLen, setMinLen] = useState(String(initial.password_min));
   const [expiry, setExpiry] = useState(
     initial.password_expiry_days ? String(initial.password_expiry_days) : "",
   );
-  const [session, setSession] = useState(String(initial.session_hours ?? ""));
-  const [twoFa, setTwoFa] = useState(!!initial.require_2fa);
-  const [ips, setIps] = useState((initial.ip_allowlist ?? []).join("\n"));
-  const [filesAuth, setFilesAuth] = useState(!!initial.files_require_signin);
-  const [alerts, setAlerts] = useState(!!initial.admin_alerts);
+  const [session, setSession] = useState<SessionLength>(initial.session_length);
+  const [twoFa, setTwoFa] = useState(initial.require_2fa);
+  const [ips, setIps] = useState(initial.ip_allowlist.join("\n"));
+  const [filesAuth, setFilesAuth] = useState(initial.attachments_need_sign_in);
+  const [alerts, setAlerts] = useState(initial.admin_alerts);
   const [errs, setErrs] = useState<Record<string, string>>({});
-  const [ipTested, setIpTested] = useState<string | null>(null);
+  const [ipResult, setIpResult] = useState<{ ip: string; allowed: boolean } | null>(null);
 
   const list = parseIpList(ips);
 
   function runTest() {
-    testIp.mutate(list, {
-      onSuccess: (r) => {
-        const ok = r.allowed !== false;
-        setIpTested(
-          ok
-            ? `Your address${r.ip ? ` (${r.ip})` : ""} is allowed. Safe to save.`
-            : `Your address${r.ip ? ` (${r.ip})` : ""} is NOT on this list. Saving would lock you out.`,
-        );
-      },
+    setErrs({});
+    // An empty box tests the saved list.
+    testIp.mutate(list.length ? list : undefined, {
+      onSuccess: setIpResult,
       onError: (e) => setErrs(fieldErrors(e)),
     });
   }
@@ -146,41 +202,43 @@ function SettingsForm({ initial }: { initial: SecuritySettings }) {
         className="space-y-5"
         onSubmit={(e) => {
           e.preventDefault();
-          const next: Record<string, string> = {};
-          const min = minLen.trim() ? parseIntIn(minLen, 6, 128) : undefined;
-          if (min === null) next.min_password_length = "Enter a number from 6 to 128";
-          const exp = expiry.trim() ? parseIntIn(expiry, 1, 3650) : 0;
-          if (exp === null) next.password_expiry_days = "Enter a number of days, or leave empty";
-          const ses = session.trim() ? parseIntIn(session, 1, 8760) : undefined;
-          if (ses === null) next.session_hours = "Enter a number of hours";
-          setErrs(next);
-          if (Object.keys(next).length) return;
-          if (
-            list.length > 0 &&
-            ipTested === null &&
-            !confirm("You have not tested your own IP against this list. Save anyway?")
-          )
+          const min = parseIntIn(minLen, 8, 64);
+          if (min === null) {
+            setErrs({ password_min: "Minimum password length is 8 to 64." });
             return;
-          save.mutate(
-            {
-              ...initial,
-              ...(min !== undefined && { min_password_length: min }),
-              password_expiry_days: exp || null,
-              ...(ses !== undefined && { session_hours: ses }),
-              require_2fa: twoFa,
-              ip_allowlist: list,
-              files_require_signin: filesAuth,
-              admin_alerts: alerts,
-            },
-            {
-              onSuccess: () => toast.success("Security settings saved"),
-              onError: (err) => setErrs(fieldErrors(err)),
-            },
-          );
+          }
+          setErrs({});
+
+          // Send only what changed; anything left out keeps its value.
+          const body: SecuritySettingsInput = {};
+          if (min !== initial.password_min) body.password_min = min;
+          const exp = expiry ? Number(expiry) : null;
+          if (exp !== initial.password_expiry_days) body.password_expiry_days = exp;
+          if (session !== initial.session_length) body.session_length = session;
+          if (twoFa !== initial.require_2fa) body.require_2fa = twoFa;
+          if (filesAuth !== initial.attachments_need_sign_in)
+            body.attachments_need_sign_in = filesAuth;
+          if (alerts !== initial.admin_alerts) body.admin_alerts = alerts;
+          if (!sameList(list, initial.ip_allowlist)) body.ip_allowlist = list;
+          if (Object.keys(body).length === 0) {
+            toast.info("Nothing has changed.");
+            return;
+          }
+
+          save.mutate(body, {
+            onSuccess: () => toast.success("Security settings saved"),
+            // 422 messages come back ready to show, such as the "your own address" warning.
+            onError: (err) => setErrs(fieldErrors(err)),
+          });
         }}
       >
         <div className="grid gap-4 sm:grid-cols-3">
-          <Field label="Minimum password length" htmlFor="sec-min" error={errs.min_password_length}>
+          <Field
+            label="Minimum password length"
+            htmlFor="sec-min"
+            error={errs.password_min}
+            hint="8 to 64."
+          >
             <Input
               id="sec-min"
               inputMode="numeric"
@@ -188,25 +246,20 @@ function SettingsForm({ initial }: { initial: SecuritySettings }) {
               onChange={(e) => setMinLen(e.target.value)}
             />
           </Field>
-          <Field
-            label="Password expires after (days)"
-            htmlFor="sec-exp"
-            error={errs.password_expiry_days}
-            hint="Empty means never."
-          >
-            <Input
+          <Field label="Password expires" htmlFor="sec-exp" error={errs.password_expiry_days}>
+            <Select
               id="sec-exp"
-              inputMode="numeric"
               value={expiry}
+              options={EXPIRY_OPTIONS}
               onChange={(e) => setExpiry(e.target.value)}
             />
           </Field>
-          <Field label="Session length (hours)" htmlFor="sec-ses" error={errs.session_hours}>
-            <Input
+          <Field label="Sign people out after" htmlFor="sec-ses" error={errs.session_length}>
+            <Select
               id="sec-ses"
-              inputMode="numeric"
               value={session}
-              onChange={(e) => setSession(e.target.value)}
+              options={SESSION_OPTIONS}
+              onChange={(e) => setSession(e.target.value as SessionLength)}
             />
           </Field>
         </div>
@@ -227,17 +280,17 @@ function SettingsForm({ initial }: { initial: SecuritySettings }) {
         />
         <ToggleRow
           id="sec-alerts"
-          title="Alert admins about security events"
+          title="Email Admins about security events"
           body="Admins get an email when something looks wrong."
           checked={alerts}
           onChange={setAlerts}
         />
 
         <Field
-          label="Allowed IP addresses"
+          label="IP allowlist"
           htmlFor="sec-ips"
           error={errs.ip_allowlist}
-          hint="One address or range (like 203.0.113.0/24) per line. Empty allows everyone."
+          hint="One address or range (like 203.0.113.0/24) per line, up to 100. Empty allows everyone."
         >
           <Textarea
             id="sec-ips"
@@ -245,7 +298,7 @@ function SettingsForm({ initial }: { initial: SecuritySettings }) {
             value={ips}
             onChange={(e) => {
               setIps(e.target.value);
-              setIpTested(null);
+              setIpResult(null);
             }}
             spellCheck={false}
             className="font-mono"
@@ -255,15 +308,26 @@ function SettingsForm({ initial }: { initial: SecuritySettings }) {
           <Button variant="outline" loading={testIp.isPending} onClick={runTest}>
             Test my IP
           </Button>
-          {ipTested && (
-            <p role="status" className="text-sm text-muted-foreground">
-              {ipTested}
+          {ipResult && (
+            <p
+              role="status"
+              className={`text-sm font-medium ${ipResult.allowed ? "text-success" : "text-danger"}`}
+            >
+              {ipResult.allowed
+                ? `Your address ${ipResult.ip} is allowed.`
+                : `Your address ${ipResult.ip} is NOT in the list.`}
             </p>
           )}
         </div>
 
+        {/* Shows every 422 message as it comes, including ones that name no field. */}
         <FormError message={errs._form} />
-        <div className="flex justify-end">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-xs text-muted-foreground">
+            {initial.updated_at
+              ? `Last changed${initial.updated_by_name ? ` by ${initial.updated_by_name}` : ""}, ${new Date(initial.updated_at).toLocaleString()}`
+              : "Not changed yet."}
+          </p>
           <Button type="submit" loading={save.isPending}>
             Save
           </Button>
@@ -277,41 +341,65 @@ function SsoCard() {
   const q = useSsoSettings();
   if (q.isPending) return <Skeleton className="h-40" />;
   if (q.isError) return <LoadError error={q.error} />;
-  return <SsoForm initial={q.data ?? {}} />;
+  return <SsoForm initial={q.data} />;
+}
+
+function CopyRow({ label, value }: { label: string; value?: string }) {
+  if (!value) return null;
+  return (
+    <div>
+      <p className="text-[13px] font-medium text-foreground-2">{label}</p>
+      <div className="mt-1 flex items-center gap-1 rounded-lg border border-border bg-surface-2 px-3 py-1.5">
+        <code className="min-w-0 flex-1 truncate font-mono text-xs">{value}</code>
+        <CopyButton text={value} label={`Copy ${label}`} />
+      </div>
+    </div>
+  );
 }
 
 function SsoForm({ initial }: { initial: SsoSettings }) {
   const save = useSaveSsoSettings();
-  const [enabled, setEnabled] = useState(!!initial.enabled);
-  const [issuer, setIssuer] = useState(initial.issuer ?? "");
-  const [clientId, setClientId] = useState(initial.client_id ?? "");
-  const [secret, setSecret] = useState("");
+  const [enabled, setEnabled] = useState(initial.enabled);
+  const [enforced, setEnforced] = useState(initial.enforced);
+  const [entityId, setEntityId] = useState(initial.idp_entity_id ?? "");
+  const [ssoUrl, setSsoUrl] = useState(initial.idp_sso_url ?? "");
+  const [cert, setCert] = useState(initial.idp_cert ?? "");
   const [errs, setErrs] = useState<Record<string, string>>({});
 
   return (
     <Card className="p-5">
-      <h2 className="mb-4 text-[15px] font-semibold">Single sign-on</h2>
+      <h2 className="mb-1 text-[15px] font-semibold">Single sign-on (SAML)</h2>
+      <p className="mb-4 text-sm text-muted-foreground">
+        Let people sign in with your identity provider. The sign-in page already shows &ldquo;Sign
+        in with SSO&rdquo;.
+      </p>
+
+      <div className="mb-5 space-y-3 rounded-xl border border-border p-4">
+        <h3 className="text-sm font-semibold">Give these to your identity provider</h3>
+        <CopyRow label="Service provider entity ID" value={initial.sp_entity_id} />
+        <CopyRow label="ACS URL" value={initial.acs_url} />
+        <CopyRow label="Metadata URL" value={initial.metadata_url} />
+      </div>
+
       <form
         noValidate
         className="space-y-4"
         onSubmit={(e) => {
           e.preventDefault();
-          const body: SsoSettings = {
-            ...initial,
-            enabled,
-            issuer: issuer.trim(),
-            client_id: clientId.trim(),
-          };
-          delete body.secret_hint;
-          if (secret) body.client_secret = secret;
-          else delete body.client_secret;
-          save.mutate(body, {
-            onSuccess: () => {
-              setSecret("");
-              toast.success("Single sign-on saved");
+          setErrs({});
+          save.mutate(
+            {
+              enabled,
+              enforced,
+              idp_entity_id: entityId.trim() || null,
+              idp_sso_url: ssoUrl.trim() || null,
+              idp_cert: cert.trim() || null,
             },
-            onError: (err) => setErrs(fieldErrors(err)),
-          });
+            {
+              onSuccess: () => toast.success("Single sign-on saved"),
+              onError: (err) => setErrs(fieldErrors(err)),
+            },
+          );
         }}
       >
         <ToggleRow
@@ -321,35 +409,40 @@ function SsoForm({ initial }: { initial: SsoSettings }) {
           checked={enabled}
           onChange={setEnabled}
         />
-        <Field label="Issuer URL" htmlFor="sso-issuer" error={errs.issuer}>
-          <Input
-            id="sso-issuer"
-            value={issuer}
-            onChange={(e) => setIssuer(e.target.value)}
-            placeholder="https://login.example.com"
-          />
+        <ToggleRow
+          id="sso-enforced"
+          title="Only allow SSO"
+          body="Password sign-in is turned off for everyone except Admins."
+          checked={enforced}
+          onChange={setEnforced}
+        />
+        <Field label="Identity provider entity ID" htmlFor="sso-entity" error={errs.idp_entity_id}>
+          <Input id="sso-entity" value={entityId} onChange={(e) => setEntityId(e.target.value)} />
         </Field>
-        <Field label="Client ID" htmlFor="sso-cid" error={errs.client_id}>
-          <Input id="sso-cid" value={clientId} onChange={(e) => setClientId(e.target.value)} />
+        <Field label="Identity provider sign-in URL" htmlFor="sso-url" error={errs.idp_sso_url}>
+          <Input
+            id="sso-url"
+            value={ssoUrl}
+            onChange={(e) => setSsoUrl(e.target.value)}
+            placeholder="https://login.example.com/saml"
+          />
         </Field>
         <Field
-          label="Client secret"
-          htmlFor="sso-secret"
-          error={errs.client_secret}
-          hint={
-            initial.secret_hint
-              ? `Saved (${initial.secret_hint}). Leave empty to keep it.`
-              : "Never shown again after saving."
-          }
+          label="Identity provider certificate"
+          htmlFor="sso-cert"
+          error={errs.idp_cert}
+          hint="Paste the PEM certificate."
         >
-          <Input
-            id="sso-secret"
-            type="password"
-            autoComplete="new-password"
-            value={secret}
-            onChange={(e) => setSecret(e.target.value)}
+          <Textarea
+            id="sso-cert"
+            rows={5}
+            value={cert}
+            onChange={(e) => setCert(e.target.value)}
+            spellCheck={false}
+            className="font-mono"
           />
         </Field>
+        {/* Messages that name no field, such as "Turn single sign-on on before requiring it.". */}
         <FormError message={errs._form} />
         <div className="flex justify-end">
           <Button type="submit" loading={save.isPending}>

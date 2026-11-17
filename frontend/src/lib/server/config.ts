@@ -95,6 +95,25 @@ export const ALLOWED_AREAS = new Set([
   "archive",
   "approvals",
   "tasks",
+  // Settings > Security & data.
+  "security",
+  "security-settings",
+  "sso-settings",
+  "audit",
+  "privacy",
+  "usage",
+  "retention",
+  "sandbox",
+  "demo",
+  // Also needed by other Phase 3 screens. `inbound`, `files` and `slack` stay out: outside
+  // systems call those, never the browser.
+  "roles",
+  "webhooks",
+  "api-keys",
+  "apps",
+  "assist",
+  "side-conversations",
+  "time",
   // Customer-facing areas (see isPublicPath / the portal cookie in the proxy).
   "portal",
   "public",
