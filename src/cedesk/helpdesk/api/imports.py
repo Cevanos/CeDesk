@@ -134,6 +134,39 @@ class RunOut(BaseModel):
         description="Failed tries of the page the run is on (a temporary error at the source). "
         "Back to 0 when a page is saved.",
     )
+    outcome: Literal["in_progress", "complete", "complete_with_exceptions", "failed"] = Field(
+        default="in_progress",
+        description="complete: nothing was left out, cut, linked or noted. "
+        "complete_with_exceptions: it ended, but see `report` (open failures, losses, a "
+        "difference against the source's own counts). failed: it stopped; see last_error "
+        "(a failed run can be resumed).",
+    )
+    report: "RunReportOut" = Field(default_factory=lambda: RunReportOut())
+
+
+class LossOut(BaseModel):
+    key: str = Field(description="What happened, e.g. files_linked, history_capped.")
+    count: int
+    meaning: str = Field(description="The same in words, for the Admin.")
+
+
+class ReconciledOut(BaseModel):
+    in_source: int | None = Field(
+        description="What the source counted at the start (null: the source can't say)."
+    )
+    accounted_for: int = Field(description="Created + already here + noted as failed.")
+    difference: int | None = Field(description="in_source - accounted_for when positive.")
+
+
+class RunReportOut(BaseModel):
+    open_failures: int = Field(
+        default=0, description="Records noted and not resolved: GET /imports/runs/{id}/failures."
+    )
+    losses: list[LossOut] = Field(default_factory=list)
+    warnings: list[str] = Field(
+        default_factory=list, description="What the source can't give (said before the run)."
+    )
+    reconciliation: dict[str, ReconciledOut] = Field(default_factory=dict)
 
 
 class FailureOut(BaseModel):
@@ -505,4 +538,6 @@ def _run_out(view: framework.RunView) -> RunOut:
         last_error=view.last_error,
         last_sync_at=view.last_sync_at,
         retry_attempts=view.retry_attempts,
+        outcome=view.outcome,
+        report=RunReportOut.model_validate(view.report),
     )

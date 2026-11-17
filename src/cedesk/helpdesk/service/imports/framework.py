@@ -47,6 +47,7 @@ already here, so changes made in the source between two imports aren't lost. `sy
 makes the next look due at once; `sync-stop` turns it off and deletes the credentials.
 """
 
+import asyncio
 import json
 import logging
 import time
@@ -195,6 +196,8 @@ class RunView:
     last_error: str | None
     last_sync_at: datetime | None = None
     retry_attempts: int = 0  # failed tries of the page it is on (P0-2)
+    outcome: str = "in_progress"  # rules.OUTCOMES (P0-3)
+    report: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -251,7 +254,42 @@ def result_word(state: str, sync_on: bool) -> str:
     return "running"
 
 
+def run_report(row: Mapping[Any, Any]) -> dict[str, Any]:
+    """What a run brought and what it couldn't, for the Admin (P0-3): the open failures
+    (listed one by one by `run_failures`), what was cut, linked or replaced (`losses`, each
+    with its meaning), the source's warnings, and the source's own counts against what was
+    imported (`reconciliation`: a positive `difference` is records the source counted that
+    the run neither imported nor found already here nor noted)."""
+    counts: Mapping[str, Any] = row["counts"] or {}
+    losses = {k: int(v) for k, v in (counts.get("losses") or {}).items() if v}
+    found = counts.get("discovered") or {}
+    reconciliation: dict[str, Any] = {}
+    for kind in row["options"].get("kinds", rules.KINDS):
+        mine = counts.get(kind) or {}
+        accounted = sum(int(mine.get(k) or 0) for k in ("created", "skipped", "failed"))
+        source = found.get(kind) if isinstance(found, Mapping) else None
+        reconciliation[kind] = {
+            "in_source": source,
+            "accounted_for": accounted,
+            "difference": None if source is None else max(0, int(source) - accounted),
+        }
+    return {
+        "open_failures": int(row.get("open_failures") or 0),
+        "losses": [{"key": k, "count": n, "meaning": rules.LOSS_KEYS.get(k, k)}
+                   for k, n in sorted(losses.items())],
+        "warnings": list(counts.get("warnings") or []),
+        "reconciliation": reconciliation,
+    }  # fmt: skip
+
+
+def _outcome(row: Mapping[Any, Any], report: Mapping[str, Any]) -> str:
+    losses = {item["key"]: item["count"] for item in report["losses"]}
+    gaps = sum(int(r["difference"] or 0) for r in report["reconciliation"].values())
+    return rules.outcome(row["state"], report["open_failures"], losses, gaps)
+
+
 def _run_view(row: Mapping[Any, Any]) -> RunView:
+    report = run_report(row)
     return RunView(
         id=row["id"],
         connection_id=row["connection_id"],
@@ -265,6 +303,8 @@ def _run_view(row: Mapping[Any, Any]) -> RunView:
         last_error=row["last_error"],
         last_sync_at=row["last_sync_at"],
         retry_attempts=int(row.get("retry_attempts") or 0),
+        outcome=_outcome(row, report),
+        report=report,
     )
 
 
@@ -935,8 +975,8 @@ class _Ctx:
     ticket_ids: dict[str, UUID] = field(default_factory=dict)  # source id -> ticket id to use
     seen: dict[UUID, tuple[set[str], set[tuple[str, int]]]] = field(default_factory=dict)
     files: dict[int, list[_Kept | _Linked]] = field(default_factory=dict)  # by id(message)
-    isolate: bool = False  # the last try after retries ran out: a file that fails is linked
     unresolved: set[str] = field(default_factory=set)  # this page's noted tickets (P0-2)
+    file_notes: list[rules.Failure] = field(default_factory=list)  # files that couldn't be copied
 
 
 async def run_due(
@@ -1082,6 +1122,9 @@ async def _slice(sm: Sessionmaker, importers: Importers, run: Row, deadline: flo
     cursor: dict[str, Any] = dict(run["cursor"])
     counts: dict[str, Any] = dict(run["counts"])
     done: list[str] = list(cursor.get("done", []))
+    if "discovered" not in counts:
+        counts.update(await _baseline(connector))
+    losses = rules.Losses()
     while True:
         kind = rules.next_kind(chosen.kinds, done)
         if kind is None:
@@ -1093,16 +1136,19 @@ async def _slice(sm: Sessionmaker, importers: Importers, run: Row, deadline: flo
                     s, run_id, next_run_at=datetime.now(UTC), token=run["lease_token"]
                 )
             return
-        page = await connector.page(kind, cursor.get("page"))
-        items = list(page.items)
-        noted = noter.take() if noter is not None else []
+        with rules.collecting(losses):
+            page = await connector.page(kind, cursor.get("page"))
+            items = list(page.items)
+            kept = await _prepare(ctx, connector, items) if kind == "tickets" else []
+        noted = (noter.take() if noter is not None else []) + ctx.file_notes
         ctx.unresolved = {f.external_id for f in noted if f.kind == "ticket"}
-        kept = await _prepare(ctx, connector, items) if kind == "tickets" else []
         try:
             async with workspace_session(sm, ws) as s:
-                stats = await _write(s, ctx, kind, items)
+                with rules.collecting(losses):
+                    stats = await _write(s, ctx, kind, items)
                 stats = await _note(s, ctx, run, noted, stats)
                 counts[kind] = _add(counts.get(kind, {}), stats)
+                counts["losses"] = rules.merge_losses(counts.get("losses"), losses.take())
                 skipped = getattr(connector, "bad_rows", None)
                 if skipped is not None:
                     counts["rows_left_out"] = len(skipped)
@@ -1118,8 +1164,31 @@ async def _slice(sm: Sessionmaker, importers: Importers, run: Row, deadline: flo
                 )  # fmt: skip
         except Exception:
             await _discard(importers.store, kept)
+            losses.take()  # the page wasn't saved: what it counted goes with it
             raise
         _isolate(noter, ctx, False)  # the page is saved: the next one starts with fresh tries
+
+
+async def _baseline(connector: SourceConnector) -> dict[str, Any]:
+    """What the run starts from, for its report (P0-3): the source's own counts (to compare
+    with what was imported) and its warnings (what it can't bring). Asked once, on the run's
+    first slice; a source that can't say leaves them out, and the run goes on."""
+    out: dict[str, Any] = {"discovered": None, "warnings": []}
+    try:
+        found = await connector.discover()
+        out["discovered"] = {k: int(getattr(found, k)) for k in rules.KINDS}
+    except (SourceError, RateLimited):
+        pass
+    warn = getattr(connector, "warnings", None)
+    if callable(warn):
+        try:
+            said = warn()
+            if isinstance(said, Awaitable):
+                said = await said
+            out["warnings"] = [str(w)[:300] for w in list(said or [])[:50]]
+        except (SourceError, RateLimited):
+            pass
+    return out
 
 
 async def _sync_slice(sm: Sessionmaker, importers: Importers, run: Row, deadline: float) -> None:
@@ -1156,6 +1225,7 @@ async def _sync_slice(sm: Sessionmaker, importers: Importers, run: Row, deadline
     total: dict[str, int] = dict(counts.get("sync") or {})
     this_look: dict[str, int] = dict(mark.get("look") or {})
     page_cursor: Mapping[str, Any] | None = mark.get("page")
+    losses = rules.Losses()
     while True:
         if time.monotonic() >= deadline:
             async with workspace_session(sm, ws) as s:
@@ -1163,17 +1233,20 @@ async def _sync_slice(sm: Sessionmaker, importers: Importers, run: Row, deadline
                     s, run_id, next_run_at=datetime.now(UTC), token=run["lease_token"]
                 )
             return
-        page = await connector.changed_tickets(since, page_cursor)
-        items = list(page.items)
-        noted = noter.take() if noter is not None else []
+        with rules.collecting(losses):
+            page = await connector.changed_tickets(since, page_cursor)
+            items = list(page.items)
+            kept = await _prepare(ctx, connector, items)
+        noted = (noter.take() if noter is not None else []) + ctx.file_notes
         ctx.unresolved = {f.external_id for f in noted if f.kind == "ticket"}
-        kept = await _prepare(ctx, connector, items)
         try:
             async with workspace_session(sm, ws) as s:
-                stats = await _tickets(s, ctx, items)
+                with rules.collecting(losses):
+                    stats = await _tickets(s, ctx, items)
                 stats = await _note(s, ctx, run, noted, stats)
                 total, this_look = _add(total, stats), _add(this_look, stats)
                 counts["sync"] = total
+                counts["losses"] = rules.merge_losses(counts.get("losses"), losses.take())
                 if page.cursor is None:
                     done_at = datetime.now(UTC)
                     await repo.sync_pass_done(
@@ -1204,7 +1277,6 @@ async def _sync_slice(sm: Sessionmaker, importers: Importers, run: Row, deadline
 
 
 def _isolate(noter: rules.RecordFailures | None, ctx: _Ctx, on: bool) -> None:
-    ctx.isolate = on
     if noter is not None:
         noter.isolate = on
 
@@ -1277,9 +1349,9 @@ async def _prepare(ctx: _Ctx, connector: SourceConnector, items: list[Ticket]) -
         )
     ctx.ticket_ids = {ext: ctx.have.get(ext) or uuid4() for ext in unique}
     ctx.files = {}
+    ctx.file_notes = []
     stored: list[str] = []
-    if not isinstance(connector, FileSource):
-        return stored
+    files = connector if isinstance(connector, FileSource) else None
     try:
         for ext, ticket in unique.items():
             known_id = ctx.have.get(ext)
@@ -1287,46 +1359,114 @@ async def _prepare(ctx: _Ctx, connector: SourceConnector, items: list[Ticket]) -
                 continue
             known = ctx.seen.get(known_id) if known_id is not None else None
             for message in ticket.messages:
-                if message.attachments and _worth_keeping(message) and _is_new(message, known):
-                    ctx.files[id(message)] = await _copy_files(
-                        ctx, connector, ctx.ticket_ids[ext], message, stored
-                    )
+                if not (_worth_keeping(message) and _is_new(message, known)):
+                    continue
+                kept: list[_Kept | _Linked] = []
+                if len(rules.body(message.body)) > rules.BODY_MAX:
+                    kept.append(await _body_file(ctx, ctx.ticket_ids[ext], message, stored))
+                if message.attachments:
+                    kept += await _copy_files(ctx, files, ctx.ticket_ids[ext], ext, message, stored)
+                if kept:
+                    ctx.files[id(message)] = kept
     except BaseException:
         await _discard(ctx.store, stored)
         raise
     return stored
 
 
+async def _body_file(ctx: _Ctx, ticket_id: UUID, message: Message, stored: list[str]) -> _Kept:
+    """A message longer than `hd_message.body` holds: its whole text, as a .txt file on the
+    message (the message itself shows the start and says so). Nothing is cut (P0-6)."""
+    attachment_id = uuid4()
+    key = object_key(ctx.ws, ticket_id, attachment_id)
+    data = rules.body(message.body).encode()
+    await ctx.store.put(key, data, content_type="text/plain")
+    stored.append(key)
+    rules.loss("body_as_file")
+    return _Kept(attachment_id, key, "full-message.txt", len(data), "text/plain")
+
+
+FILE_TRIES = 3  # a file that fails for a moment is tried this often, then kept as a link
+FILE_RETRY_SECONDS = 2.0  # the wait before the 2nd try; doubled before the 3rd
+
+
+async def _fetch(connector: FileSource, att: rules.Attachment) -> tuple[bytes | None, str]:
+    """The file's bytes, or None and why not. A temporary error is tried `FILE_TRIES` times
+    with a short wait; a 429 still pauses the whole run (`RateLimited` is raised). One file
+    never holds a page: before (live B-29, B-42) a host the server couldn't reach made the
+    page retry for hours and the import stalled."""
+    for attempt in range(1, FILE_TRIES + 1):
+        try:
+            data = await connector.fetch(att, rules.FILE_MAX)
+        except rules.RecordGone:
+            return None, "file_gone"
+        except SourceError as exc:
+            if exc.permanent:
+                return None, "file_gone"
+            if attempt == FILE_TRIES:
+                return None, "file_unreachable"
+            await asyncio.sleep(FILE_RETRY_SECONDS * 2 ** (attempt - 1))
+            continue
+        return data, "" if data is not None else "file_gone"
+    return None, "file_unreachable"  # pragma: no cover
+
+
+_LINK_WHY = {
+    "files_over_limit": "more than 20 files on the message",
+    "file_too_big": "over 25 MB",
+    "file_gone": "over 25 MB or no longer in the source",
+    "file_unreachable": "the file's host couldn't be reached",
+    "file_empty": "an empty file",
+    "file_no_access": "this source's files can't be read by the importer",
+}
+
+
 async def _copy_files(
-    ctx: _Ctx, connector: FileSource, ticket_id: UUID, message: Message, stored: list[str]
+    ctx: _Ctx,
+    connector: FileSource | None,
+    ticket_id: UUID,
+    external_id: str,
+    message: Message,
+    stored: list[str],
 ) -> list[_Kept | _Linked]:
+    """Copies the message's files to the object store. A file that can't be copied (past
+    20 on the message, over 25 MB, gone, unreachable, empty) is never dropped: it becomes a
+    link line, is counted by reason, and one that should have been copied (gone,
+    unreachable) notes its ticket `incomplete` with why (P0-3, P0-6)."""
     out: list[_Kept | _Linked] = []
+    trouble: dict[str, int] = {}
     for i, att in enumerate(message.attachments):
-        if i >= 2 * rules.FILES_PER_MESSAGE:
-            break
-        if i >= rules.FILES_PER_MESSAGE:
-            out.append(_Linked(rules.link_line(att.name, att.size, att.url, "too many files")))
+        data: bytes | None = None
+        if connector is None:
+            why = "file_no_access"
+        elif i >= rules.FILES_PER_MESSAGE:
+            why = "files_over_limit"
         elif att.size is not None and att.size > rules.FILE_MAX:
-            out.append(_Linked(rules.link_line(att.name, att.size, att.url, "over 25 MB")))
+            why = "file_too_big"
         else:
-            try:
-                data = await connector.fetch(att, rules.FILE_MAX)
-            except SourceError as exc:
-                if exc.permanent or not ctx.isolate:
-                    raise
-                why = "the source kept failing"
-                out.append(_Linked(rules.link_line(att.name, att.size, att.url, why)))
-                continue
-            if data is None:
-                why = "over 25 MB or no longer in the source"
-                out.append(_Linked(rules.link_line(att.name, att.size, att.url, why)))
-            elif data:
-                attachment_id = uuid4()
-                key = object_key(ctx.ws, ticket_id, attachment_id)
-                mime = clean_mime(att.mime)
-                await ctx.store.put(key, data, content_type=mime)
-                stored.append(key)
-                out.append(_Kept(attachment_id, key, clean_name(att.name), len(data), mime))
+            data, why = await _fetch(connector, att)
+            if data is not None and not data:
+                why = "file_empty"
+        if why:
+            out.append(_Linked(rules.link_line(att.name, att.size, att.url, _LINK_WHY[why])))
+            if why in rules.LOSS_KEYS:
+                rules.loss(why)
+            if why in ("file_gone", "file_unreachable"):
+                trouble[why] = trouble.get(why, 0) + 1
+            continue
+        assert data is not None
+        attachment_id = uuid4()
+        key = object_key(ctx.ws, ticket_id, attachment_id)
+        mime = clean_mime(att.mime)
+        await ctx.store.put(key, data, content_type=mime)
+        stored.append(key)
+        out.append(_Kept(attachment_id, key, clean_name(att.name), len(data), mime))
+    if trouble:
+        said = "; ".join(f"{n} {_LINK_WHY[w]}" for w, n in sorted(trouble.items()))
+        ctx.file_notes.append(
+            rules.Failure("ticket", external_id[:200], "incomplete",
+                          f"Files kept as links instead of copies: {said}.")
+        )  # fmt: skip
     return out
 
 
@@ -1462,6 +1602,9 @@ async def _tickets(s: AsyncSession, ctx: _Ctx, items: list[Ticket]) -> dict[str,
     return stats
 
 
+_CUT_NOTE = "\n\n[This message is longer than CeDesk shows: the whole text is in full-message.txt.]"
+
+
 async def _add_message(
     s: AsyncSession,
     ctx: _Ctx,
@@ -1475,6 +1618,8 @@ async def _add_message(
 ) -> set[Any]:
     """One source message on a ticket, with its files; returns the card numbers removed so far."""
     body = rules.body(message.body) or ("(attachment)" if message.attachments else "")
+    if len(body) > rules.BODY_MAX:  # the whole text is on the message as a .txt (`_body_file`)
+        body = body[: rules.BODY_MAX - len(_CUT_NOTE)] + _CUT_NOTE
     author_member, name = None, message.author_name
     if message.kind == "customer":
         cleaned = triage.clean(cfg, body)
@@ -1550,12 +1695,12 @@ async def _refresh(
         first_reply_at=next((m.created_at for m in messages if m.kind == "agent"), None),
         updated_at=max(t.updated_at or t.created_at, last),
     )  # fmt: skip
-    if t.csat is not None and state == "resolved" and resolved_at is not None:
+    if t.csat is not None:  # a rating is history whatever the ticket's status now (P1-12)
         contact_id = await _contact(s, ctx, t.requester)
         await repo.insert_csat(
             s, workspace_id=ctx.ws, ticket_id=ticket_id, contact_id=contact_id,
             score=t.csat.score, comment=(t.csat.comment or "")[:2000] or None,
-            source=ctx.source, rated_at=t.csat.rated_at or resolved_at,
+            source=ctx.source, rated_at=t.csat.rated_at or resolved_at or last,
         )  # fmt: skip
     if fresh:
         await triage.retriage(s, ticket_id, cfg=cfg)
@@ -1586,6 +1731,24 @@ async def _refresh(
     return ticket_id, touched
 
 
+def _fields(t: Ticket, source: str) -> dict[str, str]:
+    """The ticket's custom fields, plus what CeDesk has no column for yet, so nothing the
+    source gave is lost: tags past CeDesk's 20 (`more_tags`), the source's ticket type and
+    its address in the source."""
+    out = rules.clean_fields(t.fields)
+    extra = {
+        "more_tags": rules.more_tags(t.tags, source),
+        "source_type": t.ticket_type,
+        "source_url": t.source_url,
+    }
+    for key, value in extra.items():
+        if value and key not in out:
+            out[key] = str(value)[: rules.FIELD_TEXT_MAX]
+    if extra["more_tags"]:
+        rules.loss("tags_over_limit")
+    return out
+
+
 async def _ticket(
     s: AsyncSession, ctx: _Ctx, cfg: triage.Config, t: Ticket, number: int, stats: dict[str, int]
 ) -> UUID:
@@ -1610,7 +1773,7 @@ async def _ticket(
             "assignee_id": assignee["id"] if assignee else None,
             "contact_id": contact_id,
             "channel": rules.channel(t.channel),
-            "fields": rules.clean_fields(t.fields),
+            "fields": _fields(t, ctx.source),
             "tags": rules.clean_tags(t.tags, ctx.source),
             "first_reply_at": next((m.created_at for m in messages if m.kind == "agent"), None),
             "resolved_at": resolved_at,
@@ -1641,11 +1804,11 @@ async def _ticket(
             body=triage.removed_line(len(removed)), created_at=last, author_member_id=None,
             author_name=None, channel_message_id=None,
         )  # fmt: skip
-    if t.csat is not None and state == "resolved" and resolved_at is not None:
+    if t.csat is not None:  # a rating is history whatever the ticket's status now (P1-12)
         await repo.insert_csat(
             s, workspace_id=ctx.ws, ticket_id=ticket_id, contact_id=contact_id,
             score=t.csat.score, comment=(t.csat.comment or "")[:2000] or None,
-            source=ctx.source, rated_at=t.csat.rated_at or resolved_at,
+            source=ctx.source, rated_at=t.csat.rated_at or resolved_at or last,
         )  # fmt: skip
     await triage.retriage(s, ticket_id, cfg=cfg)
     await repo.contact_since(s, contact_id, t.created_at)

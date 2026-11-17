@@ -70,6 +70,7 @@ class Flaky(Fake):
         self.list_down: int | None = None
         self.files: dict[str, bytes] = {}
         self.file_down: dict[str, int] = {}
+        self.file_limited: dict[str, int] = {}  # a 429 for that file, this many times
         self.changed: list[Ticket] = []
         self.partial: set[str] = set()  # only the first message can be read (the rest: 404)
 
@@ -116,6 +117,9 @@ class Flaky(Fake):
         return ticket
 
     async def fetch(self, attachment: Attachment, limit: int) -> bytes | None:
+        if self.file_limited.get(attachment.url, 0) > 0:
+            self.file_limited[attachment.url] -= 1
+            raise RateLimited(30)
         if self.file_down.get(attachment.url, 0) > 0:
             self.file_down[attachment.url] -= 1
             raise SourceError("The source answered 503 for a file; will retry.", permanent=False)
@@ -410,7 +414,9 @@ async def test_a_failed_page_leaves_no_files_behind_and_never_skips_its_place(
         )
     ]
     src.files = {"https://files.example/a": b"aaa", "https://files.example/b": b"bbb"}
-    src.file_down = {"https://files.example/b": 1}  # a was copied, then b failed
+    # a was copied, then b answered 429: the whole run pauses, and the page is not saved. (A
+    # file that merely fails no longer fails the page: see the test below.)
+    src.file_limited = {"https://files.example/b": 1}
     w, conn, importers = await flaky_desk(im, sm, src)
     store = importers.store
     assert isinstance(store, Recording)
@@ -418,10 +424,11 @@ async def test_a_failed_page_leaves_no_files_behind_and_never_skips_its_place(
     await pass_(sm, importers, w["ws"])
 
     row = await run_row(sm, w["ws"], run_id)
-    assert row["state"] == "running" and row["retry_attempts"] == 1 and row["cursor"] == {}
+    assert row["state"] == "running" and row["cursor"] == {}
     assert store.put_keys and set(store.put_keys) <= set(store.deleted)  # nothing orphaned
     assert await sql(sm, w["ws"], "SELECT 1 FROM hd_attachment") == []
 
+    await sql(sm, w["ws"], "UPDATE hd_import_run SET next_run_at = now()")  # the pause is over
     await pass_(sm, importers, w["ws"])
     assert (await run_row(sm, w["ws"], run_id))["state"] == "done"
     kept = {r["object_key"] for r in await sql(sm, w["ws"], "SELECT object_key FROM hd_attachment")}
@@ -430,25 +437,51 @@ async def test_a_failed_page_leaves_no_files_behind_and_never_skips_its_place(
     await end_runs(sm, w["ws"])
 
 
-async def test_a_file_that_keeps_failing_becomes_a_link_when_isolating(
+@pytest.fixture(autouse=True)
+def quick_file_retries(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(framework, "FILE_RETRY_SECONDS", 0.0)
+
+
+async def test_a_file_whose_host_cant_be_reached_never_stalls_the_import(
     im: AsyncClient, app_sessionmaker: Sm
 ) -> None:
+    """Live B-29 (Freshdesk) and B-42 (Intercom): a file host the server couldn't reach made
+    the page retry for hours and the import (or the sync) stall. Now the file is tried a few
+    times at once, then kept as a link; the ticket is noted with why, and the run ends in
+    the same pass, reported as complete with exceptions."""
     sm = app_sessionmaker
     src = Flaky()
-    src.tickets = [with_files(0, Attachment("b.pdf", "https://files.example/b", 3, None))]
-    src.file_down = {"https://files.example/b": 10**6}
-    policy = RetryPolicy(attempts=1, base_seconds=30, max_seconds=3600)
-    w, conn, importers = await flaky_desk(im, sm, src, policy)
+    src.tickets = [
+        with_files(
+            0,
+            Attachment("b.pdf", "https://files.example/b", 3, None),
+            Attachment("c.pdf", "https://files.example/c", 3, None),
+        ),
+        Fake.ticket(1),
+    ]
+    src.files = {"https://files.example/c": b"ccc"}
+    src.file_down = {"https://files.example/b": 10**6, "https://files.example/c": 1}
+    w, conn, importers = await flaky_desk(im, sm, src)
     run_id = await start(im, w, conn, kinds=["tickets"])
-    await pass_(sm, importers, w["ws"])
-    await pass_(sm, importers, w["ws"])  # the isolating try
+    await pass_(sm, importers, w["ws"])  # one pass, no wait
 
     run = await run_state(im, w, run_id)
-    assert run["state"] == "done" and run["counts"]["tickets"]["files_linked"] == 1
+    assert run["state"] == "done" and run["retry_attempts"] == 0
+    assert run["counts"]["tickets"]["created"] == 2
+    assert run["counts"]["tickets"]["files"] == 1  # c failed once, then was copied
+    assert run["counts"]["tickets"]["files_linked"] == 1
+    assert run["outcome"] == "complete_with_exceptions"
+    report = run["report"]
+    assert report["open_failures"] == 1
+    assert [(x["key"], x["count"]) for x in report["losses"]] == [("file_unreachable", 1)]
     [line] = await sql(
         sm, w["ws"], "SELECT body FROM hd_message WHERE kind = 'system' AND body LIKE '%b.pdf%'"
     )
-    assert "kept failing" in line["body"]
+    assert "couldn't be reached" in line["body"]
+    failures = ok(await im.get(f"{I}/runs/{run_id}/failures", headers=w["admin"]))["failures"]
+    [noted] = failures
+    assert (noted["external_id"], noted["category"]) == ("Z0", "incomplete")
+    assert "host couldn't be reached" in noted["last_error"]
     await end_runs(sm, w["ws"])
 
 

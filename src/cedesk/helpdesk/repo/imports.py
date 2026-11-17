@@ -16,7 +16,8 @@ Row = RowMapping
 _RUN = (
     "SELECT id, workspace_id, connection_id, source, state, options, cursor, counts, sync_on, "
     "last_sync_at, next_run_at, lease_until, last_error, started_by, started_at, finished_at, "
-    "retry_attempts, lease_token FROM hd_import_run"
+    "retry_attempts, lease_token, (SELECT count(*) FROM hd_import_failure f "
+    "WHERE f.run_id = hd_import_run.id AND f.status = 'open') AS open_failures FROM hd_import_run"
 )  # lease_token: for the worker's own checks; never in a response (`_run_view` picks fields)
 _RUN_ONE = _RUN + " WHERE id = :id"
 _RUN_LOCKED = _RUN_ONE + " FOR UPDATE"
