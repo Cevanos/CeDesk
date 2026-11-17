@@ -124,6 +124,18 @@ def _uuid_or_none(value: object) -> str | None:
         return None
 
 
+_SECURITY_HEADERS = {
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "no-referrer",
+    "Cross-Origin-Opener-Policy": "same-origin",
+    "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=()",
+}
+_API_CSP = "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
+_HSTS = "max-age=31536000; includeSubDomains"
+_DOC_PATHS = ("/docs", "/redoc")
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
     problems = settings.unsafe()
@@ -217,6 +229,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     "ms": round((time.perf_counter() - started) * 1000, 1),
                 },
             )
+
+    @app.middleware("http")
+    async def security_headers(request: Request, call_next: Any) -> Response:
+        """Browser protections on every answer (md S: security headers). The API answers
+        JSON, files and redirects, never pages, so nothing may frame it, run scripts from it
+        or learn where a link came from. A header a route set itself (a file's sandbox CSP)
+        is kept. The interactive docs (/docs, /redoc) load their own scripts, so they get
+        all but the CSP. HSTS only over https: on plain http browsers ignore it anyway."""
+        response: Response = await call_next(request)
+        for name, value in _SECURITY_HEADERS.items():
+            response.headers.setdefault(name, value)
+        if not request.url.path.startswith(_DOC_PATHS):
+            response.headers.setdefault("Content-Security-Policy", _API_CSP)
+        if request.url.scheme == "https":
+            response.headers.setdefault("Strict-Transport-Security", _HSTS)
+        return response
 
     # Every error has one shape (README, "Errors"):
     #   {"error": {"code": "...", "message": "...", "details": [...]}}

@@ -34,7 +34,10 @@ class ScanBackend(StrEnum):
 
 
 class MailBackend(StrEnum):
-    log = "log"  # write emails to the log, send nothing (dev and test servers only)
+    # Send nothing; each email is written as a .eml file to `mail_outbox_dir` (a developer's
+    # machine only: the files hold sign-in codes and reset links). The log gets the file
+    # name, never the email. Refused anywhere but CEDESK_ENV=dev.
+    log = "log"
     smtp = "smtp"  # any SMTP server: Amazon SES, Gmail, Zoho, Mailgun, ...
     none = "none"  # drop every email
 
@@ -160,6 +163,10 @@ class Settings(BaseSettings):
     mail_from_address: str = ""
     mail_from_name: str = "CeDesk"
     mail_backend: MailBackend = MailBackend.log
+    mail_outbox_dir: str = Field(
+        default="mail-outbox",
+        description="With CEDESK_MAIL_BACKEND=log (dev only): the folder emails are written to.",
+    )
     smtp_host: str = ""
     smtp_port: int = Field(default=587, ge=1, le=65535)
     smtp_security: SmtpSecurity = SmtpSecurity.starttls
@@ -277,10 +284,11 @@ class Settings(BaseSettings):
                 "CEDESK_PUSH_FCM_PROJECT_ID and CEDESK_PUSH_FCM_SERVICE_ACCOUNT: set both, "
                 "or neither (push off)"
             )
-        if self.env is Env.production and self.mail_backend is MailBackend.log:
+        if self.env is not Env.dev and self.mail_backend is MailBackend.log:
             problems.append(
-                "CEDESK_MAIL_BACKEND: `log` writes emails (with sign-in codes) to the log; "
-                "use smtp, or none until a mail server is set up"
+                "CEDESK_MAIL_BACKEND: `log` keeps every email (with sign-in codes and reset "
+                "links) on this machine and is for a developer's machine only; use smtp, or "
+                "none until a mail server is set up"
             )
         return problems
 

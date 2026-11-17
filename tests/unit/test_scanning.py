@@ -1,6 +1,7 @@
 """The clamd client against a fake clamd on a local port (no ClamAV needed)."""
 
 import asyncio
+import os
 from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import Any
 
@@ -87,3 +88,26 @@ def test_answers() -> None:
     with pytest.raises(ScanError) as err:
         read_answer(b"something odd")
     assert not err.value.permanent
+
+
+# The EICAR test file: harmless, and reported by every scanner. Built from two halves so
+# this source file itself is not flagged.
+EICAR = b"X5O!P%@AP[4\\PZX54(P^)7CC)7}$" + b"EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*"
+
+
+@pytest.mark.skipif(
+    not os.environ.get("CEDESK_TEST_CLAMD_HOST"),
+    reason="set CEDESK_TEST_CLAMD_HOST (and _PORT) to check a real ClamAV",
+)
+async def test_a_real_clamav_finds_eicar_and_passes_a_normal_file() -> None:
+    """Run after switching scanning on: `CEDESK_TEST_CLAMD_HOST=127.0.0.1 uv run pytest
+    tests/unit/test_scanning.py -k real` with clamd's port reachable."""
+    scanner = ClamdScanner(
+        os.environ["CEDESK_TEST_CLAMD_HOST"],
+        int(os.environ.get("CEDESK_TEST_CLAMD_PORT", "3310")),
+        timeout=30,
+        max_bytes=100 * 1024 * 1024,
+    )
+    infected = await scanner.scan(EICAR)
+    assert not infected.clean and "eicar" in (infected.virus or "").lower()
+    assert (await scanner.scan(b"%PDF-1.4 an ordinary invoice")).clean
