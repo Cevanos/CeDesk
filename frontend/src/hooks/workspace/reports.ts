@@ -227,23 +227,27 @@ export function useArticleReport(params: ReportParams) {
 
 /* ---------- More metrics (GET /reports/metrics) and the AI card (GET /reports/ai) ---------- */
 
+/** Row of backlog / channel / topic / sentiment tables. `created` is absent for backlog. */
 export interface Labelled {
   label: string;
-  count: number;
+  created: number | null;
+  open: number;
 }
 export interface MetricTile {
   key: string;
   label: string;
   value: number | null;
-  /** Format hint taken from the field name. */
-  unit: "count" | "minutes" | "percent" | "rating";
+  unit: "count" | "minutes" | "percent";
+  hint?: string;
 }
 export interface MetricsAgentRow {
   id: string | null;
   name: string;
-  time_minutes: number | null;
-  tasks_done: number | null;
-  tasks_open: number | null;
+  role: string | null;
+  logged_minutes: number | null;
+  billable_minutes: number | null;
+  open_tasks: number | null;
+  overdue_tasks: number | null;
 }
 export interface MetricsReport {
   tiles: MetricTile[];
@@ -258,76 +262,89 @@ export interface MetricsReport {
 export interface AiReport {
   chats: number | null;
   handed_over: number | null;
+  /** 0-100 */
+  handed_over_percent: number | null;
   resolved_by_ai: number | null;
+  /** 0-100 */
+  resolved_by_ai_percent: number | null;
   csat_average: number | null;
   csat_count: number | null;
 }
 
-const humanize = (k: string) => {
-  const t = k.replace(/_/g, " ").trim();
-  return t.charAt(0).toUpperCase() + t.slice(1);
-};
-
-/** A list or a { label: count } map, as a list of { label, count }. */
+/** Rows of `{ label | value, created?, open }`. */
 function labelled(raw: unknown): Labelled[] {
-  if (Array.isArray(raw)) {
-    return raw.filter(isObj).map((r) => ({
-      label:
-        str(r, "label", "name", "bucket", "range", "channel", "topic", "sentiment", "key") ?? "—",
-      count: num(r, "count", "n", "total", "tickets", "value") ?? 0,
-    }));
-  }
-  if (isObj(raw)) {
-    return Object.entries(raw).flatMap(([k, v]) => {
-      const c = isObj(v) ? num(v, "count", "n", "total") : typeof v === "number" ? v : null;
-      return c === null ? [] : [{ label: k, count: c }];
-    });
-  }
-  return [];
+  if (!Array.isArray(raw)) return [];
+  return raw.filter(isObj).map((r) => ({
+    label: str(r, "label", "bucket", "value") ?? "(none)",
+    created: num(r, "created"),
+    open: num(r, "open") ?? 0,
+  }));
 }
 
-function unitOf(key: string): MetricTile["unit"] {
-  if (/minute|_mins?$|duration|time/.test(key)) return "minutes";
-  if (/percent|pct|rate|_met$/.test(key)) return "percent";
-  if (/csat|rating|average_score/.test(key)) return "rating";
-  return "count";
+/** 0-1 ratio to a 0-100 percent with one decimal (the AI endpoint sends ratios). */
+function ratioToPercent(v: number | null): number | null {
+  return v === null ? null : Math.round(v * 1000) / 10;
 }
 
 export function normalizeMetricsReport(raw: unknown): MetricsReport {
   const r: Obj = isObj(raw) ? raw : {};
-  const summary = isObj(r.summary) ? r.summary : {};
-  const tiles: MetricTile[] = Object.entries(summary).flatMap(([key, v]) => {
-    if (v !== null && typeof v === "object") return [];
-    const value = num(summary, key);
-    if (value === null && v !== null && v !== undefined) return [];
-    return [{ key, label: humanize(key), value, unit: unitOf(key) }];
-  });
+  const s: Obj = isObj(r.summary) ? r.summary : {};
+  const of = (n: number | null, m: number | null) =>
+    n !== null && m !== null ? `${n} of ${m}` : undefined;
+  const tiles: MetricTile[] = [
+    { key: "open", label: "Open", value: num(s, "open"), unit: "count" },
+    {
+      key: "one_touch",
+      label: "One-touch",
+      value: num(s, "one_touch_percent"),
+      unit: "percent",
+      hint: of(num(s, "one_touch"), num(s, "one_touch_measured"))?.concat(" resolved"),
+    },
+    {
+      key: "reopened",
+      label: "Reopened",
+      value: num(s, "reopen_rate_percent"),
+      unit: "percent",
+      hint: of(num(s, "reopened"), num(s, "reopen_measured")),
+    },
+    {
+      key: "time_logged",
+      label: "Time logged",
+      value: num(s, "time_logged_minutes"),
+      unit: "minutes",
+    },
+    { key: "billable", label: "Billable", value: num(s, "billable_minutes"), unit: "minutes" },
+  ];
   return {
     tiles,
-    backlog: labelled(r.backlog ?? r.backlog_by_age ?? r.backlog_age),
-    channels: labelled(r.channels ?? r.by_channel),
-    topics: labelled(r.topics ?? r.by_topic),
-    sentiment: labelled(r.sentiment ?? r.by_sentiment),
-    agents: rows(r, "agents", "by_agent", "members").map((a) => ({
-      id: str(a, "member_id", "agent_id", "id"),
-      name: str(a, "name", "member_name", "agent_name") ?? "Unknown",
-      time_minutes: num(a, "time_minutes", "logged_minutes", "minutes", "time_logged_minutes"),
-      tasks_done: num(a, "tasks_done", "tasks_completed", "tasks_closed", "tasks"),
-      tasks_open: num(a, "tasks_open", "open_tasks"),
+    backlog: labelled(r.backlog_by_age),
+    channels: labelled(r.channels),
+    topics: labelled(r.topics),
+    sentiment: labelled(r.sentiment),
+    agents: rows(r, "agents").map((a) => ({
+      id: str(a, "member_id"),
+      name: str(a, "name") ?? "Unknown",
+      role: str(a, "role"),
+      logged_minutes: num(a, "logged_minutes"),
+      billable_minutes: num(a, "billable_minutes"),
+      open_tasks: num(a, "open_tasks"),
+      overdue_tasks: num(a, "overdue_tasks"),
     })),
     governance_url: str(r, "governance_url"),
   };
 }
 
 export function normalizeAiReport(raw: unknown): AiReport {
-  const r: Obj = isObj(raw) ? raw : {};
-  const csat = isObj(r.csat) ? r.csat : r;
+  const root: Obj = isObj(raw) ? raw : {};
+  const r: Obj = isObj(root.ai) ? root.ai : {};
   return {
-    chats: num(r, "chats", "conversations", "ai_chats"),
-    handed_over: num(r, "handed_over", "handed_to_person", "handovers", "handed_to_human"),
-    resolved_by_ai: num(r, "resolved_by_ai", "ai_resolved", "resolved"),
-    csat_average: num(csat, "csat_average", "average", "avg", "csat"),
-    csat_count: num(csat, "csat_count", "ratings", "count"),
+    chats: num(r, "conversations"),
+    handed_over: num(r, "handed_over"),
+    handed_over_percent: ratioToPercent(num(r, "handover_rate")),
+    resolved_by_ai: num(r, "ai_resolved"),
+    resolved_by_ai_percent: ratioToPercent(num(r, "ai_resolved_rate")),
+    csat_average: num(r, "ai_csat"),
+    csat_count: num(r, "ai_csat_responses"),
   };
 }
 

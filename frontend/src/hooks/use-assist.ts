@@ -15,7 +15,6 @@ export const TONES = [
   { value: "professional", label: "More professional" },
   { value: "concise", label: "Shorter" },
   { value: "empathetic", label: "More empathetic" },
-  { value: "fix", label: "Fix spelling and grammar" },
 ] as const;
 export type Tone = (typeof TONES)[number]["value"];
 

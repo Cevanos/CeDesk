@@ -4,7 +4,6 @@ import { Download, ExternalLink } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
-import { formatMinutes } from "@/components/tickets/sla";
 import { Button, Card, EmptyState, Skeleton } from "@/components/ui/primitives";
 import { LoadError } from "@/components/workspace/list-shared";
 import {
@@ -14,6 +13,7 @@ import {
   type Labelled,
   type MetricTile,
   type MetricsAgentRow,
+  type MetricsReport,
   type ReportParams,
 } from "@/hooks/workspace/reports";
 import { ApiError, downloadFile } from "@/lib/api/client";
@@ -22,11 +22,18 @@ import { cn } from "@/lib/utils";
 const dash = "—";
 const count = (n: number | null) => (n === null ? dash : n.toLocaleString());
 
+/** 0 -> "0m", 90 -> "1h 30m", 2290 -> "38h 10m". */
+function duration(min: number): string {
+  const t = Math.round(min);
+  const h = Math.floor(t / 60);
+  const m = t % 60;
+  return h > 0 ? `${h}h ${m}m` : `${m}m`;
+}
+
 function tileValue(t: MetricTile): string {
   if (t.value === null) return dash;
-  if (t.unit === "minutes") return formatMinutes(t.value);
+  if (t.unit === "minutes") return duration(t.value);
   if (t.unit === "percent") return `${Math.round(t.value * 10) / 10}%`;
-  if (t.unit === "rating") return t.value.toFixed(1);
   return t.value.toLocaleString();
 }
 
@@ -73,32 +80,92 @@ function Stat({ label, value, hint }: { label: string; value: string; hint?: str
 }
 
 function Bars({ title, rows }: { title: string; rows: Labelled[] }) {
-  const max = Math.max(1, ...rows.map((r) => r.count));
+  const max = Math.max(1, ...rows.map((r) => r.open));
   return (
     <section aria-label={title}>
       <h2 className="mb-2 text-base font-semibold">{title}</h2>
       <Card className="p-4">
         {rows.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Nothing to show for this period.</p>
+          <p className="text-sm text-muted-foreground">No data for this period</p>
         ) : (
           <ul className="space-y-2">
             {rows.map((r) => (
               <li key={r.label} className="flex items-center gap-3 text-sm">
-                <span className="w-32 shrink-0 truncate font-medium capitalize" title={r.label}>
+                <span className="w-32 shrink-0 truncate font-medium" title={r.label}>
                   {r.label}
                 </span>
                 <span className="h-2.5 min-w-0 flex-1 overflow-hidden rounded-full bg-surface-3">
                   <span
                     className="block h-full rounded-full bg-primary"
-                    style={{ width: `${(r.count / max) * 100}%` }}
+                    style={{ width: `${(r.open / max) * 100}%` }}
                   />
                 </span>
                 <span className="w-12 shrink-0 text-right text-muted-foreground tabular-nums">
-                  {r.count.toLocaleString()}
+                  {r.open.toLocaleString()}
                 </span>
               </li>
             ))}
           </ul>
+        )}
+      </Card>
+    </section>
+  );
+}
+
+/** Channels / Topics / Sentiment behind three switch buttons. */
+function Breakdown({ d }: { d: MetricsReport }) {
+  const tabs = [
+    { key: "channels", label: "Channels", rows: d.channels },
+    { key: "topics", label: "Topics", rows: d.topics },
+    { key: "sentiment", label: "Sentiment", rows: d.sentiment },
+  ] as const;
+  const [active, setActive] = useState<(typeof tabs)[number]["key"]>("channels");
+  const cur = tabs.find((t) => t.key === active)!;
+  return (
+    <section aria-label="Breakdown">
+      <div className="mb-2 flex flex-wrap gap-1.5">
+        {tabs.map((t) => (
+          <Button
+            key={t.key}
+            size="sm"
+            variant={t.key === active ? "primary" : "outline"}
+            aria-pressed={t.key === active}
+            onClick={() => setActive(t.key)}
+          >
+            {t.label}
+          </Button>
+        ))}
+      </div>
+      <Card className="overflow-x-auto">
+        {cur.rows.length === 0 ? (
+          <EmptyState title="No data for this period">Nothing to show.</EmptyState>
+        ) : (
+          <table className="w-full min-w-[20rem] text-sm">
+            <thead>
+              <tr className="border-b border-border text-left text-xs text-muted-foreground">
+                <th scope="col" className="px-4 py-2.5 font-medium">
+                  {cur.label.replace(/s$/, "")}
+                </th>
+                <th scope="col" className="px-4 py-2.5 text-right font-medium">
+                  Created
+                </th>
+                <th scope="col" className="px-4 py-2.5 text-right font-medium">
+                  Open
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {cur.rows.map((r) => (
+                <tr key={r.label} className="hover:bg-surface-2/60">
+                  <th scope="row" className="px-4 py-3 text-left font-medium">
+                    {r.label}
+                  </th>
+                  <td className="px-4 py-3 text-right tabular-nums">{count(r.created)}</td>
+                  <td className="px-4 py-3 text-right tabular-nums">{r.open.toLocaleString()}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         )}
       </Card>
     </section>
@@ -123,10 +190,13 @@ function AgentsMetrics({ agents }: { agents: MetricsAgentRow[] }) {
                   Time logged
                 </th>
                 <th scope="col" className="px-4 py-2.5 text-right font-medium">
-                  Tasks done
+                  Billable
                 </th>
                 <th scope="col" className="px-4 py-2.5 text-right font-medium">
-                  Tasks open
+                  Open tasks
+                </th>
+                <th scope="col" className="px-4 py-2.5 text-right font-medium">
+                  Overdue
                 </th>
               </tr>
             </thead>
@@ -137,10 +207,20 @@ function AgentsMetrics({ agents }: { agents: MetricsAgentRow[] }) {
                     {a.name}
                   </th>
                   <td className="px-4 py-3 text-right tabular-nums">
-                    {a.time_minutes === null ? dash : formatMinutes(a.time_minutes)}
+                    {a.logged_minutes === null ? dash : duration(a.logged_minutes)}
                   </td>
-                  <td className="px-4 py-3 text-right tabular-nums">{count(a.tasks_done)}</td>
-                  <td className="px-4 py-3 text-right tabular-nums">{count(a.tasks_open)}</td>
+                  <td className="px-4 py-3 text-right tabular-nums">
+                    {a.billable_minutes === null ? dash : duration(a.billable_minutes)}
+                  </td>
+                  <td className="px-4 py-3 text-right tabular-nums">{count(a.open_tasks)}</td>
+                  <td
+                    className={cn(
+                      "px-4 py-3 text-right tabular-nums",
+                      (a.overdue_tasks ?? 0) > 0 && "font-medium text-red-600",
+                    )}
+                  >
+                    {count(a.overdue_tasks)}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -175,16 +255,12 @@ export function MetricsPanel({ params }: { params: ReportParams }) {
       {d.tiles.length > 0 && (
         <section aria-label="Summary" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {d.tiles.map((t) => (
-            <Stat key={t.key} label={t.label} value={tileValue(t)} />
+            <Stat key={t.key} label={t.label} value={tileValue(t)} hint={t.hint} />
           ))}
         </section>
       )}
-      <Bars title="Backlog by age" rows={d.backlog} />
-      <div className="grid gap-6 lg:grid-cols-3">
-        <Bars title="Channels" rows={d.channels} />
-        <Bars title="Topics" rows={d.topics} />
-        <Bars title="Sentiment" rows={d.sentiment} />
-      </div>
+      <Bars title="Open tickets by age" rows={d.backlog} />
+      <Breakdown d={d} />
       <AgentsMetrics agents={d.agents} />
     </div>
   );
@@ -205,8 +281,18 @@ export function AiPanel({ params }: { params: ReportParams }) {
       )}
     >
       <Stat label="AI chats" value={count(d.chats)} />
-      <Stat label="Handed to a person" value={count(d.handed_over)} />
-      <Stat label="Resolved by AI" value={count(d.resolved_by_ai)} />
+      <Stat
+        label="Handed to a person"
+        value={count(d.handed_over)}
+        hint={d.handed_over_percent === null ? undefined : `${d.handed_over_percent}% of AI chats`}
+      />
+      <Stat
+        label="Resolved by AI"
+        value={count(d.resolved_by_ai)}
+        hint={
+          d.resolved_by_ai_percent === null ? undefined : `${d.resolved_by_ai_percent}% of AI chats`
+        }
+      />
       <Stat
         label="CSAT of AI"
         value={d.csat_average === null ? dash : `${d.csat_average.toFixed(1)} ★`}
