@@ -8832,6 +8832,145 @@
         }
       }
     },
+    "/api/v1/imports/runs/{run_id}/failures": {
+      "get": {
+        "tags": [
+          "imports"
+        ],
+        "summary": "Records a run could not read and left out (Admin)",
+        "description": "Last failed first, cursor pages. A ticket deleted in the source after it was listed, or one that kept failing after every retry, is left out so the rest of the import goes on; one imported without all its history is listed as incomplete. They stay here after the run ends. Import again (or let a sync look run) to bring what comes back: the row shows resolved only once the record is read in full. 404 for an unknown run.",
+        "operationId": "run_failures_api_v1_imports_runs__run_id__failures_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Run Id"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "`next_cursor` from the previous page.",
+              "title": "Cursor"
+            },
+            "description": "`next_cursor` from the previous page."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FailuresOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/imports/runs/{run_id}/failures/{failure_id}/dismiss": {
+      "post": {
+        "tags": [
+          "imports"
+        ],
+        "summary": "Accept a record's loss: the failure ends as dismissed (Admin)",
+        "description": "For an open failure only (409 otherwise; 404 for an unknown one). It records who decided. A later read of the record does not reopen or resolve it.",
+        "operationId": "dismiss_failure_api_v1_imports_runs__run_id__failures__failure_id__dismiss_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Run Id"
+            }
+          },
+          {
+            "name": "failure_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Failure Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FailureOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/imports/runs/{run_id}/sync-now": {
       "post": {
         "tags": [
@@ -16430,6 +16569,137 @@
         ],
         "title": "FailedPageOut"
       },
+      "FailureOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "contact",
+              "ticket",
+              "article",
+              "reply"
+            ],
+            "title": "Kind"
+          },
+          "external_id": {
+            "type": "string",
+            "title": "External Id",
+            "description": "The record's id in the source."
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "not_found",
+              "temporary",
+              "incomplete"
+            ],
+            "title": "Category",
+            "description": "not_found: the source no longer has it (deleted after it was listed). temporary: it kept failing after every retry, so it was set aside. incomplete: it was imported, but part of its history could not be read (for example a Zendesk ticket whose comments answered 404: only its description came)."
+          },
+          "attempts": {
+            "type": "integer",
+            "title": "Attempts",
+            "description": "How many tries it got."
+          },
+          "last_error": {
+            "type": "string",
+            "title": "Last Error",
+            "description": "What the source answered, in words."
+          },
+          "first_failed_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "First Failed At"
+          },
+          "last_failed_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Last Failed At"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "open",
+              "resolved",
+              "dismissed"
+            ],
+            "title": "Status",
+            "description": "resolved: read in full later (an import run again, or a sync look). dismissed: an Admin accepted what is missing."
+          },
+          "resolved_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolved At"
+          },
+          "resolved_by_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolved By Id",
+            "description": "The Admin who dismissed it (null otherwise, or if removed)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "external_id",
+          "category",
+          "attempts",
+          "last_error",
+          "first_failed_at",
+          "last_failed_at",
+          "status",
+          "resolved_at"
+        ],
+        "title": "FailureOut"
+      },
+      "FailuresOut": {
+        "properties": {
+          "failures": {
+            "items": {
+              "$ref": "#/components/schemas/FailureOut"
+            },
+            "type": "array",
+            "title": "Failures"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "failures",
+          "next_cursor"
+        ],
+        "title": "FailuresOut"
+      },
       "FieldDefIn": {
         "properties": {
           "key": {
@@ -20857,7 +21127,7 @@
             "additionalProperties": true,
             "type": "object",
             "title": "Counts",
-            "description": "Per kind: created and skipped (and, for tickets, unknown_agent_messages); rows_left_out for a CSV."
+            "description": "Per kind: created and skipped (and, for tickets, unknown_agent_messages); failed: records left out because the source could not give them (listed by GET /imports/runs/{id}/failures); rows_left_out for a CSV."
           },
           "sync_on": {
             "type": "boolean",
@@ -20904,6 +21174,12 @@
             ],
             "title": "Last Sync At",
             "description": "When the source was last asked for changes (sync on)."
+          },
+          "retry_attempts": {
+            "type": "integer",
+            "title": "Retry Attempts",
+            "description": "Failed tries of the page the run is on (a temporary error at the source). Back to 0 when a page is saved.",
+            "default": 0
           }
         },
         "type": "object",

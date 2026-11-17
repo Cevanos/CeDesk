@@ -128,6 +128,9 @@ Over a limit: 429 with `Retry-After`. Counted in each API process.
 |---|---|---|---|---|
 | `CEDESK_PLANS` | (empty: the built-in free, growth and enterprise plans) | Plan limits as JSON, e.g. `{"free": {"agents": 3, "tickets_month": 1000, "storage_gb": 1, "history_days": 365}}`. Cloud edition only, for workspaces given a plan. | api, worker, cli | no |
 | `CEDESK_WORKER_INTERVAL_SECONDS` | `10` | How often the worker looks for work (up to 3600). | worker | no |
+| `CEDESK_IMPORT_RETRY_ATTEMPTS` | `8` | Imports: failed tries of a page (a 5xx, a timeout at the source) before the record that keeps failing is set aside and listed in the run's failures (1 to 50). A 429 never counts. | api, worker | no |
+| `CEDESK_IMPORT_RETRY_BASE_SECONDS` | `30` | Imports: the first wait after a failed page; it doubles each try, with jitter, never under the source's Retry-After. | api, worker | no |
+| `CEDESK_IMPORT_RETRY_MAX_SECONDS` | `3600` | Imports: the longest wait between tries (at least the base). The defaults retry for about 1 to 2 hours. | api, worker | no |
 | `CEDESK_PUSH_FCM_PROJECT_ID` | (empty: push off) | The Firebase project id for push notifications to the mobile app. Set it together with the next one, or the worker refuses to start. | api, worker | api, worker |
 | `CEDESK_PUSH_FCM_SERVICE_ACCOUNT` | (empty: push off) | The Firebase service account key (its JSON) used to send push notifications. Secret: never logged. | worker | worker |
 

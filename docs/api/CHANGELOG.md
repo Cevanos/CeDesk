@@ -3,6 +3,31 @@
 `openapi.json` next to this file is the API as served (`uv run cedesk openapi`). Every
 route is under `/api/v1`. Breaking changes only come in v2 (md 2B). Newest first.
 
+## 2026-11-17: Imports: one record that can't be read never stops a run; retries end (P0-2)
+
+- New `GET /imports/runs/{run_id}/failures` (Admin, cursor pages, last failed first): the
+  records a run left out because the source could not give them, each with `kind`,
+  `external_id`, `category` (`not_found`: deleted in the source after it was listed;
+  `temporary`: it kept failing after every retry; `incomplete`: imported without all its
+  history), `attempts`, `last_error` (our words, never a credential or customer text),
+  `first_failed_at`, `last_failed_at`, `status` (`open`; `resolved`: read in full later;
+  `dismissed`: an Admin accepted the loss), `resolved_at` and `resolved_by_id`. They stay after
+  the run ends. A failure is resolved only when the record is read in full again, never just
+  because the ticket exists.
+- New `POST /imports/runs/{run_id}/failures/{failure_id}/dismiss` (Admin): ends an open
+  failure as `dismissed`, recording who decided. 409 when it is not open; 404 when unknown.
+- Run objects (`GET /imports/runs/{id}` and the other routes that return a run) carry
+  `retry_attempts`: failed tries of the page the run is on. `counts.<kind>.failed` counts the
+  records left out and `counts.<kind>.incomplete` those imported without all their history.
+  New fields; nothing else changes.
+- Behaviour: a ticket deleted after it was listed no longer fails the import (Freshdesk, Help
+  Scout, Zoho, Gorgias; an Intercom conversation is now noted instead of dropped silently). A
+  Zendesk ticket whose comments answer 404 is still imported with its description, but is now
+  listed as `incomplete` instead of passing as complete (likewise a Zoho thread gone mid-read).
+  A temporary error is retried with backoff for a bounded number of tries (settings
+  `import_retry_*`); after that the failing record is set aside, or, if the page itself can't
+  be read, the run fails with a message that says so. Refused credentials still stop a run.
+
 ## 2026-11-17: The ticket list shows each ticket's Jira issues (Phase 3, T10)
 
 - `GET /tickets` rows (and `GET /tickets/{id}`) carry `jira_keys`: the keys of the Jira

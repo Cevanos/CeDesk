@@ -55,6 +55,7 @@ import base64
 import time
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
+from functools import partial
 from html import unescape
 from html.parser import HTMLParser
 from typing import Any, ClassVar
@@ -73,6 +74,7 @@ from cedesk.helpdesk.domain.imports import (
     Group,
     Message,
     Page,
+    RecordGone,
     Reply,
     SourceError,
     Ticket,
@@ -209,6 +211,7 @@ class HelpScoutConnector:
                 label=f"{LABEL} Docs",
             )
         self.spam_skipped = 0
+        self.failures = rules.RecordFailures()  # conversations deleted mid-import (P0-2)
         self._mailboxes: list[Group] | None = None
         self._collections: list[tuple[str, str]] | None = None
         self._categories: dict[str, dict[str, str]] = {}
@@ -244,22 +247,28 @@ class HelpScoutConnector:
         return self._api
 
     async def _get(
-        self, path: str, params: Mapping[str, Any] | None = None, *, missing_ok: bool = False
+        self,
+        path: str,
+        params: Mapping[str, Any] | None = None,
+        *,
+        missing_ok: bool = False,
+        record: bool = False,
     ) -> Any:
         """A Mailbox API GET. The token is got on first use and when it has expired; a call
-        refused with a token that was not just got is retried once with a new one."""
+        refused with a token that was not just got is retried once with a new one (a record
+        that is gone is not a refusal). `record`: see `SourceHttp.get`."""
         fresh = False
         api = self._api
         if api is None or _now() >= self._expires_at:
             api = await self._login()
             fresh = True
         try:
-            return await api.get(path, params, missing_ok=missing_ok)
+            return await api.get(path, params, missing_ok=missing_ok, record=record)
         except SourceError as exc:
-            if not exc.permanent or fresh:
+            if not exc.permanent or fresh or isinstance(exc, RecordGone):
                 raise
         api = await self._login()
-        return await api.get(path, params, missing_ok=missing_ok)
+        return await api.get(path, params, missing_ok=missing_ok, record=record)
 
     async def _docs_get(self, path: str, params: Mapping[str, Any] | None = None) -> Any:
         assert self._docs is not None
@@ -390,7 +399,9 @@ class HelpScoutConnector:
             if str(raw.get("status", "")).lower() == "spam":
                 self.spam_skipped += 1
                 continue
-            out.append(await self._ticket(raw))
+            ticket = await self.failures.guard("ticket", str(raw["id"]), partial(self._ticket, raw))
+            if ticket is not None:
+                out.append(ticket)
         more = number < _total_pages(data) and bool(raws)
         return Page(out, {"page": number + 1} if more else None)
 
@@ -436,7 +447,9 @@ class HelpScoutConnector:
         out: list[Message] = []
         number, pages = 1, 1
         while number <= pages and number <= THREAD_PAGES_MAX:
-            data = await self._get(f"/v2/conversations/{segment(cid)}/threads", {"page": number})
+            data = await self._get(
+                f"/v2/conversations/{segment(cid)}/threads", {"page": number}, record=True
+            )
             pages = _total_pages(data)
             for raw in _items(data, "threads"):
                 message = _message(raw, cid)

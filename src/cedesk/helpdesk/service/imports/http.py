@@ -10,7 +10,9 @@ host. That is where the rules that apply to every source live, once:
   the source;
 - a 429 becomes `RateLimited` (the run pauses for Retry-After); 401/403 and a missing
   account are permanent `SourceError`; a timeout, a 5xx or an answer that isn't JSON is a
-  temporary one (the run tries again);
+  temporary one (the run tries again, waiting at least the 5xx's Retry-After); a 404 on a
+  call about one record the source just listed (`record=True`) is `RecordGone`, so only that
+  record is left out;
 - the credentials ride in headers set once and are never logged or put in an error message.
 
 Tests pass `transport` (an `httpx.MockTransport`) and `guard` (a check that does not resolve
@@ -26,7 +28,7 @@ from urllib.parse import quote, urljoin, urlsplit
 import httpx
 
 from cedesk.egress import BadAddress, Guard, check_public, pinned
-from cedesk.helpdesk.domain.imports import RateLimited, SourceError
+from cedesk.helpdesk.domain.imports import RateLimited, RecordGone, SourceError
 
 TIMEOUT_SECONDS = 30
 USER_AGENT = "CeDesk/1 (+import)"
@@ -117,10 +119,15 @@ class SourceHttp:
         params: Mapping[str, Any] | None = None,
         *,
         missing_ok: bool = False,
+        record: bool = False,
     ) -> Any:
         """The JSON of `GET path`. With `missing_ok`, a 404 is None (an archived ticket the
-        source no longer serves, an article deleted since it was listed)."""
-        return await self._send("GET", path, params=params, form=None, missing_ok=missing_ok)
+        source no longer serves, an article deleted since it was listed). With `record` (a
+        call about one record the source just listed, such as its messages), a 404 raises
+        `RecordGone` instead of failing the run."""
+        return await self._send(
+            "GET", path, params=params, form=None, missing_ok=missing_ok, record=record
+        )
 
     async def exchange_token(self, path: str, form: Mapping[str, str]) -> Any:
         """OAuth's token exchange (`POST` of a form to the source's token path), for a source
@@ -187,6 +194,7 @@ class SourceHttp:
                         raise SourceError(
                             f"{self._label} answered {status} for a file; will retry.",
                             permanent=False,
+                            retry_after=retry_after(response.headers),
                         )
                     if status >= 400:
                         return None
@@ -214,6 +222,7 @@ class SourceHttp:
         form: Mapping[str, str] | None,
         missing_ok: bool,
         json: Mapping[str, Any] | None = None,
+        record: bool = False,
     ) -> Any:
         try:
             await self._guard(self.host)
@@ -245,6 +254,8 @@ class SourceHttp:
             )
         if status == 404 and missing_ok:
             return None
+        if status == 404 and record:
+            raise RecordGone(f"{self._label} no longer has this record (404).")
         if status == 204:
             return None  # nothing to list (Zoho answers an empty page this way)
         if status == 404:
@@ -252,7 +263,11 @@ class SourceHttp:
         if 300 <= status < 400:
             raise SourceError(f"{self._label} sent us elsewhere; not followed.", permanent=True)
         if status in (408, 425) or status >= 500:
-            raise SourceError(f"{self._label} answered {status}; will retry.", permanent=False)
+            raise SourceError(
+                f"{self._label} answered {status}; will retry.",
+                permanent=False,
+                retry_after=retry_after(response.headers),
+            )
         if status >= 400:
             raise SourceError(f"{self._label} refused the request ({status}).", permanent=True)
         try:
