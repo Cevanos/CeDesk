@@ -303,3 +303,23 @@ async def test_0057_adds_the_seen_table_and_goes_back_down(owner_engine: Any) ->
     await asyncio.to_thread(command.upgrade, cfg, "head")
     async with owner_engine.connect() as conn:
         assert await conn.scalar(text(table)) is True
+
+
+async def test_0058_adds_the_credentials_updated_event_and_goes_back_down(
+    owner_engine: Any,
+) -> None:
+    import asyncio
+
+    from sqlalchemy import text
+
+    check = (
+        "SELECT pg_get_constraintdef(oid) FROM pg_constraint "
+        "WHERE conname = 'hd_import_event_kind_check'"
+    )
+    cfg = alembic_config()
+    await asyncio.to_thread(command.downgrade, cfg, "0057")
+    async with owner_engine.connect() as conn:
+        assert "credentials_updated" not in await conn.scalar(text(check))
+    await asyncio.to_thread(command.upgrade, cfg, "head")
+    async with owner_engine.connect() as conn:
+        assert "credentials_updated" in await conn.scalar(text(check))
