@@ -1,5 +1,50 @@
-{"type":"conversation","id":"502","created_at":1741000000,"updated_at":1741000100,"state":"snoozed","priority":"none","admin_assignee_id":0,"team_assignee_id":0,
- "source":{"type":"conversation","id":"s2","subject":"","body":"<p>Hi there</p>","author":{"type":"lead","id":"c2","name":"","email":""}},
- "contacts":{"type":"contact.list","contacts":[{"type":"contact","id":"c2"}]},
- "tags":{"type":"tag.list","tags":[]},"custom_attributes":{},"conversation_rating":null,
- "conversation_parts":{"type":"conversation_part.list","total_count":0,"conversation_parts":[]}}
+{
+ "type": "conversation",
+ "id": "502",
+ "created_at": 1741000000,
+ "updated_at": 1741000100,
+ "state": "snoozed",
+ "priority": "none",
+ "admin_assignee_id": 0,
+ "team_assignee_id": 0,
+ "source": {
+  "type": "conversation",
+  "id": "s2",
+  "subject": "",
+  "body": "<p>Hi there</p>",
+  "author": {
+   "type": "lead",
+   "id": "c2",
+   "name": "",
+   "email": ""
+  }
+ },
+ "contacts": {
+  "type": "contact.list",
+  "contacts": [
+   {
+    "type": "contact",
+    "id": "c2"
+   }
+  ]
+ },
+ "tags": {
+  "type": "tag.list",
+  "tags": []
+ },
+ "custom_attributes": {},
+ "conversation_rating": null,
+ "conversation_parts": {
+  "type": "conversation_part.list",
+  "total_count": 0,
+  "conversation_parts": [],
+  "pages": {
+   "type": "pages",
+   "page": 1,
+   "next": null,
+   "prev": null,
+   "per_page": 500,
+   "total_pages": 1
+  }
+ }
+}
