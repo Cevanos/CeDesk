@@ -611,20 +611,41 @@ async def insert_message(
     author_member_id: UUID | None,
     author_name: str | None,
     channel_message_id: str | None,
+    recipients: Mapping[str, Sequence[str]] | None = None,
 ) -> UUID:
     result = await session.execute(
         text(
             "INSERT INTO hd_message (workspace_id, ticket_id, kind, body, author_member_id, "
-            "author_name, channel_message_id, created_at) VALUES (:ws, :ticket, :kind, :body, "
-            ":author, :name, :channel_id, :at) RETURNING id"
+            "author_name, channel_message_id, created_at, recipients) VALUES (:ws, :ticket, "
+            ":kind, :body, :author, :name, :channel_id, :at, CAST(:recipients AS jsonb)) "
+            "RETURNING id"
         ),
         {
             "ws": workspace_id, "ticket": ticket_id, "kind": kind, "body": body,
             "author": author_member_id, "name": author_name, "channel_id": channel_message_id,
             "at": created_at,
+            "recipients": json.dumps({k: list(v) for k, v in recipients.items()})
+            if recipients else None,
         },
     )  # fmt: skip
     return UUID(str(result.scalar_one()))
+
+
+async def contact_details(
+    session: AsyncSession, contact_id: UUID, *, phone: str | None, organization: str | None
+) -> None:
+    """Fills a contact's phone and organization from the source, only where blank: never
+    over what an agent set, never on an erased contact."""
+    await session.execute(
+        text(
+            "UPDATE hd_contact SET phone = COALESCE(phone, :phone), "
+            "organization = COALESCE(organization, :org), updated_at = now() "
+            "WHERE id = :id AND erased_at IS NULL AND ("
+            "(phone IS NULL AND CAST(:phone AS text) IS NOT NULL) OR "
+            "(organization IS NULL AND CAST(:org AS text) IS NOT NULL))"
+        ),
+        {"id": contact_id, "phone": phone, "org": organization},
+    )
 
 
 TRACKED = ("status", "priority", "assignee_id", "team_id", "tags", "subject", "fields")

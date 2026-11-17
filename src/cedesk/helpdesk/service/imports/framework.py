@@ -89,6 +89,7 @@ from cedesk.helpdesk.repo import attachments as attach_repo
 from cedesk.helpdesk.repo import auth as auth_repo
 from cedesk.helpdesk.repo import imports as repo
 from cedesk.helpdesk.repo import saved_replies as reply_repo
+from cedesk.helpdesk.repo import ticket_tools as tools_repo
 from cedesk.helpdesk.repo import tickets as ticket_repo
 from cedesk.helpdesk.service import audit, sla, triage
 from cedesk.helpdesk.service.auth import Sessionmaker
@@ -1626,6 +1627,10 @@ async def _contact(s: AsyncSession, ctx: _Ctx, contact: Contact) -> UUID:
             s, ctx.ws, email, (contact.name or "").strip()[:120] or email
         )
         await repo.put_map(s, ctx.ws, ctx.source, "contact", contact.external_id, found)
+        phone = (contact.phone or "").strip()[:50] or None
+        organization = (contact.organization or "").strip()[:200] or None
+        if phone or organization:
+            await repo.contact_details(s, found, phone=phone, organization=organization)
     ctx.contacts[contact.external_id] = found
     return found
 
@@ -1728,7 +1733,7 @@ async def _add_message(
     message_id = await repo.insert_message(
         s, workspace_id=ctx.ws, ticket_id=ticket_id, kind=message.kind, body=body,
         created_at=message.created_at, author_member_id=author_member, author_name=name,
-        channel_message_id=external,
+        channel_message_id=external, recipients=_recipients(message),
     )  # fmt: skip
     for file in ctx.files.get(id(message), []):
         if isinstance(file, _Kept):
@@ -1894,15 +1899,54 @@ async def _apply_source_changes(
     return notes
 
 
+async def _link(s: AsyncSession, ctx: _Ctx, ticket_id: UUID, t: Ticket) -> None:
+    """The source's links to tickets already imported become CeDesk links (P2-23): parent,
+    child, related, merged or duplicate are all one CeDesk "linked" (the kind is in the
+    field `source_links`). A link to a ticket not imported yet stays in that field only;
+    the other ticket, when it carries the link back, makes it then."""
+    others = [x.external_id for x in t.links if x.external_id != t.external_id]
+    if not others:
+        return
+    found = await repo.ticket_ids_by_source(s, ctx.source, others)
+    for other in found.values():
+        if other != ticket_id:
+            a, b = sorted((ticket_id, other))
+            await tools_repo.add_link(s, ctx.ws, a, b, None)
+
+
+RECIPIENTS_MAX = 50  # addresses kept per list (to, cc, bcc) on one message
+
+
+def _recipients(message: Message) -> dict[str, list[str]] | None:
+    """Who the source says the message was addressed to (P2-21), cleaned and capped."""
+    out: dict[str, list[str]] = {}
+    for key, values in (("to", message.to), ("cc", message.cc), ("bcc", message.bcc)):
+        kept = list(dict.fromkeys(v.strip()[:254] for v in values if v and v.strip()))
+        if kept:
+            out[key] = kept[:RECIPIENTS_MAX]
+    return out or None
+
+
+def _joined(values: Sequence[str]) -> str:
+    return ", ".join(dict.fromkeys(v.strip() for v in values if v and v.strip()))
+
+
 def _fields(t: Ticket, source: str) -> dict[str, str]:
-    """The ticket's custom fields, plus what CeDesk has no column for yet, so nothing the
-    source gave is lost: tags past CeDesk's 20 (`more_tags`), the source's ticket type and
-    its address in the source."""
+    """The ticket's custom fields, plus what CeDesk has no column for, so nothing the source
+    gave is lost: tags past CeDesk's 20 (`more_tags`), the source's ticket type, its address
+    in the source, who was copied or followed it, its links to other tickets, and its own
+    SLA (CeDesk's SLA policies apply on top; these are the source's history). Agents see
+    them; the portal never shows them."""
     out = rules.clean_fields(t.fields)
     extra = {
         "more_tags": rules.more_tags(t.tags, source),
         "source_type": t.ticket_type,
         "source_url": t.source_url,
+        "source_cc": _joined(t.cc),
+        "source_followers": _joined(t.followers),
+        "source_links": "; ".join(f"{x.relation} {x.external_id}" for x in t.links),
+        "source_sla_due_at": t.sla_due_at.isoformat() if t.sla_due_at else None,
+        "source_sla_breached": None if t.sla_breached is None else str(t.sla_breached).lower(),
     }
     for key, value in extra.items():
         if value and key not in out:
@@ -1975,6 +2019,7 @@ async def _ticket(
         )  # fmt: skip
     await triage.retriage(s, ticket_id, cfg=cfg)
     await repo.contact_since(s, contact_id, t.created_at)
+    await _link(s, ctx, ticket_id, t)
     with rules.collecting(rules.Losses()):  # counted once, above
         await repo.put_seen(s, ctx.ws, ticket_id, _seen_values(t, ctx))
     return ticket_id
