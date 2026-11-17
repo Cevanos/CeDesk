@@ -195,6 +195,13 @@ class SourceError(Exception):
         self.retry_after = retry_after
 
 
+class LeaseLost(Exception):
+    """This worker's lease on the run ran out and another worker took the run (its
+    `lease_token` changed). Raised by every write a worker makes about the run, so a stalled
+    worker can't save a page, move the cursor or end the run; its transaction rolls back
+    and it stops quietly."""
+
+
 class RecordGone(SourceError):
     """A 404 on a call about one record the source listed a moment ago (its messages, its
     details): it was deleted since. Only that record is left out (`RecordFailures`). Raised

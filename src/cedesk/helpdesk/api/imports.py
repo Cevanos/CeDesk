@@ -387,6 +387,34 @@ async def get_run(run_id: UUID, caller: CallerDep, sm: SessionmakerDep) -> RunOu
     return _run_out(await framework.get_run(sm, caller, run_id))
 
 
+@router.post(
+    "/imports/runs/{run_id}/resume",
+    response_model=RunOut,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Resume a failed import where it stopped (Admin)",
+    description="The same run is queued again and the worker carries on from its last saved "
+    "page: the page that failed is read again, the ones before it are not, and nothing is "
+    "made twice. Counts, options, team mapping, the sync setting and the run's failures are "
+    "kept; `retry_attempts` starts from 0. 409 when the run isn't failed (in progress, "
+    "finished or syncing), when its connection was closed or its credentials can't be read "
+    "(connect again and start a new import), or when another run of the connection is in "
+    "progress or syncing. 404 for an unknown run. Two resumes at once queue it once. Accepts "
+    "`Idempotency-Key`: a repeat returns the run the first one queued.",
+)
+async def resume_run(
+    run_id: UUID,
+    request: Request,
+    caller: CallerDep,
+    sm: SessionmakerDep,
+    response: Response,
+    idempotency_key: IdempotencyKey = None,
+) -> RunOut:
+    idem = idempotency(idempotency_key, f"POST /imports/runs/{run_id}/resume", b"")
+    view = await framework.resume_run(sm, _importers(request), caller, run_id, idem=idem)
+    mark_replayed(idem, response)
+    return _run_out(view)
+
+
 @router.get(
     "/imports/runs/{run_id}/failures",
     response_model=FailuresOut,

@@ -219,3 +219,72 @@ async def test_0054_goes_down_and_back_up(owner_engine: Any) -> None:
             text("SELECT relforcerowsecurity FROM pg_class WHERE relname = 'hd_import_failure'")
         )
         assert forced is True
+
+
+async def test_0055_adds_the_resumed_event_and_goes_back_down(owner_engine: Any) -> None:
+    """Going below 0055 deletes the `resumed` history events (the audit log keeps its own)
+    and puts the old list of kinds back; going up allows them again."""
+    import asyncio
+
+    from sqlalchemy import text
+    from sqlalchemy.exc import IntegrityError
+
+    cfg = alembic_config()
+    async with owner_engine.begin() as conn:
+        for table in ("workspace", "hd_import_connection", "hd_import_event"):
+            await conn.execute(text(f"ALTER TABLE {table} NO FORCE ROW LEVEL SECURITY"))
+        ws = await conn.scalar(text("INSERT INTO workspace (name) VALUES ('R5') RETURNING id"))
+        cid = await conn.scalar(
+            text(
+                "INSERT INTO hd_import_connection (workspace_id, source, label) "
+                "VALUES (:ws, 'zendesk', 'acme') RETURNING id"
+            ),
+            {"ws": ws},
+        )
+        await conn.execute(
+            text(
+                "INSERT INTO hd_import_event (workspace_id, connection_id, kind) "
+                "VALUES (:ws, :c, 'resumed')"
+            ),
+            {"ws": ws, "c": cid},
+        )
+        for table in ("workspace", "hd_import_connection", "hd_import_event"):
+            await conn.execute(text(f"ALTER TABLE {table} FORCE ROW LEVEL SECURITY"))
+    await asyncio.to_thread(command.downgrade, cfg, "0054")
+    async with owner_engine.begin() as conn:
+        await conn.execute(text("ALTER TABLE hd_import_event NO FORCE ROW LEVEL SECURITY"))
+        left = "SELECT count(*) FROM hd_import_event WHERE kind = 'resumed'"
+        assert await conn.scalar(text(left)) == 0
+        with pytest.raises(IntegrityError):
+            async with conn.begin_nested():
+                await conn.execute(
+                    text(
+                        "INSERT INTO hd_import_event (workspace_id, connection_id, kind) "
+                        "VALUES (:ws, :c, 'resumed')"
+                    ),
+                    {"ws": ws, "c": cid},
+                )
+        await conn.execute(text("ALTER TABLE hd_import_event FORCE ROW LEVEL SECURITY"))
+    await asyncio.to_thread(command.upgrade, cfg, "head")
+    async with owner_engine.begin() as conn:
+        await conn.execute(text("ALTER TABLE workspace NO FORCE ROW LEVEL SECURITY"))
+        await conn.execute(text("DELETE FROM workspace WHERE id = :ws"), {"ws": ws})
+        await conn.execute(text("ALTER TABLE workspace FORCE ROW LEVEL SECURITY"))
+
+
+async def test_0056_adds_the_lease_token_and_goes_back_down(owner_engine: Any) -> None:
+    import asyncio
+
+    from sqlalchemy import text
+
+    column = (
+        "SELECT count(*) FROM information_schema.columns "
+        "WHERE table_name = 'hd_import_run' AND column_name = 'lease_token'"
+    )
+    cfg = alembic_config()
+    await asyncio.to_thread(command.downgrade, cfg, "0055")
+    async with owner_engine.connect() as conn:
+        assert await conn.scalar(text(column)) == 0
+    await asyncio.to_thread(command.upgrade, cfg, "head")
+    async with owner_engine.connect() as conn:
+        assert await conn.scalar(text(column)) == 1
