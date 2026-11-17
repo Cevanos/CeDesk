@@ -15,6 +15,7 @@ import {
 } from "@/components/tickets/badges";
 import { OrdersCard, PaymentsCard } from "@/components/tickets/commerce-cards";
 import { CsatAverage, CsatCard } from "@/components/tickets/csat";
+import { ImportedCard, importedRows, isImported } from "@/components/tickets/imported-card";
 import { JiraCard } from "@/components/tickets/jira-card";
 import { FileChip } from "@/components/tickets/message-files";
 import { RelatedCard } from "@/components/tickets/related-card";
@@ -95,6 +96,8 @@ export function TicketSidebar({ ticket, etag }: { ticket: Ticket; etag: string |
   const canEdit = perms.editTicket && (ticket as { can_edit?: boolean }).can_edit !== false;
   const disabled = !canEdit || update.isPending;
   const type = types.data?.find((t) => t.id === ticket.type_id);
+  const showImported =
+    isImported(ticket) && (importedRows(ticket, type).length > 0 || !!ticket.fields?.source_url);
 
   // Supervisors/admins can assign to anyone; agents only to themselves.
   const assignable = (agents.data ?? []).filter(
@@ -179,7 +182,17 @@ export function TicketSidebar({ ticket, etag }: { ticket: Ticket; etag: string |
               controlClassName={sel}
               disabled={disabled}
               value={ticket.type_id ?? ""}
-              onChange={(e) => patch({ type_id: e.target.value || null })}
+              onChange={(e) => {
+                if (
+                  isImported(ticket) &&
+                  importedRows(ticket, type).length > 0 &&
+                  !confirm(
+                    "Fields from the old help desk that are not in this type will be removed. Continue?",
+                  )
+                )
+                  return;
+                patch({ type_id: e.target.value || null });
+              }}
             >
               <option value="">None</option>
               {types.data?.map((t) => (
@@ -278,6 +291,12 @@ export function TicketSidebar({ ticket, etag }: { ticket: Ticket; etag: string |
           </Section>
         )}
 
+        {showImported && (
+          <Card className="rounded-2xl p-4 sm:p-5">
+            <ImportedCard ticket={ticket} type={type} />
+          </Card>
+        )}
+
         <Section title="Tags">
           <div className="flex flex-wrap gap-1.5">
             {(ticket.tags ?? []).map((t) => (
@@ -362,6 +381,25 @@ export function TicketSidebar({ ticket, etag }: { ticket: Ticket; etag: string |
               <>
                 <dt className="text-muted-foreground">Customer since</dt>
                 <dd className="text-right">{formatDateTime(ticket.contact?.customer_since)}</dd>
+              </>
+            )}
+            {ticket.contact?.phone && (
+              <>
+                <dt className="text-muted-foreground">Phone</dt>
+                <dd className="text-right">
+                  <a
+                    href={`tel:${ticket.contact.phone}`}
+                    className="text-primary-ink hover:underline"
+                  >
+                    {ticket.contact.phone}
+                  </a>
+                </dd>
+              </>
+            )}
+            {ticket.contact?.organization && (
+              <>
+                <dt className="text-muted-foreground">Organization</dt>
+                <dd className="text-right">{ticket.contact.organization}</dd>
               </>
             )}
             {!!ticket.contact?.csat_count && (

@@ -25,6 +25,12 @@ import {
   Skeleton,
 } from "@/components/ui/primitives";
 import { Switch } from "@/components/ui/switch";
+import {
+  conflictMessage,
+  FailuresList,
+  RunReport,
+  UpdateCredentials,
+} from "@/components/workspace/imports-run-extras";
 import { FormError, LoadError } from "@/components/workspace/list-shared";
 import {
   useCloseImportConnection,
@@ -33,6 +39,7 @@ import {
   useDryRunImport,
   useImportHistory,
   useImportRun,
+  useResumeImport,
   useStartImport,
   useSyncNow,
   useSyncStop,
@@ -56,6 +63,8 @@ interface SourceDef {
   settings: FieldDef[];
   credentials: FieldDef[];
   help: string;
+  /** Alternative ways to sign in (Zendesk). The first is the default and replaces `credentials`. */
+  authModes?: { id: string; label: string; credentials: FieldDef[]; help?: string }[];
 }
 
 export const SOURCES: SourceDef[] = [
@@ -71,10 +80,30 @@ export const SOURCES: SourceDef[] = [
     label: "Zendesk",
     settings: [{ key: "subdomain", label: "Subdomain", hint: "acme for acme.zendesk.com" }],
     credentials: [
-      { key: "email", label: "Agent email" },
-      { key: "token", label: "API token" },
+      { key: "client_id", label: "Client ID" },
+      { key: "client_secret", label: "Client secret" },
     ],
-    help: "An agent email and an API token from Admin Center.",
+    help: "Connect with an OAuth client (recommended) or an agent email and API token. Zendesk retires API tokens on 30 Apr 2027.",
+    authModes: [
+      {
+        id: "oauth",
+        label: "OAuth client (recommended)",
+        credentials: [
+          { key: "client_id", label: "Client ID" },
+          { key: "client_secret", label: "Client secret" },
+        ],
+        help: "Admin Center › Apps and integrations › APIs › OAuth clients › Add OAuth client. Kind: Confidential, scope: read.",
+      },
+      {
+        id: "token",
+        label: "API token",
+        credentials: [
+          { key: "email", label: "Agent email" },
+          { key: "token", label: "API token" },
+        ],
+        help: "An agent email and an API token from Admin Center.",
+      },
+    ],
   },
   {
     id: "freshdesk",
@@ -108,8 +137,8 @@ export const SOURCES: SourceDef[] = [
     id: "hubspot",
     label: "HubSpot",
     settings: [],
-    credentials: [{ key: "token", label: "Private app token" }],
-    help: "A private app token. HubSpot's knowledge base isn't imported.",
+    credentials: [{ key: "token", label: "Private app token or service key" }],
+    help: "Required scopes: crm.objects.tickets.read, crm.objects.contacts.read, crm.objects.owners.read, sales-email-read, files.read. Optional: calls, meetings and conversations.read (chat threads). HubSpot's knowledge base isn't imported.",
   },
   {
     id: "zoho",
@@ -128,7 +157,7 @@ export const SOURCES: SourceDef[] = [
       { key: "client_secret", label: "Client secret" },
       { key: "refresh_token", label: "Refresh token" },
     ],
-    help: "A self client's ID, secret and a refresh token.",
+    help: "A self client's ID, secret and a refresh token. Scopes: Desk.tickets.READ, Desk.contacts.READ, Desk.basic.READ, Desk.articles.READ (plus Desk.search.READ for archived tickets).",
   },
 ];
 
@@ -328,13 +357,20 @@ function ConnectStep({
   onDone: (c: { id: string; label?: string | null }) => void;
 }) {
   const connect = useConnectImport();
-  const [settings, setSettings] = useState<Record<string, string>>(() =>
-    Object.fromEntries(def.settings.filter((f) => f.options).map((f) => [f.key, f.options![0]!])),
-  );
+  const [settings, setSettings] = useState<Record<string, string>>(() => ({
+    ...Object.fromEntries(
+      def.settings.filter((f) => f.options).map((f) => [f.key, f.options![0]!]),
+    ),
+    // Freshdesk imports archived tickets unless told otherwise.
+    ...(def.id === "freshdesk" ? { include_archived: "true" } : {}),
+  }));
+  const [mode, setMode] = useState(def.authModes?.[0]?.id ?? "");
+  const activeMode = def.authModes?.find((m) => m.id === mode);
+  const credFields = activeMode?.credentials ?? def.credentials;
   const [creds, setCreds] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
 
-  const missing = [...def.settings, ...def.credentials].some(
+  const missing = [...def.settings, ...credFields].some(
     (f) => !f.optional && !(f.key in creds ? creds[f.key] : settings[f.key])?.trim(),
   );
 
@@ -359,8 +395,11 @@ function ConnectStep({
                 .filter(([, v]) => v.trim())
                 .map(([k, v]) => [k, v.trim()]),
             );
+          const sent = clean(settings);
+          // Zoho: unchecked simply means the key is left out.
+          if (def.id === "zoho" && sent.include_archived !== "true") delete sent.include_archived;
           connect.mutate(
-            { source: def.id, settings: clean(settings), credentials: clean(creds) },
+            { source: def.id, settings: sent, credentials: clean(creds) },
             {
               onSuccess: (c) => {
                 toast.success(`Connected to ${c.label ?? def.label}`);
@@ -389,36 +428,51 @@ function ConnectStep({
             )}
           </Field>
         ))}
-        {def.credentials.map((f) => (
-          <Field key={f.key} label={f.label} htmlFor={`imp-${f.key}`}>
-            <PasswordInput
-              id={`imp-${f.key}`}
-              autoComplete="off"
-              value={creds[f.key] ?? ""}
-              onChange={(e) => setCreds((s) => ({ ...s, [f.key]: e.target.value }))}
-            />
-          </Field>
-        ))}
-        {def.id === "freshdesk" && (
+        {def.authModes && (
+          <fieldset>
+            <legend className="text-[13px] font-medium text-foreground-2">How to connect</legend>
+            <div className="mt-1.5 flex flex-wrap gap-3">
+              {def.authModes.map((m) => (
+                <label key={m.id} className="flex items-center gap-2 text-sm">
+                  <input
+                    type="radio"
+                    name="imp-auth-mode"
+                    checked={mode === m.id}
+                    onChange={() => {
+                      setMode(m.id);
+                      setCreds({});
+                    }}
+                  />
+                  {m.label}
+                </label>
+              ))}
+            </div>
+            {activeMode?.help && (
+              <p className="mt-1.5 text-xs text-muted-foreground">{activeMode.help}</p>
+            )}
+          </fieldset>
+        )}
+        <CredentialFields fields={credFields} creds={creds} setCreds={setCreds} />
+        {(def.id === "freshdesk" || def.id === "zoho") && (
           <div>
             <label className="flex items-center gap-2 text-sm">
               <input
                 type="checkbox"
                 checked={settings.include_archived === "true"}
                 onChange={(e) =>
-                  setSettings((s) => {
-                    const next = { ...s };
-                    if (e.target.checked) next.include_archived = "true";
-                    else delete next.include_archived;
-                    return next;
-                  })
+                  setSettings((s) => ({
+                    ...s,
+                    // Freshdesk needs an explicit "false": a missing key means yes there.
+                    include_archived: e.target.checked ? "true" : "false",
+                  }))
                 }
               />
               Include archived tickets
             </label>
             <p className="mt-1 text-xs text-muted-foreground">
-              Also import tickets Freshdesk archived (closed over 120 days ago). Slow on large
-              accounts and uses your Freshdesk API quota.
+              {def.id === "freshdesk"
+                ? "Also import tickets Freshdesk archived (closed over 120 days ago). On by default. Slow on large accounts and uses your Freshdesk API quota."
+                : "Also import archived tickets. Needs the Desk.search.READ scope. Zoho lists at most 5,000 archived tickets per department."}
             </p>
           </div>
         )}
@@ -431,6 +485,31 @@ function ConnectStep({
         </Button>
       </form>
     </Card>
+  );
+}
+
+function CredentialFields({
+  fields,
+  creds,
+  setCreds,
+}: {
+  fields: FieldDef[];
+  creds: Record<string, string>;
+  setCreds: React.Dispatch<React.SetStateAction<Record<string, string>>>;
+}) {
+  return (
+    <>
+      {fields.map((f) => (
+        <Field key={f.key} label={f.label} htmlFor={`imp-${f.key}`}>
+          <PasswordInput
+            id={`imp-${f.key}`}
+            autoComplete="off"
+            value={creds[f.key] ?? ""}
+            onChange={(e) => setCreds((s) => ({ ...s, [f.key]: e.target.value }))}
+          />
+        </Field>
+      ))}
+    </>
   );
 }
 
@@ -707,8 +786,11 @@ function RunStep({
   const q = useImportRun(runId);
   const syncNow = useSyncNow(runId);
   const syncStop = useSyncStop(runId);
+  const resume = useResumeImport(runId);
   const close = useCloseImportConnection(connectionId ?? "");
   const [closed, setClosed] = useState(false);
+  const [showFailures, setShowFailures] = useState(false);
+  const [resumeError, setResumeError] = useState<string | null>(null);
 
   if (q.isPending) return <Skeleton className="h-40" />;
   if (q.isError) return <LoadError error={q.error} />;
@@ -726,17 +808,49 @@ function RunStep({
         <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground">
           <Loader2 className="size-4 animate-spin" aria-hidden /> Importing… this page updates by
           itself.
+          {!!r.retry_attempts && r.retry_attempts > 0
+            ? ` The source had a temporary error; retrying (try ${r.retry_attempts})…`
+            : ""}
         </p>
       )}
       <CountsList run={r} />
 
+      {r.state === "done" && r.report && (
+        <RunReport report={r.report} onShowFailures={() => setShowFailures(true)} />
+      )}
+      {showFailures && <FailuresList runId={runId} />}
+
       {r.state === "failed" && (
         <>
-          <FormError message={r.last_error ?? "The import failed."} />
+          <FormError message={resumeError ?? r.last_error ?? "The import failed."} />
           <p className="text-xs text-muted-foreground">
-            Start again to retry. What was imported already is skipped.
+            <strong>Resume</strong> carries on where it stopped. <strong>Start again</strong> reads
+            everything again (what is already imported is skipped).
           </p>
-          <Button onClick={onAgain}>Start again</Button>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              loading={resume.isPending}
+              onClick={() => {
+                setResumeError(null);
+                resume.mutate(undefined, {
+                  onError: (e) =>
+                    setResumeError(e instanceof ApiError ? conflictMessage(e) : "Couldn't resume."),
+                });
+              }}
+            >
+              Resume
+            </Button>
+            <Button variant="outline" onClick={onAgain}>
+              Start again
+            </Button>
+          </div>
+          {connectionId && r.source !== "csv" && credentialFields(r.source) && (
+            <UpdateCredentials
+              connectionId={connectionId}
+              fields={credentialFields(r.source)!}
+              onUpdated={() => setResumeError(null)}
+            />
+          )}
         </>
       )}
 
@@ -827,14 +941,26 @@ function RunStep({
   );
 }
 
+/** Fields to re-enter on "Update credentials". Zendesk: the mode matching what was used isn't
+ *  stored, so offer the recommended OAuth pair. */
+function credentialFields(source: string): FieldDef[] | null {
+  const def = SOURCES.find((s) => s.id === source);
+  if (!def) return null;
+  return def.authModes?.[0]?.credentials ?? def.credentials;
+}
+
 function RunBadge({ run }: { run: ImportRun }) {
   if (run.state === "failed") return <Badge tone="danger">Failed</Badge>;
   if (run.state === "done") {
-    return run.sync_on ? (
-      <Badge tone="info">Syncing</Badge>
+    const exceptions = run.outcome === "complete_with_exceptions";
+    if (run.sync_on) return <Badge tone={exceptions ? "warning" : "info"}>Syncing</Badge>;
+    return exceptions ? (
+      <Badge tone="warning">
+        <AlertTriangle className="size-3" /> Complete, with exceptions
+      </Badge>
     ) : (
       <Badge tone="success">
-        <CheckCircle2 className="size-3" /> Finished
+        <CheckCircle2 className="size-3" /> Complete
       </Badge>
     );
   }

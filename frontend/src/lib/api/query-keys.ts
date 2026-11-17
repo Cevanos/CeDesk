@@ -47,6 +47,7 @@ export const queryKeys = {
     history: ["imports", "history"] as const,
     run: (id: string) => ["imports", "run", id] as const,
     discover: (id: string) => ["imports", "discover", id] as const,
+    failures: (id: string) => ["imports", "failures", id] as const,
   },
   triage: { all: ["triage-settings"] as const },
   portalSettings: { all: ["portal-settings"] as const },

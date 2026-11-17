@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 
 import { ApiError, api, createIdempotency, listOf } from "@/lib/api/client";
@@ -9,8 +9,10 @@ import type {
   ImportConnection,
   ImportDiscovery,
   ImportDryRun,
+  ImportFailurePage,
   ImportGroup,
   ImportKind,
+  ImportReport,
   ImportRun,
 } from "@/lib/api/types";
 
@@ -66,6 +68,33 @@ export function normalizeDryRun(raw: unknown): ImportDryRun {
   };
 }
 
+const int = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
+
+export function normalizeReport(raw: unknown): ImportReport | null {
+  if (!isObj(raw)) return null;
+  const reconciliation: ImportReport["reconciliation"] = {};
+  if (isObj(raw.reconciliation)) {
+    for (const [k, v] of Object.entries(raw.reconciliation)) {
+      if (!isObj(v)) continue;
+      reconciliation[k] = {
+        in_source: int(v.in_source),
+        accounted_for: int(v.accounted_for) ?? 0,
+        difference: int(v.difference),
+      };
+    }
+  }
+  return {
+    open_failures: int(raw.open_failures) ?? 0,
+    losses: listOf<Obj>(raw.losses).map((l) => ({
+      key: String(l.key ?? ""),
+      count: int(l.count) ?? 0,
+      meaning: text(l.meaning) ?? String(l.key ?? ""),
+    })),
+    warnings: strings(raw.warnings),
+    reconciliation,
+  };
+}
+
 export function normalizeRun(raw: unknown): ImportRun {
   const r: Obj = isObj(raw) && isObj(raw.run) ? raw.run : isObj(raw) ? raw : {};
   const counts: ImportRun["counts"] = {};
@@ -100,6 +129,9 @@ export function normalizeRun(raw: unknown): ImportRun {
     started_by: text(r.started_by_name) ?? text(r.started_by),
     started_at: text(r.started_at) ?? text(r.created_at),
     finished_at: text(r.finished_at),
+    outcome: text(r.outcome),
+    retry_attempts: int(r.retry_attempts) ?? 0,
+    report: normalizeReport(r.report),
   };
 }
 
@@ -215,7 +247,7 @@ export function useImportRun(id: string | null) {
   });
 }
 
-function useRunAction(id: string, action: "sync-now" | "sync-stop") {
+function useRunAction(id: string, action: "sync-now" | "sync-stop" | "resume") {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: () => api.post<unknown>(`imports/runs/${id}/${action}`),
@@ -228,6 +260,62 @@ function useRunAction(id: string, action: "sync-now" | "sync-stop") {
 }
 export const useSyncNow = (id: string) => useRunAction(id, "sync-now");
 export const useSyncStop = (id: string) => useRunAction(id, "sync-stop");
+/** Carries on where a failed run stopped (202 with the run). */
+export const useResumeImport = (id: string) => useRunAction(id, "resume");
+
+/** Swap the stored key of a connection, e.g. after it was revoked mid-import. */
+export function useUpdateImportCredentials(connectionId: string) {
+  return useMutation({
+    mutationFn: (credentials: Record<string, string>) =>
+      api.post<{ credentials_hint?: string | null }>(
+        `imports/connections/${connectionId}/credentials`,
+        { credentials },
+      ),
+    meta: { silent: true },
+  });
+}
+
+export function useImportFailures(runId: string, enabled: boolean) {
+  return useInfiniteQuery({
+    queryKey: queryKeys.imports.failures(runId),
+    enabled,
+    initialPageParam: undefined as string | undefined,
+    queryFn: async ({ pageParam }): Promise<ImportFailurePage> => {
+      const r = await api.get<unknown>(`imports/runs/${runId}/failures`, {
+        limit: 50,
+        ...(pageParam ? { cursor: pageParam } : {}),
+      });
+      const o: Obj = isObj(r) ? r : {};
+      return {
+        failures: listOf<Obj>(o.failures).map((f) => ({
+          id: String(f.id ?? ""),
+          kind: text(f.kind) ?? "",
+          external_id: String(f.external_id ?? ""),
+          category: text(f.category) ?? "",
+          last_error: text(f.last_error),
+          attempts: int(f.attempts) ?? 0,
+          last_failed_at: text(f.last_failed_at),
+          status: text(f.status) ?? "open",
+        })),
+        next_cursor: text(o.next_cursor),
+      };
+    },
+    getNextPageParam: (last) => last.next_cursor ?? undefined,
+  });
+}
+
+export function useDismissImportFailure(runId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (failureId: string) =>
+      api.post<unknown>(`imports/runs/${runId}/failures/${failureId}/dismiss`),
+    meta: { silent: true },
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: queryKeys.imports.failures(runId) });
+      void qc.invalidateQueries({ queryKey: queryKeys.imports.run(runId) });
+    },
+  });
+}
 
 export function useImportHistory() {
   return useQuery({

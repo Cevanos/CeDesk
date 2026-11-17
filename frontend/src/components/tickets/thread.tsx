@@ -169,6 +169,19 @@ function Bubble({ m, mine }: { m: Message; mine: boolean }) {
     </span>
   );
   const files = m.attachments ?? [];
+  // Imported messages only. Information only: replies never use it.
+  const recipientLine = m.recipients
+    ? (
+        [
+          ["To", m.recipients.to],
+          ["Cc", m.recipients.cc],
+          ["Bcc", m.recipients.bcc],
+        ] as const
+      )
+        .filter(([, v]) => v && v.length > 0)
+        .map(([k, v]) => `${k}: ${v!.join(", ")}`)
+        .join(" · ")
+    : "";
   return (
     <div className={cn("flex gap-2.5", left ? "justify-start" : "justify-end")}>
       {left && avatar}
@@ -199,6 +212,7 @@ function Bubble({ m, mine }: { m: Message; mine: boolean }) {
           <time dateTime={m.created_at}>{formatDateTime(m.created_at)}</time>
           {m.delivery && !left && <DeliveryStatus delivery={m.delivery} />}
         </div>
+        {recipientLine && <p className="mb-1 text-[11px] text-muted-foreground">{recipientLine}</p>}
         {m.body && (
           <p className="text-sm leading-relaxed wrap-break-word whitespace-pre-wrap">{m.body}</p>
         )}

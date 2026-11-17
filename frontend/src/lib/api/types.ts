@@ -58,6 +58,8 @@ export interface Contact {
   /** Phase 2 (CSAT): average rating 1-5 and how many ratings it is based on. */
   csat_average?: number | null;
   csat_count?: number;
+  phone?: string | null;
+  organization?: string | null;
 }
 
 /** A customer's satisfaction rating of a resolved ticket. */
@@ -139,6 +141,8 @@ export interface Message {
   /** Replies on email tickets only. */
   delivery?: Delivery | null;
   created_at: string;
+  /** Imported messages only; information only, never used for replies. */
+  recipients?: { to?: string[]; cc?: string[]; bcc?: string[] } | null;
 }
 
 export interface MessageFile {
@@ -154,7 +158,7 @@ export interface Ticket extends TicketSummary {
   type_id?: string | null;
   team_id?: string | null;
   assignee_id?: string | null;
-  fields?: Record<string, string | number | null>;
+  fields?: Record<string, string | number | boolean | null | (string | number)[]>;
   reopen_count?: number;
   /** Phase 2: the customer's rating, or null when not rated. */
   csat?: Csat | null;
@@ -598,4 +602,36 @@ export interface ImportRun {
   started_by?: string | null;
   started_at?: string | null;
   finished_at?: string | null;
+  outcome?: ImportOutcome | null;
+  retry_attempts?: number;
+  report?: ImportReport | null;
+}
+
+export type ImportOutcome =
+  "in_progress" | "complete" | "complete_with_exceptions" | "failed" | (string & {});
+
+export interface ImportReport {
+  open_failures: number;
+  losses: { key: string; count: number; meaning: string }[];
+  warnings: string[];
+  /** Per kind. `in_source` and `difference` are null when the source can't count. */
+  reconciliation: Record<
+    string,
+    { in_source: number | null; accounted_for: number; difference: number | null }
+  >;
+}
+
+export interface ImportFailure {
+  id: string;
+  kind: string;
+  external_id: string;
+  category: "not_found" | "temporary" | "incomplete" | (string & {});
+  last_error: string | null;
+  attempts: number;
+  last_failed_at: string | null;
+  status: "open" | "resolved" | "dismissed" | (string & {});
+}
+export interface ImportFailurePage {
+  failures: ImportFailure[];
+  next_cursor: string | null;
 }
