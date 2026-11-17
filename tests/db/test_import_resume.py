@@ -415,3 +415,25 @@ async def test_an_idempotent_repeat_returns_the_run_the_first_resume_queued(
     events = await sql(sm, w["ws"], "SELECT 1 FROM hd_import_event WHERE kind = 'resumed'")
     assert len(events) == 1
     await end_runs(sm, w["ws"])
+
+
+async def test_a_csv_run_whose_file_storage_lost_is_not_resumed(
+    im: AsyncClient, app_sessionmaker: Sm
+) -> None:
+    """The connection still names its file, but storage no longer has it: before, the run
+    was queued and failed again at once. Now the resume is refused and nothing changes."""
+    from tests.db.test_imports import upload
+
+    sm = app_sessionmaker
+    w = await desk(im, sm)
+    conn = await upload(im, w)
+    run_id = await start(im, w, conn, kinds=["tickets"])
+    await sql(sm, w["ws"], "UPDATE hd_import_run SET state = 'failed', lease_until = NULL")
+    [c] = await sql(sm, w["ws"], "SELECT settings FROM hd_import_connection")
+    await im.desk_app.state.store.delete(c["settings"]["file_key"])  # type: ignore[attr-defined]
+
+    r = await resume(im, w, run_id)
+    assert r.status_code == 409 and "no longer stored" in r.json()["error"]["message"]
+    assert (await run_row(sm, w["ws"], run_id))["state"] == "failed"
+    assert await sql(sm, w["ws"], "SELECT 1 FROM hd_import_event WHERE kind = 'resumed'") == []
+    await end_runs(sm, w["ws"])
