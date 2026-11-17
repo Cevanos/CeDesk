@@ -1,3 +1,9 @@
 {"comments":[
-{"id":1003,"author_id":10,"plain_body":"Refund sent.","public":true,"created_at":"2025-03-02T09:00:00Z"}],
-"meta":{"has_more":false}}
+{"id":1003,"type":"Comment","author_id":10,"plain_body":"Refund sent.","body":"<p>Refund sent.</p>","public":true,"attachments":[],"via":{"channel":"web","source":{"from":{},"to":{},"rel":null}},"created_at":"2025-03-02T09:00:00Z"},
+{"id":1004,"type":"Comment","author_id":11,"plain_body":"","body":"","public":true,"attachments":[
+{"id":7001,"file_name":"refund-proof.png","content_url":"https://acme.zendesk.com/attachments/token/xyz/?name=refund-proof.png","content_type":"image/png","size":5120,"thumbnails":[]}],"via":{"channel":"web","source":{"from":{},"to":{},"rel":null}},"created_at":"2025-03-02T09:05:00Z"},
+{"id":1005,"type":"Comment","author_id":12,"plain_body":"Me too, please refund","body":"<p>Me too, please refund</p>","public":true,"attachments":[],"via":{"channel":"email","source":{"from":{"address":"Old.Cc@Example.org","name":"Old Cc"},"to":{"address":"support@acme.zendesk.com","name":"Acme"},"rel":null}},"created_at":"2025-03-02T09:10:00Z"},
+{"id":1006,"type":"Comment","author_id":13,"plain_body":"Closing this out","body":"<p>Closing this out</p>","public":true,"attachments":[],"via":{"channel":"web","source":{"from":{},"to":{},"rel":null}},"created_at":"2025-03-02T09:20:00Z"},
+{"id":1007,"type":"Comment","author_id":10,"plain_body":"","body":"","public":false,"attachments":[],"via":{"channel":"web","source":{"from":{},"to":{},"rel":null}},"created_at":"2025-03-02T09:30:00Z"}],
+"meta":{"has_more":false,"after_cursor":"c2","before_cursor":"c1"},
+"links":{"next":null,"prev":null}}

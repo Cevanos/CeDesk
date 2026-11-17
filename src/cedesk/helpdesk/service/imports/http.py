@@ -133,8 +133,10 @@ class SourceHttp:
         """OAuth's token exchange (`POST` of a form to the source's token path), for a source
         that hands out a short-lived access token for an app id and secret (or a refresh
         token). It reads nothing of the customer's, and it is refused for any path that
-        doesn't end in `/oauth2/token` or `/oauth/v2/token` (Zoho's)."""
-        if not path.rstrip("/").endswith(("/oauth2/token", "/oauth/v2/token")):
+        doesn't end in `/oauth2/token` or `/oauth/v2/token` (Zoho's) and isn't exactly
+        `/oauth/tokens` (Zendesk's; its `/api/v2/oauth/tokens` creates tokens and is refused)."""
+        clean = path.rstrip("/")
+        if not (clean.endswith(("/oauth2/token", "/oauth/v2/token")) or clean == "/oauth/tokens"):
             raise ValueError("exchange_token is for an OAuth token path only")
         return await self._send("POST", path, params=None, form=form, missing_ok=False)
 

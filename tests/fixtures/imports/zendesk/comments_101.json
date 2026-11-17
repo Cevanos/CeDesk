@@ -1,4 +1,5 @@
 {"comments":[
-{"id":1001,"author_id":1,"plain_body":"Where is my refund?","body":"<p>Where is my refund?</p>","public":true,"created_at":"2025-03-01T10:00:00Z"},
-{"id":1002,"author_id":9,"plain_body":"Checking with finance","public":false,"created_at":"2025-03-01T10:30:00Z"}],
-"meta":{"has_more":true,"after_cursor":"c1"}}
+{"id":1001,"type":"Comment","author_id":1,"plain_body":"Where is my refund?","body":"<p>Where is my refund?</p>","html_body":"<div class=\"zd-comment\"><p>Where is my refund?</p></div>","public":true,"attachments":[],"via":{"channel":"email","source":{"from":{"address":"ann@example.org","name":"Ann Customer","original_recipients":["support@acme.zendesk.com","billing@acme.test"]},"to":{"address":"support@acme.zendesk.com","name":"Acme","email_ccs":["cy@example.org",{"address":"Dee@Example.org","name":"Dee"}]},"rel":null}},"created_at":"2025-03-01T10:00:00Z"},
+{"id":1002,"type":"Comment","author_id":9,"plain_body":"Checking with finance","body":"<p>Checking with finance</p>","public":false,"attachments":[],"via":{"channel":"web","source":{"from":{},"to":{},"rel":null}},"created_at":"2025-03-01T10:30:00Z"}],
+"meta":{"has_more":true,"after_cursor":"c1","before_cursor":null},
+"links":{"next":"https://acme.zendesk.com/api/v2/tickets/101/comments.json?page%5Bafter%5D=c1&page%5Bsize%5D=100","prev":null}}

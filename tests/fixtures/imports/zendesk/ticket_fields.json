@@ -1,1 +1,13 @@
-{"ticket_fields":[{"id":501,"title":"Order ID"},{"id":502,"title":"Platform"}],"meta":{"has_more":false}}
+{"ticket_fields":[
+{"id":501,"type":"text","title":"Order ID","raw_title":"Order ID","active":true},
+{"id":502,"type":"text","title":"Platform","raw_title":"Platform","active":true},
+{"id":503,"type":"tagger","title":"Plan","raw_title":"Plan","active":true,"custom_field_options":[
+{"id":9001,"name":"Gold plan","raw_name":"Gold plan","value":"plan_gold","default":false},
+{"id":9002,"name":"Free plan","raw_name":"Free plan","value":"plan_free","default":true}]},
+{"id":504,"type":"integer","title":"Seats","raw_title":"Seats","active":true},
+{"id":505,"type":"checkbox","title":"Opted in","raw_title":"Opted in","active":true},
+{"id":506,"type":"multiselect","title":"Products","raw_title":"Products","active":true,"custom_field_options":[
+{"id":9101,"name":"Mobile app","raw_name":"Mobile app","value":"prod_mobile","default":false},
+{"id":9102,"name":"Web app","raw_name":"Web app","value":"prod_web","default":false}]}],
+"meta":{"has_more":false,"after_cursor":null,"before_cursor":null},
+"links":{"next":null,"prev":null}}

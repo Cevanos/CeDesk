@@ -20,11 +20,15 @@ import httpx
 
 from cedesk.egress import BadAddress, Guard
 from cedesk.helpdesk.domain.imports import AVAILABLE_SOURCES, SourceConnector, SourceError, label
+from cedesk.helpdesk.service.imports.zendesk import WHERE as zendesk_where
 
-# source -> (credentials the Admin must give, setting the Admin must give or None)
+# source -> (credentials the Admin must give, setting the Admin must give or None). Zendesk
+# takes one of three sign-ins (OAuth client_id + client_secret, an OAuth access_token, or
+# email + API token), so it names none here: `zendesk.make` checks that one is complete and
+# says what is missing in the same words (`zendesk.auth_from`).
 REQUIRED: Mapping[str, tuple[tuple[str, ...], str | None]] = {
     "intercom": (("token",), None),
-    "zendesk": (("email", "token"), "subdomain"),
+    "zendesk": ((), "subdomain"),
     "freshdesk": (("api_key",), "domain"),
     "gorgias": (("email", "api_key"), "domain"),
     "helpscout": (("app_id", "app_secret"), None),
@@ -34,7 +38,7 @@ REQUIRED: Mapping[str, tuple[tuple[str, ...], str | None]] = {
 # what the key in the Settings screen asks for, so the message can name it
 WHERE = {
     "intercom": "an access token (Developer Hub > your app > Authentication)",
-    "zendesk": "your email and an API token (Admin Center > Apps and integrations > APIs)",
+    "zendesk": zendesk_where,
     "freshdesk": "your API key (Profile settings)",
     "gorgias": "your email and an API key (Settings > REST API)",
     "helpscout": "an app id and secret (Your Profile > My Apps)",
