@@ -146,6 +146,34 @@ async def test_jira_issues_from_tickets(client: AsyncClient, app_sessionmaker: S
             "Jira issue SUP-7 unlinked by Neha"} <= set(lines)  # fmt: skip
 
 
+async def test_the_ticket_list_shows_each_tickets_jira_issues(
+    client: AsyncClient, app_sessionmaker: Sm
+) -> None:
+    """The Jira chip on a list row (md T10): the keys come with the row, by key, and a
+    ticket with none has an empty list. The detail view carries the same."""
+    install_fakes(client)
+    w = await desk(client, app_sessionmaker)
+    ok(await client.put(f"{A}/jira", headers=w["h"],
+                        json={"settings": JIRA_SETTINGS, "secret": TOKEN}))  # fmt: skip
+    linked = await ticket(client, w, "Refund stuck")
+    plain = await ticket(client, w, "Where is my parcel")
+    url = f"{T}/{linked['id']}/jira"
+    ok(await client.post(url, headers=w["neha"], json={}), 201)  # SUP-12
+    ok(await client.post(f"{url}/link", headers=w["neha"], json={"key": "SUP-7"}), 201)
+
+    rows = {r["id"]: r for r in ok(await client.get(T, headers=w["meena"]))["tickets"]}
+    assert rows[linked["id"]]["jira_keys"] == ["SUP-12", "SUP-7"]
+    assert rows[plain["id"]]["jira_keys"] == []
+    assert ok(await client.get(f"{T}/{linked['id']}", headers=w["h"]))["jira_keys"] == [
+        "SUP-12",
+        "SUP-7",
+    ]
+
+    assert (await client.delete(f"{url}/SUP-12", headers=w["neha"])).status_code == 204
+    rows = {r["id"]: r for r in ok(await client.get(T, headers=w["h"]))["tickets"]}
+    assert rows[linked["id"]]["jira_keys"] == ["SUP-7"]
+
+
 async def test_slack_alerts_for_urgent_and_high(client: AsyncClient, app_sessionmaker: Sm) -> None:
     fake, post = install_fakes(client)
     w = await desk(client, app_sessionmaker)

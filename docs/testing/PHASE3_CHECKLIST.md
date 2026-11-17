@@ -9,7 +9,8 @@ on), except the few unit tests marked *unit*.
 **Run:** the full suite with the database on the Cevanos AI branch (`feat/p3-cevanos-ai`,
 16 Nov 2026): 1593 passed, 2 skipped, 0 failed, so every test linked below passed. Items
 18, 28 and 39 are tested against a fake Cevanos that answers the shapes in
-`docs/api/CEVANOS_V1_FOR_CEDESK.md`, until Cevanos serves those routes.
+`docs/api/CEVANOS_V1_FOR_CEDESK.md`. Cevanos has those routes on its `development` branch
+(17 Nov 2026); they are not yet tried against it.
 
 | Status | Count | Meaning |
 |---|---|---|
@@ -24,8 +25,8 @@ on), except the few unit tests marked *unit*.
 | # | Item | Status | Proved by | Notes |
 |---|---|---|---|---|
 | 1 | Help desk tab | Pass | [test_sign_in_and_me](../../tests/db/test_auth_api.py#L20) | The tab itself is the frontend; the backend part is sign-in and `GET /me` |
-| 2 | Cevanos Inbox chat turned into a CeDesk ticket | Pass | [test_an_agent_turns_a_chat_into_a_ticket](../../tests/db/test_cevanos.py#L599) | Through the connector |
-| 3 | Handover from Cevanos AI | Pass | [test_a_handover_becomes_a_routed_ticket_waiting_for_accept](../../tests/db/test_cevanos.py#L339), [test_reply_waits_for_accept_and_accept_takes_the_chat_over](../../tests/db/test_cevanos.py#L382) | The customer's real name and email on chat tickets (AI6) comes with item 3 |
+| 2 | Cevanos Inbox chat turned into a CeDesk ticket | Pass | [test_an_agent_turns_a_chat_into_a_ticket](../../tests/db/test_cevanos.py#L599) | Through the connector. Not yet tried with a real Cevanos chat |
+| 3 | Handover from Cevanos AI | Pass | [test_a_handover_becomes_a_routed_ticket_waiting_for_accept](../../tests/db/test_cevanos.py#L339), [test_reply_waits_for_accept_and_accept_takes_the_chat_over](../../tests/db/test_cevanos.py#L382) | The customer's real name and email on chat tickets (AI6) comes with item 3. Not yet tried with a real Cevanos handover |
 | 4 | Priority | Pass | [test_list_tabs_filters_search_and_order](../../tests/db/test_tickets_api.py#L245), [test_changes_write_system_lines](../../tests/db/test_tickets_api.py#L173) | Change it, filter by it, sort by it |
 | 5 | Ticket types with custom fields | Pass | [test_ticket_types_and_field_checks](../../tests/db/test_tickets_api.py#L83), [test_type_change_records_every_cleared_field](../../tests/db/test_hardening.py#L149) | |
 | 6 | Teams and auto-assignment | Pass | [test_round_robin_with_reason_and_notification](../../tests/db/test_routing_api.py#L52), [test_rule_1_refund_goes_to_billing_and_is_auto_assigned](../../tests/db/test_rules_api.py#L85) | |
@@ -39,7 +40,7 @@ on), except the few unit tests marked *unit*.
 | 14 | Team reports | Pass | [test_the_team_report_numbers](../../tests/db/test_reports.py#L102) | |
 | 15 | Email (From, CC, signature) | Pass | [test_reply_comes_from_the_address_written_to_keeps_cc_and_threads](../../tests/db/test_email_out.py#L210), [test_a_reply_on_an_email_ticket_is_queued_with_signature_and_label](../../tests/db/test_email_out.py#L159) | |
 | 16 | Public help center | Pass | [test_search_finds_words_and_prefixes](../../tests/db/test_help_center.py#L153), [test_votes_are_one_per_visitor_and_counted](../../tests/db/test_help_center.py#L174) | |
-| 17 | Import from other help desks | Pass | [test_a_csv_import_end_to_end](../../tests/db/test_imports.py#L191), [test_a_help_desks_records_are_matched_and_mapped](../../tests/db/test_imports.py#L425), [test_a_hubspot_import_end_to_end](../../tests/db/test_import_hubspot.py#L40), [test_a_zoho_desk_import_end_to_end](../../tests/db/test_import_zoho.py#L35) | Intercom, Zendesk, Freshdesk, Gorgias, Help Scout, HubSpot, Zoho Desk and CSV; each connector also has its own unit tests |
+| 17 | Import from other help desks | Pass | [test_a_csv_import_end_to_end](../../tests/db/test_imports.py#L191), [test_a_help_desks_records_are_matched_and_mapped](../../tests/db/test_imports.py#L425), [test_a_hubspot_import_end_to_end](../../tests/db/test_import_hubspot.py#L40), [test_a_zoho_desk_import_end_to_end](../../tests/db/test_import_zoho.py#L35) | Intercom, Zendesk, Freshdesk, Gorgias, Help Scout, HubSpot, Zoho Desk and CSV; each connector also has its own unit tests. Tried with a real Intercom account on 16 Nov 2026 (import, files, sync, notes, status, tags); the others not yet tried with a real help desk account |
 | 18 | Orders in the sidebar | Pass | [test_the_sidebar_reads_cevanos_stores](../../tests/db/test_ai.py#L354), [test_a_cevanos_problem_shows_on_the_card](../../tests/db/test_ai.py#L393), [test_the_sidebar_reads_orders_and_payments](../../tests/db/test_apps.py#L161) | With Cevanos connected, from the stores connected in Cevanos (AI5); self-hosted, from the Shopify and Stripe apps. Cevanos side tested against a fake until its routes exist (`docs/api/CEVANOS_V1_FOR_CEDESK.md`) |
 | 19 | Customer portal | Pass | [test_an_emailed_code_signs_a_new_customer_in](../../tests/db/test_portal_sign_in.py#L63), [test_customers_only_ever_see_their_own_tickets](../../tests/db/test_portal_tickets.py#L111) | |
 
@@ -64,7 +65,7 @@ on), except the few unit tests marked *unit*.
 | 34 | Audit log with tamper check | Pass | [test_the_chain_verifies_and_shows_tampering](../../tests/db/test_audit.py#L137), [test_a_settings_change_is_recorded](../../tests/db/test_audit.py#L41) | |
 | 35 | Sandbox | Pass | [test_copy_edit_compare_try_and_deploy](../../tests/db/test_sandbox.py#L47) | |
 | 36 | API keys and webhooks | Pass | [test_a_key_acts_as_its_creator_within_its_level](../../tests/db/test_api_keys.py#L107), [test_ticket_events_reach_the_url_signed](../../tests/db/test_webhooks.py#L144), [test_a_failing_url_is_retried_then_given_up](../../tests/db/test_webhooks.py#L187) | |
-| 37 | Marketplace apps | Pass | [test_admins_install_change_and_uninstall](../../tests/db/test_apps.py#L109), [test_jira_issues_from_tickets](../../tests/db/test_jira_slack.py#L99), [test_slack_alerts_for_urgent_and_high](../../tests/db/test_jira_slack.py#L149), [test_installing_calendly_adds_book](../../tests/db/test_calendly.py#L41), [test_installing_the_slack_app](../../tests/db/test_slack_side.py#L136) | Shopify, Stripe, Jira, Slack alerts, Slack side conversations, Calendly. Translate was removed from CeDesk (it is AI, in Cevanos) |
+| 37 | Marketplace apps | Pass | [test_admins_install_change_and_uninstall](../../tests/db/test_apps.py#L109), [test_jira_issues_from_tickets](../../tests/db/test_jira_slack.py#L99), [test_the_ticket_list_shows_each_tickets_jira_issues](../../tests/db/test_jira_slack.py#L149), [test_slack_alerts_for_urgent_and_high](../../tests/db/test_jira_slack.py#L177), [test_installing_calendly_adds_book](../../tests/db/test_calendly.py#L41), [test_installing_the_slack_app](../../tests/db/test_slack_side.py#L136) | Shopify, Stripe, Jira, Slack alerts, Slack side conversations, Calendly. Translate was removed from CeDesk (it is AI, in Cevanos) |
 | 38 | Mobile agent app | Pass | [test_the_queue](../../tests/db/test_mobile.py#L59), [test_the_mobile_reply](../../tests/db/test_mobile.py#L106), [test_devices](../../tests/db/test_push.py#L100), [test_banners](../../tests/db/test_push.py#L146) | Banners not yet tried on a real phone with Firebase (item 12) |
 | 39 | Richer reports | Pass | [test_the_metrics_numbers](../../tests/db/test_report_metrics.py#L112), [test_every_report_as_csv](../../tests/db/test_report_metrics.py#L227), [test_connected_each_route_gives_cevanos_answer](../../tests/db/test_ai.py#L191) | More metrics, per team, article votes and CSV; the AI card (`GET /reports/ai`, AI7) from Cevanos when connected |
 | 40 | Governance report | Pass | [test_the_governance_link_needs_cevanos](../../tests/db/test_report_metrics.py#L161) | The report lives in Cevanos; CeDesk links to it only when Cevanos is connected |
@@ -92,8 +93,8 @@ on), except the few unit tests marked *unit*.
 
 | Step | What | Waits on |
 |---|---|---|
-| 1 | The open part of 42 (licence); 18, 28 and 39 against the real Cevanos | Item 8 (Amol); Ritesh's Cevanos routes |
-| 3 | `uv run cx check --full` | This repo has no `cx` command; ask Ritesh where to run it |
+| 1 | The open part of 42 (licence); 18, 28 and 39 against the real Cevanos | Item 8 (Amol); Cevanos deploying its `development` branch (the routes are merged there, PR #1040, 17 Nov) |
+| 3 | `uv run cx check --full`: **done** | This repo has no `cx` command. The same checks here are `uv run ruff check`, `uv run ruff format --check`, `uv run mypy`, `uv run lint-imports` and `CEDESK_REQUIRE_DB=1 uv run pytest`; all pass on `main` |
 | 4 | Load test: list, open ticket, reply and live updates under load | Can start now |
 | 5 | The AI routes in `docs/frontend/FRONTEND_HANDOFF_CEDESK.md` and `openapi.json` | Item 1 |
 | 6 | Tick the items in the plan md ("End of Phase 3 check") | The steps above |
