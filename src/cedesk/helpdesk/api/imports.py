@@ -164,7 +164,9 @@ class RunReportOut(BaseModel):
     )
     losses: list[LossOut] = Field(default_factory=list)
     warnings: list[str] = Field(
-        default_factory=list, description="What the source can't give (said before the run)."
+        default_factory=list,
+        description="What the source can't give: said before the run, or found during it "
+        "(a part of the source refused mid-run). Each line once.",
     )
     reconciliation: dict[str, ReconciledOut] = Field(default_factory=dict)
 
