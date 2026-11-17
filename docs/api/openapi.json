@@ -23105,6 +23105,14 @@
             "type": "integer",
             "title": "Child Count"
           },
+          "jira_keys": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Jira Keys",
+            "description": "The Jira issues linked to the ticket (ABC-123), by key; [] for none."
+          },
           "sla": {
             "anyOf": [
               {
@@ -23592,6 +23600,14 @@
           "child_count": {
             "type": "integer",
             "title": "Child Count"
+          },
+          "jira_keys": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Jira Keys",
+            "description": "The Jira issues linked to the ticket (ABC-123), by key; [] for none."
           },
           "sla": {
             "anyOf": [
