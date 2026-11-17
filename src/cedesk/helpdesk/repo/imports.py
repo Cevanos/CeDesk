@@ -596,77 +596,64 @@ async def insert_message(
     return UUID(str(result.scalar_one()))
 
 
-async def refresh_ticket(
+TRACKED = ("status", "priority", "assignee_id", "team_id", "tags", "subject", "fields")
+
+
+async def current(session: AsyncSession, ticket_id: UUID) -> Row:
+    """The ticket's fields a sync look may change, locked until the look's page commits."""
+    result = await session.execute(
+        text(
+            "SELECT status, priority, resolved_at, assignee_id, team_id, tags, subject, "
+            "fields FROM hd_ticket WHERE id = :id FOR UPDATE"
+        ),
+        {"id": ticket_id},
+    )
+    return result.mappings().one()
+
+
+async def seen(session: AsyncSession, ticket_id: UUID) -> dict[str, Any] | None:
+    """What the source showed for this ticket the last time it was read (P1-10)."""
+    found = await session.scalar(
+        text("SELECT seen FROM hd_import_seen WHERE ticket_id = :id"), {"id": ticket_id}
+    )
+    return dict(found) if found is not None else None
+
+
+async def put_seen(
+    session: AsyncSession, workspace_id: UUID, ticket_id: UUID, values: Mapping[str, Any]
+) -> None:
+    await session.execute(
+        text(
+            "INSERT INTO hd_import_seen (workspace_id, ticket_id, seen) "
+            "VALUES (:ws, :id, CAST(:seen AS jsonb)) ON CONFLICT (workspace_id, ticket_id) "
+            "DO UPDATE SET seen = EXCLUDED.seen, seen_at = now()"
+        ),
+        {"ws": workspace_id, "id": ticket_id, "seen": json.dumps(dict(values))},
+    )
+
+
+async def apply_changes(
     session: AsyncSession,
     ticket_id: UUID,
+    changes: Mapping[str, Any],
     *,
-    status: str,
-    priority: str,
-    resolved_at: datetime | None,
     first_reply_at: datetime | None,
     updated_at: datetime,
-) -> bool:
-    """What a later look at the source changed on a ticket already imported (M9). The
-    time only moves forward; the first reply is only filled, never replaced. True when
-    the status, priority or resolved time really changed (so a status-only change counts
-    as an update)."""
-    changed = await session.scalar(
-        text(
-            "UPDATE hd_ticket t SET status = :status, priority = :priority, "
-            "resolved_at = :resolved, first_reply_at = coalesce(t.first_reply_at, :first), "
-            "updated_at = GREATEST(t.updated_at, :updated) "
-            "FROM (SELECT status, priority, resolved_at FROM hd_ticket WHERE id = :id "
-            "FOR UPDATE) old WHERE t.id = :id "
-            "RETURNING (old.status IS DISTINCT FROM t.status "
-            "OR old.priority IS DISTINCT FROM t.priority "
-            "OR old.resolved_at IS DISTINCT FROM t.resolved_at)"
-        ),
-        {
-            "id": ticket_id, "status": status, "priority": priority, "resolved": resolved_at,
-            "first": first_reply_at, "updated": updated_at,
-        },
-    )  # fmt: skip
-    return bool(changed)
-
-
-async def refresh_people(
-    session: AsyncSession,
-    ticket_id: UUID,
-    *,
-    assignee_id: UUID | None,
-    team_id: UUID | None,
-    tags: Sequence[str],
-    tag_max: int,
-) -> tuple[bool, bool, list[str]]:
-    """Who a later look at the source says owns a ticket already imported, and its tags.
-    A source assignee or team that maps to CeDesk replaces the one here; none leaves it as
-    it is (nothing is cleared). Tags are only added, never removed, up to `tag_max`.
-    Returns (assignee changed, team changed, tags added)."""
-    old = (
-        (
-            await session.execute(
-                text("SELECT assignee_id, team_id, tags FROM hd_ticket WHERE id = :id FOR UPDATE"),
-                {"id": ticket_id},
-            )
-        )
-        .mappings()
-        .one()
+) -> None:
+    """Writes what a sync look decided to change (only names in `TRACKED` plus
+    `resolved_at`); the time only moves forward and the first reply is only filled."""
+    allowed = {k: v for k, v in changes.items() if k in (*TRACKED, "resolved_at")}
+    sets = [f"{k} = :{k}" if k != "fields" else "fields = CAST(:fields AS jsonb)" for k in allowed]
+    values: dict[str, Any] = {**allowed, "id": ticket_id, "first": first_reply_at,
+                              "updated": updated_at}  # fmt: skip
+    if "fields" in values:
+        values["fields"] = json.dumps(values["fields"])
+    sets += ["first_reply_at = coalesce(first_reply_at, :first)",
+             "updated_at = GREATEST(updated_at, :updated)"]  # fmt: skip
+    await session.execute(
+        text("UPDATE hd_ticket SET " + ", ".join(sets) + " WHERE id = :id"),  # noqa: S608
+        values,
     )
-    have = list(old["tags"] or [])
-    added = [t for t in tags if t not in have][: max(0, tag_max - len(have))]
-    assignee = assignee_id if assignee_id is not None else old["assignee_id"]
-    team = team_id if team_id is not None else old["team_id"]
-    new_assignee = assignee != old["assignee_id"]
-    new_team = team != old["team_id"]
-    if new_assignee or new_team or added:
-        await session.execute(
-            text(
-                "UPDATE hd_ticket SET assignee_id = :assignee, team_id = :team, tags = :tags "
-                "WHERE id = :id"
-            ),
-            {"id": ticket_id, "assignee": assignee, "team": team, "tags": have + added},
-        )
-    return new_assignee, new_team, added
 
 
 async def contact_since(session: AsyncSession, contact_id: UUID, at: datetime) -> None:

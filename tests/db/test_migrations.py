@@ -288,3 +288,18 @@ async def test_0056_adds_the_lease_token_and_goes_back_down(owner_engine: Any) -
     await asyncio.to_thread(command.upgrade, cfg, "head")
     async with owner_engine.connect() as conn:
         assert await conn.scalar(text(column)) == 1
+
+
+async def test_0057_adds_the_seen_table_and_goes_back_down(owner_engine: Any) -> None:
+    import asyncio
+
+    from sqlalchemy import text
+
+    table = "SELECT to_regclass('hd_import_seen') IS NOT NULL"
+    cfg = alembic_config()
+    await asyncio.to_thread(command.downgrade, cfg, "0056")
+    async with owner_engine.connect() as conn:
+        assert await conn.scalar(text(table)) is False
+    await asyncio.to_thread(command.upgrade, cfg, "head")
+    async with owner_engine.connect() as conn:
+        assert await conn.scalar(text(table)) is True
