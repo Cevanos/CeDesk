@@ -17,6 +17,7 @@ import type {
   PublicHelp,
   PublicType,
 } from "@/lib/api/types";
+import { newId } from "@/lib/new-id";
 
 /**
  * Customer-facing data hooks. Portal calls carry the customer's own cookie (set by the
@@ -262,11 +263,11 @@ export function visitorId(): string {
   try {
     const kept = localStorage.getItem(VISITOR_KEY);
     if (kept && kept.length >= 8 && kept.length <= 100) return kept;
-    const made = crypto.randomUUID();
+    const made = newId();
     localStorage.setItem(VISITOR_KEY, made);
     return made;
   } catch {
-    return crypto.randomUUID();
+    return newId();
   }
 }
 
