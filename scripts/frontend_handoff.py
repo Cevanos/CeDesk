@@ -279,6 +279,9 @@ SCREENS: list[Screen] = [
         "- Supervisors and Admins (`reports`). Team report, more metrics and help-article "
         "votes, for a period (`from`, `to`) and a team (`team_id`; not for articles). "
         "Each one downloads as CSV with `format=csv`.\n"
+        "- Team report, Tickets by team: each team row has `first_reply_sla_met_percent` "
+        '(null when nothing was measured: show "—") and `first_reply_sla_measured`, the '
+        "same rule as the summary's SLA met.\n"
         "- AI card (`GET /reports/ai`, only with `ai: true`): handover rate, resolved by "
         "the AI, CSAT of AI answers, from Cevanos for the whole workspace.",
         starts("/reports"),
@@ -346,6 +349,12 @@ SCREENS: list[Screen] = [
         "`signing_secret`). Credentials are never shown again, only "
         "`secret_hint`. `blocked` explains why an app can't be installed here.\n"
         "- API keys and webhook secrets are shown **once**, on creation: say so.\n"
+        "- Make API key needs a name **and** `access`, which the Admin picks: `read` (GET "
+        "only), `read_write` (also tickets, customers, notes, tags, tasks, time and "
+        "customer messages in) or `admin` (also teams, ticket types, saved replies, macros, "
+        "rules and the help center). Without `access` the answer is 422. The list shows "
+        "`access` and `hint`; a key with `revoked_at` set is revoked: show it as revoked "
+        "(by `revoked_by_name`), without the Revoke button.\n"
         "- Webhooks: events, delivery log, retry, test ping, new secret.\n"
         "- Cevanos: connect with a key, check, disconnect. Failed events list (outbox).",
         starts("/apps", "/api-keys", "/webhooks", "/cevanos/connection", "/outbox"),

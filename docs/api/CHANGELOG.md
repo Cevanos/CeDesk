@@ -3,6 +3,15 @@
 `openapi.json` next to this file is the API as served (`uv run cedesk openapi`). Every
 route is under `/api/v1`. Breaking changes only come in v2 (md 2B). Newest first.
 
+## 2026-11-17: Team report: first-reply SLA met per team
+
+Additive. In `GET /reports/team`, each row of `teams` gains `first_reply_sla_met_percent`
+(null when none of that team's tickets was measured) and `first_reply_sla_measured`. They
+follow the summary's rule: of the team's tickets created in the period (not imported, not
+merged) whose first-reply clock stopped or ran out, the share answered in time. A ticket
+still within its first-reply time counts nowhere yet. The CSV's Teams table gains the
+same two columns. No migration.
+
 ## 2026-11-17: Imports: the run report, new credentials, and what imports now keep
 
 All additive; no field was removed or renamed. Migrations 0057, 0058, 0059.
