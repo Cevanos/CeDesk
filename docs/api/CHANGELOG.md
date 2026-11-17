@@ -3,6 +3,12 @@
 `openapi.json` next to this file is the API as served (`uv run cedesk openapi`). Every
 route is under `/api/v1`. Breaking changes only come in v2 (md 2B). Newest first.
 
+## 2026-11-17: The ticket list shows each ticket's Jira issues (Phase 3, T10)
+
+- `GET /tickets` rows (and `GET /tickets/{id}`) carry `jira_keys`: the keys of the Jira
+  issues linked to the ticket (`["SUP-7", "SUP-12"]`), by key, or `[]`. It is read in the
+  same query as the row, so the list makes one call. A new field; nothing else changes.
+
 ## 2026-11-16: Imports: the dry run says when "to create" is only a guess (Phase 2, M4)
 
 - `POST /imports/connections/{id}/dry-run`: `will_create` is the source's total minus what

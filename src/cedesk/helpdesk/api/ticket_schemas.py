@@ -229,6 +229,10 @@ class TicketRowOut(BaseModel):
     parent_id: UUID | None
     merged_into_id: UUID | None
     child_count: int
+    jira_keys: list[str] = Field(
+        default_factory=list,
+        description="The Jira issues linked to the ticket (ABC-123), by key; [] for none.",
+    )
     sla: SlaOut | None = None
 
 
