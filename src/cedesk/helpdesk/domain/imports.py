@@ -643,6 +643,7 @@ LOSS_KEYS: Mapping[str, str] = {
     "file_placeholder": "Files the source answered with a placeholder: kept as a link.",
     "files_over_limit": "Files past 20 on one message: kept as a link.",
     "file_empty": "Empty (0-byte) files: noted, nothing to copy.",
+    "file_no_access": "Files of a source the importer can't download: kept as a link.",
     "csat_unavailable": "Satisfaction ratings the account isn't allowed to read.",
     "message_without_text": "Messages with neither text nor a file: left out.",
 }
