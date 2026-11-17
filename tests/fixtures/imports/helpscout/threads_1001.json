@@ -1,10 +1,12 @@
 {"_embedded": {"threads": [
  {"id": 14, "type": "note", "body": "<p>Checked the order.</p>", "createdAt": "2025-03-01T12:00:00Z", "createdBy": {"type": "user", "first": "Sam", "last": "Agent", "email": "sam@example.com"}},
- {"id": 13, "type": "message", "body": "<p>Hi Ann,</p><p>Refund sent &amp; done.<br>Thanks</p><style>p{}</style>", "createdAt": "2025-03-01T11:00:00Z", "createdBy": {"type": "user", "first": "Sam", "last": "Agent", "email": "sam@example.com"}},
+ {"id": 13, "type": "message", "body": "<p>Hi Ann,</p><p>Refund sent &amp; done.<br>Thanks</p><style>p{}</style>", "createdAt": "2025-03-01T11:00:00Z", "createdBy": {"type": "user", "first": "Sam", "last": "Agent", "email": "sam@example.com"},
+  "to": ["ann@example.org"], "cc": ["Boss@Example.org", "ops@example.org"], "bcc": ["audit@example.org"]},
  {"id": 12, "type": "lineitem", "body": null, "createdAt": "2025-03-01T10:30:00Z", "createdBy": {"type": "user", "email": "sam@example.com"}},
  {"id": 11, "type": "customer", "body": "<div>Where is my refund?</div>", "createdAt": "2025-03-01T10:00:00Z", "createdBy": {"type": "customer", "first": "Ann", "last": "Lee", "email": "ann@example.org"},
+  "to": [], "cc": [], "bcc": [],
   "_embedded": {"attachments": [
-   {"id": 501, "filename": "receipt.pdf", "mimeType": "application/pdf", "size": 11, "width": 0, "height": 0, "_links": {"data": {"href": "https://api.helpscout.net/v2/conversations/1001/threads/11/attachments/501/data"}}},
+   {"id": 501, "filename": "receipt.pdf", "mimeType": "application/pdf", "size": 11, "width": 0, "height": 0, "state": "valid", "_links": {"self": {"href": "https://api.helpscout.net/v2/conversations/1001/attachments/501"}, "data": {"href": "https://api.helpscout.net/v2/conversations/1001/attachments/501/data"}}},
    {"id": 502, "filename": "gone.png", "mimeType": "image/png", "size": 5, "_links": {}},
    {"filename": "no-id.txt", "mimeType": "text/plain", "size": 1}
   ]}},

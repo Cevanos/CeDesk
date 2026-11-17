@@ -1,0 +1,24 @@
+{
+ "type": "ticket.list",
+ "tickets": [
+  {
+   "type": "ticket",
+   "id": "601",
+   "ticket_id": "22",
+   "category": "Customer"
+  },
+  {
+   "type": "ticket",
+   "id": "602",
+   "ticket_id": "23",
+   "category": "Back-office"
+  }
+ ],
+ "total_count": 2,
+ "pages": {
+  "type": "pages",
+  "page": 1,
+  "per_page": 100,
+  "total_pages": 1
+ }
+}

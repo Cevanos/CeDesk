@@ -1,0 +1,141 @@
+{
+ "type": "ticket",
+ "id": "601",
+ "ticket_id": "22",
+ "category": "Customer",
+ "ticket_attributes": {
+  "_default_title_": "App crashes on login",
+  "_default_description_": "<p>The app crashes when I log in</p>",
+  "order_number": "A-77",
+  "files": []
+ },
+ "ticket_state": {
+  "type": "ticket_state",
+  "id": "7",
+  "category": "resolved",
+  "internal_label": "Resolved",
+  "external_label": "Resolved"
+ },
+ "ticket_type": {
+  "type": "ticket_type",
+  "id": "3",
+  "category": "Customer",
+  "name": "Bug report",
+  "description": "",
+  "icon": "",
+  "workspace_id": "abc123",
+  "archived": false
+ },
+ "contacts": {
+  "type": "contact.list",
+  "contacts": [
+   {
+    "type": "contact",
+    "id": "c1",
+    "external_id": null
+   }
+  ]
+ },
+ "admin_assignee_id": "9",
+ "team_assignee_id": "701",
+ "created_at": 1741100000,
+ "updated_at": 1741200000,
+ "open": false,
+ "snoozed_until": null,
+ "is_shared": true,
+ "channel": "email",
+ "linked_objects": {
+  "type": "list",
+  "total_count": 1,
+  "has_more": false,
+  "data": [
+   {
+    "type": "conversation",
+    "id": "501",
+    "category": null
+   }
+  ]
+ },
+ "ticket_parts": {
+  "type": "ticket_part.list",
+  "ticket_parts": [
+   {
+    "type": "ticket_part",
+    "id": "t1",
+    "part_type": "comment",
+    "body": "<p>We are on it</p>",
+    "previous_ticket_state": null,
+    "ticket_state": null,
+    "created_at": 1741100100,
+    "updated_at": 1741100100,
+    "assigned_to": null,
+    "author": {
+     "type": "admin",
+     "id": "9",
+     "name": "Sam Agent",
+     "email": "sam@example.com"
+    },
+    "attachments": [],
+    "redacted": false
+   },
+   {
+    "type": "ticket_part",
+    "id": "t2",
+    "part_type": "note",
+    "body": "<p>Escalated to eng</p>",
+    "previous_ticket_state": null,
+    "ticket_state": null,
+    "created_at": 1741100200,
+    "updated_at": 1741100200,
+    "assigned_to": null,
+    "author": {
+     "type": "admin",
+     "id": "10",
+     "name": "Kim Note",
+     "email": "kim@example.com"
+    },
+    "attachments": [],
+    "redacted": false
+   },
+   {
+    "type": "ticket_part",
+    "id": "t3",
+    "part_type": "comment",
+    "body": "<p>Thanks</p>",
+    "previous_ticket_state": null,
+    "ticket_state": null,
+    "created_at": 1741100300,
+    "updated_at": 1741100300,
+    "assigned_to": null,
+    "author": {
+     "type": "user",
+     "id": "c1",
+     "name": "Ann Customer",
+     "email": "ann@example.org"
+    },
+    "attachments": [],
+    "redacted": false
+   },
+   {
+    "type": "ticket_part",
+    "id": "t4",
+    "part_type": "ticket_state_updated_by_admin",
+    "body": null,
+    "previous_ticket_state": null,
+    "ticket_state": "resolved",
+    "created_at": 1741100400,
+    "updated_at": 1741100400,
+    "assigned_to": null,
+    "author": {
+     "type": "admin",
+     "id": "9",
+     "name": "Sam Agent",
+     "email": "sam@example.com"
+    },
+    "attachments": [],
+    "redacted": false
+   }
+  ],
+  "total_count": 4
+ }
+}

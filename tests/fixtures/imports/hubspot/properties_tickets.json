@@ -1,0 +1,104 @@
+{
+ "results": [
+  {
+   "name": "subject",
+   "label": "Ticket name",
+   "type": "string",
+   "fieldType": "text",
+   "groupName": "ticketinformation",
+   "options": [],
+   "hubspotDefined": true,
+   "archived": false,
+   "calculated": false,
+   "hidden": false,
+   "createdAt": "2019-08-06T02:43:09.183Z",
+   "updatedAt": "2024-01-10T10:00:00Z",
+   "formField": true,
+   "displayOrder": -1
+  },
+  {
+   "name": "hs_ticket_category",
+   "label": "Category",
+   "type": "enumeration",
+   "fieldType": "select",
+   "groupName": "ticketinformation",
+   "options": [
+    {
+     "label": "Product issue",
+     "value": "PRODUCT_ISSUE",
+     "displayOrder": 0,
+     "hidden": false
+    },
+    {
+     "label": "Billing issue",
+     "value": "BILLING_ISSUE",
+     "displayOrder": 1,
+     "hidden": false
+    }
+   ],
+   "hubspotDefined": true,
+   "archived": false,
+   "calculated": false,
+   "hidden": false,
+   "formField": true,
+   "displayOrder": -1
+  },
+  {
+   "name": "hs_time_to_close_sla_due_date",
+   "label": "Time to close SLA due date",
+   "type": "datetime",
+   "fieldType": "date",
+   "groupName": "ticketinformation",
+   "options": [],
+   "hubspotDefined": true,
+   "archived": false,
+   "calculated": true,
+   "hidden": false,
+   "formField": false,
+   "displayOrder": -1
+  },
+  {
+   "name": "order_number",
+   "label": "Order number",
+   "type": "string",
+   "fieldType": "text",
+   "groupName": "ticketinformation",
+   "options": [],
+   "archived": false,
+   "calculated": false,
+   "hidden": false,
+   "formField": true,
+   "displayOrder": -1,
+   "createdAt": "2023-05-02T09:12:00Z",
+   "updatedAt": "2023-05-02T09:12:00Z",
+   "createdUserId": "9586504"
+  },
+  {
+   "name": "order_channel",
+   "label": "Order channel",
+   "type": "enumeration",
+   "fieldType": "checkbox",
+   "groupName": "ticketinformation",
+   "options": [
+    {
+     "label": "Web shop",
+     "value": "web",
+     "displayOrder": 0,
+     "hidden": false
+    },
+    {
+     "label": "In store",
+     "value": "store",
+     "displayOrder": 1,
+     "hidden": false
+    }
+   ],
+   "hubspotDefined": false,
+   "archived": false,
+   "calculated": false,
+   "hidden": false,
+   "formField": true,
+   "displayOrder": -1
+  }
+ ]
+}

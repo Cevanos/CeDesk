@@ -112,6 +112,8 @@ def _ticket_out(view: TicketView) -> TicketOut:
         other_tickets=view.other_tickets,
         csat_average=t["contact_csat_average"],
         csat_count=t["contact_csat_count"],
+        phone=t.get("contact_phone"),
+        organization=t.get("contact_organization"),
     )
     return TicketOut.model_validate(
         {

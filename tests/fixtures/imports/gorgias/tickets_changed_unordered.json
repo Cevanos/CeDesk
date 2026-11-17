@@ -1,0 +1,11 @@
+{"data": [
+ {"id": 210, "subject": "Newest", "status": "open", "spam": false, "trashed_datetime": null, "channel": "email",
+  "created_datetime": "2025-06-01T10:00:00+00:00", "updated_datetime": "2025-06-10T10:00:00+00:00",
+  "customer": {"id": 1, "email": "ann@example.com", "name": "Ann Lee"}, "tags": []},
+ {"id": 211, "subject": "Older than since", "status": "closed", "spam": false, "trashed_datetime": null, "channel": "email",
+  "created_datetime": "2025-05-01T10:00:00+00:00", "updated_datetime": "2025-06-04T23:59:59+00:00",
+  "customer": {"id": 2}, "tags": []},
+ {"id": 212, "subject": "Updated after since, listed late", "status": "open", "spam": false, "trashed_datetime": null, "channel": "chat",
+  "created_datetime": "2025-05-20T10:00:00+00:00", "updated_datetime": "2025-06-06T08:00:00+00:00",
+  "customer": {"id": 2}, "tags": []}
+], "meta": {"next_cursor": "t9", "prev_cursor": null}}

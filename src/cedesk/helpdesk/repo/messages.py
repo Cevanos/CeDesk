@@ -72,7 +72,7 @@ async def get_message(session: AsyncSession, message_id: UUID) -> Row | None:
         text(
             # Fixed strings only: MESSAGE_FILES is a constant.
             "SELECT m.id, m.kind, m.body, m.author_member_id, m.author_name, m.created_at, "  # noqa: S608
-            "m.email, m.channel_message_id, "
+            "m.email, m.recipients, m.channel_message_id, "
             "(SELECT o.status FROM hd_email_out o WHERE o.message_id = m.id "
             " ORDER BY o.created_at DESC LIMIT 1) AS delivery, "
             "coalesce((SELECT array_agg(x.member_id ORDER BY x.created_at, x.member_id) "

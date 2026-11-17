@@ -1,0 +1,15 @@
+{
+ "id": "9003",
+ "name": "invoice",
+ "extension": "pdf",
+ "size": 4096,
+ "type": "DOCUMENT",
+ "access": "PUBLIC_NOT_INDEXABLE",
+ "url": "https://1234567.fs1.hubspotusercontent-na1.net/hubfs/1234567/invoice.pdf",
+ "createdAt": "2025-03-01T11:00:00Z",
+ "updatedAt": "2025-03-01T11:00:00Z",
+ "archived": false,
+ "path": "/invoice.pdf",
+ "parentFolderId": "180000000",
+ "isUsableInContent": true
+}

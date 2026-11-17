@@ -1,0 +1,4 @@
+{"data": [
+ {"id": 31, "ticket_id": 300, "channel": "email", "via": "email", "public": true, "from_agent": false, "sender": {"id": 1, "email": "ann@example.com", "name": "Ann Lee"}, "body_text": "No date on me", "created_datetime": null, "sent_datetime": null},
+ {"id": 32, "ticket_id": 300, "channel": "email", "via": "helpdesk", "public": true, "from_agent": true, "sender": {"id": 5, "email": "agent@acme.com", "name": "Agent A"}, "body_text": "Sent only", "created_datetime": null, "sent_datetime": "2025-04-02T09:00:00+00:00"}
+], "meta": {"next_cursor": null, "prev_cursor": null}}

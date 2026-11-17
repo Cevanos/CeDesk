@@ -10,23 +10,33 @@
    "channel": "Email",
    "departmentId": "d1",
    "contactId": "c1",
+   "email": "priya@example.org",
    "contact": {
     "id": "c1",
     "email": "priya@example.org",
     "firstName": "Priya",
-    "lastName": "Sharma"
+    "lastName": "Sharma",
+    "phone": "+91 80 4000 1000",
+    "mobile": null,
+    "account": {
+     "id": "acc1",
+     "accountName": "Sharma Traders",
+     "website": null
+    }
    },
+   "assigneeId": "a1",
    "assignee": {
     "id": "a1",
-    "email": "neha@acme.com"
-   },
-   "customFields": {
-    "Order": "1042",
-    "Empty": null
+    "email": "neha@acme.com",
+    "firstName": "Neha",
+    "lastName": ""
    },
    "createdTime": "2025-03-01T10:00:00.000Z",
-   "modifiedTime": "2025-03-09T09:00:00.000Z",
-   "closedTime": null
+   "closedTime": null,
+   "dueDate": "2025-03-03T10:00:00.000Z",
+   "threadCount": "3",
+   "commentCount": "2",
+   "webUrl": "https://desk.zoho.in/support/acme/ShowHomePage.do#Cases/dv/z1"
   },
   {
    "id": "z2",
@@ -38,9 +48,13 @@
    "channel": "Web",
    "departmentId": null,
    "contactId": "c9",
+   "email": null,
    "createdTime": "2025-02-01T08:00:00.000Z",
-   "modifiedTime": "2025-02-01T09:00:00.000Z",
-   "closedTime": "2025-02-01T09:00:00.000Z"
+   "closedTime": "2025-02-01T09:00:00.000Z",
+   "dueDate": null,
+   "threadCount": "0",
+   "commentCount": "0",
+   "webUrl": "https://desk.zoho.in/support/acme/ShowHomePage.do#Cases/dv/z2"
   }
  ]
 }

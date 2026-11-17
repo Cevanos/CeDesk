@@ -3,6 +3,14 @@
  "name": "label",
  "extension": "pdf",
  "size": 2048,
- "type": "application/pdf",
- "access": "PRIVATE_NOT_INDEXABLE"
+ "type": "DOCUMENT",
+ "access": "PRIVATE",
+ "url": "https://1234567.fs1.hubspotusercontent-na1.net/hubfs/1234567/label.pdf",
+ "defaultHostingUrl": "https://1234567.fs1.hubspotusercontent-na1.net/hubfs/1234567/label.pdf",
+ "createdAt": "2025-03-01T11:00:00Z",
+ "updatedAt": "2025-03-01T11:00:00Z",
+ "archived": false,
+ "path": "/conversations/label.pdf",
+ "parentFolderId": "180000000",
+ "isUsableInContent": false
 }

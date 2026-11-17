@@ -36,6 +36,8 @@ def test_a_source_that_is_not_offered_is_refused(source: str) -> None:
         ("intercom", {}, {}, "token"),
         ("zendesk", {"subdomain": "acme"}, {"email": "a@b.co"}, "token"),
         ("zendesk", {"subdomain": "acme"}, {"token": "t"}, "email"),
+        ("zendesk", {"subdomain": "acme"}, {}, "client_id, client_secret"),
+        ("zendesk", {"subdomain": "acme"}, {"client_id": "c"}, "client_secret"),
         ("freshdesk", {"domain": "acme"}, {}, "api_key"),
         ("gorgias", {"domain": "acme"}, {"api_key": "k"}, "email"),
         ("helpscout", {}, {"app_id": "i"}, "app_secret"),
@@ -64,6 +66,23 @@ def test_an_account_source_needs_its_account_name(
         with pytest.raises(SourceError) as caught:
             build(source, settings, creds)
         assert caught.value.permanent and setting in str(caught.value)
+
+
+@pytest.mark.parametrize(
+    "creds",
+    [
+        {"client_id": "c", "client_secret": "s"},  # OAuth client credentials (C0)
+        {"access_token": "a"},  # an OAuth access token made elsewhere
+        {"email": "a@b.co", "token": "t"},  # an API token, until 30 Apr 2027
+    ],
+)
+def test_zendesk_takes_any_one_complete_sign_in(creds: dict[str, str]) -> None:
+    assert build("zendesk", {"subdomain": "acme"}, creds).source == "zendesk"
+
+
+def test_zendesk_help_text_says_how_to_make_an_oauth_client() -> None:
+    where = connectors.WHERE["zendesk"]
+    assert "OAuth clients" in where and "Confidential" in where and "read" in where
 
 
 def test_credentials_that_cannot_be_read_are_a_permanent_error() -> None:

@@ -614,12 +614,24 @@ async def test_a_repeated_key_returns_the_first_connection_and_run(
     await end_runs(sm, w["ws"])
 
 
-async def test_hubspot_and_zoho_are_not_offered_yet(im: AsyncClient, app_sessionmaker: Sm) -> None:
+async def test_a_connection_missing_what_its_source_needs_is_refused_by_name(
+    im: AsyncClient, app_sessionmaker: Sm
+) -> None:
+    """P1-20: this was `test_hubspot_and_zoho_are_not_offered_yet`; both are offered now (the
+    test only passed because the keys were wrong). What it checks: a missing key or setting
+    is a 422 that names it, and the source is never called."""
     w = await desk(im, app_sessionmaker)
-    for source in ("hubspot", "zoho"):
+    keys = {"client_id": "i", "client_secret": "s", "refresh_token": "r"}
+    for credentials, missing in (({"token": "x"}, "client_id"), (keys, "region")):
         r = await im.post(
             f"{I}/connections",
             headers=w["admin"],
-            json={"source": source, "settings": {}, "credentials": {"token": "x"}},
+            json={"source": "zoho", "settings": {}, "credentials": credentials},
         )
-        assert r.status_code == 422
+        assert r.status_code == 422 and missing in r.text, r.text
+    r = await im.post(
+        f"{I}/connections",
+        headers=w["admin"],
+        json={"source": "hubspot", "settings": {}, "credentials": {}},
+    )
+    assert r.status_code == 422

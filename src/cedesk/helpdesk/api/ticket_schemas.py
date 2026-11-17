@@ -163,6 +163,10 @@ class ContactCard(ContactOut):
         default=None, description="Average of this customer's ratings, 1-5; null: none yet."
     )
     csat_count: int = 0
+    phone: str | None = Field(default=None, description="From an import, when the source had it.")
+    organization: str | None = Field(
+        default=None, description="The customer's company in the old help desk (imports)."
+    )
 
 
 class CsatOut(BaseModel):
@@ -258,6 +262,11 @@ class MessageOut(BaseModel):
         default=None, description="Email messages: from, to, cc, message_id."
     )
     channel_message_id: str | None = None
+    recipients: dict[str, list[str]] | None = Field(
+        default=None,
+        description="Imported messages: who the old help desk says it was addressed to "
+        "(to, cc, bcc). Never used for replies.",
+    )
     attachments: list[MessageFileOut] = Field(
         default=[], description="Files sent with it (by the agent, or in the customer's email)."
     )

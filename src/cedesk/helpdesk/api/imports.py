@@ -119,7 +119,8 @@ class RunOut(BaseModel):
     kinds: list[str]
     counts: dict[str, Any] = Field(
         description="Per kind: created and skipped (and, for tickets, unknown_agent_messages); "
-        "rows_left_out for a CSV."
+        "failed: records left out because the source could not give them (listed by "
+        "GET /imports/runs/{id}/failures); rows_left_out for a CSV."
     )
     sync_on: bool
     started_at: datetime
@@ -128,6 +129,75 @@ class RunOut(BaseModel):
     last_sync_at: datetime | None = Field(
         default=None, description="When the source was last asked for changes (sync on)."
     )
+    retry_attempts: int = Field(
+        default=0,
+        description="Failed tries of the page the run is on (a temporary error at the source). "
+        "Back to 0 when a page is saved.",
+    )
+    outcome: Literal["in_progress", "complete", "complete_with_exceptions", "failed"] = Field(
+        default="in_progress",
+        description="complete: nothing was left out, cut, linked or noted. "
+        "complete_with_exceptions: it ended, but see `report` (open failures, losses, a "
+        "difference against the source's own counts). failed: it stopped; see last_error "
+        "(a failed run can be resumed).",
+    )
+    report: "RunReportOut" = Field(default_factory=lambda: RunReportOut())
+
+
+class LossOut(BaseModel):
+    key: str = Field(description="What happened, e.g. files_linked, history_capped.")
+    count: int
+    meaning: str = Field(description="The same in words, for the Admin.")
+
+
+class ReconciledOut(BaseModel):
+    in_source: int | None = Field(
+        description="What the source counted at the start (null: the source can't say)."
+    )
+    accounted_for: int = Field(description="Created + already here + noted as failed.")
+    difference: int | None = Field(description="in_source - accounted_for when positive.")
+
+
+class RunReportOut(BaseModel):
+    open_failures: int = Field(
+        default=0, description="Records noted and not resolved: GET /imports/runs/{id}/failures."
+    )
+    losses: list[LossOut] = Field(default_factory=list)
+    warnings: list[str] = Field(
+        default_factory=list,
+        description="What the source can't give: said before the run, or found during it "
+        "(a part of the source refused mid-run). Each line once.",
+    )
+    reconciliation: dict[str, ReconciledOut] = Field(default_factory=dict)
+
+
+class FailureOut(BaseModel):
+    id: UUID
+    kind: Literal["contact", "ticket", "article", "reply"]
+    external_id: str = Field(description="The record's id in the source.")
+    category: Literal["not_found", "temporary", "incomplete"] = Field(
+        description="not_found: the source no longer has it (deleted after it was listed). "
+        "temporary: it kept failing after every retry, so it was set aside. incomplete: it "
+        "was imported, but part of its history could not be read (for example a Zendesk "
+        "ticket whose comments answered 404: only its description came)."
+    )
+    attempts: int = Field(description="How many tries it got.")
+    last_error: str = Field(description="What the source answered, in words.")
+    first_failed_at: datetime
+    last_failed_at: datetime
+    status: Literal["open", "resolved", "dismissed"] = Field(
+        description="resolved: read in full later (an import run again, or a sync look). "
+        "dismissed: an Admin accepted what is missing."
+    )
+    resolved_at: datetime | None
+    resolved_by_id: UUID | None = Field(
+        default=None, description="The Admin who dismissed it (null otherwise, or if removed)."
+    )
+
+
+class FailuresOut(BaseModel):
+    failures: list[FailureOut]
+    next_cursor: str | None
 
 
 class HistoryRunOut(BaseModel):
@@ -335,6 +405,38 @@ async def start_run(
     return _run_out(view)
 
 
+class CredentialsIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    credentials: dict[str, SecretStr] = Field(
+        description="New credentials for the same account (same keys as when connecting)."
+    )
+
+
+@router.post(
+    "/imports/connections/{connection_id}/credentials",
+    response_model=ConnectionOut,
+    summary="Give an open connection new credentials (Admin)",
+    description="For an import that stopped because the source refused the key (a revoked "
+    "key, an expired token): the new credentials are checked with the source and must reach "
+    "the same account, then replace the old ones; resume the failed run afterwards (POST "
+    "/imports/runs/{id}/resume). 422 when the source refuses them, 409 when they are for "
+    "another account or the connection was closed, 503 when the source can't be reached.",
+)
+async def update_credentials(
+    connection_id: UUID,
+    body: CredentialsIn,
+    request: Request,
+    caller: CallerDep,
+    sm: SessionmakerDep,
+) -> ConnectionOut:
+    credentials = {k: v.get_secret_value() for k, v in body.credentials.items()}
+    view = await framework.update_credentials(
+        sm, _importers(request), caller, connection_id, credentials=credentials
+    )
+    return ConnectionOut(**view.__dict__)
+
+
 @router.post(
     "/imports/connections/{connection_id}/close",
     status_code=status.HTTP_204_NO_CONTENT,
@@ -350,6 +452,67 @@ async def close_connection(
 @router.get("/imports/runs/{run_id}", response_model=RunOut, summary="A run's progress (Admin)")
 async def get_run(run_id: UUID, caller: CallerDep, sm: SessionmakerDep) -> RunOut:
     return _run_out(await framework.get_run(sm, caller, run_id))
+
+
+@router.post(
+    "/imports/runs/{run_id}/resume",
+    response_model=RunOut,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Resume a failed import where it stopped (Admin)",
+    description="The same run is queued again and the worker carries on from its last saved "
+    "page: the page that failed is read again, the ones before it are not, and nothing is "
+    "made twice. Counts, options, team mapping, the sync setting and the run's failures are "
+    "kept; `retry_attempts` starts from 0. 409 when the run isn't failed (in progress, "
+    "finished or syncing), when its connection was closed or its credentials can't be read "
+    "(connect again and start a new import), or when another run of the connection is in "
+    "progress or syncing. 404 for an unknown run. Two resumes at once queue it once. Accepts "
+    "`Idempotency-Key`: a repeat returns the run the first one queued.",
+)
+async def resume_run(
+    run_id: UUID,
+    request: Request,
+    caller: CallerDep,
+    sm: SessionmakerDep,
+    response: Response,
+    idempotency_key: IdempotencyKey = None,
+) -> RunOut:
+    idem = idempotency(idempotency_key, f"POST /imports/runs/{run_id}/resume", b"")
+    view = await framework.resume_run(sm, _importers(request), caller, run_id, idem=idem)
+    mark_replayed(idem, response)
+    return _run_out(view)
+
+
+@router.get(
+    "/imports/runs/{run_id}/failures",
+    response_model=FailuresOut,
+    summary="Records a run could not read and left out (Admin)",
+    description="Last failed first, cursor pages. A ticket deleted in the source after it was "
+    "listed, or one that kept failing after every retry, is left out so the rest of the import "
+    "goes on; one imported without all its history is listed as incomplete. They stay here "
+    "after the run ends. Import again (or let a sync look run) to bring what comes back: the "
+    "row shows resolved only once the record is read in full. 404 for an unknown run.",
+)
+async def run_failures(
+    run_id: UUID, caller: CallerDep, sm: SessionmakerDep, cursor: Cursor = None, limit: Limit = 50
+) -> FailuresOut:
+    page = await framework.run_failures(sm, caller, run_id, cursor=cursor, limit=limit)
+    return FailuresOut(
+        failures=[FailureOut(**f.__dict__) for f in page.failures], next_cursor=page.next_cursor
+    )
+
+
+@router.post(
+    "/imports/runs/{run_id}/failures/{failure_id}/dismiss",
+    response_model=FailureOut,
+    summary="Accept a record's loss: the failure ends as dismissed (Admin)",
+    description="For an open failure only (409 otherwise; 404 for an unknown one). It records "
+    "who decided. A later read of the record does not reopen or resolve it.",
+)
+async def dismiss_failure(
+    run_id: UUID, failure_id: UUID, caller: CallerDep, sm: SessionmakerDep
+) -> FailureOut:
+    view = await framework.dismiss_failure(sm, caller, run_id, failure_id)
+    return FailureOut(**view.__dict__)
 
 
 @router.post(
@@ -408,4 +571,7 @@ def _run_out(view: framework.RunView) -> RunOut:
         finished_at=view.finished_at,
         last_error=view.last_error,
         last_sync_at=view.last_sync_at,
+        retry_attempts=view.retry_attempts,
+        outcome=view.outcome,
+        report=RunReportOut.model_validate(view.report),
     )

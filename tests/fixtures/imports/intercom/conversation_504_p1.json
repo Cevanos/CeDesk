@@ -1,0 +1,95 @@
+{
+ "type": "conversation",
+ "id": "504",
+ "created_at": 1740900000,
+ "updated_at": 1741000000,
+ "state": "open",
+ "priority": "none",
+ "admin_assignee_id": null,
+ "team_assignee_id": null,
+ "title": "Long thread",
+ "source": {
+  "type": "conversation",
+  "id": "s4",
+  "delivered_as": "customer_initiated",
+  "subject": "",
+  "body": "<p>Opening</p>",
+  "author": {
+   "type": "user",
+   "id": "c1",
+   "name": "Ann Customer",
+   "email": "ann@example.org"
+  },
+  "attachments": []
+ },
+ "contacts": {
+  "type": "contact.list",
+  "contacts": [
+   {
+    "type": "contact",
+    "id": "c1"
+   }
+  ]
+ },
+ "tags": {
+  "type": "tag.list",
+  "tags": []
+ },
+ "custom_attributes": {},
+ "conversation_rating": null,
+ "statistics": {
+  "type": "conversation_statistics"
+ },
+ "conversation_parts": {
+  "type": "conversation_part.list",
+  "conversation_parts": [
+   {
+    "type": "conversation_part",
+    "id": "q1",
+    "part_type": "comment",
+    "body": "<p>oldest reply</p>",
+    "created_at": 1740900100,
+    "updated_at": 1740900100,
+    "notified_at": 1740900100,
+    "assigned_to": null,
+    "author": {
+     "type": "admin",
+     "id": "9",
+     "name": "Sam Agent",
+     "email": "sam@example.com"
+    },
+    "attachments": [],
+    "external_id": null,
+    "redacted": false
+   },
+   {
+    "type": "conversation_part",
+    "id": "q2",
+    "part_type": "comment",
+    "body": "<p>second</p>",
+    "created_at": 1740900200,
+    "updated_at": 1740900200,
+    "notified_at": 1740900200,
+    "assigned_to": null,
+    "author": {
+     "type": "user",
+     "id": "c1",
+     "name": "Ann Customer",
+     "email": "ann@example.org"
+    },
+    "attachments": [],
+    "external_id": null,
+    "redacted": false
+   }
+  ],
+  "total_count": 2,
+  "pages": {
+   "type": "pages",
+   "page": 1,
+   "next": 2,
+   "prev": null,
+   "per_page": 2,
+   "total_pages": 2
+  }
+ }
+}

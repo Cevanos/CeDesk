@@ -255,15 +255,24 @@ async def test_a_sync_brings_the_owner_team_and_new_tags(
         "Updated from Zendesk: assigned to Asha; team g2; tags added: refund, vip"
     ]
 
-    # The source no longer names an owner, or names one not in CeDesk: Asha stays. Tags the
-    # source dropped stay too. Nothing changed, so nothing is counted.
-    src.changed = [Fake.ticket(0, assignee_email="nobody@example.org", tags=[])]
+    # The same values again: nothing changed in the source, nothing is touched or counted.
     await sql(sm, w["ws"], "UPDATE hd_import_run SET next_run_at = now()")
     await work(im, sm)
-    look = (await run_state(im, w, started["id"]))["counts"]["sync"]
-    assert look["updated"] == 1
+    assert (await run_state(im, w, started["id"]))["counts"]["sync"]["updated"] == 1
+
+    # The source reassigned it to someone not in CeDesk and dropped its two tags (P1-10:
+    # before, Asha and the dropped tags stayed for good). The tag added in CeDesk stays.
+    src.changed = [Fake.ticket(0, assignee_email="nobody@example.org", group_id="g2", tags=[])]
+    await sql(sm, w["ws"], "UPDATE hd_import_run SET next_run_at = now()")
+    await work(im, sm)
+    assert (await run_state(im, w, started["id"]))["counts"]["sync"]["updated"] == 2
     row = await sql(sm, w["ws"], "SELECT assignee_id, tags FROM hd_ticket")
-    assert row[0]["assignee_id"] == w["asha_id"] and "refund" in row[0]["tags"]
+    assert row[0]["assignee_id"] is None and row[0]["tags"] == ["imported-zendesk", "local"]
+    lines = await sql(
+        sm, w["ws"],
+        "SELECT body FROM hd_message WHERE body LIKE 'Updated from%' ORDER BY created_at",
+    )  # fmt: skip
+    assert lines[-1]["body"] == "Updated from Zendesk: unassigned; tags removed: refund, vip"
     await stop_all(sm, w["ws"])
 
 

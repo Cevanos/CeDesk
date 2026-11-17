@@ -3,6 +3,125 @@
 `openapi.json` next to this file is the API as served (`uv run cedesk openapi`). Every
 route is under `/api/v1`. Breaking changes only come in v2 (md 2B). Newest first.
 
+## 2026-11-17: Imports: the run report, new credentials, and what imports now keep
+
+All additive; no field was removed or renamed. Migrations 0057, 0058, 0059.
+
+**Run report (P0-3, P0-6).** `GET /imports/runs/{id}` (and every run in lists) gains:
+
+- `outcome`: `in_progress`, `complete` (nothing left out, cut, linked or noted),
+  `complete_with_exceptions` (it ended, but the report lists something) or `failed`.
+  A run never says `complete` over incomplete data.
+- `report`: `open_failures` (see `GET /imports/runs/{id}/failures`); `losses`, a list of
+  `{key, count, meaning}` (for example `files_linked`, `file_gone`, `file_placeholder`,
+  `history_capped`, `body_as_file`, `tags_over_limit`, `date_replaced`, `archive_capped`,
+  `article_cut`); `warnings`, what the source can't give, said before the run **or found
+  during it** (each line once); `reconciliation` per kind: `{in_source, accounted_for,
+  difference}`.
+
+**New `POST /imports/connections/{id}/credentials`** (Admin, 200, returns the connection).
+For an import that stopped because the source refused the key (a revoked key, an expired
+token): body `{"credentials": {...}}`, the same keys as when connecting. The new credentials
+are checked with the source and must reach **the same account** (409 "another account"
+otherwise); they replace the old ones, then `POST /imports/runs/{id}/resume` carries on.
+422 when the source refuses them, 409 when the connection was closed or is a CSV file, 503
+when the source can't be reached. The history records `credentials_updated` and the audit
+log an entry; neither holds the credentials.
+
+**Resume** (`POST /imports/runs/{id}/resume`) of a CSV run is now refused (409 "no longer
+stored") when storage no longer has the file, instead of queuing a run that fails at once.
+
+**Sync (P1-10).** A sync look no longer undoes a CeDesk edit: status, priority, owner, team,
+tags, subject and fields change only where the source changed them since the last look;
+the ticket's system line says what changed ("Updated from Zendesk: ..."), and "(replacing a
+CeDesk change)" when it overwrote an edit made in CeDesk. A tag removed in the source is
+removed in CeDesk; an owner removed in the source is unassigned.
+
+**Tickets and contacts.**
+
+- `GET /tickets/{id}` `contact` gains `phone` and `organization` (from an import, when the
+  source had them; null otherwise). An import fills them only where blank; erasure clears
+  them.
+- Messages gain `recipients` (`{to, cc, bcc}`, imported messages only): who the old help
+  desk says the message went to. Never used for replies (`email` is unchanged).
+- Imported tickets carry more `fields`, the source's own data CeDesk has no column for:
+  `source_type`, `source_url`, `more_tags` (tags past 20), `source_cc`,
+  `source_followers`, `source_links` (e.g. `related 123; parent 456`), `source_sla_due_at`,
+  `source_sla_breached`. A link to a ticket already imported is also a CeDesk link.
+- Imported articles keep the source's published and updated dates; a translation is its own
+  article titled with its locale, e.g. "Refunds (fr)".
+- **Portal fix (imported tickets only):** on an imported ticket the customer now sees only
+  the fields of the ticket's type. Before, `GET /portal/tickets/{id}` and the list showed
+  every field an import brought (the old desk's custom fields, `source_url`, `source_cc`,
+  ...). Tickets not imported show their fields exactly as before.
+- **Erasure:** erasing a contact now also removes their address from `source_cc` and
+  `source_followers` on other customers' imported tickets and from imported messages'
+  `recipients` (the other addresses stay; the erase response counts
+  `imported_addresses` and `imported_recipients`). The privacy export includes `phone` and
+  `organization`.
+
+**Connect (`POST /imports/connections`).**
+
+| source | change |
+|---|---|
+| `zendesk` | credentials: `client_id` + `client_secret` (an OAuth client, recommended), or `access_token`, or `email` + `token` (API token; Zendesk retires these 30 Apr 2027) |
+| `freshdesk` | archived tickets are now imported **by default**; `include_archived`: `"false"` turns it off |
+| `zoho` | `include_archived`: `"true"` imports archived tickets (needs the `Desk.search.READ` scope; at most 5,000 per department) |
+| `hubspot` | `token`: a private app's access token or a service key; optional scopes add calls, meetings and inbox threads |
+
+`credentials_hint` comes from `client_id` or `access_token` when those are used, never from
+a secret.
+
+## 2026-11-17: Imports: resume a failed import where it stopped
+
+- New `POST /imports/runs/{run_id}/resume` (Admin, 202, returns the run): queues a `failed`
+  run again; the worker carries on from its last saved page (the failed page is read again,
+  the ones before it are not). The same run keeps its id, counts, options, team mapping, sync
+  setting, start time and failures; `retry_attempts` starts from 0 and `last_error` is
+  cleared. 409 when the run isn't failed (in progress, finished or syncing), when its
+  connection was closed or its stored credentials can't be read, or when another run of the
+  connection is in progress or syncing; nothing changes then. 404 for an unknown run (or one
+  in another workspace). Two resumes at once queue it once; accepts `Idempotency-Key`.
+- The import history records a `resumed` event (who, and where it carries on from: kinds
+  done, whether a page was saved, what was made so far, why it had stopped; never the
+  source's raw cursor). The audit log has a `resumed` entry under imports.
+- Starting a run, resuming one and closing a connection now take turns on the connection,
+  so they can't interleave. Existing responses are unchanged.
+- Fix: `POST /imports/runs/{id}/sync-stop` no longer clears the run's lease. Stopping the
+  sync while the first import (or a sync look) was running let a second worker take the same
+  run. And a stop at the very moment the import ended could leave the run finished, not
+  syncing, but with its credentials kept; the stop now waits for the worker and deletes them.
+  Responses are unchanged (200 with the run; 409 when the run isn't syncing).
+- Workers: each run now carries a lease token (migration 0056). A worker that stalled
+  past its lease, after another worker took the run, can no longer save a page, move the
+  cursor, pause, retry, fail or finish the run; its page is rolled back and its copied files
+  deleted. No API change.
+
+## 2026-11-17: Imports: one record that can't be read never stops a run; retries end (P0-2)
+
+- New `GET /imports/runs/{run_id}/failures` (Admin, cursor pages, last failed first): the
+  records a run left out because the source could not give them, each with `kind`,
+  `external_id`, `category` (`not_found`: deleted in the source after it was listed;
+  `temporary`: it kept failing after every retry; `incomplete`: imported without all its
+  history), `attempts`, `last_error` (our words, never a credential or customer text),
+  `first_failed_at`, `last_failed_at`, `status` (`open`; `resolved`: read in full later;
+  `dismissed`: an Admin accepted the loss), `resolved_at` and `resolved_by_id`. They stay after
+  the run ends. A failure is resolved only when the record is read in full again, never just
+  because the ticket exists.
+- New `POST /imports/runs/{run_id}/failures/{failure_id}/dismiss` (Admin): ends an open
+  failure as `dismissed`, recording who decided. 409 when it is not open; 404 when unknown.
+- Run objects (`GET /imports/runs/{id}` and the other routes that return a run) carry
+  `retry_attempts`: failed tries of the page the run is on. `counts.<kind>.failed` counts the
+  records left out and `counts.<kind>.incomplete` those imported without all their history.
+  New fields; nothing else changes.
+- Behaviour: a ticket deleted after it was listed no longer fails the import (Freshdesk, Help
+  Scout, Zoho, Gorgias; an Intercom conversation is now noted instead of dropped silently). A
+  Zendesk ticket whose comments answer 404 is still imported with its description, but is now
+  listed as `incomplete` instead of passing as complete (likewise a Zoho thread gone mid-read).
+  A temporary error is retried with backoff for a bounded number of tries (settings
+  `import_retry_*`); after that the failing record is set aside, or, if the page itself can't
+  be read, the run fails with a message that says so. Refused credentials still stop a run.
+
 ## 2026-11-17: The ticket list shows each ticket's Jira issues (Phase 3, T10)
 
 - `GET /tickets` rows (and `GET /tickets/{id}`) carry `jira_keys`: the keys of the Jira

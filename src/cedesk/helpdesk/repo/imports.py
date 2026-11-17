@@ -9,13 +9,18 @@ from uuid import UUID
 from sqlalchemy import RowMapping, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from cedesk.helpdesk.domain.imports import Failure, LeaseLost
+
 Row = RowMapping
 
 _RUN = (
     "SELECT id, workspace_id, connection_id, source, state, options, cursor, counts, sync_on, "
-    "last_sync_at, next_run_at, lease_until, last_error, started_by, started_at, finished_at "
-    "FROM hd_import_run"
-)
+    "last_sync_at, next_run_at, lease_until, last_error, started_by, started_at, finished_at, "
+    "retry_attempts, lease_token, (SELECT count(*) FROM hd_import_failure f "
+    "WHERE f.run_id = hd_import_run.id AND f.status = 'open') AS open_failures FROM hd_import_run"
+)  # lease_token: for the worker's own checks; never in a response (`_run_view` picks fields)
+_RUN_ONE = _RUN + " WHERE id = :id"
+_RUN_LOCKED = _RUN_ONE + " FOR UPDATE"
 
 
 # Connections
@@ -47,14 +52,20 @@ async def insert_connection(
     )  # fmt: skip
 
 
-async def connection(session: AsyncSession, connection_id: UUID) -> Row | None:
+_CONNECTION = (
+    "SELECT id, workspace_id, source, label, settings, credentials_sealed, credentials_hint, "
+    "state, created_by, created_at FROM hd_import_connection WHERE id = :id"
+)
+_CONNECTION_LOCKED = _CONNECTION + " FOR UPDATE"
+
+
+async def connection(
+    session: AsyncSession, connection_id: UUID, *, lock: bool = False
+) -> Row | None:
+    """`lock`: held until the transaction ends, so starting, resuming and closing runs of one
+    connection happen one after the other."""
     result = await session.execute(
-        text(
-            "SELECT id, workspace_id, source, label, settings, credentials_sealed, "
-            "credentials_hint, state, created_by, created_at FROM hd_import_connection "
-            "WHERE id = :id"
-        ),
-        {"id": connection_id},
+        text(_CONNECTION_LOCKED if lock else _CONNECTION), {"id": connection_id}
     )
     return result.mappings().first()
 
@@ -69,6 +80,22 @@ async def close_connection(session: AsyncSession, connection_id: UUID) -> bool:
             "WHERE id = :id AND state <> 'closed' RETURNING id"
         ),
         {"id": connection_id},
+    )
+    return result.first() is not None
+
+
+async def replace_credentials(
+    session: AsyncSession, connection_id: UUID, *, sealed: bytes, hint: str | None
+) -> bool:
+    """New sealed credentials for a connection that is still open. False when it was closed
+    (its credentials were deleted) meanwhile."""
+    result = await session.execute(
+        text(
+            "UPDATE hd_import_connection SET credentials_sealed = :sealed, "
+            "credentials_hint = :hint, updated_at = now() "
+            "WHERE id = :id AND state = 'connected' RETURNING id"
+        ),
+        {"id": connection_id, "sealed": sealed, "hint": hint},
     )
     return result.first() is not None
 
@@ -100,8 +127,10 @@ async def insert_run(
     return UUID(str(result.scalar_one()))
 
 
-async def run(session: AsyncSession, run_id: UUID) -> Row | None:
-    result = await session.execute(text(_RUN + " WHERE id = :id"), {"id": run_id})
+async def run(session: AsyncSession, run_id: UUID, *, lock: bool = False) -> Row | None:
+    """`lock`: held until the transaction ends (the worker ending an import, so a sync stop
+    waits for it and then sees the run as it left it)."""
+    result = await session.execute(text(_RUN_LOCKED if lock else _RUN_ONE), {"id": run_id})
     return result.mappings().first()
 
 
@@ -118,13 +147,14 @@ async def claim_due(session: AsyncSession, now: datetime, lease_until: datetime)
     LOCKED), so two workers never take the same run."""
     result = await session.execute(
         text(
-            "UPDATE hd_import_run SET state = 'running', lease_until = :lease "
+            "UPDATE hd_import_run SET state = 'running', lease_until = :lease, "
+            "lease_token = gen_random_uuid() "
             "WHERE id = (SELECT id FROM hd_import_run WHERE state IN ('queued', 'running') "
             "AND next_run_at <= :now AND (lease_until IS NULL OR lease_until <= :now) "
             "ORDER BY next_run_at LIMIT 1 FOR UPDATE SKIP LOCKED) "
             "RETURNING id, workspace_id, connection_id, source, state, options, cursor, counts, "
             "sync_on, last_sync_at, next_run_at, lease_until, last_error, started_by, "
-            "started_at, finished_at"
+            "started_at, finished_at, retry_attempts, lease_token"
         ),
         {"now": now, "lease": lease_until},
     )
@@ -145,17 +175,41 @@ async def claim_sync(session: AsyncSession, now: datetime, lease_until: datetime
     locking as `claim_due`."""
     result = await session.execute(
         text(
-            "UPDATE hd_import_run SET lease_until = :lease "
+            "UPDATE hd_import_run SET lease_until = :lease, lease_token = gen_random_uuid() "
             "WHERE id = (SELECT id FROM hd_import_run WHERE state = 'done' AND sync_on "
             "AND next_run_at <= :now AND (lease_until IS NULL OR lease_until <= :now) "
             "ORDER BY next_run_at LIMIT 1 FOR UPDATE SKIP LOCKED) "
             "RETURNING id, workspace_id, connection_id, source, state, options, cursor, counts, "
             "sync_on, last_sync_at, next_run_at, lease_until, last_error, started_by, "
-            "started_at, finished_at"
+            "started_at, finished_at, retry_attempts, lease_token"
         ),
         {"now": now, "lease": lease_until},
     )
     return result.mappings().first()
+
+
+async def renew_lease(
+    session: AsyncSession, run_id: UUID, *, token: UUID, lease_until: datetime
+) -> bool:
+    """Extends the lease of a run this worker still owns (its token); False when another
+    worker took it, or it was released. A worker's heartbeat during a long page."""
+    result = await session.execute(
+        text(
+            "UPDATE hd_import_run SET lease_until = GREATEST(lease_until, :lease) "
+            "WHERE id = :id AND lease_token = :token AND lease_until IS NOT NULL"
+        ),
+        {"id": run_id, "token": token, "lease": lease_until},
+    )
+    return bool(result.rowcount == 1)  # type: ignore[attr-defined]
+
+
+async def _owned(session: AsyncSession, sql: str, values: Mapping[str, Any]) -> None:
+    """A worker's write about its run (`sql` ends with `WHERE id = :id`): it applies only
+    while the run carries the worker's `token`, else `LeaseLost` (the transaction is the
+    caller's to roll back)."""
+    result = await session.execute(text(sql + " AND lease_token = :token"), values)
+    if result.rowcount != 1:  # type: ignore[attr-defined]
+        raise LeaseLost("Another worker has taken this import run.")
 
 
 async def finish_to_sync(
@@ -165,18 +219,19 @@ async def finish_to_sync(
     last_sync_at: datetime,
     next_run_at: datetime,
     counts: Mapping[str, Any],
+    token: UUID,
 ) -> None:
     """The first import is done and the run goes on syncing: it is `done`, the credentials
     stay, and the next look at the source is `next_run_at`."""
-    await session.execute(
-        text(
-            "UPDATE hd_import_run SET state = 'done', lease_until = NULL, finished_at = now(), "
-            "last_error = NULL, cursor = '{}'::jsonb, counts = CAST(:counts AS jsonb), "
-            "last_sync_at = :last, next_run_at = :next WHERE id = :id"
-        ),
+    await _owned(
+        session,
+        "UPDATE hd_import_run SET state = 'done', lease_until = NULL, lease_token = NULL, "
+        "finished_at = now(), last_error = NULL, cursor = '{}'::jsonb, "
+        "counts = CAST(:counts AS jsonb), last_sync_at = :last, next_run_at = :next, "
+        "retry_attempts = 0 WHERE id = :id",
         {
             "id": run_id, "last": last_sync_at, "next": next_run_at,
-            "counts": json.dumps(dict(counts)),
+            "counts": json.dumps(dict(counts)), "token": token,
         },
     )  # fmt: skip
 
@@ -188,25 +243,31 @@ async def sync_pass_done(
     last_sync_at: datetime,
     next_run_at: datetime,
     counts: Mapping[str, Any],
+    token: UUID,
 ) -> None:
-    await session.execute(
-        text(
-            "UPDATE hd_import_run SET lease_until = NULL, last_error = NULL, "
-            "cursor = '{}'::jsonb, counts = CAST(:counts AS jsonb), last_sync_at = :last, "
-            "next_run_at = :next WHERE id = :id"
-        ),
+    await _owned(
+        session,
+        "UPDATE hd_import_run SET lease_until = NULL, lease_token = NULL, last_error = NULL, "
+        "cursor = '{}'::jsonb, counts = CAST(:counts AS jsonb), last_sync_at = :last, "
+        "next_run_at = :next, retry_attempts = 0 WHERE id = :id",
         {
             "id": run_id, "last": last_sync_at, "next": next_run_at,
-            "counts": json.dumps(dict(counts)),
+            "counts": json.dumps(dict(counts)), "token": token,
         },
     )  # fmt: skip
 
 
 async def sync_error(
-    session: AsyncSession, run_id: UUID, *, next_run_at: datetime, error: str
+    session: AsyncSession, run_id: UUID, *, next_run_at: datetime, error: str, token: UUID
 ) -> None:
-    """A sync pass that could not finish: the run stays syncing and is tried again later."""
-    await release(session, run_id, next_run_at=next_run_at, error=error)
+    """A sync pass that could not finish: the run stays syncing and is tried again later,
+    with a fresh count of tries."""
+    await _owned(
+        session,
+        "UPDATE hd_import_run SET lease_until = NULL, lease_token = NULL, next_run_at = :at, "
+        "last_error = :error, retry_attempts = 0 WHERE id = :id",
+        {"id": run_id, "at": next_run_at, "error": error[:500], "token": token},
+    )
 
 
 async def sync_now(session: AsyncSession, run_id: UUID) -> bool:
@@ -221,16 +282,18 @@ async def sync_now(session: AsyncSession, run_id: UUID) -> bool:
     return result.first() is not None
 
 
-async def stop_sync(session: AsyncSession, run_id: UUID) -> bool:
-    """Turns syncing off. False when it was already off."""
+async def stop_sync(session: AsyncSession, run_id: UUID) -> str | None:
+    """Turns syncing off and returns the run's state as it is now (None: it was already off).
+    The lease is left alone: a worker on the run (the first import, or a look) keeps it until
+    it is done, so no other worker can take the run meanwhile. The state is read by this
+    UPDATE, after any worker that held the row committed, so the caller decides on the run
+    as it really is."""
     result = await session.execute(
-        text(
-            "UPDATE hd_import_run SET sync_on = false, lease_until = NULL "
-            "WHERE id = :id AND sync_on RETURNING id"
-        ),
+        text("UPDATE hd_import_run SET sync_on = false WHERE id = :id AND sync_on RETURNING state"),
         {"id": run_id},
     )
-    return result.first() is not None
+    found = result.first()
+    return str(found[0]) if found is not None else None
 
 
 async def save_progress(
@@ -240,43 +303,170 @@ async def save_progress(
     cursor: Mapping[str, Any],
     counts: Mapping[str, Any],
     lease_until: datetime,
+    token: UUID,
 ) -> None:
-    """The cursor and counts, in the same transaction as the page they describe."""
-    await session.execute(
-        text(
-            "UPDATE hd_import_run SET cursor = CAST(:cursor AS jsonb), "
-            "counts = CAST(:counts AS jsonb), lease_until = :lease WHERE id = :id"
-        ),
+    """The cursor and counts, in the same transaction as the page they describe (and the
+    failures noted on it). A page saved ends the tries of the one before. Only by the worker
+    that holds the run (`LeaseLost` otherwise: the page's records roll back with it)."""
+    await _owned(
+        session,
+        "UPDATE hd_import_run SET cursor = CAST(:cursor AS jsonb), "
+        "counts = CAST(:counts AS jsonb), lease_until = :lease, retry_attempts = 0 "
+        "WHERE id = :id",
         {
             "id": run_id, "cursor": json.dumps(dict(cursor)), "counts": json.dumps(dict(counts)),
-            "lease": lease_until,
+            "lease": lease_until, "token": token,
         },
     )  # fmt: skip
 
 
 async def release(
-    session: AsyncSession, run_id: UUID, *, next_run_at: datetime, error: str | None = None
+    session: AsyncSession,
+    run_id: UUID,
+    *,
+    next_run_at: datetime,
+    token: UUID,
+    error: str | None = None,
 ) -> None:
     """Gives the run back to be taken again at `next_run_at` (a pause, or end of a slice)."""
-    await session.execute(
-        text(
-            "UPDATE hd_import_run SET lease_until = NULL, next_run_at = :at, "
-            "last_error = :error WHERE id = :id"
-        ),
-        {"id": run_id, "at": next_run_at, "error": error[:500] if error else None},
+    await _owned(
+        session,
+        "UPDATE hd_import_run SET lease_until = NULL, lease_token = NULL, next_run_at = :at, "
+        "last_error = :error WHERE id = :id",
+        {"id": run_id, "at": next_run_at, "error": error[:500] if error else None, "token": token},
     )
+
+
+async def resume(session: AsyncSession, run_id: UUID) -> bool:
+    """A failed run is queued again where it stopped: its cursor, counts, options, sync
+    setting and start time stay; its tries start from 0. Only from `failed` and with no live
+    lease, in one statement, so two resumes (or a worker) can't both take it. False when the
+    run was not failed any more."""
+    result = await session.execute(
+        text(
+            "UPDATE hd_import_run SET state = 'queued', next_run_at = now(), lease_until = NULL, "
+            "lease_token = NULL, finished_at = NULL, last_error = NULL, retry_attempts = 0 "
+            "WHERE id = :id AND state = 'failed' "
+            "AND (lease_until IS NULL OR lease_until <= now()) RETURNING id"
+        ),
+        {"id": run_id},
+    )
+    return result.first() is not None
+
+
+async def retry_later(
+    session: AsyncSession,
+    run_id: UUID,
+    *,
+    next_run_at: datetime,
+    error: str,
+    attempts: int,
+    token: UUID,
+) -> None:
+    """A try of the page failed with a temporary error: the run waits until `next_run_at`
+    and remembers it has had `attempts` failed tries (so a restart doesn't reset them)."""
+    await _owned(
+        session,
+        "UPDATE hd_import_run SET lease_until = NULL, lease_token = NULL, next_run_at = :at, "
+        "last_error = :error, retry_attempts = :attempts WHERE id = :id",
+        {
+            "id": run_id, "at": next_run_at, "error": error[:500], "attempts": attempts,
+            "token": token,
+        },
+    )  # fmt: skip
 
 
 async def finish(
-    session: AsyncSession, run_id: UUID, *, state: str, error: str | None = None
+    session: AsyncSession, run_id: UUID, *, state: str, token: UUID, error: str | None = None
 ) -> None:
+    await _owned(
+        session,
+        "UPDATE hd_import_run SET state = :state, lease_until = NULL, lease_token = NULL, "
+        "finished_at = now(), last_error = :error, retry_attempts = 0 WHERE id = :id",
+        {
+            "id": run_id, "state": state, "error": error[:500] if error else None,
+            "token": token,
+        },
+    )  # fmt: skip
+
+
+# Records a run could not read (P0-2)
+
+
+async def note_failures(
+    session: AsyncSession,
+    workspace_id: UUID,
+    run_id: UUID,
+    source: str,
+    failures: Sequence[Failure],
+    *,
+    attempts: int,
+) -> None:
+    """Writes what a page noted, in the page's transaction. The same record noted again in
+    the same run (a later sync look) adds its tries and is open again, unless an Admin
+    dismissed it: that decision stays."""
+    for failure in failures:
+        await session.execute(
+            text(
+                "INSERT INTO hd_import_failure (workspace_id, run_id, source, kind, external_id, "
+                "category, attempts, last_error) VALUES (:ws, :run, :source, :kind, :ext, "
+                ":category, :attempts, :error) "
+                "ON CONFLICT (workspace_id, run_id, kind, external_id) DO UPDATE SET "
+                "category = EXCLUDED.category, last_error = EXCLUDED.last_error, "
+                "attempts = hd_import_failure.attempts + EXCLUDED.attempts, "
+                "last_failed_at = now(), "
+                "status = CASE WHEN hd_import_failure.status = 'dismissed' THEN 'dismissed' "
+                "ELSE 'open' END, "
+                "resolved_at = CASE WHEN hd_import_failure.status = 'dismissed' "
+                "THEN hd_import_failure.resolved_at END"
+            ),
+            {
+                "ws": workspace_id, "run": run_id, "source": source, "kind": failure.kind,
+                "ext": failure.external_id[:200], "category": failure.category,
+                "attempts": attempts if failure.category == "temporary" else 1,
+                "error": failure.error[:500],
+            },
+        )  # fmt: skip
+
+
+async def resolve_failures(
+    session: AsyncSession, source: str, kind: str, external_ids: Sequence[str]
+) -> None:
+    """Records read in full now: any open failure noted for them earlier is resolved (a
+    dismissed one stays dismissed). Never called for a record noted on the same page."""
+    if not external_ids:
+        return
     await session.execute(
         text(
-            "UPDATE hd_import_run SET state = :state, lease_until = NULL, finished_at = now(), "
-            "last_error = :error WHERE id = :id"
+            "UPDATE hd_import_failure SET status = 'resolved', resolved_at = now() "
+            "WHERE source = :source AND kind = :kind AND external_id = ANY(:ids) "
+            "AND status = 'open'"
         ),
-        {"id": run_id, "state": state, "error": error[:500] if error else None},
+        {"source": source, "kind": kind, "ids": [e[:200] for e in external_ids]},
     )
+
+
+async def failures(
+    session: AsyncSession,
+    run_id: UUID,
+    *,
+    before: tuple[datetime, UUID] | None,
+    limit: int,
+) -> Sequence[Row]:
+    """A run's failures, last failed first."""
+    at, row_id = before if before else (None, None)
+    result = await session.execute(
+        text(
+            "SELECT id, run_id, source, kind, external_id, category, attempts, last_error, "
+            "first_failed_at, last_failed_at, last_failed_at AS created_at, status, resolved_at, "
+            "resolved_by AS resolved_by_id FROM hd_import_failure WHERE run_id = :run "
+            "AND (CAST(:at AS timestamptz) IS NULL "
+            "     OR (last_failed_at, id) < (CAST(:at AS timestamptz), CAST(:row AS uuid))) "
+            "ORDER BY last_failed_at DESC, id DESC LIMIT :limit"
+        ),
+        {"run": run_id, "at": at, "row": row_id, "limit": limit},
+    )
+    return result.mappings().all()
 
 
 # Which source records are already here
@@ -421,93 +611,101 @@ async def insert_message(
     author_member_id: UUID | None,
     author_name: str | None,
     channel_message_id: str | None,
+    recipients: Mapping[str, Sequence[str]] | None = None,
 ) -> UUID:
     result = await session.execute(
         text(
             "INSERT INTO hd_message (workspace_id, ticket_id, kind, body, author_member_id, "
-            "author_name, channel_message_id, created_at) VALUES (:ws, :ticket, :kind, :body, "
-            ":author, :name, :channel_id, :at) RETURNING id"
+            "author_name, channel_message_id, created_at, recipients) VALUES (:ws, :ticket, "
+            ":kind, :body, :author, :name, :channel_id, :at, CAST(:recipients AS jsonb)) "
+            "RETURNING id"
         ),
         {
             "ws": workspace_id, "ticket": ticket_id, "kind": kind, "body": body,
             "author": author_member_id, "name": author_name, "channel_id": channel_message_id,
             "at": created_at,
+            "recipients": json.dumps({k: list(v) for k, v in recipients.items()})
+            if recipients else None,
         },
     )  # fmt: skip
     return UUID(str(result.scalar_one()))
 
 
-async def refresh_ticket(
+async def contact_details(
+    session: AsyncSession, contact_id: UUID, *, phone: str | None, organization: str | None
+) -> None:
+    """Fills a contact's phone and organization from the source, only where blank: never
+    over what an agent set, never on an erased contact."""
+    await session.execute(
+        text(
+            "UPDATE hd_contact SET phone = COALESCE(phone, :phone), "
+            "organization = COALESCE(organization, :org), updated_at = now() "
+            "WHERE id = :id AND erased_at IS NULL AND ("
+            "(phone IS NULL AND CAST(:phone AS text) IS NOT NULL) OR "
+            "(organization IS NULL AND CAST(:org AS text) IS NOT NULL))"
+        ),
+        {"id": contact_id, "phone": phone, "org": organization},
+    )
+
+
+TRACKED = ("status", "priority", "assignee_id", "team_id", "tags", "subject", "fields")
+
+
+async def current(session: AsyncSession, ticket_id: UUID) -> Row:
+    """The ticket's fields a sync look may change, locked until the look's page commits."""
+    result = await session.execute(
+        text(
+            "SELECT status, priority, resolved_at, assignee_id, team_id, tags, subject, "
+            "fields FROM hd_ticket WHERE id = :id FOR UPDATE"
+        ),
+        {"id": ticket_id},
+    )
+    return result.mappings().one()
+
+
+async def seen(session: AsyncSession, ticket_id: UUID) -> dict[str, Any] | None:
+    """What the source showed for this ticket the last time it was read (P1-10)."""
+    found = await session.scalar(
+        text("SELECT seen FROM hd_import_seen WHERE ticket_id = :id"), {"id": ticket_id}
+    )
+    return dict(found) if found is not None else None
+
+
+async def put_seen(
+    session: AsyncSession, workspace_id: UUID, ticket_id: UUID, values: Mapping[str, Any]
+) -> None:
+    await session.execute(
+        text(
+            "INSERT INTO hd_import_seen (workspace_id, ticket_id, seen) "
+            "VALUES (:ws, :id, CAST(:seen AS jsonb)) ON CONFLICT (workspace_id, ticket_id) "
+            "DO UPDATE SET seen = EXCLUDED.seen, seen_at = now()"
+        ),
+        {"ws": workspace_id, "id": ticket_id, "seen": json.dumps(dict(values))},
+    )
+
+
+async def apply_changes(
     session: AsyncSession,
     ticket_id: UUID,
+    changes: Mapping[str, Any],
     *,
-    status: str,
-    priority: str,
-    resolved_at: datetime | None,
     first_reply_at: datetime | None,
     updated_at: datetime,
-) -> bool:
-    """What a later look at the source changed on a ticket already imported (M9). The
-    time only moves forward; the first reply is only filled, never replaced. True when
-    the status, priority or resolved time really changed (so a status-only change counts
-    as an update)."""
-    changed = await session.scalar(
-        text(
-            "UPDATE hd_ticket t SET status = :status, priority = :priority, "
-            "resolved_at = :resolved, first_reply_at = coalesce(t.first_reply_at, :first), "
-            "updated_at = GREATEST(t.updated_at, :updated) "
-            "FROM (SELECT status, priority, resolved_at FROM hd_ticket WHERE id = :id "
-            "FOR UPDATE) old WHERE t.id = :id "
-            "RETURNING (old.status IS DISTINCT FROM t.status "
-            "OR old.priority IS DISTINCT FROM t.priority "
-            "OR old.resolved_at IS DISTINCT FROM t.resolved_at)"
-        ),
-        {
-            "id": ticket_id, "status": status, "priority": priority, "resolved": resolved_at,
-            "first": first_reply_at, "updated": updated_at,
-        },
-    )  # fmt: skip
-    return bool(changed)
-
-
-async def refresh_people(
-    session: AsyncSession,
-    ticket_id: UUID,
-    *,
-    assignee_id: UUID | None,
-    team_id: UUID | None,
-    tags: Sequence[str],
-    tag_max: int,
-) -> tuple[bool, bool, list[str]]:
-    """Who a later look at the source says owns a ticket already imported, and its tags.
-    A source assignee or team that maps to CeDesk replaces the one here; none leaves it as
-    it is (nothing is cleared). Tags are only added, never removed, up to `tag_max`.
-    Returns (assignee changed, team changed, tags added)."""
-    old = (
-        (
-            await session.execute(
-                text("SELECT assignee_id, team_id, tags FROM hd_ticket WHERE id = :id FOR UPDATE"),
-                {"id": ticket_id},
-            )
-        )
-        .mappings()
-        .one()
+) -> None:
+    """Writes what a sync look decided to change (only names in `TRACKED` plus
+    `resolved_at`); the time only moves forward and the first reply is only filled."""
+    allowed = {k: v for k, v in changes.items() if k in (*TRACKED, "resolved_at")}
+    sets = [f"{k} = :{k}" if k != "fields" else "fields = CAST(:fields AS jsonb)" for k in allowed]
+    values: dict[str, Any] = {**allowed, "id": ticket_id, "first": first_reply_at,
+                              "updated": updated_at}  # fmt: skip
+    if "fields" in values:
+        values["fields"] = json.dumps(values["fields"])
+    sets += ["first_reply_at = coalesce(first_reply_at, :first)",
+             "updated_at = GREATEST(updated_at, :updated)"]  # fmt: skip
+    await session.execute(
+        text("UPDATE hd_ticket SET " + ", ".join(sets) + " WHERE id = :id"),  # noqa: S608
+        values,
     )
-    have = list(old["tags"] or [])
-    added = [t for t in tags if t not in have][: max(0, tag_max - len(have))]
-    assignee = assignee_id if assignee_id is not None else old["assignee_id"]
-    team = team_id if team_id is not None else old["team_id"]
-    new_assignee = assignee != old["assignee_id"]
-    new_team = team != old["team_id"]
-    if new_assignee or new_team or added:
-        await session.execute(
-            text(
-                "UPDATE hd_ticket SET assignee_id = :assignee, team_id = :team, tags = :tags "
-                "WHERE id = :id"
-            ),
-            {"id": ticket_id, "assignee": assignee, "team": team, "tags": have + added},
-        )
-    return new_assignee, new_team, added
 
 
 async def contact_since(session: AsyncSession, contact_id: UUID, at: datetime) -> None:
@@ -581,20 +779,27 @@ async def insert_article(
     source: str,
     source_id: str,
     updated_by: UUID | None,
+    published_at: datetime | None = None,
+    updated_at: datetime | None = None,
 ) -> UUID | None:
-    """None when this source article is already here (its source index said so)."""
+    """None when this source article is already here (its source index said so). The
+    source's own dates when it gives them (P2-28); otherwise now."""
     result = await session.execute(
         text(
             "INSERT INTO hd_article (workspace_id, category_id, title, body, status, source, "
-            "source_id, updated_by, published_at) VALUES (:ws, :cat, :title, :body, :status, "
-            ":source, :sid, :by, CASE WHEN :published THEN now() END) "
+            "source_id, updated_by, published_at, created_at, updated_at) VALUES (:ws, :cat, "
+            ":title, :body, :status, :source, :sid, :by, "
+            "CASE WHEN :published THEN COALESCE(CAST(:pub AS timestamptz), now()) END, "
+            "COALESCE(CAST(:pub AS timestamptz), CAST(:upd AS timestamptz), now()), "
+            "COALESCE(CAST(:upd AS timestamptz), CAST(:pub AS timestamptz), now())) "
             "ON CONFLICT (workspace_id, source, source_id) WHERE source IS NOT NULL "
             "DO NOTHING RETURNING id"
         ),
         {
             "ws": workspace_id, "cat": category_id, "title": title, "body": body,
             "status": "published" if published else "draft", "published": published,
-            "source": source, "sid": source_id, "by": updated_by,
+            "source": source, "sid": source_id, "by": updated_by, "pub": published_at,
+            "upd": updated_at,
         },
     )  # fmt: skip
     value = result.scalar_one_or_none()
@@ -649,3 +854,28 @@ async def add_event(
             "member": member_id, "detail": json.dumps(dict(detail or {})),
         },
     )  # fmt: skip
+
+
+async def failure(session: AsyncSession, run_id: UUID, failure_id: UUID) -> Row | None:
+    result = await session.execute(
+        text(
+            "SELECT id, run_id, source, kind, external_id, category, attempts, last_error, "
+            "first_failed_at, last_failed_at, status, resolved_at, resolved_by AS resolved_by_id "
+            "FROM hd_import_failure WHERE run_id = :run AND id = :id"
+        ),
+        {"run": run_id, "id": failure_id},
+    )
+    return result.mappings().first()
+
+
+async def dismiss_failure(session: AsyncSession, failure_id: UUID, member_id: UUID) -> bool:
+    """An Admin accepts what is missing: the failure ends as `dismissed`. False when it was
+    not open any more."""
+    result = await session.execute(
+        text(
+            "UPDATE hd_import_failure SET status = 'dismissed', resolved_at = now(), "
+            "resolved_by = :member WHERE id = :id AND status = 'open' RETURNING id"
+        ),
+        {"id": failure_id, "member": member_id},
+    )
+    return result.first() is not None
