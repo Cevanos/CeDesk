@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { visitorId } from "@/hooks/use-portal";
 
@@ -15,5 +15,11 @@ describe("visitorId", () => {
   it("replaces a stored value that is too short", () => {
     localStorage.setItem("cdesk.visitor", "abc");
     expect(visitorId().length).toBeGreaterThanOrEqual(8);
+  });
+
+  it("works on a page where crypto.randomUUID does not exist (plain http)", () => {
+    vi.stubGlobal("crypto", { getRandomValues: crypto.getRandomValues.bind(crypto) });
+    expect(visitorId()).toMatch(/^[0-9a-f-]{36}$/);
+    vi.unstubAllGlobals();
   });
 });
