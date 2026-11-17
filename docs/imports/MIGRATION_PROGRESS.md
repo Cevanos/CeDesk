@@ -78,7 +78,8 @@ is either mocked HTTP (unit) or real PostgreSQL with a simulated source (db).
 | Credential update after 401/403, then resume | FIXED-in-code | c82fd9d (migration 0058) |
 | Lease renewal on long pages | FIXED-in-code | fd4fa05 |
 | CSV file present on resume | FIXED-in-code | a90a113 (checks storage, not only the setting) |
-| Portal showed every ticket field to customers | FIXED-in-code | 6cfb7df (found during this work) |
+| Portal showed imported tickets' fields to customers | FIXED-in-code | 6cfb7df, narrowed after review to imported tickets only (the first version also hid native fields of types later hidden from customers) |
+| Erased contact's address left in other tickets' `source_cc` / `source_followers` / `recipients` | FIXED-in-code | erasure strips it; export adds phone and organization |
 
 ## Performance
 

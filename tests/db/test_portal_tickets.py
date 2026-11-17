@@ -325,30 +325,55 @@ async def test_the_customer_is_emailed_when_an_agent_replies(
     assert await notices(app_sessionmaker, w, phone["id"]) == []
 
 
-async def test_a_customer_never_sees_internal_or_imported_fields(
+async def test_an_imported_ticket_shows_the_customer_only_its_types_fields(
     client: AsyncClient, app_sessionmaker: Sm
 ) -> None:
-    """Before, the portal showed every field on the ticket: an internal field set by an
-    agent, or what an import brought (the old help desk's custom fields, its tags, the link
-    to its agent view). Now only the fields of the ticket's type, if customers can pick it."""
+    """Before, the portal showed every field of an imported ticket: the old help desk's
+    custom fields (agents' own, e.g. a fraud score), extra tags, who was copied, the link
+    to its agent view. Now only the fields of the ticket's type; agents still see all."""
     sm = app_sessionmaker
     w = await desk(client, sm)
     priya = await customer(client, sm, w, "priya@example.org")
-    new = {"message": "Refund please", "type_id": w["refund"], "fields": {"order_id": "A-77"}}
-    typed = ok(await client.post(f"{P}/tickets", headers=priya, json=new), 201)
-    plain = ok(await client.post(f"{P}/tickets", headers=priya, json={"message": "Hi"}), 201)
-    internal = {"source_url": "https://acme.zendesk.com/agent/tickets/9",
-                "more_tags": "vip, churn-risk", "fraud_score": 92}  # fmt: skip
-    async with workspace_session(sm, w["ws"]) as s:
+    mine = ok(await client.post(f"{P}/tickets", headers=priya, json={"message": "Hi"}), 201)
+    old = {"source_url": "https://acme.zendesk.com/agent/tickets/9", "fraud_score": 92,
+           "more_tags": "vip, churn-risk", "source_cc": "ops@globex.test"}  # fmt: skip
+    async with workspace_session(sm, w["ws"]) as s:  # what an import writes
         await s.execute(
-            text("UPDATE hd_ticket SET fields = fields || CAST(:f AS jsonb)"),
-            {"f": json.dumps(internal)},
-        )
-    assert ok(await client.get(f"{P}/tickets/{typed['id']}", headers=priya))["fields"] == {
-        "order_id": "A-77"
-    }
-    assert ok(await client.get(f"{P}/tickets/{plain['id']}", headers=priya))["fields"] == {}
+            text("UPDATE hd_ticket SET source = 'zendesk', source_id = '9', "
+                 "fields = CAST(:f AS jsonb) WHERE id = :id"),
+            {"f": json.dumps(old), "id": mine["id"]},
+        )  # fmt: skip
+    assert ok(await client.get(f"{P}/tickets/{mine['id']}", headers=priya))["fields"] == {}
     listed = ok(await client.get(f"{P}/tickets", headers=priya))["tickets"]
     assert "fraud_score" not in str(listed) and "zendesk" not in str(listed)
-    agent = ok(await client.get(f"{T}/{typed['id']}", headers=w["admin"]))
-    assert agent["fields"]["fraud_score"] == 92  # agents still see everything
+    agent = ok(await client.get(f"{T}/{mine['id']}", headers=w["admin"]))
+    assert agent["fields"] == old  # agents still see everything
+
+    # An agent gives it the Refund type and its field: that one the customer sees. (A new
+    # type drops values it doesn't define, each with a line: CeDesk's existing rule.)
+    change = {"type_id": w["refund"], "fields": {"order_id": "A-9"}}
+    ok(await client.patch(f"{T}/{mine['id']}", headers=w["admin"], json=change))
+    seen = ok(await client.get(f"{P}/tickets/{mine['id']}", headers=priya))
+    assert seen["fields"] == {"order_id": "A-9"}
+
+
+async def test_a_tickets_own_fields_are_shown_as_before(
+    client: AsyncClient, app_sessionmaker: Sm
+) -> None:
+    """Tickets not imported are unchanged by that rule: a type later hidden from customers
+    keeps showing the values the customer gave, and so does a value whose field was later
+    removed from the type."""
+    sm = app_sessionmaker
+    w = await desk(client, sm)
+    priya = await customer(client, sm, w, "priya@example.org")
+    new = {"message": "Refund please", "type_id": w["refund"],
+           "fields": {"order_id": "A-77", "reason": "Late"}}  # fmt: skip
+    typed = ok(await client.post(f"{P}/tickets", headers=priya, json=new), 201)
+    ok(await client.patch(f"/api/v1/ticket-types/{w['refund']}", headers=w["admin"],
+                          json={"for_customers": False}))  # fmt: skip
+    got = ok(await client.get(f"{P}/tickets/{typed['id']}", headers=priya))
+    assert got["fields"] == {"order_id": "A-77", "reason": "Late"}
+    ok(await client.patch(f"/api/v1/ticket-types/{w['refund']}", headers=w["admin"],
+                          json={"fields": REFUND[:1]}))  # "reason" removed  # fmt: skip
+    got = ok(await client.get(f"{P}/tickets/{typed['id']}", headers=priya))
+    assert got["fields"] == {"order_id": "A-77", "reason": "Late"}

@@ -50,9 +50,15 @@ removed in CeDesk; an owner removed in the source is unassigned.
   `source_sla_breached`. A link to a ticket already imported is also a CeDesk link.
 - Imported articles keep the source's published and updated dates; a translation is its own
   article titled with its locale, e.g. "Refunds (fr)".
-- **Portal fix:** a customer now sees only the fields of the ticket's type when that type
-  is offered to customers. Before, `GET /portal/tickets/{id}` showed every field, internal
-  ones and imported ones included.
+- **Portal fix (imported tickets only):** on an imported ticket the customer now sees only
+  the fields of the ticket's type. Before, `GET /portal/tickets/{id}` and the list showed
+  every field an import brought (the old desk's custom fields, `source_url`, `source_cc`,
+  ...). Tickets not imported show their fields exactly as before.
+- **Erasure:** erasing a contact now also removes their address from `source_cc` and
+  `source_followers` on other customers' imported tickets and from imported messages'
+  `recipients` (the other addresses stay; the erase response counts
+  `imported_addresses` and `imported_recipients`). The privacy export includes `phone` and
+  `organization`.
 
 **Connect (`POST /imports/connections`).**
 

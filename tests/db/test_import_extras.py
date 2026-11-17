@@ -153,3 +153,75 @@ async def test_the_card_number_line_sits_after_the_message_it_was_taken_from(
     assert kinds == ["system", "customer", "card", "agent", "customer"], kinds
     assert not any("4242" in r["body"] for r in rows)
     await end_runs(sm, w["ws"])
+
+
+async def test_erasure_removes_the_address_from_other_customers_imported_tickets(
+    im: AsyncClient, app_sessionmaker: Sm
+) -> None:
+    """Before: erasing Dee emptied her own tickets, but her address stayed wherever an
+    import had kept it on someone else's ticket: `source_cc`, `source_followers`, and the
+    `recipients` of messages she was copied on. Now it goes from all of them; the other
+    people on those lists stay."""
+    sm = app_sessionmaker
+    src = Flaky()
+    dee = Contact("u9", "Dee@Example.org", "Dee")
+    priya_ticket = replace(
+        Fake.ticket(1),
+        cc=["dee@example.org", "ops@globex.test"], followers=["DEE@example.org"],
+        messages=[Message("customer", "Hello", AT, external_id="m1", to=["help@acme.test"],
+                          cc=["dee@example.org", "ops@globex.test"], bcc=["dee@example.org"])],
+    )  # fmt: skip
+    only_dee = replace(
+        Fake.ticket(3), followers=["dee@example.org"],
+        messages=[Message("customer", "Hi", AT, external_id="m3", cc=["dee@example.org"])],
+    )  # fmt: skip
+    src.tickets = [priya_ticket, replace(Fake.ticket(2), requester=dee), only_dee]
+    w, conn, importers = await flaky_desk(im, sm, src)
+    await start(im, w, conn, kinds=["tickets"])
+    await pass_(sm, importers, w["ws"])
+    [d] = await sql(sm, w["ws"], "SELECT id FROM hd_contact WHERE email = 'dee@example.org'")
+
+    erase = {"contact_id": str(d["id"]), "confirm_email": "dee@example.org"}
+    ok(await im.post("/api/v1/privacy/erase", headers=w["admin"], json=erase), 201)
+
+    [one] = await sql(sm, w["ws"], "SELECT fields FROM hd_ticket WHERE source_id = 'Z1'")
+    assert one["fields"]["source_cc"] == "ops@globex.test"
+    assert "source_followers" not in one["fields"]  # Dee was the only follower
+    [three] = await sql(sm, w["ws"], "SELECT fields FROM hd_ticket WHERE source_id = 'Z3'")
+    assert "source_followers" not in three["fields"]
+    rows = await sql(sm, w["ws"], "SELECT body, recipients FROM hd_message "
+                     "WHERE body IN ('Hello', 'Hi') ORDER BY body")  # fmt: skip
+    assert [(r["body"], r["recipients"]) for r in rows] == [
+        ("Hello", {"to": ["help@acme.test"], "cc": ["ops@globex.test"]}),
+        ("Hi", None),
+    ]
+    everything = await sql(
+        sm, w["ws"], "SELECT 1 FROM hd_ticket t JOIN hd_message m ON m.ticket_id = t.id "
+        "WHERE lower(t.fields::text || coalesce(m.recipients::text, '')) "
+        "LIKE '%dee@example.org%'",
+    )  # fmt: skip
+    assert everything == []
+    await end_runs(sm, w["ws"])
+
+
+async def test_the_privacy_export_includes_the_imported_phone_and_organization(
+    im: AsyncClient, app_sessionmaker: Sm
+) -> None:
+    sm = app_sessionmaker
+    src = Flaky()
+    src.tickets = rich()[:1]
+    w, conn, importers = await flaky_desk(im, sm, src)
+    await start(im, w, conn, kinds=["tickets"])
+    await pass_(sm, importers, w["ws"])
+    [c] = await sql(sm, w["ws"], "SELECT id FROM hd_contact WHERE email = 'priya@example.org'")
+    from cedesk.db import workspace_session
+    from cedesk.helpdesk.repo import privacy as privacy_repo
+    from cedesk.helpdesk.service.privacy import build_export
+
+    async with workspace_session(sm, w["ws"]) as s:
+        row = await privacy_repo.contact(s, c["id"])
+    assert row is not None
+    made = build_export(row, [], [], [], [], workspace="Acme", now=AT)
+    assert made["customer"]["phone"] == "+91 98000 00001"
+    assert made["customer"]["organization"] == "Globex"
+    await end_runs(sm, w["ws"])
