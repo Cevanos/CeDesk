@@ -44,7 +44,7 @@ workspace our operators give a cloud plan (`cedesk set-plan`), which you never d
    - `CEDESK_SITE=help.example.com` (your domain; Caddy gets its certificate).
    - `CEDESK_APP_URL=https://app.example.com` and
      `CEDESK_CORS_ORIGINS=https://app.example.com` (the frontend's address).
-   - Email: see [Email](#email). Production refuses `CEDESK_MAIL_BACKEND=log`.
+   - Email: see [Email](#email). Only a developer's machine (`CEDESK_ENV=dev`) accepts `CEDESK_MAIL_BACKEND=log`.
 
    **Keep a copy of `CEDESK_SECRET_KEY` somewhere safe and never change it.** It encrypts
    every member's two-step sign-in secret, app credentials, the Cevanos key, webhook

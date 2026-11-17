@@ -16,7 +16,7 @@ file or `deploy/env.example` names one that doesn't exist.
 
 | Setting | Default | What it does | Read by | In compose |
 |---|---|---|---|---|
-| `CEDESK_ENV` | `dev` | `dev` (a developer's machine), `staging` (a shared test server) or `production`. Anything but `dev` refuses to start with the dev secret key or dev database password, `*` in CORS, or Cevanos over plain http; `production` also refuses `MAIL_BACKEND=log` and turns off test-only routes (simulated customer replies; demo data, even with `CEDESK_DEMO_ENABLED`). | all | migrate, api, worker |
+| `CEDESK_ENV` | `dev` | `dev` (a developer's machine), `staging` (a shared test server) or `production`. Anything but `dev` refuses to start with the dev secret key or dev database password, `*` in CORS, or Cevanos over plain http; anything but `dev` also refuses `MAIL_BACKEND=log`; `production` also turns off test-only routes (simulated customer replies; demo data, even with `CEDESK_DEMO_ENABLED`). | all | migrate, api, worker |
 | `CEDESK_SECRET_KEY` | a dev-only value | Encrypts stored secrets (two-step sign-in, app credentials, the Cevanos key, webhook secrets, import credentials). Random, 32+ characters (`openssl rand -hex 32`). **Back it up; never change it**: a new key locks out everyone using two-step sign-in. | api, worker | api, worker |
 | `CEDESK_EDITION` | `cloud` | `cloud` or `self_hosted`. Only switches the cloud plan limits on: they apply just to a workspace given a plan with `cedesk set-plan`. `/readyz` shows it. `deploy/` sets `self_hosted`; our own cloud servers set `cloud` in `deploy/.env`. | api, worker, cli | api, worker |
 | `CEDESK_DEMO_ENABLED` | `false` | Turns on the demo data routes (`/demo/seed`, `/demo/samples`, `/demo/reset`) for Admins. Never on `production`, even when set. | api | api |
@@ -42,7 +42,8 @@ file or `deploy/env.example` names one that doesn't exist.
 
 | Setting | Default | What it does | Read by | In compose |
 |---|---|---|---|---|
-| `CEDESK_MAIL_BACKEND` | `log` | `smtp` (send), `log` (write emails to the worker's log, send nothing; refused in production) or `none` (drop them). | worker | worker |
+| `CEDESK_MAIL_BACKEND` | `log` | `smtp` (send), `none` (drop them; the log says how many, never to whom) or `log` (a developer's machine only: each email is written as a private .eml file to `CEDESK_MAIL_OUTBOX_DIR`, the log gets the file name; refused unless `CEDESK_ENV=dev`). | worker | worker |
+| `CEDESK_MAIL_OUTBOX_DIR` | `mail-outbox` | With `MAIL_BACKEND=log`: where the .eml files go (folder 0700, files 0600). | worker | no |
 | `CEDESK_MAIL_FROM_ADDRESS` | (empty) | Sender of account emails (password reset, portal sign-in codes, the CSAT survey, portal reply notices) when a workspace has no support address yet. Empty: those can't be sent. | api, worker | api, worker |
 | `CEDESK_MAIL_FROM_NAME` | `CeDesk` | The name shown with that sender. | api, worker | no |
 | `CEDESK_SMTP_HOST` | (empty) | The SMTP server, e.g. `email-smtp.ap-south-1.amazonaws.com`. Needed with `smtp`. | worker | worker |
@@ -92,7 +93,7 @@ file or `deploy/env.example` names one that doesn't exist.
 
 | Setting | Default | What it does | Read by | In compose |
 |---|---|---|---|---|
-| `CEDESK_SCAN_BACKEND` | `none` | `clamd`: the worker checks every new file with ClamAV; a file can be downloaded or emailed only once found clean, and infected ones are removed. `none`: files aren't checked. | api, worker | api, worker |
+| `CEDESK_SCAN_BACKEND` | `none` | `clamd`: the worker checks every new file with ClamAV; a file can be downloaded or emailed only once found clean, and infected ones are removed. `none`: files aren't checked. The app's own default is `none` (a developer's machine); `deploy/docker-compose.yml` sets `clamd` and starts ClamAV. | api, worker | api, worker |
 | `CEDESK_CLAMD_HOST` | (empty) | ClamAV's address. Needed with `clamd`. | worker | worker (`clamav`) |
 | `CEDESK_CLAMD_PORT` | `3310` | Its port. | worker | no |
 | `CEDESK_CLAMD_TIMEOUT_SECONDS` | `60` | Give up on one check after this long. | worker | no |
@@ -107,6 +108,12 @@ file or `deploy/env.example` names one that doesn't exist.
 | `CEDESK_CEVANOS_POLL_BATCH` | `20` | Chats read per worker pass, per workspace (1 to 60, within Cevanos's rate limit). | worker | no |
 
 ## Limits per address (abuse protection)
+
+The address these limits (and each workspace's IP allowlist) count is the visitor's,
+as the proxy in front reports it in `X-Forwarded-For`. `deploy/docker-compose.yml` trusts
+that header only from `CEDESK_FORWARDED_ALLOW_IPS` (default: this machine and Docker's
+private networks; never `*`, which lets a client choose its own address). It is a
+uvicorn flag set by compose, not an app setting.
 
 Over a limit: 429 with `Retry-After`. Counted in each API process.
 
@@ -144,7 +151,8 @@ Read by `deploy/docker-compose.yml`, the database's first start, or `deploy/back
 | `CEDESK_OWNER_PASSWORD` | `cedesk_owner`'s password (migrations); compose builds `CEDESK_MIGRATION_DATABASE_URL` from it. |
 | `CEDESK_APP_PASSWORD` | `cedesk_app`'s password (the app); compose builds `CEDESK_DATABASE_URL` from it. |
 | `CEDESK_SITE` | Caddy's site: your domain (HTTPS) or `:80` (plain HTTP, for a short test). |
-| `BACKUP_DIR` | Where `backup.sh` writes (default `~/cedesk-backups`). |
+| `BACKUP_DIR` | Where `backup.sh` writes (default `~/cedesk-backups`). Its other settings (`BACKUP_GPG_RECIPIENT`, retention, alerts) are in `deploy/backup.env.example`. |
+| `CEDESK_FORWARDED_ALLOW_IPS` | The proxies the API takes `X-Forwarded-For` from (uvicorn's `--forwarded-allow-ips`). Default: this machine and Docker's private networks. Never `*`. |
 
 The three passwords are set on the database's **first** start only; changing them later in
 `.env` doesn't change the database.

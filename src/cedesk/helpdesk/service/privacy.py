@@ -186,7 +186,9 @@ async def erase(
         if confirm_email.strip().lower() != contact["email"]:
             raise Invalid("Type the customer's email address exactly to confirm.")
         ids = await repo.ticket_ids(s, contact_id)
+        copies = await repo.merged_copies(s, contact_id)  # before their messages change
         keys = await repo.file_keys(s, ids) + await repo.export_keys(s, contact_id)
+        keys += await repo.message_file_keys(s, copies)
         keys += await archive_repo.file_keys(s, contact_id)  # archived tickets (md O3)
         # Retention exports (md O2) that hold their tickets go whole: one file names many.
         retained = await limits_repo.exports_naming(s, contact_id)
@@ -194,6 +196,7 @@ async def erase(
         for key in keys:  # first: see the module note
             await store.delete(key)
         counts = await repo.erase_tickets(s, ids)
+        counts |= await repo.erase_messages(s, copies)
         counts["archived_tickets"] = await archive_repo.erase_for_contact(
             s, contact_id, erased=ERASED, name=ERASED_NAME
         )
