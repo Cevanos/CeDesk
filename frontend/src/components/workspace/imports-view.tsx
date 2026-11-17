@@ -848,6 +848,7 @@ function RunStep({
             <UpdateCredentials
               connectionId={connectionId}
               fields={credentialFields(r.source)!}
+              modes={SOURCES.find((x) => x.id === r.source)?.authModes}
               onUpdated={() => setResumeError(null)}
             />
           )}
@@ -941,8 +942,7 @@ function RunStep({
   );
 }
 
-/** Fields to re-enter on "Update credentials". Zendesk: the mode matching what was used isn't
- *  stored, so offer the recommended OAuth pair. */
+/** Fields to re-enter on "Update credentials" (Zendesk also gets a mode choice via `authModes`). */
 function credentialFields(source: string): FieldDef[] | null {
   const def = SOURCES.find((s) => s.id === source);
   if (!def) return null;

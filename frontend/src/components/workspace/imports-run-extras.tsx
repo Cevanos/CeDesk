@@ -234,15 +234,24 @@ export function FailuresList({ runId }: { runId: string }) {
 }
 
 /** Replace the stored key of a connection after the source refused it mid-import. */
+type CredField = { key: string; label: string; optional?: boolean };
+export type CredMode = { id: string; label: string; credentials: CredField[]; help?: string };
+
 export function UpdateCredentials({
   connectionId,
-  fields,
+  fields: singleFields,
+  modes,
   onUpdated,
 }: {
   connectionId: string;
-  fields: { key: string; label: string; optional?: boolean }[];
+  fields: CredField[];
+  /** Sources with more than one way to sign in (Zendesk) offer the same choice as the connect form. */
+  modes?: CredMode[];
   onUpdated: () => void;
 }) {
+  const [modeId, setModeId] = useState(modes?.[0]?.id ?? "");
+  const mode = modes?.find((m) => m.id === modeId);
+  const fields = mode?.credentials ?? singleFields;
   const [open, setOpen] = useState(false);
   const [creds, setCreds] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
@@ -291,6 +300,28 @@ export function UpdateCredentials({
         });
       }}
     >
+      {modes && modes.length > 1 && (
+        <fieldset>
+          <legend className="text-[13px] font-medium text-foreground-2">How to connect</legend>
+          <div className="mt-1.5 flex flex-wrap gap-3">
+            {modes.map((m) => (
+              <label key={m.id} className="flex items-center gap-2 text-sm">
+                <input
+                  type="radio"
+                  name="upd-auth-mode"
+                  checked={modeId === m.id}
+                  onChange={() => {
+                    setModeId(m.id);
+                    setCreds({});
+                  }}
+                />
+                {m.label}
+              </label>
+            ))}
+          </div>
+          {mode?.help && <p className="mt-1.5 text-xs text-muted-foreground">{mode.help}</p>}
+        </fieldset>
+      )}
       {fields.map((f) => (
         <Field key={f.key} label={f.label} htmlFor={`upd-${f.key}`}>
           <PasswordInput
