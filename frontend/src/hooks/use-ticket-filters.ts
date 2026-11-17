@@ -4,6 +4,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { filtersFromParams, type TicketFilters } from "@/lib/api/ticket-filters";
+import { loadTicketListQuery, saveTicketListQuery } from "@/lib/ticket-list-memory";
 
 const SEARCH_DEBOUNCE_MS = 350;
 
@@ -33,6 +34,29 @@ export function useTicketFilters() {
     },
     [router, pathname],
   );
+
+  // On first arrival with a bare /tickets (sidebar click, back link), restore the
+  // last view. Only once, so "Clear all" afterwards is respected.
+  const restored = useRef(false);
+  useEffect(() => {
+    if (restored.current) return;
+    restored.current = true;
+    const saved = loadTicketListQuery();
+    if (saved && window.location.search === "") {
+      router.replace(`${pathname}?${saved}`, { scroll: false });
+    }
+  }, [router, pathname]);
+
+  // Remember the current view. The first run is skipped: a bare URL on arrival
+  // is what the restore above replaces, and must not erase the saved view.
+  const firstRun = useRef(true);
+  useEffect(() => {
+    if (firstRun.current) {
+      firstRun.current = false;
+      if (sp.toString() === "") return;
+    }
+    saveTicketListQuery(sp.toString());
+  }, [sp]);
 
   const [text, setText] = useState(filters.q ?? "");
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);

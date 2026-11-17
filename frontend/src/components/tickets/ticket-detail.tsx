@@ -13,6 +13,7 @@ import { Badge, Button, EmptyState, Skeleton } from "@/components/ui/primitives"
 import { useCurrentUser } from "@/hooks/use-auth";
 import { useResolveTicket, useTicket } from "@/hooks/use-tickets";
 import { ApiError } from "@/lib/api/client";
+import { ticketListHref } from "@/lib/ticket-list-memory";
 
 export function TicketDetail({ id }: { id: string }) {
   const { user, perms } = useCurrentUser();
@@ -73,7 +74,7 @@ export function TicketDetail({ id }: { id: string }) {
         className="mb-4 flex items-center gap-1.5 text-[13px] text-muted-foreground"
       >
         <Link
-          href="/tickets"
+          href={ticketListHref()}
           className="inline-flex items-center gap-1 rounded-md py-0.5 pr-1.5 transition-colors hover:text-foreground"
         >
           <ArrowLeft className="size-3.5" /> Tickets
