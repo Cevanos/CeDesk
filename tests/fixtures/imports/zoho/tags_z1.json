@@ -1,0 +1,14 @@
+{
+ "tags": [
+  {
+   "name": "VIP",
+   "tagType": "MANUAL",
+   "id": "7001"
+  },
+  {
+   "name": "late delivery",
+   "tagType": "MANUAL",
+   "id": "7002"
+  }
+ ]
+}

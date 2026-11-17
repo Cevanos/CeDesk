@@ -1,0 +1,19 @@
+{
+ "data": [
+  {
+   "isCustomView": false,
+   "name": "My Contacts",
+   "id": "6000000011112"
+  },
+  {
+   "isCustomView": false,
+   "name": "All Contacts",
+   "id": "6000000011111"
+  },
+  {
+   "isCustomView": true,
+   "name": "VIP",
+   "id": "6000000011113"
+  }
+ ]
+}

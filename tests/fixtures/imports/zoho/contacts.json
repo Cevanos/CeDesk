@@ -4,13 +4,30 @@
    "id": "c1",
    "email": "priya@example.org",
    "firstName": "Priya",
-   "lastName": "Sharma"
+   "lastName": "Sharma",
+   "secondaryEmail": "priya.s@example.net",
+   "phone": "+91 80 4000 1000",
+   "mobile": "+91 98450 00001",
+   "accountId": "acc1",
+   "account": {
+    "id": "acc1",
+    "accountName": "Sharma Traders",
+    "website": null
+   },
+   "createdTime": "2024-12-01T08:00:00.000Z",
+   "isSpam": false
   },
   {
    "id": "c2",
    "email": null,
    "firstName": "Ravi",
-   "lastName": null
+   "lastName": null,
+   "secondaryEmail": null,
+   "phone": null,
+   "mobile": "+91 98450 00002",
+   "accountId": null,
+   "createdTime": "2024-12-02T08:00:00.000Z",
+   "isSpam": false
   }
  ]
 }
