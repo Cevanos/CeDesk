@@ -48,6 +48,7 @@ makes the next look due at once; `sync-stop` turns it off and deletes the creden
 """
 
 import asyncio
+import contextlib
 import json
 import logging
 import time
@@ -1060,10 +1061,39 @@ async def _work(sm: Sessionmaker, importers: Importers, run: Row, deadline: floa
     """One slice of a run this worker took. If its lease ran out and another worker took the
     run meanwhile, every write it tries raises `LeaseLost` and changes nothing: it stops here
     and leaves the run to its new owner."""
+    beat = asyncio.create_task(_heartbeat(sm, run)) if run.get("lease_token") else None
     try:
         await _work_owned(sm, importers, run, deadline)
     except LeaseLost:
         logger.warning("import run taken over by another worker", extra={"event": "import"})
+    finally:
+        if beat is not None:
+            beat.cancel()
+            with contextlib.suppress(asyncio.CancelledError, Exception):
+                await beat
+
+
+HEARTBEAT_SECONDS = rules.LEASE_SECONDS / 3  # the lease is renewed this often while working
+
+
+async def _heartbeat(sm: Sessionmaker, run: Row) -> None:
+    """Keeps the run's lease while this worker is on it, however long one page takes (a
+    ticket with a long history, slow files): every `HEARTBEAT_SECONDS` the lease is moved to
+    `LEASE_SECONDS` from now, only while the run still carries this worker's token. Stops
+    once another worker has the run; the fencing stops this worker's writes then."""
+    while True:
+        await asyncio.sleep(HEARTBEAT_SECONDS)
+        try:
+            async with workspace_session(sm, run["workspace_id"]) as s:
+                kept = await repo.renew_lease(
+                    s, run["id"], token=run["lease_token"],
+                    lease_until=datetime.now(UTC) + timedelta(seconds=rules.LEASE_SECONDS),
+                )  # fmt: skip
+        except Exception:  # a failed renewal is retried on the next beat
+            logger.warning("import lease not renewed", extra={"event": "import"})
+            continue
+        if not kept:
+            return
 
 
 async def _work_owned(sm: Sessionmaker, importers: Importers, run: Row, deadline: float) -> None:

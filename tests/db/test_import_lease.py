@@ -224,3 +224,52 @@ async def test_every_worker_write_needs_the_runs_current_token(
     async with workspace_session(sm, w["ws"]) as s:  # the owner's token works
         await WRITES[name](s, run_id, owner["lease_token"])
     await end_runs(sm, w["ws"])
+
+
+async def test_a_long_page_keeps_its_lease_so_no_other_worker_takes_the_run(
+    im: AsyncClient, app_sessionmaker: Sm, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Before, the lease was renewed only when a page was saved: a page that took longer
+    than 2 minutes let a second worker take the run (fenced, but the work was wasted). Now a
+    heartbeat moves the lease forward while the worker is on the run."""
+    import asyncio
+
+    from cedesk.helpdesk.service.imports import framework
+
+    monkeypatch.setattr(framework, "HEARTBEAT_SECONDS", 0.05)
+    sm = app_sessionmaker
+    src = Hooked(tickets=3)
+    w, conn, importers = await flaky_desk(im, sm, src, POLICY)
+    run_id = await start(im, w, conn, kinds=["tickets"])
+    seen: dict[str, Any] = {}
+
+    async def a_slow_page() -> None:
+        # The lease is made to look almost over; the heartbeat must move it forward.
+        await sql(sm, w["ws"], "UPDATE hd_import_run SET lease_until = now() + interval '1 second'")
+        await asyncio.sleep(0.3)
+        seen["row"] = await run_row(sm, w["ws"], run_id)
+
+    src.at, src.hook = 0, a_slow_page
+    await pass_(sm, importers, w["ws"])
+    held = seen["row"]
+    assert held["lease_until"] > datetime.now(UTC) + timedelta(seconds=60)
+    assert (await run_row(sm, w["ws"], run_id))["state"] == "done"
+    await end_runs(sm, w["ws"])
+
+
+async def test_the_heartbeat_never_extends_a_lease_another_worker_holds(
+    im: AsyncClient, app_sessionmaker: Sm
+) -> None:
+    sm = app_sessionmaker
+    src = Hooked(tickets=3)
+    w, conn, _ = await flaky_desk(im, sm, src, POLICY)
+    run_id = UUID(await start(im, w, conn, kinds=["tickets"]))
+    owner = await take_over(sm, w["ws"])
+    later = datetime.now(UTC) + timedelta(hours=1)
+    async with workspace_session(sm, w["ws"]) as s:
+        assert not await repo.renew_lease(s, run_id, token=uuid4(), lease_until=later)
+    row = await run_row(sm, w["ws"], str(run_id))
+    assert row["lease_until"] == owner["lease_until"]
+    async with workspace_session(sm, w["ws"]) as s:
+        assert await repo.renew_lease(s, run_id, token=owner["lease_token"], lease_until=later)
+    await end_runs(sm, w["ws"])
