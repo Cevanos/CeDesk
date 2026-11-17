@@ -157,3 +157,38 @@ async def test_a_missing_date_is_reported_with_the_record(
     [noted] = page["failures"]
     assert noted["external_id"] == "Z0" and "no valid creation date" in noted["last_error"]
     await end_runs(sm, w["ws"])
+
+
+class Learns(Flaky):
+    """Finds out mid-run that a part of the source is refused (as Freshdesk does with
+    ratings on a plan without them): its `warnings()` grow after page 5."""
+
+    def __init__(self, **kw: Any) -> None:
+        super().__init__(**kw)
+        self.said: list[str] = ["Spam isn't imported."]
+
+    def warnings(self) -> list[str]:
+        return list(self.said)
+
+    async def page(self, kind: str, cursor: Any) -> Any:
+        if cursor and int(cursor["offset"]) >= 5:
+            self.said.append("Ratings were refused (403): resolved tickets have none.")
+        return await super().page(kind, cursor)
+
+
+async def test_a_warning_found_during_the_run_reaches_the_report(
+    im: AsyncClient, app_sessionmaker: Sm
+) -> None:
+    """C21: before, only the warnings known at the start (the dry run's) were kept."""
+    sm = app_sessionmaker
+    src = Learns(tickets=12)
+    w, conn, importers = await flaky_desk(im, sm, src)
+    run_id = await start(im, w, conn, kinds=["tickets"])
+    await pass_(sm, importers, w["ws"])
+    run = await run_state(im, w, run_id)
+    assert run["state"] == "done"
+    assert run["report"]["warnings"] == [
+        "Spam isn't imported.",
+        "Ratings were refused (403): resolved tickets have none.",
+    ]  # each once, though said on two pages
+    await end_runs(sm, w["ws"])

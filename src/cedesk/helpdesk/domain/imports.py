@@ -217,12 +217,27 @@ class RateLimited(Exception):
 class SourceError(Exception):
     """The source can't be read. `permanent`: retrying won't help (bad credentials, no
     such account); otherwise it is down or slow and the run tries again, waiting at least
-    `retry_after` seconds when the source said so."""
+    `retry_after` seconds when the source said so. `status`: the HTTP status the source
+    answered, when there was one (a connector tells a refused key, 401/403, from the rest by
+    it, never by the words)."""
 
-    def __init__(self, message: str, *, permanent: bool, retry_after: int | None = None) -> None:
+    def __init__(
+        self,
+        message: str,
+        *,
+        permanent: bool,
+        retry_after: int | None = None,
+        status: int | None = None,
+    ) -> None:
         super().__init__(message)
         self.permanent = permanent
         self.retry_after = retry_after
+        self.status = status
+
+    @property
+    def refused(self) -> bool:
+        """The source refused the key (401/403)."""
+        return self.status in (401, 403)
 
 
 class LeaseLost(Exception):
@@ -249,7 +264,7 @@ class RecordGone(SourceError):
     account problem that stops the run."""
 
     def __init__(self, message: str) -> None:
-        super().__init__(message, permanent=True)
+        super().__init__(message, permanent=True, status=404)
 
 
 # Records that could not be read (P0-2)

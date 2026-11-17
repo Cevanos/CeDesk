@@ -402,9 +402,7 @@ class ZohoDeskConnector:
         except SourceError as exc:
             if not exc.permanent or self._mints != mints or isinstance(exc, RecordGone):
                 raise
-            # `SourceHttp` says this for a 401/403 only. A shared `status` on SourceError
-            # would be sturdier than the words (see the report).
-            if "refused these credentials" not in str(exc):
+            if not exc.refused:  # only a 401/403 costs a new token
                 raise
         api = await self._client(fresh=True)
         return await api.get(path, params, missing_ok=missing_ok, record=record)

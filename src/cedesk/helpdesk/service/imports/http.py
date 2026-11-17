@@ -253,6 +253,7 @@ class SourceHttp:
             raise SourceError(
                 f"{self._label} refused these credentials (check the key and what it may read).",
                 permanent=True,
+                status=status,
             )
         if status == 404 and missing_ok:
             return None
@@ -261,17 +262,24 @@ class SourceHttp:
         if status == 204:
             return None  # nothing to list (Zoho answers an empty page this way)
         if status == 404:
-            raise SourceError(f"{self._label} has no such account or record.", permanent=True)
+            raise SourceError(
+                f"{self._label} has no such account or record.", permanent=True, status=status
+            )
         if 300 <= status < 400:
-            raise SourceError(f"{self._label} sent us elsewhere; not followed.", permanent=True)
+            raise SourceError(
+                f"{self._label} sent us elsewhere; not followed.", permanent=True, status=status
+            )
         if status in (408, 425) or status >= 500:
             raise SourceError(
                 f"{self._label} answered {status}; will retry.",
                 permanent=False,
                 retry_after=retry_after(response.headers),
+                status=status,
             )
         if status >= 400:
-            raise SourceError(f"{self._label} refused the request ({status}).", permanent=True)
+            raise SourceError(
+                f"{self._label} refused the request ({status}).", permanent=True, status=status
+            )
         try:
             return response.json()
         except ValueError:
