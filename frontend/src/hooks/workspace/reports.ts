@@ -91,6 +91,7 @@ export function normalizeTeamReport(raw: unknown): TeamReport {
       "avg_first_reply_minutes",
       "first_reply_avg_minutes",
       "median_first_reply_minutes",
+      "avg_first_response_minutes",
     ),
     resolve_minutes: num(
       s,
@@ -99,9 +100,14 @@ export function normalizeTeamReport(raw: unknown): TeamReport {
       "avg_resolution_minutes",
       "resolution_minutes",
     ),
-    sla_met_pct: pct(num(s, "sla_met_pct", "sla_met_percent", "sla_met", "sla_compliance")),
+    // `first_reply_sla_met_percent` is already 0-100; the other spellings may be 0-1 ratios.
+    sla_met_pct:
+      num(s, "first_reply_sla_met_percent") ??
+      pct(num(s, "sla_met_pct", "sla_met_percent", "sla_met", "sla_compliance")),
     csat_average: num(s, "csat_average", "csat_avg", "avg_csat") ?? num(csatObj, "average", "avg"),
-    csat_count: num(s, "csat_count", "csat_responses") ?? num(csatObj, "count", "total"),
+    csat_count: num(s, "csat_count", "csat_responses") ?? num(csatObj, "ratings", "count", "total"),
+    open_breaching: num(s, "open_breaching"),
+    csat_happy_pct: num(csatObj, "happy_percent"),
   };
 
   const distribution = normalizeCsat(
@@ -122,6 +128,8 @@ export function normalizeTeamReport(raw: unknown): TeamReport {
     id: str(a, "member_id", "agent_id", "id"),
     name: str(a, "name", "member_name", "agent_name") ?? "Unknown",
     team_name: str(a, "team_name", "team"),
+    role: str(a, "role"),
+    status: str(a, "status"),
     resolved: num(a, "resolved", "tickets_resolved"),
     open: num(a, "open", "open_tickets"),
     first_reply_minutes: num(
@@ -129,6 +137,7 @@ export function normalizeTeamReport(raw: unknown): TeamReport {
       "first_reply_minutes",
       "avg_first_reply_minutes",
       "first_reply_avg_minutes",
+      "avg_first_response_minutes",
     ),
     csat_average: num(a, "csat_average", "csat_avg", "avg_csat"),
   }));

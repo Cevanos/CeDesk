@@ -36,4 +36,29 @@ describe("proxy path classes", () => {
     for (const a of ["portal", "public", "reports", "holidays", "articles", "triage-settings"])
       expect(ALLOWED_AREAS.has(a)).toBe(true);
   });
+
+  it("allows the Phase 3 admin and developer areas the Settings screens call", () => {
+    for (const a of [
+      "roles",
+      "apps",
+      "api-keys",
+      "webhooks",
+      "audit",
+      "privacy",
+      "retention",
+      "usage",
+      "security",
+      "security-settings",
+      "sso-settings",
+      "demo",
+      "time",
+      "side-conversations",
+    ])
+      expect(ALLOWED_AREAS.has(a)).toBe(true);
+  });
+
+  it("still refuses an area the app does not use", () => {
+    expect(ALLOWED_AREAS.has("internal")).toBe(false);
+    expect(ALLOWED_AREAS.has("admin")).toBe(false);
+  });
 });

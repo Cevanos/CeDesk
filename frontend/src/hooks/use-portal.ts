@@ -15,7 +15,9 @@ import type {
   PublicCsat,
   PublicForm,
   PublicHelp,
+  PublicType,
 } from "@/lib/api/types";
+import { newId } from "@/lib/new-id";
 
 /**
  * Customer-facing data hooks. Portal calls carry the customer's own cookie (set by the
@@ -30,6 +32,12 @@ export function useWorkspaceSlug(): string {
 }
 
 export const seg = encodeURIComponent;
+
+/** A ticket type from the server, with `fields` always a list (older servers sent none). */
+const withFields = (t: PublicType): PublicType => ({
+  ...t,
+  fields: Array.isArray(t.fields) ? t.fields : [],
+});
 
 export const isUnauthorized = (e: unknown) => e instanceof ApiError && e.status === 401;
 
@@ -99,7 +107,7 @@ export function usePortalTicketTypes(ws: string) {
   return useQuery({
     queryKey: queryKeys.portal.types(ws),
     queryFn: async () =>
-      listOf<{ id: string; name: string }>(await api.get<unknown>("portal/ticket-types")),
+      listOf<PublicType>(await api.get<unknown>("portal/ticket-types")).map(withFields),
     retry: false,
     staleTime: 60_000,
   });
@@ -109,8 +117,12 @@ export function useCreatePortalTicket(ws: string) {
   const qc = useQueryClient();
   const [idem] = useState(createIdempotency);
   return useMutation({
-    mutationFn: (v: { subject: string; description: string; type_id?: string }) =>
-      api.post<{ id: string }>("portal/tickets", v, idem.header(JSON.stringify(v))),
+    // The server writes the subject from the first 60 characters of `message`.
+    mutationFn: (v: {
+      message: string;
+      type_id?: string;
+      fields?: Record<string, string | number>;
+    }) => api.post<{ id: string }>("portal/tickets", v, idem.header(JSON.stringify(v))),
     meta: { silent: true },
     onSuccess: () => {
       idem.done();
@@ -170,7 +182,7 @@ export function usePublicForm(ws: string) {
     queryKey: queryKeys.public.form(ws),
     queryFn: async (): Promise<PublicForm> => {
       const raw = await api.get<Record<string, unknown>>(`public/${seg(ws)}/form`);
-      const types = listOf<{ id: string; name: string }>(raw?.types ?? raw?.ticket_types);
+      const types = listOf<PublicType>(raw?.types ?? raw?.ticket_types).map(withFields);
       return { ...(raw as object), types } as PublicForm;
     },
     retry: false,
@@ -184,9 +196,9 @@ export function useSubmitPublicForm(ws: string) {
     mutationFn: (v: {
       name: string;
       email: string;
-      subject: string;
       message: string;
       type_id?: string;
+      fields?: Record<string, string | number>;
       /** Spam trap: a real person never fills it, so it is always empty. */
       website: "";
     }) => api.post<unknown>(`public/${seg(ws)}/form`, v, idem.header(JSON.stringify(v))),
@@ -241,10 +253,31 @@ export function usePublicArticle(ws: string, id: string) {
   });
 }
 
+const VISITOR_KEY = "cdesk.visitor";
+
+/**
+ * A random id for this browser (8 to 100 characters), kept so one visitor cannot vote twice.
+ * Storage can be blocked; then a fresh id is made for the page and the vote still goes out.
+ */
+export function visitorId(): string {
+  try {
+    const kept = localStorage.getItem(VISITOR_KEY);
+    if (kept && kept.length >= 8 && kept.length <= 100) return kept;
+    const made = newId();
+    localStorage.setItem(VISITOR_KEY, made);
+    return made;
+  } catch {
+    return newId();
+  }
+}
+
 export function useVoteArticle(ws: string, id: string) {
   return useMutation({
     mutationFn: (helpful: boolean) =>
-      api.post<unknown>(`public/${seg(ws)}/articles/${seg(id)}/vote`, { helpful }),
+      api.post<unknown>(`public/${seg(ws)}/articles/${seg(id)}/vote`, {
+        helpful,
+        visitor: visitorId(),
+      }),
     meta: { silent: true },
   });
 }

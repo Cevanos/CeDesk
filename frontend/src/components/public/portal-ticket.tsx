@@ -87,8 +87,8 @@ export function PortalTicketPage() {
         ))}
       </ol>
 
-      {!resolved && <ReplyBox id={t.id} />}
       {resolved && <Rating id={t.id} ticket={t} />}
+      <ReplyBox id={t.id} resolved={resolved} />
     </div>
   );
 }
@@ -140,7 +140,7 @@ function Bubble({ m }: { m: PortalMessage }) {
   );
 }
 
-function ReplyBox({ id }: { id: string }) {
+function ReplyBox({ id, resolved }: { id: string; resolved: boolean }) {
   const send = useSendPortalMessage(id);
   const [body, setBody] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -160,7 +160,11 @@ function ReplyBox({ id }: { id: string }) {
           );
         }}
       >
-        <Field label="Reply" htmlFor="pr-body">
+        <Field
+          label="Reply"
+          htmlFor="pr-body"
+          hint={resolved ? "Replying reopens this ticket so our team sees it." : undefined}
+        >
           <Textarea
             id="pr-body"
             rows={4}
@@ -191,7 +195,7 @@ function Rating({
   ticket,
 }: {
   id: string;
-  ticket: { csat?: { score: number; comment?: string | null } | null; can_rate?: boolean };
+  ticket: { csat?: { score: number; comment?: string | null } | null };
 }) {
   const rate = useRatePortalTicket(id);
   const [score, setScore] = useState<number | null>(null);
@@ -215,15 +219,6 @@ function Rating({
       </Card>
     );
   }
-  if (!ticket.can_rate) {
-    return (
-      <p className="mt-8 rounded-xl bg-surface-2 p-4 text-sm text-muted-foreground">
-        This ticket is resolved. If you still need help, send us a new message from your tickets
-        page.
-      </p>
-    );
-  }
-
   return (
     <Card className="mt-8 rounded-2xl p-5 shadow-pop sm:p-6">
       <h2 className="text-lg font-semibold tracking-tight">This ticket is resolved</h2>

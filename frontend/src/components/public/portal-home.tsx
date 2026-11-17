@@ -6,13 +6,18 @@ import { useState } from "react";
 
 import { publicErrorMessage, publicFieldError } from "@/components/public/errors";
 import { PortalSignIn } from "@/components/public/portal-signin";
+import {
+  type FieldValues,
+  TypeFields,
+  fieldsPayload,
+  missingFields,
+} from "@/components/public/type-fields";
 import { StatusBadge } from "@/components/tickets/badges";
 import {
   Button,
   Card,
   EmptyState,
   Field,
-  Input,
   Select,
   Skeleton,
   Textarea,
@@ -122,9 +127,10 @@ function NewTicketForm({ onDone }: { onDone: () => void }) {
   const ws = useWorkspaceSlug();
   const types = usePortalTicketTypes(ws);
   const create = useCreatePortalTicket(ws);
-  const [subject, setSubject] = useState("");
   const [description, setDescription] = useState("");
   const [typeId, setTypeId] = useState("");
+  const [values, setValues] = useState<FieldValues>({});
+  const typeFields = (types.data ?? []).find((t) => t.id === typeId)?.fields ?? [];
   const [errs, setErrs] = useState<Record<string, string>>({});
   const [sent, setSent] = useState(false);
 
@@ -150,37 +156,27 @@ function NewTicketForm({ onDone }: { onDone: () => void }) {
         onSubmit={(e) => {
           e.preventDefault();
           const next: Record<string, string> = {};
-          if (!subject.trim()) next.subject = "Tell us what this is about.";
           if (!description.trim()) next.description = "Describe what happened.";
+          Object.assign(next, missingFields(typeFields, values));
           setErrs(next);
           if (Object.keys(next).length) return;
           create.mutate(
             {
-              subject: subject.trim(),
-              description: description.trim(),
-              ...(typeId ? { type_id: typeId } : {}),
+              // The subject is made by the server from the start of the message.
+              message: description.trim(),
+              ...(typeId ? { type_id: typeId, fields: fieldsPayload(typeFields, values) } : {}),
             },
             {
               onSuccess: () => setSent(true),
               onError: (err) =>
                 setErrs({
-                  subject: publicFieldError(err, "subject") ?? "",
-                  description: publicFieldError(err, "description") ?? "",
+                  description: publicFieldError(err, "message") ?? "",
                   _form: publicErrorMessage(err),
                 }),
             },
           );
         }}
       >
-        <Field label="Subject" htmlFor="pt-subject" error={errs.subject}>
-          <Input
-            id="pt-subject"
-            maxLength={200}
-            value={subject}
-            aria-invalid={!!errs.subject}
-            onChange={(e) => setSubject(e.target.value)}
-          />
-        </Field>
         {(types.data?.length ?? 0) > 0 && (
           <Field label="What is it about?" htmlFor="pt-type">
             <Select
@@ -188,10 +184,20 @@ function NewTicketForm({ onDone }: { onDone: () => void }) {
               value={typeId}
               placeholder="Choose one (optional)"
               options={(types.data ?? []).map((t) => ({ value: t.id, label: t.name }))}
-              onChange={(e) => setTypeId(e.target.value)}
+              onChange={(e) => {
+                setTypeId(e.target.value);
+                setValues({});
+              }}
             />
           </Field>
         )}
+        <TypeFields
+          idPrefix="pt"
+          fields={typeFields}
+          values={values}
+          errors={errs}
+          onChange={(k, v) => setValues((x) => ({ ...x, [k]: v }))}
+        />
         <Field label="How can we help?" htmlFor="pt-desc" error={errs.description}>
           <Textarea
             id="pt-desc"
@@ -202,7 +208,7 @@ function NewTicketForm({ onDone }: { onDone: () => void }) {
             onChange={(e) => setDescription(e.target.value)}
           />
         </Field>
-        {errs._form && !errs.subject && !errs.description && (
+        {errs._form && !errs.description && (
           <p role="alert" className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger">
             {errs._form}
           </p>

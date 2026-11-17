@@ -49,7 +49,8 @@ export function AgentsView() {
       transfers_only: 0,
       offline: 0,
     };
-    for (const a of list) c[a.status] = (c[a.status] ?? 0) + 1;
+    // A light agent has no status, so they count only under "all".
+    for (const a of list) if (a.status) c[a.status] = (c[a.status] ?? 0) + 1;
     return c;
   }, [list]);
   const totalOpen = useMemo(() => list.reduce((n, a) => n + a.open_tickets, 0), [list]);
@@ -62,7 +63,7 @@ export function AgentsView() {
       const hay = [
         a.name,
         ROLE_LABEL[a.role] ?? a.role,
-        STATUS_META[a.status]?.label,
+        a.status ? STATUS_META[a.status]?.label : "",
         ...a.skills,
         ...a.channels,
       ]
@@ -248,7 +249,7 @@ function AgentCard({
   index: number;
   onOpen: () => void;
 }) {
-  const s = STATUS_META[a.status] ?? STATUS_META.offline;
+  const s = a.status ? (STATUS_META[a.status] ?? STATUS_META.offline) : null;
   const shownSkills = a.skills.slice(0, 3);
   return (
     <button
@@ -268,10 +269,14 @@ function AgentCard({
           <div className="truncate font-semibold">{a.name}</div>
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <span>{ROLE_LABEL[a.role] ?? a.role}</span>
-            <span aria-hidden>·</span>
-            <span className="inline-flex items-center gap-1">
-              <span className={cn("size-1.5 rounded-full", s.dot)} /> {s.label}
-            </span>
+            {s && (
+              <>
+                <span aria-hidden>·</span>
+                <span className="inline-flex items-center gap-1">
+                  <span className={cn("size-1.5 rounded-full", s.dot)} /> {s.label}
+                </span>
+              </>
+            )}
           </div>
         </div>
         <ChevronRight
@@ -306,6 +311,11 @@ function AgentCard({
           return (
             <Badge key={c} tone="info">
               {Icon && <Icon className="size-3" />} {meta?.label ?? c}
+              {a.open_by_channel?.[c] !== undefined && (
+                <span className="tabular-nums" title="Open tickets on this channel">
+                  : {a.open_by_channel[c]}
+                </span>
+              )}
             </Badge>
           );
         })}

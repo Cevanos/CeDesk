@@ -189,8 +189,11 @@ export interface AgentRow {
   member_id: string;
   name: string;
   role: Role;
-  status: AgentStatus;
+  /** `null` for a light agent: they have no availability to show. */
+  status: AgentStatus | null;
   open_tickets: number;
+  /** Open tickets per channel group (for example `{ email: 2, chat: 1 }`). */
+  open_by_channel?: Partial<Record<ChannelGroup, number>>;
   channels: ChannelGroup[];
   capacity: Partial<Record<ChannelGroup, number>> | number | null;
   skills: string[];
@@ -370,6 +373,8 @@ export interface CevanosConnection {
   team_name: string | null;
   updated_at: string | null;
   webhook_path: string;
+  /** The events the Cevanos webhook must be subscribed to. Older servers do not send it. */
+  webhook_events?: string[];
 }
 
 /* ------------------------------------------------------------------ *
@@ -386,6 +391,10 @@ export interface ReportSummary {
   sla_met_pct: number | null;
   csat_average: number | null;
   csat_count: number | null;
+  /** Open tickets already past an SLA target. */
+  open_breaching: number | null;
+  /** Share of ratings that were 4 or 5 stars, 0-100. */
+  csat_happy_pct: number | null;
 }
 export interface ReportTeamRow {
   id: string | null;
@@ -400,6 +409,8 @@ export interface ReportAgentRow {
   id: string | null;
   name: string;
   team_name: string | null;
+  role: string | null;
+  status: string | null;
   resolved: number | null;
   open: number | null;
   first_reply_minutes: number | null;
@@ -498,7 +509,6 @@ export interface PortalTicket extends PortalTicketSummary {
   messages: PortalMessage[];
   csat?: Csat | null;
   /** The survey is on and the ticket is resolved. */
-  can_rate?: boolean;
   workspace_name?: string | null;
 }
 export interface PortalSession {
@@ -506,10 +516,24 @@ export interface PortalSession {
   name?: string | null;
   expires_at?: string;
 }
+/** One question a ticket type asks the customer (`FieldDefOut`). */
+export interface TypeField {
+  key: string;
+  label: string;
+  kind: "text" | "number" | "select";
+  options: string[];
+  required: boolean;
+}
+/** A ticket type the customer can pick, with the questions it asks. */
+export interface PublicType {
+  id: string;
+  name: string;
+  fields: TypeField[];
+}
 export interface PublicForm {
   workspace_name?: string | null;
   enabled?: boolean;
-  types: { id: string; name: string }[];
+  types: PublicType[];
 }
 export interface PublicHelp {
   workspace_name?: string | null;

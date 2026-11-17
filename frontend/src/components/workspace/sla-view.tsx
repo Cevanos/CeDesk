@@ -92,6 +92,11 @@ function SlaBody({ data }: { data: SlaSettings }) {
                     <th scope="row" className="px-4 py-3 text-left font-medium">
                       {PRIORITY_LABEL[r.priority]}
                       {t?.is_default && <Badge className="ml-2">Default</Badge>}
+                      {t?.reads_as && (
+                        <p className="mt-0.5 text-xs font-normal text-muted-foreground">
+                          {t.reads_as}
+                        </p>
+                      )}
                     </th>
                     {(["first", "resolve"] as const).map((k) => {
                       const key = `${r.priority}-${k}`;
