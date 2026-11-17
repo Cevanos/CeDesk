@@ -646,6 +646,8 @@ LOSS_KEYS: Mapping[str, str] = {
     "file_no_access": "Files of a source the importer can't download: kept as a link.",
     "csat_unavailable": "Satisfaction ratings the account isn't allowed to read.",
     "message_without_text": "Messages with neither text nor a file: left out.",
+    "message_deleted": "Messages deleted in the source: noted on their ticket.",
+    "reply_skipped": "Saved replies whose name couldn't become a CeDesk shortcut: left out.",
 }
 """Every counter a run's `losses` can hold, and what it means for the Admin."""
 
@@ -709,6 +711,54 @@ def outcome(state: str, open_failures: int, losses: Mapping[str, int], gaps: int
     if open_failures or gaps or any(n for k, n in losses.items() if k != "body_as_file"):
         return "complete_with_exceptions"
     return "complete"
+
+
+# Sync without undoing CeDesk's edits (P1-10)
+
+
+@dataclass(frozen=True)
+class SyncDecision:
+    """What a sync look (or a re-run) changes on a ticket already imported.
+
+    The rule, per field: the source's value is applied only when it changed since the source
+    was last read (`hd_import_seen`); otherwise CeDesk's value stays, whatever an agent did
+    to it. When both changed, the source's new value wins (it is the newer fact during
+    "sync until go-live") and the system line says it replaced a CeDesk change. Tags and
+    custom fields are compared one by one: a tag added in the source is added here, one
+    removed there is removed here; others an agent added stay.
+
+    Without a record of the last read (a ticket imported before this rule), the old rule
+    applies once (status and priority from the source; owner and team when the source
+    names one; tags only added) and the record starts from there."""
+
+    apply: Mapping[str, Any]  # status, priority, assignee, group, subject: the source's value
+    tags_added: Sequence[str] = ()
+    tags_removed: Sequence[str] = ()
+    fields_set: Mapping[str, str] = field(default_factory=dict)
+    fields_removed: Sequence[str] = ()
+
+
+SYNC_SCALARS: tuple[str, ...] = ("status", "priority", "assignee", "group", "subject")
+
+
+def sync_decision(before: Mapping[str, Any] | None, now: Mapping[str, Any]) -> SyncDecision:
+    """`before`/`now`: the source's values at the last read and now, as `seen_values` gives
+    them. Returns only what changed in the source (see `SyncDecision`)."""
+    if before is None:
+        apply = {k: now.get(k) for k in ("status", "priority")}
+        apply.update({k: now[k] for k in ("assignee", "group") if now.get(k) is not None})
+        return SyncDecision(apply=apply, tags_added=list(now.get("tags") or []))
+    apply = {k: now.get(k) for k in SYNC_SCALARS if now.get(k) != before.get(k)}
+    old_tags, new_tags = list(before.get("tags") or []), list(now.get("tags") or [])
+    old_fields: Mapping[str, Any] = before.get("fields") or {}
+    new_fields: Mapping[str, Any] = now.get("fields") or {}
+    return SyncDecision(
+        apply=apply,
+        tags_added=[t for t in new_tags if t not in old_tags],
+        tags_removed=[t for t in old_tags if t not in new_tags],
+        fields_set={k: v for k, v in new_fields.items() if old_fields.get(k) != v},
+        fields_removed=[k for k in old_fields if k not in new_fields],
+    )
 
 
 # Options of a run

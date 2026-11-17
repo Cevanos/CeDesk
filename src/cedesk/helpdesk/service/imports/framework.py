@@ -1690,11 +1690,6 @@ async def _refresh(
         )  # fmt: skip
     state = rules.status(t.status, ctx.status_map)
     resolved_at = (t.resolved_at or t.updated_at or last) if state == "resolved" else None
-    changed = await repo.refresh_ticket(
-        s, ticket_id, status=state, priority=rules.priority(t.priority), resolved_at=resolved_at,
-        first_reply_at=next((m.created_at for m in messages if m.kind == "agent"), None),
-        updated_at=max(t.updated_at or t.created_at, last),
-    )  # fmt: skip
     if t.csat is not None:  # a rating is history whatever the ticket's status now (P1-12)
         contact_id = await _contact(s, ctx, t.requester)
         await repo.insert_csat(
@@ -1705,19 +1700,7 @@ async def _refresh(
     if fresh:
         await triage.retriage(s, ticket_id, cfg=cfg)
         stats["new_messages"] += len(fresh)
-    assignee = await _member(s, ctx, t.assignee_email)
-    team = ctx.team_map.get(t.group_id) if t.group_id else None
-    new_owner, new_team, tags_added = await repo.refresh_people(
-        s, ticket_id, assignee_id=assignee["id"] if assignee else None, team_id=team,
-        tags=rules.clean_tags(t.tags, ctx.source), tag_max=rules.TAG_MAX,
-    )  # fmt: skip
-    notes = []
-    if new_owner and assignee:
-        notes.append(f"assigned to {assignee['name'] or assignee['email']}")
-    if new_team:
-        notes.append(f"team {ctx.group_names.get(t.group_id or '', t.group_id)}")
-    if tags_added:
-        notes.append("tags added: " + ", ".join(tags_added))
+    notes = await _apply_source_changes(s, ctx, ticket_id, t, resolved_at, messages, last)
     if notes:
         await repo.insert_message(
             s, workspace_id=ctx.ws, ticket_id=ticket_id, kind="system",
@@ -1725,10 +1708,103 @@ async def _refresh(
             created_at=datetime.now(UTC), author_member_id=None, author_name=None,
             channel_message_id=None,
         )  # fmt: skip
-    touched = bool(fresh or changed or notes)
+    touched = bool(fresh or notes)
     if touched:  # a status-only change is an update too
         stats["updated"] += 1
     return ticket_id, touched
+
+
+def _seen_values(t: Ticket, ctx: _Ctx) -> dict[str, Any]:
+    """The source's values for a ticket, as CeDesk maps them: what `hd_import_seen` keeps."""
+    return {
+        "status": rules.status(t.status, ctx.status_map),
+        "priority": rules.priority(t.priority),
+        "assignee": (t.assignee_email or "").strip().lower() or None,
+        "group": t.group_id,
+        "subject": rules.subject(t.subject),
+        "tags": rules.clean_tags(t.tags, ctx.source),
+        "fields": _fields(t, ctx.source),
+    }
+
+
+async def _apply_source_changes(
+    s: AsyncSession,
+    ctx: _Ctx,
+    ticket_id: UUID,
+    t: Ticket,
+    resolved_at: datetime | None,
+    messages: Sequence[Message],
+    last: datetime,
+) -> list[str]:
+    """Applies what changed in the source since it was last read, and only that (P1-10,
+    `rules.sync_decision`), then records what the source shows now. Returns the words of
+    the system line ("" when nothing changed)."""
+    with rules.collecting(rules.Losses()):  # already counted when the ticket was imported
+        now = _seen_values(t, ctx)
+    before = await repo.seen(s, ticket_id)
+    here = await repo.current(s, ticket_id)
+    plan = rules.sync_decision(before, now)
+    changes: dict[str, Any] = {}
+    notes: list[str] = []
+
+    def note(what: str, field_name: str, before_value: Any) -> None:
+        edited = (
+            before is not None and before_value is not None and here[field_name] != before_value
+        )
+        notes.append(what + (" (replacing a CeDesk change)" if edited else ""))
+
+    for key, value in plan.apply.items():
+        if key == "status" and value != here["status"]:
+            changes["status"] = value
+            changes["resolved_at"] = resolved_at
+            note(f"status {value}", "status", (before or {}).get("status"))
+        elif key == "priority" and value != here["priority"]:
+            changes["priority"] = value
+            note(f"priority {value}", "priority", (before or {}).get("priority"))
+        elif key == "subject" and value and value != here["subject"]:
+            cleaned = triage.clean(ctx.cfg or await triage.config(s), value, rules.SUBJECT_MAX)
+            changes["subject"] = cleaned.text or rules.subject(None)
+            note("subject", "subject", None)
+        elif key == "assignee":
+            member = await _member(s, ctx, value)
+            new_id = member["id"] if member else None
+            if new_id != here["assignee_id"]:
+                changes["assignee_id"] = new_id
+                notes.append(
+                    f"assigned to {member['name'] or member['email']}" if member else "unassigned"
+                )
+        elif key == "group":
+            team = ctx.team_map.get(value) if value else None
+            if team != here["team_id"]:
+                changes["team_id"] = team
+                notes.append(
+                    f"team {ctx.group_names.get(value or '', value)}" if team else "no team"
+                )
+    tags = list(here["tags"] or [])
+    added = [x for x in plan.tags_added if x not in tags][: max(0, rules.TAG_MAX - len(tags))]
+    removed = [x for x in plan.tags_removed if x in tags and not x.startswith("imported-")]
+    if added or removed:
+        changes["tags"] = [x for x in tags if x not in removed] + added
+        if added:
+            notes.append("tags added: " + ", ".join(added))
+        if removed:
+            notes.append("tags removed: " + ", ".join(removed))
+    fields = dict(here["fields"] or {})
+    set_now = {k: v for k, v in plan.fields_set.items() if fields.get(k) != v}
+    gone = [k for k in plan.fields_removed if k in fields]
+    if set_now or gone:
+        fields.update(set_now)
+        for key in gone:
+            fields.pop(key, None)
+        changes["fields"] = fields
+        notes.append("fields: " + ", ".join(sorted([*set_now, *gone])))
+    await repo.apply_changes(
+        s, ticket_id, changes,
+        first_reply_at=next((m.created_at for m in messages if m.kind == "agent"), None),
+        updated_at=max(t.updated_at or t.created_at, last),
+    )  # fmt: skip
+    await repo.put_seen(s, ctx.ws, ticket_id, now)
+    return notes
 
 
 def _fields(t: Ticket, source: str) -> dict[str, str]:
@@ -1812,6 +1888,8 @@ async def _ticket(
         )  # fmt: skip
     await triage.retriage(s, ticket_id, cfg=cfg)
     await repo.contact_since(s, contact_id, t.created_at)
+    with rules.collecting(rules.Losses()):  # counted once, above
+        await repo.put_seen(s, ctx.ws, ticket_id, _seen_values(t, ctx))
     return ticket_id
 
 
@@ -1858,8 +1936,10 @@ async def _replies(s: AsyncSession, ctx: _Ctx, items: list[Reply]) -> dict[str, 
         if reply.external_id in have or not body:
             continue
         try:
-            shortcut = reply_rules.free_shortcut(reply.shortcut, taken)
+            # A source's name can make a longer shortcut than CeDesk's 32; cut, not skipped.
+            shortcut = reply_rules.free_shortcut(reply.shortcut[:32].strip("-_"), taken)
         except reply_rules.ShortcutError:
+            rules.loss("reply_skipped")
             continue
         made = await reply_repo.insert_reply(
             s, ctx.ws, shortcut=shortcut, body=body, source=ctx.source, created_by=ctx.started_by
