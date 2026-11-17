@@ -1,0 +1,16 @@
+{
+ "results": [
+  {
+   "id": "o9",
+   "email": "arjun@acme.com",
+   "type": "PERSON",
+   "firstName": "Arjun",
+   "lastName": "Mehta",
+   "userId": null,
+   "userIdIncludingInactive": 9274996,
+   "createdAt": "2020-01-21T14:13:28.818Z",
+   "updatedAt": "2024-06-01T00:00:00Z",
+   "archived": true
+  }
+ ]
+}

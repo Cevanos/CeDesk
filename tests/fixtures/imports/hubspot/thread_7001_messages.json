@@ -1,0 +1,102 @@
+{
+ "results": [
+  {
+   "type": "WELCOME_MESSAGE",
+   "id": "m0",
+   "conversationsThreadId": "7001",
+   "createdAt": "2025-03-05T11:58:00Z",
+   "createdBy": "S-hubspot",
+   "client": {
+    "clientType": "SYSTEM"
+   },
+   "archived": false,
+   "text": "Hi! How can we help?"
+  },
+  {
+   "type": "MESSAGE",
+   "id": "m1",
+   "conversationsThreadId": "7001",
+   "createdAt": "2025-03-05T11:59:00Z",
+   "createdBy": "V-502",
+   "client": {
+    "clientType": "HUBSPOT"
+   },
+   "senders": [
+    {
+     "actorId": "V-502",
+     "name": "Sam",
+     "deliveryIdentifier": {
+      "type": "HS_EMAIL_ADDRESS",
+      "value": "sam@example.org"
+     }
+    }
+   ],
+   "recipients": [],
+   "archived": false,
+   "text": "Charged twice on 1 March",
+   "richText": "<div>Charged twice on 1 March</div>",
+   "attachments": [],
+   "truncationStatus": "NOT_TRUNCATED",
+   "channelId": "1000",
+   "channelAccountId": "251018",
+   "direction": "INCOMING"
+  },
+  {
+   "type": "MESSAGE",
+   "id": "m2",
+   "conversationsThreadId": "7001",
+   "createdAt": "2025-03-05T12:02:00Z",
+   "createdBy": "A-9586504",
+   "client": {
+    "clientType": "HUBSPOT"
+   },
+   "senders": [
+    {
+     "actorId": "A-9586504",
+     "name": "Neha Rao"
+    }
+   ],
+   "recipients": [],
+   "archived": false,
+   "text": "Sorry about that, checking now.",
+   "richText": "<div>Sorry about that, checking now.</div>",
+   "attachments": [
+    {
+     "type": "FILE",
+     "fileId": "9003",
+     "name": "invoice.pdf",
+     "fileUsageType": "OTHER",
+     "url": "https://1234567.fs1.hubspotusercontent-na1.net/hubfs/1234567/invoice.pdf"
+    }
+   ],
+   "truncationStatus": "NOT_TRUNCATED",
+   "channelId": "1000",
+   "channelAccountId": "251018",
+   "direction": "OUTGOING"
+  },
+  {
+   "type": "COMMENT",
+   "id": "m3",
+   "conversationsThreadId": "7001",
+   "createdAt": "2025-03-05T12:05:00Z",
+   "createdBy": "A-9586504",
+   "client": {
+    "clientType": "HUBSPOT"
+   },
+   "senders": [
+    {
+     "actorId": "A-9586504",
+     "name": "Neha Rao"
+    }
+   ],
+   "recipients": [],
+   "archived": false,
+   "text": "Looks like a gateway retry.",
+   "richText": "<div>Looks like a gateway retry.</div>",
+   "attachments": [],
+   "truncationStatus": "NOT_TRUNCATED",
+   "channelId": "1000",
+   "channelAccountId": "251018"
+  }
+ ]
+}

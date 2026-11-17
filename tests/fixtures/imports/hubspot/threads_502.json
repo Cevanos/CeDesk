@@ -1,0 +1,36 @@
+{
+ "results": [
+  {
+   "id": "7001",
+   "createdAt": "2025-03-05T11:58:00Z",
+   "closedAt": "2025-03-05T12:20:00Z",
+   "status": "CLOSED",
+   "originalChannelId": "1000",
+   "originalChannelAccountId": "251018",
+   "latestMessageTimestamp": "2025-03-05T12:10:00Z",
+   "spam": false,
+   "inboxId": "147959634",
+   "associatedContactId": "502",
+   "archived": false,
+   "threadAssociations": {
+    "associatedTicketId": "103"
+   }
+  },
+  {
+   "id": "7002",
+   "createdAt": "2025-01-11T10:00:00Z",
+   "closedAt": "2025-01-11T10:30:00Z",
+   "status": "CLOSED",
+   "originalChannelId": "1000",
+   "originalChannelAccountId": "251018",
+   "latestMessageTimestamp": "2025-01-11T10:20:00Z",
+   "spam": false,
+   "inboxId": "147959634",
+   "associatedContactId": "502",
+   "archived": false,
+   "threadAssociations": {
+    "associatedTicketId": "999"
+   }
+  }
+ ]
+}
