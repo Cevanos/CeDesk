@@ -1,15 +1,236 @@
-{"type":"conversation","id":"501","created_at":1740823200,"updated_at":1740830400,"state":"closed","priority":"high","admin_assignee_id":9,"team_assignee_id":700,
- "title":null,
- "source":{"type":"email","id":"s1","subject":"Refund &amp; returns","body":"<p>Where is my <b>refund</b>?</p><p>Order 1042&nbsp;please</p>","author":{"type":"user","id":"c1","name":"Ann Customer","email":"ann@example.org"}},
- "contacts":{"type":"contact.list","contacts":[{"type":"contact","id":"c1"}]},
- "tags":{"type":"tag.list","tags":[{"type":"tag","id":"t1","name":"VIP"},{"type":"tag","id":"t2","name":"refund"}]},
- "custom_attributes":{"order_id":"1042","plan":null},
- "conversation_rating":{"rating":5,"remark":"Thanks!","created_at":1740830000},
- "statistics":{"last_close_at":1740830300},
- "conversation_parts":{"type":"conversation_part.list","total_count":6,"conversation_parts":[
-  {"type":"conversation_part","id":"p1","part_type":"assignment","body":null,"created_at":1740823300,"author":{"type":"admin","id":"9"}},
-  {"type":"conversation_part","id":"p2","part_type":"comment","body":"<p>Refund sent.<br>Allow 3 days.</p>","created_at":1740826800,"author":{"type":"admin","id":"9","name":"Sam Agent"}},
-  {"type":"conversation_part","id":"p3","part_type":"note","body":"<p>Checked with finance</p>","created_at":1740827000,"author":{"type":"admin","id":"10","name":"Kim Note"}},
-  {"type":"conversation_part","id":"p4","part_type":"comment","body":"<p>Thank you</p>","created_at":1740828000,"author":{"type":"user","id":"c1","name":"Ann Customer","email":"ann@example.org"}},
-  {"type":"conversation_part","id":"p5","part_type":"comment","body":"<p>Anything else?</p>","created_at":1740826000,"author":{"type":"bot","id":"b1","name":"Fin","from_ai_agent":true}},
-  {"type":"conversation_part","id":"p6","part_type":"close","body":null,"created_at":1740830300,"author":{"type":"admin","id":"9"}}]}}
+{
+ "type": "conversation",
+ "id": "501",
+ "created_at": 1740823200,
+ "updated_at": 1740830400,
+ "state": "closed",
+ "priority": "high",
+ "admin_assignee_id": 9,
+ "team_assignee_id": 700,
+ "title": null,
+ "source": {
+  "type": "email",
+  "id": "s1",
+  "subject": "Refund &amp; returns",
+  "body": "<p>Where is my <b>refund</b>?</p><p>Order 1042&nbsp;please</p>",
+  "author": {
+   "type": "user",
+   "id": "c1",
+   "name": "Ann Customer",
+   "email": "ann@example.org"
+  }
+ },
+ "contacts": {
+  "type": "contact.list",
+  "contacts": [
+   {
+    "type": "contact",
+    "id": "c1"
+   },
+   {
+    "type": "contact",
+    "id": "c3",
+    "external_id": null
+   }
+  ]
+ },
+ "tags": {
+  "type": "tag.list",
+  "tags": [
+   {
+    "type": "tag",
+    "id": "t1",
+    "name": "VIP"
+   },
+   {
+    "type": "tag",
+    "id": "t2",
+    "name": "refund"
+   }
+  ]
+ },
+ "custom_attributes": {
+  "order_id": "1042",
+  "plan": null
+ },
+ "conversation_rating": {
+  "rating": 5,
+  "remark": "Thanks!",
+  "created_at": 1740830000
+ },
+ "statistics": {
+  "last_close_at": 1740830300
+ },
+ "conversation_parts": {
+  "type": "conversation_part.list",
+  "conversation_parts": [
+   {
+    "type": "conversation_part",
+    "id": "p1",
+    "part_type": "assignment",
+    "body": null,
+    "created_at": 1740823300,
+    "author": {
+     "type": "admin",
+     "id": "9"
+    }
+   },
+   {
+    "type": "conversation_part",
+    "id": "p5",
+    "part_type": "comment",
+    "body": "<p>Anything else?</p>",
+    "created_at": 1740826000,
+    "author": {
+     "type": "bot",
+     "id": "b1",
+     "name": "Fin",
+     "from_ai_agent": true
+    }
+   },
+   {
+    "type": "conversation_part",
+    "id": "p2",
+    "part_type": "comment",
+    "body": "<p>Refund sent.<br>Allow 3 days.</p>",
+    "created_at": 1740826800,
+    "author": {
+     "type": "admin",
+     "id": "9",
+     "name": "Sam Agent"
+    }
+   },
+   {
+    "type": "conversation_part",
+    "id": "p3",
+    "part_type": "note",
+    "body": "<p>Checked with finance</p>",
+    "created_at": 1740827000,
+    "author": {
+     "type": "admin",
+     "id": "10",
+     "name": "Kim Note"
+    }
+   },
+   {
+    "type": "conversation_part",
+    "id": "p4",
+    "part_type": "comment",
+    "body": "<p>Thank you</p>",
+    "created_at": 1740828000,
+    "author": {
+     "type": "user",
+     "id": "c1",
+     "name": "Ann Customer",
+     "email": "ann@example.org"
+    }
+   },
+   {
+    "type": "conversation_part",
+    "id": "p7",
+    "part_type": "assignment",
+    "body": "<p>VIP, please handle today</p>",
+    "created_at": 1740829000,
+    "updated_at": 1740829000,
+    "notified_at": 1740829000,
+    "assigned_to": {
+     "type": "admin",
+     "id": "9"
+    },
+    "author": {
+     "type": "admin",
+     "id": "10",
+     "name": "Kim Note",
+     "email": "kim@example.com"
+    },
+    "attachments": [],
+    "external_id": null,
+    "redacted": false
+   },
+   {
+    "type": "conversation_part",
+    "id": "p8",
+    "part_type": "note_and_reopen",
+    "body": "<p>Reopened: finance follow-up</p>",
+    "created_at": 1740829500,
+    "updated_at": 1740829500,
+    "notified_at": 1740829500,
+    "assigned_to": null,
+    "author": {
+     "type": "admin",
+     "id": "10",
+     "name": "Kim Note",
+     "email": "kim@example.com"
+    },
+    "attachments": [],
+    "external_id": null,
+    "redacted": false
+   },
+   {
+    "type": "conversation_part",
+    "id": "p9",
+    "part_type": "unknown",
+    "body": "<p>Internal workflow text</p>",
+    "created_at": 1740829600,
+    "updated_at": 1740829600,
+    "notified_at": 1740829600,
+    "assigned_to": null,
+    "author": {
+     "type": "admin",
+     "id": "10",
+     "name": "Kim Note",
+     "email": "kim@example.com"
+    },
+    "attachments": [],
+    "external_id": null,
+    "redacted": false
+   },
+   {
+    "type": "conversation_part",
+    "id": "p6",
+    "part_type": "close",
+    "body": null,
+    "created_at": 1740830300,
+    "author": {
+     "type": "admin",
+     "id": "9"
+    }
+   }
+  ],
+  "total_count": 9,
+  "pages": {
+   "type": "pages",
+   "page": 1,
+   "next": null,
+   "prev": null,
+   "per_page": 500,
+   "total_pages": 1
+  }
+ },
+ "teammates": {
+  "type": "admin.list",
+  "admins": [
+   {
+    "type": "admin",
+    "id": "9"
+   }
+  ]
+ },
+ "sla_applied": {
+  "type": "conversation_sla_summary",
+  "sla_name": "VIP",
+  "sla_status": "missed"
+ },
+ "linked_objects": {
+  "type": "list",
+  "total_count": 1,
+  "has_more": false,
+  "data": [
+   {
+    "type": "ticket",
+    "id": "601",
+    "category": "Customer"
+   }
+  ]
+ }
+}

@@ -209,6 +209,21 @@ class Settings(BaseSettings):
     worker_interval_seconds: float = Field(
         default=10, gt=0, le=3600, description="How often `cedesk worker` looks for work."
     )
+    # Imports (audit P0-2): how long a run keeps retrying a page that fails with a temporary
+    # error (a 5xx, a timeout) before it sets aside the record that keeps failing. The wait
+    # doubles from the base up to the cap, with jitter, never under the source's Retry-After.
+    # The defaults (8 tries, 30 s doubling to 1 h: about 1-2 h in all) ride out a typical
+    # help desk outage without holding a run for good. A 429 never counts as a try.
+    import_retry_attempts: int = Field(
+        default=8, ge=1, le=50,
+        description="Failed tries of an import page before its failing records are set aside.",
+    )  # fmt: skip
+    import_retry_base_seconds: float = Field(
+        default=30, gt=0, le=3600, description="The first wait after a failed import page."
+    )
+    import_retry_max_seconds: float = Field(
+        default=3600, gt=0, le=3600, description="The longest wait between import page tries."
+    )
     # Push notifications to the mobile app (md P8), through Firebase Cloud Messaging (it
     # delivers to iPhones too, with the app's Apple key uploaded to Firebase). Both empty:
     # push is off, and nothing else changes.

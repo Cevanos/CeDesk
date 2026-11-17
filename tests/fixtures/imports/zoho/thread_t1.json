@@ -7,5 +7,7 @@
   "name": "Priya Sharma",
   "email": "priya@example.org",
   "type": "END_USER"
- }
+ },
+ "isContentTruncated": false,
+ "visibility": "public"
 }

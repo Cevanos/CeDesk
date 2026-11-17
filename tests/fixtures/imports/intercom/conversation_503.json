@@ -1,1 +1,81 @@
-{"type":"conversation","id":"503","created_at":1740890000,"updated_at":1740900000,"state":"open","source":{"type":"email","id":"s3","subject":"Broken screen","body":"<p>See photo</p>","author":{"type":"user","id":"c1","name":"Ann Customer","email":"ann@example.org"},"attachments":[{"type":"upload","name":"screen.png","url":"https://downloads.intercomcdn.com/i/o/1/screen.png","content_type":"image/png","filesize":2048,"width":10,"height":10},{"type":"upload","name":"insecure.png","url":"http://example.org/insecure.png","content_type":"image/png","filesize":1}]},"contacts":{"type":"contact.list","contacts":[{"type":"contact","id":"c1"}]},"conversation_parts":{"type":"conversation_part.list","total_count":1,"conversation_parts":[{"type":"conversation_part","id":"p31","part_type":"comment","body":null,"created_at":1740895000,"author":{"type":"admin","id":"9","name":"Sam Agent"},"attachments":[{"type":"upload","name":"invoice.pdf","url":"https://downloads.intercomcdn.com/i/o/2/invoice.pdf","content_type":"application/pdf","filesize":5000}]}]}}
+{
+ "type": "conversation",
+ "id": "503",
+ "created_at": 1740890000,
+ "updated_at": 1740900000,
+ "state": "open",
+ "source": {
+  "type": "email",
+  "id": "s3",
+  "subject": "Broken screen",
+  "body": "<p>See photo</p>",
+  "author": {
+   "type": "user",
+   "id": "c1",
+   "name": "Ann Customer",
+   "email": "ann@example.org"
+  },
+  "attachments": [
+   {
+    "type": "upload",
+    "name": "screen.png",
+    "url": "https://downloads.intercomcdn.com/i/o/1/screen.png",
+    "content_type": "image/png",
+    "filesize": 2048,
+    "width": 10,
+    "height": 10
+   },
+   {
+    "type": "upload",
+    "name": "insecure.png",
+    "url": "http://example.org/insecure.png",
+    "content_type": "image/png",
+    "filesize": 1
+   }
+  ]
+ },
+ "contacts": {
+  "type": "contact.list",
+  "contacts": [
+   {
+    "type": "contact",
+    "id": "c1"
+   }
+  ]
+ },
+ "conversation_parts": {
+  "type": "conversation_part.list",
+  "total_count": 1,
+  "conversation_parts": [
+   {
+    "type": "conversation_part",
+    "id": "p31",
+    "part_type": "comment",
+    "body": null,
+    "created_at": 1740895000,
+    "author": {
+     "type": "admin",
+     "id": "9",
+     "name": "Sam Agent"
+    },
+    "attachments": [
+     {
+      "type": "upload",
+      "name": "invoice.pdf",
+      "url": "https://downloads.intercomcdn.com/i/o/2/invoice.pdf",
+      "content_type": "application/pdf",
+      "filesize": 5000
+     }
+    ]
+   }
+  ],
+  "pages": {
+   "type": "pages",
+   "page": 1,
+   "next": null,
+   "prev": null,
+   "per_page": 500,
+   "total_pages": 1
+  }
+ }
+}

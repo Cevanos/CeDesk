@@ -1,1 +1,8 @@
-{"data": [{"id": 1, "email": "ann@example.com", "name": "Ann Lee"}, {"id": 2, "email": null, "name": null}], "meta": {"next_cursor": "c2", "total_resources": 3}}
+{"data": [{"id": 1, "email": "ann@example.com", "name": "Ann Lee", "firstname": "Ann", "lastname": "Lee", "external_id": null, "language": "en", "timezone": "UTC", "created_datetime": "2025-02-01T09:00:00.000000+00:00", "updated_datetime": "2025-02-02T09:00:00.000000+00:00",
+  "channels": [
+   {"id": 501, "type": "email", "address": "ann@example.com", "preferred": true},
+   {"id": 502, "type": "email", "address": "ann.lee@work.example", "preferred": false},
+   {"id": 503, "type": "phone", "address": "+14155550123", "preferred": false}
+  ]},
+ {"id": 2, "email": null, "name": null, "firstname": "", "lastname": "", "external_id": null, "created_datetime": "2025-02-03T09:00:00.000000+00:00", "updated_datetime": "2025-02-03T09:00:00.000000+00:00", "channels": []}
+], "meta": {"next_cursor": "c2", "prev_cursor": null, "total_resources": 3}}

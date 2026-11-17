@@ -1,1 +1,1 @@
-[{"id":1,"ticket_id":1,"feedback":"Great","ratings":{"default_question":103},"created_at":"2025-03-01T13:00:00Z"}]
+[{"id":1,"survey_id":1,"user_id":201,"agent_id":11,"group_id":5,"ticket_id":1,"feedback":"Great","ratings":{"default_question":103},"created_at":"2025-03-01T13:00:00Z","updated_at":"2025-03-01T13:00:00Z"}]

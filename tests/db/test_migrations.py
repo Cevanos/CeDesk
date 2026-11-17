@@ -193,3 +193,156 @@ async def test_0052_upgrades_an_archive_from_0049s_first_version(owner_engine: A
     finally:
         await empty_archive_async()
         await asyncio.to_thread(command.upgrade, cfg, "head")
+
+
+async def test_0054_goes_down_and_back_up(owner_engine: Any) -> None:
+    """0054 adds the import failures table and the run's retry count; going down drops both
+    (only notes are lost, nothing imported), and going up brings them back with RLS on."""
+    import asyncio
+
+    from sqlalchemy import text
+
+    retry_column = (
+        "SELECT count(*) FROM information_schema.columns "
+        "WHERE table_name = 'hd_import_run' AND column_name = 'retry_attempts'"
+    )
+    cfg = alembic_config()
+    await asyncio.to_thread(command.downgrade, cfg, "0053")
+    async with owner_engine.connect() as conn:
+        assert await conn.scalar(text("SELECT to_regclass('hd_import_failure')")) is None
+        assert await conn.scalar(text(retry_column)) == 0
+    await asyncio.to_thread(command.upgrade, cfg, "head")
+    async with owner_engine.connect() as conn:
+        assert await conn.scalar(text("SELECT to_regclass('hd_import_failure')")) is not None
+        assert await conn.scalar(text(retry_column)) == 1
+        forced = await conn.scalar(
+            text("SELECT relforcerowsecurity FROM pg_class WHERE relname = 'hd_import_failure'")
+        )
+        assert forced is True
+
+
+async def test_0055_adds_the_resumed_event_and_goes_back_down(owner_engine: Any) -> None:
+    """Going below 0055 deletes the `resumed` history events (the audit log keeps its own)
+    and puts the old list of kinds back; going up allows them again."""
+    import asyncio
+
+    from sqlalchemy import text
+    from sqlalchemy.exc import IntegrityError
+
+    cfg = alembic_config()
+    async with owner_engine.begin() as conn:
+        for table in ("workspace", "hd_import_connection", "hd_import_event"):
+            await conn.execute(text(f"ALTER TABLE {table} NO FORCE ROW LEVEL SECURITY"))
+        ws = await conn.scalar(text("INSERT INTO workspace (name) VALUES ('R5') RETURNING id"))
+        cid = await conn.scalar(
+            text(
+                "INSERT INTO hd_import_connection (workspace_id, source, label) "
+                "VALUES (:ws, 'zendesk', 'acme') RETURNING id"
+            ),
+            {"ws": ws},
+        )
+        await conn.execute(
+            text(
+                "INSERT INTO hd_import_event (workspace_id, connection_id, kind) "
+                "VALUES (:ws, :c, 'resumed')"
+            ),
+            {"ws": ws, "c": cid},
+        )
+        for table in ("workspace", "hd_import_connection", "hd_import_event"):
+            await conn.execute(text(f"ALTER TABLE {table} FORCE ROW LEVEL SECURITY"))
+    await asyncio.to_thread(command.downgrade, cfg, "0054")
+    async with owner_engine.begin() as conn:
+        await conn.execute(text("ALTER TABLE hd_import_event NO FORCE ROW LEVEL SECURITY"))
+        left = "SELECT count(*) FROM hd_import_event WHERE kind = 'resumed'"
+        assert await conn.scalar(text(left)) == 0
+        with pytest.raises(IntegrityError):
+            async with conn.begin_nested():
+                await conn.execute(
+                    text(
+                        "INSERT INTO hd_import_event (workspace_id, connection_id, kind) "
+                        "VALUES (:ws, :c, 'resumed')"
+                    ),
+                    {"ws": ws, "c": cid},
+                )
+        await conn.execute(text("ALTER TABLE hd_import_event FORCE ROW LEVEL SECURITY"))
+    await asyncio.to_thread(command.upgrade, cfg, "head")
+    async with owner_engine.begin() as conn:
+        await conn.execute(text("ALTER TABLE workspace NO FORCE ROW LEVEL SECURITY"))
+        await conn.execute(text("DELETE FROM workspace WHERE id = :ws"), {"ws": ws})
+        await conn.execute(text("ALTER TABLE workspace FORCE ROW LEVEL SECURITY"))
+
+
+async def test_0056_adds_the_lease_token_and_goes_back_down(owner_engine: Any) -> None:
+    import asyncio
+
+    from sqlalchemy import text
+
+    column = (
+        "SELECT count(*) FROM information_schema.columns "
+        "WHERE table_name = 'hd_import_run' AND column_name = 'lease_token'"
+    )
+    cfg = alembic_config()
+    await asyncio.to_thread(command.downgrade, cfg, "0055")
+    async with owner_engine.connect() as conn:
+        assert await conn.scalar(text(column)) == 0
+    await asyncio.to_thread(command.upgrade, cfg, "head")
+    async with owner_engine.connect() as conn:
+        assert await conn.scalar(text(column)) == 1
+
+
+async def test_0057_adds_the_seen_table_and_goes_back_down(owner_engine: Any) -> None:
+    import asyncio
+
+    from sqlalchemy import text
+
+    table = "SELECT to_regclass('hd_import_seen') IS NOT NULL"
+    cfg = alembic_config()
+    await asyncio.to_thread(command.downgrade, cfg, "0056")
+    async with owner_engine.connect() as conn:
+        assert await conn.scalar(text(table)) is False
+    await asyncio.to_thread(command.upgrade, cfg, "head")
+    async with owner_engine.connect() as conn:
+        assert await conn.scalar(text(table)) is True
+
+
+async def test_0058_adds_the_credentials_updated_event_and_goes_back_down(
+    owner_engine: Any,
+) -> None:
+    import asyncio
+
+    from sqlalchemy import text
+
+    check = (
+        "SELECT pg_get_constraintdef(oid) FROM pg_constraint "
+        "WHERE conname = 'hd_import_event_kind_check'"
+    )
+    cfg = alembic_config()
+    await asyncio.to_thread(command.downgrade, cfg, "0057")
+    async with owner_engine.connect() as conn:
+        assert "credentials_updated" not in await conn.scalar(text(check))
+    await asyncio.to_thread(command.upgrade, cfg, "head")
+    async with owner_engine.connect() as conn:
+        assert "credentials_updated" in await conn.scalar(text(check))
+
+
+async def test_0059_adds_contact_details_and_recipients_and_goes_back_down(
+    owner_engine: Any,
+) -> None:
+    import asyncio
+
+    from sqlalchemy import text
+
+    cols = (
+        "SELECT table_name || '.' || column_name FROM information_schema.columns "
+        "WHERE (table_name, column_name) IN (('hd_contact', 'phone'), "
+        "('hd_contact', 'organization'), ('hd_message', 'recipients')) ORDER BY 1"
+    )
+    cfg = alembic_config()
+    await asyncio.to_thread(command.downgrade, cfg, "0058")
+    async with owner_engine.connect() as conn:
+        assert (await conn.execute(text(cols))).all() == []
+    await asyncio.to_thread(command.upgrade, cfg, "head")
+    async with owner_engine.connect() as conn:
+        assert [r[0] for r in (await conn.execute(text(cols))).all()] == [
+            "hd_contact.organization", "hd_contact.phone", "hd_message.recipients"
+        ]  # fmt: skip

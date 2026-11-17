@@ -1,0 +1,25 @@
+{
+ "status": "COMPLETE",
+ "results": [
+  {
+   "id": "31001",
+   "properties": {
+    "hs_call_title": "Refund call",
+    "hs_call_body": "<p>Customer wants the refund to the card.</p>",
+    "hs_call_direction": "INBOUND",
+    "hs_call_status": "COMPLETED",
+    "hs_call_duration": "185000",
+    "hs_call_recording_url": "https://api.twilio.com/2010-04-01/Accounts/AC0/Recordings/RE0.mp3",
+    "hs_timestamp": "2025-02-02T09:30:00Z",
+    "hs_createdate": "2025-02-02T09:35:00Z",
+    "hubspot_owner_id": "o9",
+    "hs_attachment_ids": null
+   },
+   "createdAt": "2025-02-02T09:35:00Z",
+   "updatedAt": "2025-02-02T09:35:00Z",
+   "archived": false
+  }
+ ],
+ "startedAt": "2025-03-10T10:00:00.100Z",
+ "completedAt": "2025-03-10T10:00:00.140Z"
+}

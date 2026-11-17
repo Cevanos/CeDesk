@@ -234,7 +234,7 @@ def _worker(once: bool) -> int:
     from cedesk.helpdesk.service.email import send_due
     from cedesk.helpdesk.service.email_in import poll
     from cedesk.helpdesk.service.idempotency import sweep_everywhere
-    from cedesk.helpdesk.service.imports.framework import make_importers
+    from cedesk.helpdesk.service.imports.framework import make_importers, retry_policy
     from cedesk.helpdesk.service.imports.framework import run_due as run_imports
     from cedesk.helpdesk.service.jira import make_post
     from cedesk.helpdesk.service.limits import remove_expired_retention_exports, run_retention
@@ -313,7 +313,9 @@ def _worker(once: bool) -> int:
         )
         webhook_client = WebhookClient()
         chats = ChatPoller(sm, cevanos, batch=settings.cevanos_poll_batch)
-        importers = make_importers(settings.secret_key.get_secret_value(), store)
+        importers = make_importers(
+            settings.secret_key.get_secret_value(), store, retry=retry_policy(settings)
+        )
         swept_at = 0.0
         alerted_at = 0.0
         retained_at = -float(RETENTION_EVERY_SECONDS)  # due at the first pass

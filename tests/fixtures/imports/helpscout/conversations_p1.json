@@ -1,10 +1,12 @@
 {"_embedded": {"conversations": [
- {"id": 1001, "number": 1, "status": "closed", "type": "email", "mailboxId": 100, "subject": "  Refund   please ",
+ {"id": 1001, "number": 1, "threads": 5, "status": "closed", "state": "published", "type": "email", "mailboxId": 100, "subject": "  Refund   please ",
   "createdAt": "2025-03-01T10:00:00Z", "closedAt": "2025-03-02T09:00:00Z", "userUpdatedAt": "2025-03-02T09:30:00Z",
-  "primaryCustomer": {"id": 7, "first": "Ann", "last": "Lee", "email": "ann@example.org"},
-  "assignee": {"id": 1, "first": "Sam", "last": "Agent", "email": "sam@example.com"},
+  "primaryCustomer": {"id": 7, "type": "customer", "first": "Ann", "last": "Lee", "email": "ann@example.org"},
+  "assignee": {"id": 1, "type": "user", "first": "Sam", "last": "Agent", "email": "sam@example.com"},
+  "cc": ["Boss@Example.org"], "bcc": ["audit@example.org"],
   "tags": [{"id": 1, "tag": "VIP Customer", "color": "#fff"}, {"id": 2, "name": "refund"}],
-  "customFields": [{"id": 5, "name": "Order ID", "value": "1042", "text": "1042"}]},
+  "customFields": [{"id": 5, "name": "Order ID", "value": "1042", "text": "1042"}],
+  "_links": {"self": {"href": "https://api.helpscout.net/v2/conversations/1001"}, "mailbox": {"href": "https://api.helpscout.net/v2/mailboxes/100"}, "threads": {"href": "https://api.helpscout.net/v2/conversations/1001/threads/"}, "web": {"href": "https://secure.helpscout.net/conversation/1001/1"}}},
  {"id": 1002, "number": 2, "status": "spam", "type": "email", "mailboxId": 100, "subject": "Win a prize",
   "createdAt": "2025-03-01T11:00:00Z", "primaryCustomer": {"id": 9, "first": "Spam", "email": "s@spam.test"}}
-]}, "page": {"size": 2, "totalElements": 3, "totalPages": 2, "number": 1}}
+]}, "_links": {"self": {"href": "https://api.helpscout.net/v2/conversations?page=1"}, "next": {"href": "https://api.helpscout.net/v2/conversations?page=2"}}, "page": {"size": 2, "totalElements": 3, "totalPages": 2, "number": 1}}

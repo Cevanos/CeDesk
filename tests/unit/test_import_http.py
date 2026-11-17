@@ -83,6 +83,9 @@ def test_statuses_are_permanent_or_worth_retrying(status: int, permanent: bool) 
     with pytest.raises(SourceError) as caught:
         get(client(lambda r: httpx.Response(status, json={})))
     assert caught.value.permanent is permanent
+    # A connector tells a refused key by the status, never by the wording (Zoho, Freshdesk).
+    assert caught.value.status == status
+    assert caught.value.refused is (status in (401, 403))
 
 
 def test_credentials_never_appear_in_an_error() -> None:
@@ -162,6 +165,24 @@ def test_only_the_oauth_token_exchange_may_post() -> None:
         with pytest.raises(ValueError, match="OAuth token path"):
             asyncio.run(c.exchange_token(path, {}))
     assert len(seen) == 1  # nothing else was sent
+
+
+def test_zendesk_token_path_is_allowed_exactly() -> None:
+    """Zendesk's token endpoint is `/oauth/tokens`; its `/api/v2/oauth/tokens` (the OAuth
+    Tokens API, which creates tokens) and anything else ending alike stay refused."""
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(201, json={"access_token": "t", "token_type": "bearer"})
+
+    c = client(handler)
+    got = asyncio.run(c.exchange_token("/oauth/tokens", {"grant_type": "client_credentials"}))
+    assert got["access_token"] == "t" and seen[0].url.path == "/oauth/tokens"
+    for path in ("/api/v2/oauth/tokens", "/x/oauth/tokens", "/oauth/tokens/../x"):
+        with pytest.raises(ValueError, match="OAuth token path"):
+            asyncio.run(c.exchange_token(path, {}))
+    assert len(seen) == 1
 
 
 # Files a source message points to (`download`)

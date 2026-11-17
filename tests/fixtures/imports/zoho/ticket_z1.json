@@ -1,0 +1,50 @@
+{
+ "id": "z1",
+ "ticketNumber": "101",
+ "subject": "Order 1042 late",
+ "status": "Waiting on courier",
+ "statusType": "On Hold",
+ "priority": "High",
+ "channel": "Email",
+ "departmentId": "d1",
+ "contactId": "c1",
+ "email": "priya@example.org",
+ "contact": {
+  "id": "c1",
+  "email": "priya@example.org",
+  "firstName": "Priya",
+  "lastName": "Sharma",
+  "phone": "+91 80 4000 1000",
+  "mobile": null,
+  "account": {
+   "id": "acc1",
+   "accountName": "Sharma Traders",
+   "website": null
+  }
+ },
+ "assigneeId": "a1",
+ "assignee": {
+  "id": "a1",
+  "email": "neha@acme.com",
+  "firstName": "Neha",
+  "lastName": ""
+ },
+ "classification": "Problem",
+ "category": "Delivery",
+ "subCategory": null,
+ "cf": {
+  "cf_order": "1042",
+  "cf_empty": null
+ },
+ "createdTime": "2025-03-01T10:00:00.000Z",
+ "modifiedTime": "2025-03-09T09:00:00.000Z",
+ "customerResponseTime": "2025-03-01T10:00:00.000Z",
+ "closedTime": null,
+ "dueDate": "2025-03-03T10:00:00.000Z",
+ "isOverDue": true,
+ "tagCount": "2",
+ "threadCount": "3",
+ "commentCount": "2",
+ "isSpam": false,
+ "webUrl": "https://desk.zoho.in/support/acme/ShowHomePage.do#Cases/dv/z1"
+}

@@ -1,6 +1,7 @@
 {"users":[
-{"id":1,"name":"Ann Customer","email":"Ann@Example.org","role":"end-user"},
-{"id":2,"name":"Bo","email":null,"role":"end-user"},
-{"id":3,"name":"Cy","email":"cy@example.org","role":"end-user"},
-{"id":9,"name":"Sam Agent","email":"sam@acme.test","role":"admin"},
-{"id":10,"name":"Lee Agent","email":"lee@acme.test","role":"agent"}]}
+{"id":1,"name":"Ann Customer","email":"Ann@Example.org","role":"end-user","phone":"+1 555 0100","organization_id":801,"active":true},
+{"id":2,"name":"Bo","email":null,"role":"end-user","phone":null,"organization_id":null,"active":true},
+{"id":3,"name":"Cy","email":"cy@example.org","role":"end-user","phone":null,"organization_id":null,"active":true},
+{"id":9,"name":"Sam Agent","email":"sam@acme.test","role":"admin","phone":null,"organization_id":null,"active":true},
+{"id":10,"name":"Lee Agent","email":"lee@acme.test","role":"agent","phone":null,"organization_id":null,"active":true},
+{"id":13,"name":"Former Agent","email":"former@acme.test","role":"agent","phone":null,"organization_id":null,"active":false}]}

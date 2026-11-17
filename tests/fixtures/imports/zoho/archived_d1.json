@@ -1,0 +1,22 @@
+{
+ "data": [
+  {
+   "id": "z9",
+   "ticketNumber": "9",
+   "subject": "Old question",
+   "status": "Closed",
+   "statusType": "Closed",
+   "isArchived": true,
+   "priority": null,
+   "channel": "Email",
+   "departmentId": "d1",
+   "contactId": "c1",
+   "email": "priya@example.org",
+   "createdTime": "2019-05-01T08:00:00.000Z",
+   "closedTime": "2019-05-02T08:00:00.000Z",
+   "threadCount": "1",
+   "commentCount": "0",
+   "webUrl": "https://desk.zoho.in/support/acme/ShowHomePage.do#Cases/dv/z9"
+  }
+ ]
+}

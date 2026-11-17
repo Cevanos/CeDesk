@@ -1,0 +1,8 @@
+{"data": [
+ {"id": 300, "subject": "No created date", "status": "open", "spam": false, "trashed_datetime": null, "channel": "email",
+  "created_datetime": null, "opened_datetime": "2025-04-02T08:00:00+00:00", "updated_datetime": "2025-04-03T08:00:00+00:00",
+  "customer": {"id": 1, "email": "ann@example.com", "name": "Ann Lee"}, "tags": []},
+ {"id": 301, "subject": "No date at all", "status": "open", "spam": false, "trashed_datetime": null, "channel": "email",
+  "created_datetime": null, "updated_datetime": null,
+  "customer": {"id": 1, "email": "ann@example.com", "name": "Ann Lee"}, "tags": []}
+], "meta": {"next_cursor": null, "prev_cursor": null, "total_resources": 2}}

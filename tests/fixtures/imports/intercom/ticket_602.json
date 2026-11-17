@@ -1,0 +1,78 @@
+{
+ "type": "ticket",
+ "id": "602",
+ "ticket_id": "23",
+ "category": "Back-office",
+ "ticket_attributes": {
+  "_default_title_": "Refund for order A-77",
+  "_default_description_": "<p>Finance must approve</p>",
+  "order_number": "A-77",
+  "files": []
+ },
+ "ticket_state": {
+  "type": "ticket_state",
+  "id": "7",
+  "category": "in_progress",
+  "internal_label": "In Progress",
+  "external_label": "Resolved"
+ },
+ "ticket_type": {
+  "type": "ticket_type",
+  "id": "3",
+  "category": "Back-office",
+  "name": "Refund approval",
+  "description": "",
+  "icon": "",
+  "workspace_id": "abc123",
+  "archived": false
+ },
+ "contacts": {
+  "type": "contact.list",
+  "contacts": []
+ },
+ "admin_assignee_id": "9",
+ "team_assignee_id": "701",
+ "created_at": 1741100000,
+ "updated_at": 1741200000,
+ "open": true,
+ "snoozed_until": null,
+ "is_shared": false,
+ "channel": "email",
+ "linked_objects": {
+  "type": "list",
+  "total_count": 1,
+  "has_more": false,
+  "data": [
+   {
+    "type": "conversation",
+    "id": "501",
+    "category": null
+   }
+  ]
+ },
+ "ticket_parts": {
+  "type": "ticket_part.list",
+  "ticket_parts": [
+   {
+    "type": "ticket_part",
+    "id": "t9",
+    "part_type": "comment",
+    "body": "<p>Approved up to 50 EUR</p>",
+    "previous_ticket_state": null,
+    "ticket_state": null,
+    "created_at": 1741100500,
+    "updated_at": 1741100500,
+    "assigned_to": null,
+    "author": {
+     "type": "admin",
+     "id": "9",
+     "name": "Sam Agent",
+     "email": "sam@example.com"
+    },
+    "attachments": [],
+    "redacted": false
+   }
+  ],
+  "total_count": 1
+ }
+}

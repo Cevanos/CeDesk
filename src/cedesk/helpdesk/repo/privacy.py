@@ -34,7 +34,8 @@ async def contact(
 ) -> RowMapping | None:
     result = await session.execute(
         text(
-            "SELECT id, email, name, vip, customer_since, created_at, erased_at "
+            "SELECT id, email, name, vip, phone, organization, customer_since, created_at, "
+            "erased_at "
             "FROM hd_contact WHERE id = :id" + (" FOR UPDATE" if lock else "")
         ),
         {"id": contact_id},
@@ -235,7 +236,7 @@ async def erase_tickets(session: AsyncSession, ids: list[UUID]) -> dict[str, int
         ),
         "messages": await _changed(
             session,
-            "UPDATE hd_message SET body = :erased, email = NULL, "
+            "UPDATE hd_message SET body = :erased, email = NULL, recipients = NULL, "
             "author_name = CASE WHEN kind = 'customer' THEN :name ELSE author_name END "
             "WHERE ticket_id = ANY(:ids)",
             {**p, "name": ERASED_NAME},
@@ -285,9 +286,39 @@ _THEIR_TICKETS = (
 )
 
 
+# An address in an imported list: the address itself, or "Name <address>", in any case.
+_STRIP_IMPORTED_FIELDS = (
+    "UPDATE hd_ticket SET fields = jsonb_strip_nulls(fields || jsonb_build_object("
+    "'source_cc', CASE WHEN fields ? 'source_cc' THEN NULLIF(array_to_string(ARRAY("
+    "SELECT x FROM unnest(string_to_array(fields->>'source_cc', ', ')) x "
+    "WHERE NOT (lower(trim(x)) = :email OR lower(trim(x)) LIKE '%<' || :email || '>')), "
+    "', '), '') END, "
+    "'source_followers', CASE WHEN fields ? 'source_followers' THEN NULLIF(array_to_string("
+    "ARRAY(SELECT x FROM unnest(string_to_array(fields->>'source_followers', ', ')) x "
+    "WHERE NOT (lower(trim(x)) = :email OR lower(trim(x)) LIKE '%<' || :email || '>')), "
+    "', '), '') END)) "
+    "WHERE lower(fields->>'source_cc') LIKE :like "
+    "OR lower(fields->>'source_followers') LIKE :like"
+)
+# The same for a message's recipients (to, cc, bcc); a list left empty goes, and so does
+# `recipients` when nothing is left.
+_STRIP_RECIPIENTS = (
+    "UPDATE hd_message SET recipients = (SELECT jsonb_object_agg(r.key, r.kept) FROM "
+    "(SELECT key, (SELECT jsonb_agg(a) FROM jsonb_array_elements_text(value) a "
+    "WHERE NOT (lower(trim(a)) = :email OR lower(trim(a)) LIKE '%<' || :email || '>')) "
+    "AS kept FROM jsonb_each(recipients)) r WHERE r.kept IS NOT NULL) "
+    "WHERE recipients IS NOT NULL AND lower(recipients::text) LIKE :like"
+)
+
+
+def _like(value: str) -> str:
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
 async def erase_contact(session: AsyncSession, contact_id: UUID, email: str) -> dict[str, int]:
     """The rating comments, portal sign-ins, events and the contact itself."""
     p: dict[str, Any] = {"c": contact_id}
+    found = {"email": email.lower(), "like": f"%{_like(email.lower())}%"}
     counts = {
         "rating_comments": await _changed(
             session,
@@ -323,6 +354,10 @@ async def erase_contact(session: AsyncSession, contact_id: UUID, email: str) -> 
             "OR payload->>'contact_id' = CAST(:c AS text)",
             {**p, "stopped": STOPPED},
         ),
+        # An import keeps who was copied on or followed other customers' tickets, and whom
+        # their messages went to: the address goes from those lists; the others stay.
+        "imported_addresses": await _changed(session, _STRIP_IMPORTED_FIELDS, found),
+        "imported_recipients": await _changed(session, _STRIP_RECIPIENTS, found),
         # Webhook deliveries are copies of those events (md PL5: the body names the ticket,
         # and its subject is the customer's words): the same, and the receiver's answers go.
         "webhook_responses": await _changed(
@@ -345,6 +380,7 @@ async def erase_contact(session: AsyncSession, contact_id: UUID, email: str) -> 
     await session.execute(
         text(
             "UPDATE hd_contact SET email = :email, name = :name, vip = false, "
+            "phone = NULL, organization = NULL, "
             "erased_at = now(), updated_at = now() WHERE id = :c"
         ),
         {**p, "email": erased_email(contact_id), "name": ERASED_NAME},

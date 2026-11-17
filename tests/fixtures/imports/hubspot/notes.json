@@ -4,7 +4,8 @@
    "id": "n1",
    "properties": {
     "hs_note_body": "<div>Courier says <b>Friday</b></div>",
-    "hs_timestamp": "2025-03-01T10:30:00Z"
+    "hs_timestamp": "2025-03-01T10:30:00Z",
+    "hubspot_owner_id": "o1"
    }
   },
   {

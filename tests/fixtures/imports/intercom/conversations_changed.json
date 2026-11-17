@@ -1,1 +1,0 @@
-{"type":"conversation.list","total_count":3,"conversations":[{"type":"conversation","id":"503","updated_at":1740900000},{"type":"conversation","id":"501","updated_at":1740830400},{"type":"conversation","id":"502","updated_at":1740700000}],"pages":{"type":"pages","page":1,"per_page":100,"next":{"page":2,"starting_after":"cursor-x"}}}

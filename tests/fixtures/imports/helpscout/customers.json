@@ -1,1 +1,5 @@
-{"_embedded": {"customers": [{"id": 7, "firstName": "Ann", "lastName": "Lee", "_embedded": {"emails": [{"id": 1, "value": "Ann@Example.org", "type": "work"}]}}, {"id": 8, "firstName": "Bo", "lastName": "", "_embedded": {"emails": []}}]}, "page": {"size": 50, "totalElements": 2, "totalPages": 1, "number": 1}}
+{"_embedded": {"customers": [
+ {"id": 7, "firstName": "Ann", "lastName": "Lee", "gender": "unknown", "jobTitle": "Buyer", "organization": "Acme, Inc", "organizationId": 42, "photoType": "unknown", "conversationCount": 1, "createdAt": "2025-02-01T10:00:00Z", "updatedAt": "2025-03-01T10:00:00Z",
+  "_embedded": {"emails": [{"id": 1, "value": "Ann@Example.org", "type": "work"}, {"id": 2, "value": "ann.lee@home.example", "type": "home"}], "phones": [{"id": 3, "value": "+1 555-0100", "type": "work"}], "chats": [], "social_profiles": [], "websites": [], "properties": []}},
+ {"id": 8, "firstName": "Bo", "lastName": "", "organization": "", "createdAt": "2025-02-02T10:00:00Z", "_embedded": {"emails": [], "phones": [], "chats": [], "social_profiles": [], "websites": [], "properties": []}}
+]}, "page": {"size": 50, "totalElements": 2, "totalPages": 1, "number": 1}}

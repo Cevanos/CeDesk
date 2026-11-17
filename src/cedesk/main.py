@@ -68,7 +68,7 @@ from cedesk.helpdesk.service import apps as apps_service
 from cedesk.helpdesk.service import jira as jira_service
 from cedesk.helpdesk.service import limits as limits_service
 from cedesk.helpdesk.service.errors import ServiceError, TooManyAttempts
-from cedesk.helpdesk.service.imports.framework import make_importers
+from cedesk.helpdesk.service.imports.framework import make_importers, retry_policy
 from cedesk.helpdesk.service.stream import Slots
 from cedesk.ratelimit import SlidingWindowLimiter
 from cedesk.settings import Edition, Settings, get_settings
@@ -158,7 +158,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.dns = DnsLookup()  # the support address DNS check (md C10)
     app.state.stream_slots = Slots()  # open live streams per person (md C11)
     # Imports from other help desks (md section 8); tests replace `build` with a fake source.
-    app.state.importers = make_importers(settings.secret_key.get_secret_value(), app.state.store)
+    app.state.importers = make_importers(
+        settings.secret_key.get_secret_value(), app.state.store, retry=retry_policy(settings)
+    )
     app.state.attempts = SlidingWindowLimiter(
         settings.sign_in_limit, settings.sign_in_window_seconds
     )

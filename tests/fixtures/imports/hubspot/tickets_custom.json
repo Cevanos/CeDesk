@@ -1,0 +1,45 @@
+{
+ "status": "COMPLETE",
+ "results": [
+  {
+   "id": "101",
+   "properties": {
+    "hs_object_id": "101",
+    "order_number": "A-1042",
+    "order_channel": "web;store",
+    "hs_time_to_close_sla_due_date": "2025-03-03T10:00:00Z",
+    "createdate": "2025-03-01T10:00:00Z",
+    "hs_lastmodifieddate": "2025-03-02T09:00:00.000Z"
+   },
+   "createdAt": "2025-03-01T10:00:00Z",
+   "updatedAt": "2025-03-02T09:00:00.000Z",
+   "archived": false
+  },
+  {
+   "id": "102",
+   "properties": {
+    "hs_object_id": "102",
+    "order_number": null,
+    "order_channel": "",
+    "hs_time_to_close_sla_due_date": null
+   },
+   "createdAt": "2025-02-01T08:00:00Z",
+   "updatedAt": "2025-02-03T08:00:00Z",
+   "archived": false
+  },
+  {
+   "id": "103",
+   "properties": {
+    "hs_object_id": "103",
+    "order_number": "0",
+    "order_channel": null,
+    "hs_time_to_close_sla_due_date": null
+   },
+   "createdAt": "2025-03-05T12:00:00Z",
+   "updatedAt": "2025-03-05T12:00:00Z",
+   "archived": false
+  }
+ ],
+ "startedAt": "2025-03-10T10:00:00.100Z",
+ "completedAt": "2025-03-10T10:00:00.140Z"
+}

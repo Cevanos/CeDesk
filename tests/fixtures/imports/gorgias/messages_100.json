@@ -1,6 +1,10 @@
 {"data": [
- {"id": 1, "public": true, "from_agent": false, "sender": {"email": "ann@example.com", "name": "Ann Lee"}, "body_text": "Where is it?", "body_html": "<p>Where is it?</p>", "created_datetime": "2025-03-01T10:00:00+00:00"},
- {"id": 2, "public": true, "from_agent": true, "sender": {"email": "agent@acme.com", "name": "Agent A"}, "body_text": null, "body_html": "<p>Hello<br>It ships <b>today</b>.</p><style>p{}</style>", "created_datetime": "2025-03-01T11:00:00+00:00"},
- {"id": 3, "public": false, "from_agent": true, "sender": {"email": "agent@acme.com", "name": "Agent A"}, "body_text": "internal note", "created_datetime": "2025-03-01T12:00:00+00:00"},
- {"id": 4, "public": true, "from_agent": false, "sender": {"email": "ann@example.com"}, "body_text": "gone", "deleted_datetime": "2025-03-01T13:00:00+00:00", "created_datetime": "2025-03-01T13:00:00+00:00"}
-], "meta": {"next_cursor": null}}
+ {"id": 1, "ticket_id": 100, "channel": "email", "via": "email", "public": true, "from_agent": false, "sender": {"id": 1, "email": "ann@example.com", "name": "Ann Lee"},
+  "source": {"type": "email", "from": {"name": "Ann Lee", "address": "ann@example.com"}, "to": [{"name": "Acme Support", "address": "support@acme.com"}], "cc": [{"name": "Bo Kay", "address": "bo@example.com"}], "bcc": [{"name": "", "address": "audit@acme.com"}]},
+  "body_text": "Where is it?", "body_html": "<p>Where is it?</p>", "created_datetime": "2025-03-01T10:00:00+00:00", "sent_datetime": null, "attachments": []},
+ {"id": 2, "ticket_id": 100, "channel": "email", "via": "helpdesk", "public": true, "from_agent": true, "sender": {"id": 5, "email": "agent@acme.com", "name": "Agent A"},
+  "source": {"type": "email", "from": {"name": "Acme Support", "address": "support@acme.com"}, "to": [{"name": "Ann Lee", "address": "ann@example.com"}], "cc": [{"name": "Bo Kay", "address": "bo@example.com"}, {"name": "Cy Dee", "address": "cy@example.com"}], "bcc": []},
+  "body_text": null, "body_html": "<p>Hello<br>It ships <b>today</b>.</p><style>p{}</style>", "created_datetime": "2025-03-01T11:00:00+00:00", "sent_datetime": "2025-03-01T11:00:01+00:00", "attachments": []},
+ {"id": 3, "ticket_id": 100, "channel": "internal-note", "via": "helpdesk", "public": false, "from_agent": true, "sender": {"id": 5, "email": "agent@acme.com", "name": "Agent A"}, "source": {"type": "internal-note"}, "body_text": "internal note", "created_datetime": "2025-03-01T12:00:00+00:00"},
+ {"id": 4, "ticket_id": 100, "channel": "email", "via": "email", "public": true, "from_agent": false, "sender": {"id": 1, "email": "ann@example.com"}, "body_text": "gone", "deleted_datetime": "2025-03-01T13:00:00+00:00", "created_datetime": "2025-03-01T13:00:00+00:00"}
+], "meta": {"next_cursor": null, "prev_cursor": null}}

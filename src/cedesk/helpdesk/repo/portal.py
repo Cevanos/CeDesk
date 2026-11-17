@@ -7,6 +7,7 @@ from uuid import UUID
 from sqlalchemy import RowMapping, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from cedesk.helpdesk.domain.reports import IMPORT_SOURCES
 from cedesk.helpdesk.repo.attachments import MESSAGE_FILES
 
 
@@ -190,13 +191,25 @@ async def prune_sessions(session: AsyncSession, before: datetime) -> None:
 
 # Portal tickets: always filtered by the signed-in customer's contact.
 
+# An imported ticket carries what the old help desk had: its custom fields (agents' own,
+# e.g. a fraud score), extra tags, who was copied, the link to its agent view. None of that
+# was ever meant for the customer, so on an imported ticket the portal shows only the
+# fields of the ticket's type (those an agent set later). Every other ticket shows its
+# fields as before: CeDesk only ever stores a type's own fields on them.
 _TICKET = (
-    "SELECT t.id, t.number, t.subject, t.status, t.channel, t.fields, t.created_at, "
+    "SELECT t.id, t.number, t.subject, t.status, t.channel, "
+    "CASE WHEN t.source = ANY(:imported) THEN COALESCE((SELECT jsonb_object_agg(f.key, "
+    "f.value) FROM jsonb_each(t.fields) f WHERE EXISTS (SELECT 1 FROM "
+    "jsonb_array_elements(y.fields) d WHERE d->>'key' = f.key)), '{}'::jsonb) "
+    "ELSE t.fields END AS fields, t.created_at, "
     "t.updated_at, t.resolved_at, y.name AS type_name, "
     "(SELECT to_jsonb(r) FROM (SELECT score, comment, source, rated_at FROM hd_csat "
     "WHERE ticket_id = t.id) r) AS csat "
     "FROM hd_ticket t LEFT JOIN hd_ticket_type y ON y.id = t.type_id "
 )
+
+
+_IMPORTED = list(IMPORT_SOURCES)
 
 
 async def my_tickets(
@@ -215,7 +228,7 @@ async def my_tickets(
             "     OR (t.created_at, t.id) < (CAST(:at AS timestamptz), CAST(:row AS uuid))) "
             "ORDER BY t.created_at DESC, t.id DESC LIMIT :limit"
         ),
-        {"contact": contact_id, "at": at, "row": row_id, "limit": limit},
+        {"contact": contact_id, "at": at, "row": row_id, "limit": limit, "imported": _IMPORTED},
     )
     return result.mappings().all()
 
@@ -223,7 +236,7 @@ async def my_tickets(
 async def my_ticket(session: AsyncSession, contact_id: UUID, ticket_id: UUID) -> RowMapping | None:
     result = await session.execute(
         text(_TICKET + "WHERE t.id = :id AND t.contact_id = :contact"),
-        {"id": ticket_id, "contact": contact_id},
+        {"id": ticket_id, "contact": contact_id, "imported": _IMPORTED},
     )
     return result.mappings().first()
 
