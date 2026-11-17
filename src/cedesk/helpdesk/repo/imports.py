@@ -188,6 +188,21 @@ async def claim_sync(session: AsyncSession, now: datetime, lease_until: datetime
     return result.mappings().first()
 
 
+async def renew_lease(
+    session: AsyncSession, run_id: UUID, *, token: UUID, lease_until: datetime
+) -> bool:
+    """Extends the lease of a run this worker still owns (its token); False when another
+    worker took it, or it was released. A worker's heartbeat during a long page."""
+    result = await session.execute(
+        text(
+            "UPDATE hd_import_run SET lease_until = GREATEST(lease_until, :lease) "
+            "WHERE id = :id AND lease_token = :token AND lease_until IS NOT NULL"
+        ),
+        {"id": run_id, "token": token, "lease": lease_until},
+    )
+    return bool(result.rowcount == 1)  # type: ignore[attr-defined]
+
+
 async def _owned(session: AsyncSession, sql: str, values: Mapping[str, Any]) -> None:
     """A worker's write about its run (`sql` ends with `WHERE id = :id`): it applies only
     while the run carries the worker's `token`, else `LeaseLost` (the transaction is the
