@@ -4,7 +4,7 @@ import { ArrowLeft, CheckCircle2, RefreshCw } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
 
-import { PriorityBadge, StatusBadge, VipBadge } from "@/components/tickets/badges";
+import { PriorityBadge, StatusBadge, VipBadge, languageName } from "@/components/tickets/badges";
 import { MacrosMenu } from "@/components/tickets/macros-menu";
 import { TicketSidebar } from "@/components/tickets/sidebar";
 import { SlaPill } from "@/components/tickets/sla";
@@ -99,6 +99,11 @@ export function TicketDetail({ id }: { id: string }) {
               {ticket.source === "demo" && <Badge tone="info">Demo</Badge>}
               <PriorityBadge priority={ticket.priority} />
               {ticket.contact.vip && <VipBadge />}
+              {ticket.accepted === false && <Badge tone="warning">Waiting to accept</Badge>}
+              {ticket.topic && <Badge tone="primary">{ticket.topic}</Badge>}
+              {ticket.language && (
+                <Badge title={ticket.language}>{languageName(ticket.language)}</Badge>
+              )}
               <SlaPill sla={ticket.sla} />
             </div>
             <h1 className="mt-3 text-xl font-semibold tracking-tight text-balance wrap-break-word sm:text-[26px] sm:leading-8">

@@ -96,7 +96,7 @@ function DrawerBody({
   const defaultsQ = useRoutingDefaults();
   const teams = useTeams();
   const [skill, setSkill] = React.useState("");
-  const s = STATUS_META[a.status] ?? STATUS_META.offline;
+  const s = a.status ? (STATUS_META[a.status] ?? STATUS_META.offline) : null;
   const cap = totalCapacity(a, defaultsQ.data);
   const memberTeams = (teams.data ?? []).filter((t) => t.member_ids?.includes(a.member_id));
 
@@ -157,9 +157,11 @@ function DrawerBody({
           <Badge tone="primary">
             <ShieldCheck className="size-3" /> {ROLE_LABEL[a.role] ?? a.role}
           </Badge>
-          <span className="inline-flex items-center gap-1.5">
-            <span className={cn("size-2 rounded-full", s.dot)} /> {s.label}
-          </span>
+          {s && (
+            <span className="inline-flex items-center gap-1.5">
+              <span className={cn("size-2 rounded-full", s.dot)} /> {s.label}
+            </span>
+          )}
         </div>
       </div>
 
@@ -198,7 +200,7 @@ function DrawerBody({
           </div>
         </section>
 
-        {canEdit && (
+        {canEdit && a.status !== null && (
           <section>
             <SectionTitle icon={Sparkles}>Availability</SectionTitle>
             <div className="grid grid-cols-2 gap-2">

@@ -71,3 +71,42 @@ describe("withOffset", () => {
     expect(withOffset("2026-11-30", true)).toMatch(/^2026-11-30T23:59:59[+-]\d{2}:\d{2}$/);
   });
 });
+
+describe("normalizeTeamReport: the API's own field names", () => {
+  it("reads open_breaching, happy_percent, first-response and SLA-met values, and agent role/status", () => {
+    const r = normalizeTeamReport({
+      from: "2026-11-01T00:00:00+05:30",
+      to: "2026-11-07T23:59:59+05:30",
+      summary: {
+        open: 80,
+        open_breaching: 64,
+        created: 12,
+        resolved: 9,
+        avg_first_response_minutes: 14.8,
+        avg_resolution_minutes: 120,
+        first_reply_sla_met_percent: 0.5,
+        csat: { ratings: 3, average: 4.7, happy_percent: 100, by_score: { "5": 2, "4": 1 } },
+      },
+      agents: [
+        {
+          member_id: "m1",
+          name: "Ritesh",
+          role: "supervisor",
+          status: "available",
+          avg_first_response_minutes: 9,
+        },
+      ],
+    });
+    expect(r.summary.open_breaching).toBe(64);
+    expect(r.summary.csat_happy_pct).toBe(100);
+    expect(r.summary.csat_count).toBe(3);
+    expect(r.summary.first_reply_minutes).toBe(14.8);
+    // Already a percentage: 0.5% must not be read as a 0-1 ratio and become 50%.
+    expect(r.summary.sla_met_pct).toBe(0.5);
+    expect(r.agents[0]).toMatchObject({
+      role: "supervisor",
+      status: "available",
+      first_reply_minutes: 9,
+    });
+  });
+});

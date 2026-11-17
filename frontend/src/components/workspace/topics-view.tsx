@@ -60,7 +60,7 @@ function TopicsBody({ saved }: { saved: TriageSettings }) {
                 confirm("Reset every topic to the built-in keyword lists? Your changes are lost.")
               )
                 save.mutate(
-                  { reset: true },
+                  { reset: true, redact_cards: saved.redact_cards },
                   { onSuccess: () => toast.success("Topics reset to the built-in lists") },
                 );
             }}

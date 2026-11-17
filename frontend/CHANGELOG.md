@@ -4,6 +4,19 @@ Notable changes are listed here. The format follows [Keep a Changelog](https://k
 
 ## [Unreleased]
 
+### Fixed
+
+- Customer portal: a new ticket now sends `message`, `type_id` and the type's own `fields` (the subject is made by the server), and shows the fields the chosen type asks for (for example order ID and amount for a refund). The contact form does the same and no longer sends a subject.
+- Customer portal: a resolved ticket keeps its reply box (a reply reopens it) and always offers the 1 to 5 rating.
+- Help center: the "Was this helpful?" vote sends a visitor id kept in the browser, which the server requires.
+- Settings > Topics: "Reset to built-in lists" sends `topics: null` and keeps the card-redaction switch.
+- Ticket list and ticket page show the topic, the language by name and a "Waiting to accept" chip for unaccepted handovers.
+- Agents: a light agent shows no availability (and is left out of status filters); channels show their open-ticket counts.
+- Customer page: the name can be edited.
+- Settings > SLA shows each target's "reads as" sentence.
+- Reports: "Open breaching" tile, the share of happy ratings, the API's first-response and SLA-met values, and agent role and status.
+- Settings > Cevanos lists the webhook events to subscribe to and explains that the webhook is added in Cevanos.
+
 ### Added
 
 - README screenshots (from the e2e mock backend) and more unit tests: rules, ticket types, members, agents, Cevanos and notification hooks.

@@ -10,7 +10,13 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 
-import { AiBadge, PriorityBadge, StatusBadge, VipBadge } from "@/components/tickets/badges";
+import {
+  AiBadge,
+  PriorityBadge,
+  StatusBadge,
+  VipBadge,
+  languageName,
+} from "@/components/tickets/badges";
 import { SlaPill } from "@/components/tickets/sla";
 import { Badge } from "@/components/ui/primitives";
 import type { Priority, TicketSummary } from "@/lib/api/types";
@@ -86,6 +92,7 @@ export function TicketRow({ t, showStatus }: { t: TicketSummary; showStatus: boo
             {showStatus && <StatusBadge status={t.status} />}
             {t.contact?.vip && <VipBadge />}
             {t.source && <AiBadge source={t.source} />}
+            {t.accepted === false && <Badge tone="warning">Waiting to accept</Badge>}
             {t.status !== "resolved" && <SlaPill sla={t.sla} compact />}
           </div>
 
@@ -121,6 +128,8 @@ export function TicketRow({ t, showStatus }: { t: TicketSummary; showStatus: boo
               </span>
             ))}
             {tags.length > 2 && <span className="hidden sm:inline">+{tags.length - 2}</span>}
+            {t.topic && <Badge tone="primary">{t.topic}</Badge>}
+            {t.language && <Badge title={t.language}>{languageName(t.language)}</Badge>}
             {t.source === "demo" && <Badge tone="info">Demo</Badge>}
             {t.sentiment && (
               <Badge className="hidden capitalize sm:inline-flex">{t.sentiment}</Badge>

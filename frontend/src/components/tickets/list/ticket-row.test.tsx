@@ -48,4 +48,21 @@ describe("TicketRow", () => {
     render(<TicketRow t={makeSummary({ tags: ["a", "b", "c", "d"] })} showStatus={false} />);
     expect(screen.getByText("+2")).toBeInTheDocument();
   });
+
+  it("shows the topic, the language by name and a waiting-to-accept chip", () => {
+    render(
+      <TicketRow
+        t={makeSummary({ topic: "General question", language: "hi", accepted: false })}
+        showStatus={false}
+      />,
+    );
+    expect(screen.getByText("General question")).toBeInTheDocument();
+    expect(screen.getByText("Hindi")).toBeInTheDocument();
+    expect(screen.getByText("Waiting to accept")).toBeInTheDocument();
+  });
+
+  it("shows no waiting chip once the chat is accepted", () => {
+    render(<TicketRow t={makeSummary({ accepted: true })} showStatus={false} />);
+    expect(screen.queryByText("Waiting to accept")).not.toBeInTheDocument();
+  });
 });

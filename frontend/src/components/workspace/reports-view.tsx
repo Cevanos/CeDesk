@@ -24,7 +24,8 @@ import { LoadError } from "@/components/workspace/list-shared";
 import { useCurrentUser } from "@/hooks/use-auth";
 import { useArticleReport, useTeamReport, useTeams } from "@/hooks/use-workspace";
 import { ApiError } from "@/lib/api/client";
-import type { ReportAgentRow, ReportArticleRow, TeamReport } from "@/lib/api/types";
+import type { ReportAgentRow, ReportArticleRow, Role, TeamReport } from "@/lib/api/types";
+import { ROLE_LABEL } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
 
 const PRESETS = [
@@ -254,6 +255,13 @@ function ReportData({ data, stale }: { data: TeamReport; stale: boolean }) {
           tone="bg-info-soft text-info"
         />
         <Tile
+          icon={ShieldAlert}
+          label="Open breaching"
+          value={count(s.open_breaching)}
+          hint="Open tickets past a target"
+          tone="bg-danger-soft text-danger"
+        />
+        <Tile
           icon={ShieldCheck}
           label="SLA met"
           value={percent(s.sla_met_pct)}
@@ -277,7 +285,11 @@ function ReportData({ data, stale }: { data: TeamReport; stale: boolean }) {
           icon={Smile}
           label="CSAT"
           value={s.csat_average === null ? dash : `${rating(s.csat_average)} ★`}
-          hint={s.csat_count ? `${s.csat_count} ratings` : "No ratings yet"}
+          hint={
+            s.csat_count
+              ? `${s.csat_count} ratings${s.csat_happy_pct != null ? ` · ${percent(s.csat_happy_pct)} happy` : ""}`
+              : "No ratings yet"
+          }
           tone="bg-amber-100 text-amber-700"
         />
       </section>
@@ -465,6 +477,8 @@ function AgentsTable({ agents }: { agents: ReportAgentRow[] }) {
             <thead>
               <tr className="border-b border-border text-left text-xs text-muted-foreground">
                 {head("name", "Agent", false)}
+                <Th>Role</Th>
+                <Th>Status</Th>
                 {head("resolved", "Resolved")}
                 {head("open", "Open")}
                 {head("first_reply_minutes", "First reply")}
@@ -478,6 +492,12 @@ function AgentsTable({ agents }: { agents: ReportAgentRow[] }) {
                     {a.name}
                     {a.team_name && <Badge className="ml-2">{a.team_name}</Badge>}
                   </th>
+                  <td className="px-4 py-3 text-muted-foreground">
+                    {a.role ? (ROLE_LABEL[a.role as Role] ?? a.role) : dash}
+                  </td>
+                  <td className="px-4 py-3 text-muted-foreground capitalize">
+                    {a.status ? a.status.replaceAll("_", " ") : dash}
+                  </td>
                   <Td>{count(a.resolved)}</Td>
                   <Td>{count(a.open)}</Td>
                   <Td>{mins(a.first_reply_minutes)}</Td>

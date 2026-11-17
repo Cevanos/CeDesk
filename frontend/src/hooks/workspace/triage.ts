@@ -55,6 +55,11 @@ export function triageBody(
   return { topics, redact_cards: v.redact_cards };
 }
 
+/** The body that puts the built-in keyword lists back (`topics: null`). */
+export function resetBody(v: { redact_cards: boolean }): Record<string, unknown> {
+  return { topics: null, redact_cards: v.redact_cards };
+}
+
 export function useTriageSettings() {
   return useQuery({
     queryKey: queryKeys.triage.all,
@@ -63,13 +68,18 @@ export function useTriageSettings() {
   });
 }
 
-/** Save the topics and the switch, or `{ reset: true }` to go back to the built-in lists. */
+/**
+ * Save the topics and the switch, or reset to the built-in lists. The API resets with
+ * `topics: null`; it still needs the card-redaction switch, so a reset keeps the current one.
+ */
 export function useSaveTriageSettings() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (
-      body: Pick<TriageSettings, "topics" | "redact_cards" | "shape"> | { reset: true },
-    ) => api.put<unknown>("triage-settings", "reset" in body ? body : triageBody(body)),
+      body:
+        | Pick<TriageSettings, "topics" | "redact_cards" | "shape">
+        | { reset: true; redact_cards: boolean },
+    ) => api.put<unknown>("triage-settings", "reset" in body ? resetBody(body) : triageBody(body)),
     onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.triage.all }),
   });
 }
