@@ -24,7 +24,9 @@ _COLUMNS = """
            t.first_reply_at, t.resolved_at, t.reopen_count, t.created_at, t.updated_at,
            t.accepted, t.conversation_id, t.handover, t.topic, t.sentiment, t.language,
            t.source, t.source_id, t.parent_id, t.merged_into_id,
-           (SELECT count(*) FROM hd_ticket ch WHERE ch.parent_id = t.id) AS child_count
+           (SELECT count(*) FROM hd_ticket ch WHERE ch.parent_id = t.id) AS child_count,
+           ARRAY(SELECT j.issue_key FROM hd_jira_issue j WHERE j.ticket_id = t.id
+                 ORDER BY j.workspace_id, j.ticket_id, j.issue_key) AS jira_keys
 """
 
 _FROM = """
