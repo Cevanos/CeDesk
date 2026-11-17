@@ -6,6 +6,7 @@ Notable changes are listed here. The format follows [Keep a Changelog](https://k
 
 ### Fixed
 
+- Settings > Roles, Apps, API keys, Webhooks, Security, Privacy, Audit log and Plan & retention (and Demo data) no longer show "Not found": their API areas were missing from the proxy allow-list.
 - Customer portal: a new ticket now sends `message`, `type_id` and the type's own `fields` (the subject is made by the server), and shows the fields the chosen type asks for (for example order ID and amount for a refund). The contact form does the same and no longer sends a subject.
 - Customer portal: a resolved ticket keeps its reply box (a reply reopens it) and always offers the 1 to 5 rating.
 - Help center: the "Was this helpful?" vote sends a visitor id kept in the browser, which the server requires.
