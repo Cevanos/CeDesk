@@ -99,6 +99,11 @@ class TeamRowOut(BaseModel):
     created: int
     resolved: int
     avg_first_response_minutes: float | None
+    first_reply_sla_met_percent: float | None = Field(
+        description="The summary's first-reply SLA met %, for this team's tickets. null when "
+        "none of them was measured."
+    )
+    first_reply_sla_measured: int = Field(description="How many tickets that % is out of.")
     csat_ratings: int
     csat_average: float | None
 
@@ -149,8 +154,10 @@ def _team_tables(found: reports.TeamReport) -> list[Table]:
     teams = Table(
         "Teams",
         ("Team", "Open", "Created", "Resolved", "Average first response (minutes)",
-         "CSAT ratings", "CSAT average"),
-        [(t.name, t.open, t.created, t.resolved, t.avg_first_response_minutes, t.csat_ratings,
+         "First-reply SLA met (%)", "First-reply SLA measured (tickets)", "CSAT ratings",
+         "CSAT average"),
+        [(t.name, t.open, t.created, t.resolved, t.avg_first_response_minutes,
+          t.first_reply_sla_met_percent, t.first_reply_sla_measured, t.csat_ratings,
           t.csat_average) for t in found.teams],
     )  # fmt: skip
     agents = Table(
