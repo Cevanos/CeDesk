@@ -20,9 +20,7 @@ _CONTEXT: ContextVar[dict[str, str] | None] = ContextVar("cedesk_log_context", d
 # `extra={"body": ...}` can never put customer text in the logs.
 ALLOWED = frozenset(
     {"request_id", "workspace_id", "member_id", "ticket_id", "method", "route", "status",
-     "ms", "event", "sqlstate", "error",
-     # Only the `log` mailer (mail.py) uses these, and it is refused in production.
-     "mail_to", "mail_cc", "mail_subject", "mail_text", "mail_files", "refused"}
+     "ms", "event", "sqlstate", "error", "count"}
 )  # fmt: skip
 
 

@@ -73,6 +73,8 @@ def test_empty_variables_count_as_not_set(monkeypatch: pytest.MonkeyPatch) -> No
     for name in empty:
         monkeypatch.setenv(f"CEDESK_{name}", "")
     monkeypatch.setenv("CEDESK_ENV", "staging")
+    # As deploy/docker-compose.yml passes it; the app's own default (`log`) is dev-only.
+    monkeypatch.setenv("CEDESK_MAIL_BACKEND", "none")
     monkeypatch.setenv("CEDESK_SECRET_KEY", GOOD_KEY.get_secret_value())
     monkeypatch.setenv("CEDESK_DATABASE_URL", GOOD_DB)
     settings = Settings(_env_file=None)  # type: ignore[call-arg]

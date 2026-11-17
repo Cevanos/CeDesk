@@ -196,10 +196,11 @@ def test_make_mailer_picks_the_backend() -> None:
 
 
 def test_mail_settings_problems() -> None:
-    assert Settings().mail_problems() == []  # dev: logging emails is fine
-    assert Settings(env=Env.staging).mail_problems() == []  # the test server too
-    prod = Settings(env=Env.production).mail_problems()
-    assert len(prod) == 1 and "CEDESK_MAIL_BACKEND" in prod[0]
+    assert Settings().mail_problems() == []  # dev: the local outbox is fine
+    for env in (Env.staging, Env.production):  # a shared server never keeps emails around
+        problems = Settings(env=env).mail_problems()
+        assert len(problems) == 1 and "CEDESK_MAIL_BACKEND" in problems[0]
+    assert Settings(env=Env.staging, mail_backend=MailBackend.none).mail_problems() == []
     assert Settings(env=Env.production, mail_backend=MailBackend.none).mail_problems() == []
     no_host = Settings(mail_backend=MailBackend.smtp).mail_problems()
     assert len(no_host) == 1 and "CEDESK_SMTP_HOST" in no_host[0]
