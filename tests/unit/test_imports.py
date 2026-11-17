@@ -52,8 +52,9 @@ def test_tags_fit_cedesks_rule_and_carry_the_import_tag() -> None:
 
 
 def test_custom_fields_become_plain_text_under_safe_keys() -> None:
+    # Before (audit C8) `9lives` was dropped without a trace; it is kept as `f_9lives`.
     got = rules.clean_fields({"Order ID": 1042, "bad key!": "x", "empty": "", "9lives": "no"})
-    assert got == {"order_id": "1042", "bad_key": "x"}
+    assert got == {"order_id": "1042", "bad_key": "x", "f_9lives": "no"}
 
 
 def test_a_contact_without_an_email_gets_a_placeholder_that_is_never_real() -> None:
