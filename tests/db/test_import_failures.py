@@ -28,6 +28,7 @@ from httpx import ASGITransport, AsyncClient
 
 from cedesk.helpdesk.domain.imports import (
     Attachment,
+    Contact,
     FileUnusable,
     Message,
     Page,
@@ -648,4 +649,22 @@ async def test_a_file_the_source_answers_with_a_placeholder_is_linked_and_counte
     [line] = await sql(sm, w["ws"], "SELECT body FROM hd_message WHERE body LIKE '%r.pdf%'")
     assert "placeholder picture" in line["body"]
     assert await sql(sm, w["ws"], "SELECT 1 FROM hd_attachment") == []
+    await end_runs(sm, w["ws"])
+
+
+async def test_a_contact_listed_twice_on_one_page_is_created_and_counted_once(
+    im: AsyncClient, app_sessionmaker: Sm
+) -> None:
+    """Live B-43 (Intercom) side issue: the same contact twice on one page counted two
+    creations (the second write was a no-op). Now once."""
+    sm = app_sessionmaker
+    src = Flaky()
+    dee = Contact("c2", "dee@example.org", "Dee")
+    src.contacts = [dee, Contact("c3", "eve@example.org", "Eve"), dee]
+    w, conn, importers = await flaky_desk(im, sm, src)
+    run_id = await start(im, w, conn, kinds=["contacts"])
+    await pass_(sm, importers, w["ws"])
+    run = await run_state(im, w, run_id)
+    assert run["counts"]["contacts"] == {"created": 2, "skipped": 1}
+    assert len(await sql(sm, w["ws"], "SELECT 1 FROM hd_contact")) == 2
     await end_runs(sm, w["ws"])
