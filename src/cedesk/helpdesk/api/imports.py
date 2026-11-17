@@ -403,6 +403,38 @@ async def start_run(
     return _run_out(view)
 
 
+class CredentialsIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    credentials: dict[str, SecretStr] = Field(
+        description="New credentials for the same account (same keys as when connecting)."
+    )
+
+
+@router.post(
+    "/imports/connections/{connection_id}/credentials",
+    response_model=ConnectionOut,
+    summary="Give an open connection new credentials (Admin)",
+    description="For an import that stopped because the source refused the key (a revoked "
+    "key, an expired token): the new credentials are checked with the source and must reach "
+    "the same account, then replace the old ones; resume the failed run afterwards (POST "
+    "/imports/runs/{id}/resume). 422 when the source refuses them, 409 when they are for "
+    "another account or the connection was closed, 503 when the source can't be reached.",
+)
+async def update_credentials(
+    connection_id: UUID,
+    body: CredentialsIn,
+    request: Request,
+    caller: CallerDep,
+    sm: SessionmakerDep,
+) -> ConnectionOut:
+    credentials = {k: v.get_secret_value() for k, v in body.credentials.items()}
+    view = await framework.update_credentials(
+        sm, _importers(request), caller, connection_id, credentials=credentials
+    )
+    return ConnectionOut(**view.__dict__)
+
+
 @router.post(
     "/imports/connections/{connection_id}/close",
     status_code=status.HTTP_204_NO_CONTENT,

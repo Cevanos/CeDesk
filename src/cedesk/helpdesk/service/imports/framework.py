@@ -361,7 +361,7 @@ async def _open(
 
 def _hint(credentials: Mapping[str, Any]) -> str | None:
     """The last 4 characters of the secret (never of an email address), to tell keys apart."""
-    for name in ("token", "api_key", "app_secret"):
+    for name in ("token", "api_key", "app_secret", "client_id", "access_token"):
         value = credentials.get(name)
         if isinstance(value, str) and value:
             return value[-4:]
@@ -413,6 +413,58 @@ async def connect(
             row = await repo.connection(s, connection_id)
     assert row is not None
     return _connection_view(row)
+
+
+async def update_credentials(
+    sm: Sessionmaker,
+    importers: Importers,
+    caller: Caller,
+    connection_id: UUID,
+    *,
+    credentials: Mapping[str, Any],
+) -> ConnectionView:
+    """New credentials for an open connection (the source refused the old ones: a revoked
+    key, an expired token), so a run that failed on that can be resumed. They are checked
+    with the source first and must reach the same account the connection was made for: a
+    run never mixes two accounts. Nothing else changes (settings, runs); the history and the
+    audit log record it, never the credentials."""
+    require(caller, Action.settings)
+    ws = caller.workspace_id
+    async with workspace_session(sm, ws) as s:
+        row = await repo.connection(s, connection_id)
+    if row is None:
+        raise NotFound("No such connection.")
+    if row["source"] == "csv":
+        raise Conflict("A CSV file has no credentials. Upload the file again.")
+    if row["state"] == "closed":
+        raise Conflict("This connection was closed and its credentials deleted. Connect again.")
+    secret = json.dumps(dict(credentials))
+    connector = await _asked(importers.build(row["source"], row["settings"], secret))
+    info = await _asked(connector.check())
+    if info.name and row["label"] and info.name[:200] != row["label"]:
+        raise Conflict(
+            f"These credentials are for another account ({info.name[:200]}). "
+            "Connect it as a new import."
+        )
+    sealed = importers.sealer.seal(secret, bound_to=_bound(ws, connection_id))
+    async with workspace_session(sm, ws) as s:
+        locked = await repo.connection(s, connection_id, lock=True)
+        if locked is None or not await repo.replace_credentials(
+            s, connection_id, sealed=sealed, hint=_hint(credentials)
+        ):
+            raise Conflict("This connection was closed and its credentials deleted. Connect again.")
+        await repo.add_event(
+            s, ws, connection_id, "credentials_updated", member_id=caller.member_id,
+            detail={"account": info.name[:200]},
+        )  # fmt: skip
+        what = f"Import from {rules.label(row['source'])}"
+        await audit.record(
+            s, caller, Area.imports, "credentials_updated", what, target_id=connection_id,
+            detail={"account": info.name[:200]},
+        )  # fmt: skip
+        found = await repo.connection(s, connection_id)
+    assert found is not None
+    return _connection_view(found)
 
 
 async def upload_csv(

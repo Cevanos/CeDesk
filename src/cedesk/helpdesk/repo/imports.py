@@ -84,6 +84,22 @@ async def close_connection(session: AsyncSession, connection_id: UUID) -> bool:
     return result.first() is not None
 
 
+async def replace_credentials(
+    session: AsyncSession, connection_id: UUID, *, sealed: bytes, hint: str | None
+) -> bool:
+    """New sealed credentials for a connection that is still open. False when it was closed
+    (its credentials were deleted) meanwhile."""
+    result = await session.execute(
+        text(
+            "UPDATE hd_import_connection SET credentials_sealed = :sealed, "
+            "credentials_hint = :hint, updated_at = now() "
+            "WHERE id = :id AND state = 'connected' RETURNING id"
+        ),
+        {"id": connection_id, "sealed": sealed, "hint": hint},
+    )
+    return result.first() is not None
+
+
 # Runs
 
 
