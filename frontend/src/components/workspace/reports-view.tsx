@@ -21,6 +21,7 @@ import { Stars } from "@/components/tickets/csat";
 import { formatMinutes } from "@/components/tickets/sla";
 import { Badge, Card, EmptyState, Input, Select, Skeleton } from "@/components/ui/primitives";
 import { LoadError } from "@/components/workspace/list-shared";
+import { AiPanel, CsvButton, MetricsPanel } from "@/components/workspace/reports-more";
 import { useCurrentUser } from "@/hooks/use-auth";
 import { useArticleReport, useTeamReport, useTeams } from "@/hooks/use-workspace";
 import { ApiError } from "@/lib/api/client";
@@ -34,6 +35,12 @@ const PRESETS = [
   { id: "90", label: "90 days", days: 90 },
 ] as const;
 type PresetId = (typeof PRESETS)[number]["id"] | "custom";
+const TABS = [
+  { id: "team", label: "Team" },
+  { id: "metrics", label: "More metrics" },
+  { id: "ai", label: "AI" },
+] as const;
+type TabId = (typeof TABS)[number]["id"];
 
 /** YYYY-MM-DD in the viewer's local time. */
 function ymd(d: Date) {
@@ -72,6 +79,7 @@ function ReportsBody() {
   const [preset, setPreset] = useState<PresetId>("30");
   const [custom, setCustom] = useState({ from: daysAgo(today, 30), to: ymd(today) });
   const [teamId, setTeamId] = useState("");
+  const [tab, setTab] = useState<TabId>("team");
   const teams = useTeams();
 
   const range = useMemo(() => {
@@ -81,7 +89,8 @@ function ReportsBody() {
   }, [preset, custom, today]);
 
   const badRange = !range.from || !range.to || range.from > range.to;
-  const report = useTeamReport({ ...range, team_id: teamId || undefined });
+  const params = { ...range, team_id: teamId || undefined };
+  const report = useTeamReport(params);
 
   return (
     <div className="mx-auto w-full max-w-6xl animate-rise px-3 py-5 sm:px-6 sm:py-8">
@@ -161,19 +170,56 @@ function ReportsBody() {
         </div>
       )}
 
+      <div
+        role="tablist"
+        aria-label="Report"
+        className="mt-6 inline-flex rounded-xl border border-border bg-surface-2 p-1"
+      >
+        {TABS.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            role="tab"
+            aria-selected={tab === t.id}
+            onClick={() => setTab(t.id)}
+            className={cn(
+              "rounded-lg px-3 py-1.5 text-[13px] font-semibold transition-all",
+              tab === t.id
+                ? "bg-surface text-foreground shadow-card ring-1 ring-border"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
       <div className="mt-6" aria-live="polite">
-        {badRange ? null : report.isPending ? (
-          <ReportSkeleton />
-        ) : report.isError ? (
-          report.error instanceof ApiError && report.error.status === 403 ? (
-            <SupervisorsOnly />
-          ) : (
-            <LoadError error={report.error} />
-          )
+        {badRange ? null : tab === "metrics" ? (
+          <MetricsPanel params={params} />
+        ) : tab === "ai" ? (
+          <AiPanel params={params} />
         ) : (
-          <ReportData data={report.data} stale={report.isPlaceholderData} />
+          <>
+            {report.isPending ? (
+              <ReportSkeleton />
+            ) : report.isError ? (
+              report.error instanceof ApiError && report.error.status === 403 ? (
+                <SupervisorsOnly />
+              ) : (
+                <LoadError error={report.error} />
+              )
+            ) : (
+              <>
+                <div className="mb-4 flex justify-end">
+                  <CsvButton path="reports/team" params={params} withTeam name="team-report" />
+                </div>
+                <ReportData data={report.data} stale={report.isPlaceholderData} />
+              </>
+            )}
+            {report.isPending || report.isError ? null : <ArticlesTable range={range} />}
+          </>
         )}
-        {badRange || report.isPending || report.isError ? null : <ArticlesTable range={range} />}
       </div>
     </div>
   );
@@ -525,9 +571,12 @@ function ArticlesTable({ range }: { range: { from: string; to: string } }) {
       aria-labelledby="articles-h"
       className={cn("mt-6", q.isPlaceholderData && "opacity-60")}
     >
-      <h2 id="articles-h" className="mb-2 text-base font-semibold">
-        Help articles
-      </h2>
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <h2 id="articles-h" className="text-base font-semibold">
+          Help articles
+        </h2>
+        <CsvButton path="reports/articles" params={range} withTeam={false} name="articles" />
+      </div>
       <Card className="overflow-x-auto">
         {q.isPending ? (
           <Skeleton className="h-24" />

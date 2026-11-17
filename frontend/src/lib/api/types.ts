@@ -44,6 +44,8 @@ export interface Me {
   /** The workspace requires 2FA and this person has not set it up: send them to set it up. */
   two_factor_setup_required?: boolean;
   access?: Access;
+  /** Cevanos is connected: show the AI buttons and cards only when this is true. */
+  ai?: boolean;
 }
 
 export interface Contact {
@@ -113,6 +115,11 @@ export interface TicketSummary {
   sla?: TicketSla | null;
   /** False on a handover ticket until an agent clicks Accept. */
   accepted?: boolean;
+  /** Phase 3 list chips: the ticket this one is a child of, how many children it has, where it was merged. */
+  parent_id?: string | null;
+  child_count?: number;
+  merged_into_id?: string | null;
+  jira_keys?: string[];
 }
 
 export interface TicketList {

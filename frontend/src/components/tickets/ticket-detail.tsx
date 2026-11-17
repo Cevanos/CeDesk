@@ -4,6 +4,7 @@ import { ArrowLeft, CheckCircle2, RefreshCw } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
 
+import { AiSummaryCard } from "@/components/tickets/ai-assist";
 import { PriorityBadge, StatusBadge, VipBadge, languageName } from "@/components/tickets/badges";
 import { MacrosMenu } from "@/components/tickets/macros-menu";
 import { TicketSidebar } from "@/components/tickets/sidebar";
@@ -162,6 +163,7 @@ export function TicketDetail({ id }: { id: string }) {
         <section className="flex min-w-0 flex-col gap-4" aria-label="Conversation">
           <HandoverCard ticket={ticket} />
           <AcceptCard ticket={ticket} />
+          <AiSummaryCard ticketId={ticket.id} />
           <div className="flex-1">
             <Thread ticket={ticket} myId={user?.id} />
           </div>

@@ -224,3 +224,144 @@ export function useArticleReport(params: ReportParams) {
     staleTime: 60_000,
   });
 }
+
+/* ---------- More metrics (GET /reports/metrics) and the AI card (GET /reports/ai) ---------- */
+
+export interface Labelled {
+  label: string;
+  count: number;
+}
+export interface MetricTile {
+  key: string;
+  label: string;
+  value: number | null;
+  /** Format hint taken from the field name. */
+  unit: "count" | "minutes" | "percent" | "rating";
+}
+export interface MetricsAgentRow {
+  id: string | null;
+  name: string;
+  time_minutes: number | null;
+  tasks_done: number | null;
+  tasks_open: number | null;
+}
+export interface MetricsReport {
+  tiles: MetricTile[];
+  backlog: Labelled[];
+  channels: Labelled[];
+  topics: Labelled[];
+  sentiment: Labelled[];
+  agents: MetricsAgentRow[];
+  /** Null hides the Governance link. */
+  governance_url: string | null;
+}
+export interface AiReport {
+  chats: number | null;
+  handed_over: number | null;
+  resolved_by_ai: number | null;
+  csat_average: number | null;
+  csat_count: number | null;
+}
+
+const humanize = (k: string) => {
+  const t = k.replace(/_/g, " ").trim();
+  return t.charAt(0).toUpperCase() + t.slice(1);
+};
+
+/** A list or a { label: count } map, as a list of { label, count }. */
+function labelled(raw: unknown): Labelled[] {
+  if (Array.isArray(raw)) {
+    return raw.filter(isObj).map((r) => ({
+      label:
+        str(r, "label", "name", "bucket", "range", "channel", "topic", "sentiment", "key") ?? "—",
+      count: num(r, "count", "n", "total", "tickets", "value") ?? 0,
+    }));
+  }
+  if (isObj(raw)) {
+    return Object.entries(raw).flatMap(([k, v]) => {
+      const c = isObj(v) ? num(v, "count", "n", "total") : typeof v === "number" ? v : null;
+      return c === null ? [] : [{ label: k, count: c }];
+    });
+  }
+  return [];
+}
+
+function unitOf(key: string): MetricTile["unit"] {
+  if (/minute|_mins?$|duration|time/.test(key)) return "minutes";
+  if (/percent|pct|rate|_met$/.test(key)) return "percent";
+  if (/csat|rating|average_score/.test(key)) return "rating";
+  return "count";
+}
+
+export function normalizeMetricsReport(raw: unknown): MetricsReport {
+  const r: Obj = isObj(raw) ? raw : {};
+  const summary = isObj(r.summary) ? r.summary : {};
+  const tiles: MetricTile[] = Object.entries(summary).flatMap(([key, v]) => {
+    if (v !== null && typeof v === "object") return [];
+    const value = num(summary, key);
+    if (value === null && v !== null && v !== undefined) return [];
+    return [{ key, label: humanize(key), value, unit: unitOf(key) }];
+  });
+  return {
+    tiles,
+    backlog: labelled(r.backlog ?? r.backlog_by_age ?? r.backlog_age),
+    channels: labelled(r.channels ?? r.by_channel),
+    topics: labelled(r.topics ?? r.by_topic),
+    sentiment: labelled(r.sentiment ?? r.by_sentiment),
+    agents: rows(r, "agents", "by_agent", "members").map((a) => ({
+      id: str(a, "member_id", "agent_id", "id"),
+      name: str(a, "name", "member_name", "agent_name") ?? "Unknown",
+      time_minutes: num(a, "time_minutes", "logged_minutes", "minutes", "time_logged_minutes"),
+      tasks_done: num(a, "tasks_done", "tasks_completed", "tasks_closed", "tasks"),
+      tasks_open: num(a, "tasks_open", "open_tasks"),
+    })),
+    governance_url: str(r, "governance_url"),
+  };
+}
+
+export function normalizeAiReport(raw: unknown): AiReport {
+  const r: Obj = isObj(raw) ? raw : {};
+  const csat = isObj(r.csat) ? r.csat : r;
+  return {
+    chats: num(r, "chats", "conversations", "ai_chats"),
+    handed_over: num(r, "handed_over", "handed_to_person", "handovers", "handed_to_human"),
+    resolved_by_ai: num(r, "resolved_by_ai", "ai_resolved", "resolved"),
+    csat_average: num(csat, "csat_average", "average", "avg", "csat"),
+    csat_count: num(csat, "csat_count", "ratings", "count"),
+  };
+}
+
+const range = (p: ReportParams) => ({ from: withOffset(p.from), to: withOffset(p.to, true) });
+
+/** Supervisors and Admins only. */
+export function useMetricsReport(params: ReportParams, enabled = true) {
+  return useQuery({
+    queryKey: ["reports", "metrics", params] as const,
+    enabled,
+    queryFn: async () =>
+      normalizeMetricsReport(
+        await api.get<unknown>("reports/metrics", { ...range(params), team_id: params.team_id }),
+      ),
+    placeholderData: keepPreviousData,
+    staleTime: 60_000,
+  });
+}
+
+export function useAiReport(params: ReportParams, enabled = true) {
+  return useQuery({
+    queryKey: ["reports", "ai", params] as const,
+    enabled,
+    queryFn: async () => normalizeAiReport(await api.get<unknown>("reports/ai", range(params))),
+    placeholderData: keepPreviousData,
+    staleTime: 60_000,
+  });
+}
+
+/** Query for a CSV download of a report: same dates and team, `format=csv`. */
+export function csvQuery(params: ReportParams, withTeam: boolean) {
+  return {
+    ...range(params),
+    ...(withTeam && params.team_id ? { team_id: params.team_id } : {}),
+    format: "csv",
+  };
+}

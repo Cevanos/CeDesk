@@ -93,6 +93,27 @@ export function TicketRow({ t, showStatus }: { t: TicketSummary; showStatus: boo
             {t.contact?.vip && <VipBadge />}
             {t.source && <AiBadge source={t.source} />}
             {t.accepted === false && <Badge tone="warning">Waiting to accept</Badge>}
+            {t.parent_id && (
+              <Badge tone="info" title={`Child of ${t.parent_id}`}>
+                Child ticket
+              </Badge>
+            )}
+            {(t.child_count ?? 0) > 0 && (
+              <Badge tone="info">
+                {t.child_count} {t.child_count === 1 ? "child" : "children"}
+              </Badge>
+            )}
+            {t.merged_into_id && (
+              <Badge tone="warning" title={`Merged into ${t.merged_into_id}`}>
+                Merged
+              </Badge>
+            )}
+            {(t.jira_keys ?? []).length > 0 && (
+              <Badge title={(t.jira_keys ?? []).join(", ")}>
+                Jira {t.jira_keys![0]}
+                {t.jira_keys!.length > 1 ? ` +${t.jira_keys!.length - 1}` : ""}
+              </Badge>
+            )}
             {t.status !== "resolved" && <SlaPill sla={t.sla} compact />}
           </div>
 

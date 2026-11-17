@@ -18,6 +18,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
+import { ComposerAi, TranslateMessage } from "@/components/tickets/ai-assist";
 import { FileChip, formatBytes } from "@/components/tickets/message-files";
 import { Badge, Button, Card, Select } from "@/components/ui/primitives";
 import { useCurrentUser } from "@/hooks/use-auth";
@@ -201,6 +202,7 @@ function Bubble({ m, mine }: { m: Message; mine: boolean }) {
         {m.body && (
           <p className="text-sm leading-relaxed wrap-break-word whitespace-pre-wrap">{m.body}</p>
         )}
+        {m.body && <TranslateMessage text={m.body} />}
         {files.length > 0 && (
           <ul className={cn("flex flex-wrap gap-1.5", m.body && "mt-2.5")} aria-label="Attachments">
             {files.map((f) => (
@@ -522,6 +524,12 @@ export function Composer({
           ))}
         </div>
       )}
+      <ComposerAi
+        ticketId={ticketId}
+        body={body}
+        setBody={setBody}
+        canSuggest={canReplyNow && kind === "reply"}
+      />
       {(files.length > 0 || uploading > 0) && (
         <ul className="flex flex-wrap gap-1.5 px-1 pb-1.5" aria-label="Files to send">
           {files.map((f) => (
