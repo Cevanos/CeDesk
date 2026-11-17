@@ -1812,14 +1812,19 @@ async def _refresh(
     fresh = [m for m in messages if _is_new(m, known)]
     seen = set(known[0])
     removed: set[Any] = set()
+    removed_at: datetime | None = None
     for message in fresh:
+        before = len(removed)
         removed = await _add_message(s, ctx, cfg, ticket_id, t, message, seen, removed, stats)
+        if removed_at is None and len(removed) > before:
+            removed_at = message.created_at
     last = messages[-1].created_at if messages else t.created_at
     if removed:
         await repo.insert_message(
             s, workspace_id=ctx.ws, ticket_id=ticket_id, kind="system",
-            body=triage.removed_line(len(removed)), created_at=last, author_member_id=None,
-            author_name=None, channel_message_id=None,
+            body=triage.removed_line(len(removed)),
+            created_at=(removed_at or last) + timedelta(milliseconds=2),
+            author_member_id=None, author_name=None, channel_message_id=None,
         )  # fmt: skip
     state = rules.status(t.status, ctx.status_map)
     resolved_at = (t.resolved_at or t.updated_at or last) if state == "resolved" else None
@@ -2041,16 +2046,23 @@ async def _ticket(
     )  # fmt: skip
     seen: set[str] = set()
     removed_numbers: set[Any] = set(removed)
+    # Live B-32: the "card number removed" line sits right after the first message a number
+    # was taken from (or the subject), not at the end of the thread.
+    removed_at = first_at if removed_numbers else None
     for message in messages:
+        before = len(removed_numbers)
         removed_numbers = await _add_message(
             s, ctx, cfg, ticket_id, t, message, seen, removed_numbers, stats
         )
+        if removed_at is None and len(removed_numbers) > before:
+            removed_at = message.created_at
     removed = removed_numbers
     if removed:
         await repo.insert_message(
             s, workspace_id=ctx.ws, ticket_id=ticket_id, kind="system",
-            body=triage.removed_line(len(removed)), created_at=last, author_member_id=None,
-            author_name=None, channel_message_id=None,
+            body=triage.removed_line(len(removed)),
+            created_at=(removed_at or last) + timedelta(milliseconds=2),
+            author_member_id=None, author_name=None, channel_message_id=None,
         )  # fmt: skip
     if t.csat is not None:  # a rating is history whatever the ticket's status now (P1-12)
         await repo.insert_csat(

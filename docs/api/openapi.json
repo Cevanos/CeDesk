@@ -8742,6 +8742,65 @@
         }
       }
     },
+    "/api/v1/imports/connections/{connection_id}/credentials": {
+      "post": {
+        "tags": [
+          "imports"
+        ],
+        "summary": "Give an open connection new credentials (Admin)",
+        "description": "For an import that stopped because the source refused the key (a revoked key, an expired token): the new credentials are checked with the source and must reach the same account, then replace the old ones; resume the failed run afterwards (POST /imports/runs/{id}/resume). 422 when the source refuses them, 409 when they are for another account or the connection was closed, 503 when the source can't be reached.",
+        "operationId": "update_credentials_api_v1_imports_connections__connection_id__credentials_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "connection_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Connection Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CredentialsIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/cedesk__helpdesk__api__imports__ConnectionOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/imports/connections/{connection_id}/close": {
       "post": {
         "tags": [
@@ -15099,6 +15158,30 @@
             "type": "integer",
             "title": "Csat Count",
             "default": 0
+          },
+          "phone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone",
+            "description": "From an import, when the source had it."
+          },
+          "organization": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Organization",
+            "description": "The customer's company in the old help desk (imports)."
           }
         },
         "type": "object",
@@ -15380,6 +15463,26 @@
           "groups"
         ],
         "title": "CountsOut"
+      },
+      "CredentialsIn": {
+        "properties": {
+          "credentials": {
+            "additionalProperties": {
+              "type": "string",
+              "format": "password",
+              "writeOnly": true
+            },
+            "type": "object",
+            "title": "Credentials",
+            "description": "New credentials for the same account (same keys as when connecting)."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "credentials"
+        ],
+        "title": "CredentialsIn"
       },
       "CsatOut": {
         "properties": {
@@ -17854,6 +17957,31 @@
         ],
         "title": "LinkIssueIn"
       },
+      "LossOut": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key",
+            "description": "What happened, e.g. files_linked, history_capped."
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          },
+          "meaning": {
+            "type": "string",
+            "title": "Meaning",
+            "description": "The same in words, for the Admin."
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "count",
+          "meaning"
+        ],
+        "title": "LossOut"
+      },
       "MacroIn": {
         "properties": {
           "name": {
@@ -18312,6 +18440,24 @@
               }
             ],
             "title": "Channel Message Id"
+          },
+          "recipients": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recipients",
+            "description": "Imported messages: who the old help desk says it was addressed to (to, cc, bcc). Never used for replies."
           },
           "attachments": {
             "items": {
@@ -20269,6 +20415,46 @@
         ],
         "title": "ReceivedOut"
       },
+      "ReconciledOut": {
+        "properties": {
+          "in_source": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "In Source",
+            "description": "What the source counted at the start (null: the source can't say)."
+          },
+          "accounted_for": {
+            "type": "integer",
+            "title": "Accounted For",
+            "description": "Created + already here + noted as failed."
+          },
+          "difference": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Difference",
+            "description": "in_source - accounted_for when positive."
+          }
+        },
+        "type": "object",
+        "required": [
+          "in_source",
+          "accounted_for",
+          "difference"
+        ],
+        "title": "ReconciledOut"
+      },
       "RecoveryCodesOut": {
         "properties": {
           "recovery_codes": {
@@ -21247,6 +21433,21 @@
             "title": "Retry Attempts",
             "description": "Failed tries of the page the run is on (a temporary error at the source). Back to 0 when a page is saved.",
             "default": 0
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "in_progress",
+              "complete",
+              "complete_with_exceptions",
+              "failed"
+            ],
+            "title": "Outcome",
+            "description": "complete: nothing was left out, cut, linked or noted. complete_with_exceptions: it ended, but see `report` (open failures, losses, a difference against the source's own counts). failed: it stopped; see last_error (a failed run can be resumed).",
+            "default": "in_progress"
+          },
+          "report": {
+            "$ref": "#/components/schemas/RunReportOut"
           }
         },
         "type": "object",
@@ -21263,6 +21464,40 @@
           "last_error"
         ],
         "title": "RunOut"
+      },
+      "RunReportOut": {
+        "properties": {
+          "open_failures": {
+            "type": "integer",
+            "title": "Open Failures",
+            "description": "Records noted and not resolved: GET /imports/runs/{id}/failures.",
+            "default": 0
+          },
+          "losses": {
+            "items": {
+              "$ref": "#/components/schemas/LossOut"
+            },
+            "type": "array",
+            "title": "Losses"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings",
+            "description": "What the source can't give: said before the run, or found during it (a part of the source refused mid-run). Each line once."
+          },
+          "reconciliation": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ReconciledOut"
+            },
+            "type": "object",
+            "title": "Reconciliation"
+          }
+        },
+        "type": "object",
+        "title": "RunReportOut"
       },
       "SandboxOut": {
         "properties": {

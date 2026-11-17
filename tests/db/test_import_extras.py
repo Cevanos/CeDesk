@@ -127,3 +127,29 @@ async def test_articles_keep_their_dates_translations_and_a_cut_is_counted(
     run = ok(await im.get(f"/api/v1/imports/runs/{run_id}", headers=w["admin"]))
     assert ("article_cut", 1) in [(x["key"], x["count"]) for x in run["report"]["losses"]]
     await end_runs(sm, w["ws"])
+
+
+async def test_the_card_number_line_sits_after_the_message_it_was_taken_from(
+    im: AsyncClient, app_sessionmaker: Sm
+) -> None:
+    """Live B-32: the "card number removed" line was dated at the last message, so in a long
+    thread it showed far from the message the number was taken from."""
+    from datetime import timedelta
+
+    sm = app_sessionmaker
+    src = Flaky()
+    src.tickets = [replace(Fake.ticket(1), messages=[
+        Message("customer", "My card is 4242 4242 4242 4242, refund it", AT, external_id="a"),
+        Message("agent", "On it.", AT + timedelta(hours=1), external_id="b"),
+        Message("customer", "Thanks", AT + timedelta(days=3), external_id="c"),
+    ])]  # fmt: skip
+    w, conn, importers = await flaky_desk(im, sm, src)
+    await start(im, w, conn, kinds=["tickets"])
+    await pass_(sm, importers, w["ws"])
+    rows = await sql(sm, w["ws"], "SELECT kind, body FROM hd_message ORDER BY created_at, id")
+    kinds = [
+        "card" if r["kind"] == "system" and "card number" in r["body"] else r["kind"] for r in rows
+    ]
+    assert kinds == ["system", "customer", "card", "agent", "customer"], kinds
+    assert not any("4242" in r["body"] for r in rows)
+    await end_runs(sm, w["ws"])

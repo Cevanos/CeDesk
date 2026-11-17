@@ -3,6 +3,69 @@
 `openapi.json` next to this file is the API as served (`uv run cedesk openapi`). Every
 route is under `/api/v1`. Breaking changes only come in v2 (md 2B). Newest first.
 
+## 2026-11-17: Imports: the run report, new credentials, and what imports now keep
+
+All additive; no field was removed or renamed. Migrations 0057, 0058, 0059.
+
+**Run report (P0-3, P0-6).** `GET /imports/runs/{id}` (and every run in lists) gains:
+
+- `outcome`: `in_progress`, `complete` (nothing left out, cut, linked or noted),
+  `complete_with_exceptions` (it ended, but the report lists something) or `failed`.
+  A run never says `complete` over incomplete data.
+- `report`: `open_failures` (see `GET /imports/runs/{id}/failures`); `losses`, a list of
+  `{key, count, meaning}` (for example `files_linked`, `file_gone`, `file_placeholder`,
+  `history_capped`, `body_as_file`, `tags_over_limit`, `date_replaced`, `archive_capped`,
+  `article_cut`); `warnings`, what the source can't give, said before the run **or found
+  during it** (each line once); `reconciliation` per kind: `{in_source, accounted_for,
+  difference}`.
+
+**New `POST /imports/connections/{id}/credentials`** (Admin, 200, returns the connection).
+For an import that stopped because the source refused the key (a revoked key, an expired
+token): body `{"credentials": {...}}`, the same keys as when connecting. The new credentials
+are checked with the source and must reach **the same account** (409 "another account"
+otherwise); they replace the old ones, then `POST /imports/runs/{id}/resume` carries on.
+422 when the source refuses them, 409 when the connection was closed or is a CSV file, 503
+when the source can't be reached. The history records `credentials_updated` and the audit
+log an entry; neither holds the credentials.
+
+**Resume** (`POST /imports/runs/{id}/resume`) of a CSV run is now refused (409 "no longer
+stored") when storage no longer has the file, instead of queuing a run that fails at once.
+
+**Sync (P1-10).** A sync look no longer undoes a CeDesk edit: status, priority, owner, team,
+tags, subject and fields change only where the source changed them since the last look;
+the ticket's system line says what changed ("Updated from Zendesk: ..."), and "(replacing a
+CeDesk change)" when it overwrote an edit made in CeDesk. A tag removed in the source is
+removed in CeDesk; an owner removed in the source is unassigned.
+
+**Tickets and contacts.**
+
+- `GET /tickets/{id}` `contact` gains `phone` and `organization` (from an import, when the
+  source had them; null otherwise). An import fills them only where blank; erasure clears
+  them.
+- Messages gain `recipients` (`{to, cc, bcc}`, imported messages only): who the old help
+  desk says the message went to. Never used for replies (`email` is unchanged).
+- Imported tickets carry more `fields`, the source's own data CeDesk has no column for:
+  `source_type`, `source_url`, `more_tags` (tags past 20), `source_cc`,
+  `source_followers`, `source_links` (e.g. `related 123; parent 456`), `source_sla_due_at`,
+  `source_sla_breached`. A link to a ticket already imported is also a CeDesk link.
+- Imported articles keep the source's published and updated dates; a translation is its own
+  article titled with its locale, e.g. "Refunds (fr)".
+- **Portal fix:** a customer now sees only the fields of the ticket's type when that type
+  is offered to customers. Before, `GET /portal/tickets/{id}` showed every field, internal
+  ones and imported ones included.
+
+**Connect (`POST /imports/connections`).**
+
+| source | change |
+|---|---|
+| `zendesk` | credentials: `client_id` + `client_secret` (an OAuth client, recommended), or `access_token`, or `email` + `token` (API token; Zendesk retires these 30 Apr 2027) |
+| `freshdesk` | archived tickets are now imported **by default**; `include_archived`: `"false"` turns it off |
+| `zoho` | `include_archived`: `"true"` imports archived tickets (needs the `Desk.search.READ` scope; at most 5,000 per department) |
+| `hubspot` | `token`: a private app's access token or a service key; optional scopes add calls, meetings and inbox threads |
+
+`credentials_hint` comes from `client_id` or `access_token` when those are used, never from
+a secret.
+
 ## 2026-11-17: Imports: resume a failed import where it stopped
 
 - New `POST /imports/runs/{run_id}/resume` (Admin, 202, returns the run): queues a `failed`
