@@ -245,17 +245,27 @@ async def _number(s: AsyncSession, ticket_id: UUID) -> int:
 
 
 async def _tell_assignee(
-    s: AsyncSession, caller: Origin, ticket_id: UUID, member_id: UUID, number: int, subject: str
+    s: AsyncSession,
+    caller: Origin,
+    ticket_id: UUID,
+    member_id: UUID,
+    number: int,
+    subject: str,
+    *,
+    by: str | None = None,
 ) -> None:
+    """The bell for whoever now holds the ticket. `by` names the person who handed it over
+    by hand; without it, routing chose them. Nobody is told about their own choice."""
     if member_id == caller.member_id:
         return
+    what = f"{by} assigned you" if by else "You were auto-assigned"
     await message_repo.notify(
         s,
         workspace_id=caller.workspace_id,
         member_ids=[member_id],
         ticket_id=ticket_id,
         kind="assigned",
-        body=f"You were auto-assigned {rules.label(number)}: {subject}"[:500],
+        body=f"{what} {rules.label(number)}: {subject}"[:500],
     )
 
 
@@ -502,6 +512,11 @@ async def _create(
             await _line(s, origin, ticket_id, f"Team set to {team} by {who}")
         if assignee:
             await _line(s, origin, ticket_id, f"Assigned to {assignee} by {who}")
+            if new.assignee_id is not None:  # chosen by a person: they get a bell, as in B-24
+                await _tell_assignee(
+                    s, origin, ticket_id, new.assignee_id, await _number(s, ticket_id),
+                    subject.text, by=who,
+                )  # fmt: skip
         run = await automation.apply(
             s, origin.workspace_id, ticket_id, RuleEvent.created, to_address=new.to_address
         )
@@ -710,6 +725,13 @@ async def change_contact(
         if contact is not None:
             if before["vip"] != contact["vip"]:  # VIP customers may have another SLA policy
                 await sla.refresh(s, contact_id=contact_id)
+                # Say so on every open ticket the new policy now applies to (B-10, plan 3.7.3).
+                who = await _who(s, caller)
+                body = (
+                    f"Customer marked VIP by {who}" if contact["vip"] else f"VIP removed by {who}"
+                )
+                for ticket_id in await repo.open_ticket_ids(s, contact_id):
+                    await _line(s, caller, ticket_id, body)
             changed = events.contact(before, contact)
             if changed is not None:
                 await outbox.add(s, caller.workspace_id, changed["event"], None, changed)
@@ -892,6 +914,15 @@ async def change_ticket(
                 await _line(s, caller, ticket_id, body)
         if routed_to is not None:
             await _tell_assignee(s, caller, ticket_id, routed_to, current["number"], new["subject"])
+        elif (  # handed to someone by hand: routing did not run, so tell them here (B-24)
+            "assignee_id" in changes
+            and new["assignee_id"] is not None
+            and new["assignee_id"] != current["assignee_id"]
+        ):
+            await _tell_assignee(
+                s, caller, ticket_id, new["assignee_id"], current["number"], new["subject"],
+                by=who,
+            )  # fmt: skip
         if new["status"] == Status.resolved.value != current["status"]:
             await children.child_resolved(s, caller.workspace_id, current, who, caller.member_id)
         view = await _view(s, ticket_id)

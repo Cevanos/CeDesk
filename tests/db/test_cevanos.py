@@ -249,6 +249,12 @@ async def test_connection_settings(
     w = await desk(cv, app_sessionmaker, world, connect=False)
     got = ok(await cv.get(C, headers=w["admin"]))
     assert got["connected"] is False and got["webhook_path"] == f"/api/v1/cevanos/events/{w['ws']}"
+    assert got["webhook_events"] == [  # what the Admin subscribes the webhook to in Cevanos
+        "conversation.escalated",
+        "conversation.classified",
+        "conversation.reopened",
+        "conversation.closed",
+    ]
     assert (await cv.get(C, headers=w["asha"])).status_code == 403
     assert (await cv.put(C, headers=w["asha"], json={"api_key": world.key})).status_code == 403
 
