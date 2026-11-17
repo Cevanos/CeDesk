@@ -87,6 +87,8 @@ def build_export(
             "email": contact["email"],
             "name": contact["name"],
             "vip": contact["vip"],
+            "phone": contact.get("phone"),
+            "organization": contact.get("organization"),
             "customer_since": when(contact["customer_since"]),
             "first_contact": when(contact["created_at"]),
             "erased_at": when(contact["erased_at"]),
