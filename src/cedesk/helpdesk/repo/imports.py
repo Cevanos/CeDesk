@@ -779,20 +779,27 @@ async def insert_article(
     source: str,
     source_id: str,
     updated_by: UUID | None,
+    published_at: datetime | None = None,
+    updated_at: datetime | None = None,
 ) -> UUID | None:
-    """None when this source article is already here (its source index said so)."""
+    """None when this source article is already here (its source index said so). The
+    source's own dates when it gives them (P2-28); otherwise now."""
     result = await session.execute(
         text(
             "INSERT INTO hd_article (workspace_id, category_id, title, body, status, source, "
-            "source_id, updated_by, published_at) VALUES (:ws, :cat, :title, :body, :status, "
-            ":source, :sid, :by, CASE WHEN :published THEN now() END) "
+            "source_id, updated_by, published_at, created_at, updated_at) VALUES (:ws, :cat, "
+            ":title, :body, :status, :source, :sid, :by, "
+            "CASE WHEN :published THEN COALESCE(CAST(:pub AS timestamptz), now()) END, "
+            "COALESCE(CAST(:pub AS timestamptz), CAST(:upd AS timestamptz), now()), "
+            "COALESCE(CAST(:upd AS timestamptz), CAST(:pub AS timestamptz), now())) "
             "ON CONFLICT (workspace_id, source, source_id) WHERE source IS NOT NULL "
             "DO NOTHING RETURNING id"
         ),
         {
             "ws": workspace_id, "cat": category_id, "title": title, "body": body,
             "status": "published" if published else "draft", "published": published,
-            "source": source, "sid": source_id, "by": updated_by,
+            "source": source, "sid": source_id, "by": updated_by, "pub": published_at,
+            "upd": updated_at,
         },
     )  # fmt: skip
     value = result.scalar_one_or_none()

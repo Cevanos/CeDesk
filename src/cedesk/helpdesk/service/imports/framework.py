@@ -815,6 +815,7 @@ async def resume_run(
     statement, so two resumes at once queue it once."""
     require(caller, Action.settings)
     ws = caller.workspace_id
+    await _csv_file_kept(sm, importers, ws, run_id)
     async with workspace_session(sm, ws) as s:
         earlier = await begin(s, caller, idem)
         if earlier is not None:
@@ -850,6 +851,25 @@ async def resume_run(
         found = await repo.run(s, run_id)
     assert found is not None
     return _run_view(found)
+
+
+async def _csv_file_kept(sm: Sessionmaker, importers: Importers, ws: UUID, run_id: UUID) -> None:
+    """A CSV run is resumed only while its file is still stored: the setting alone could
+    point at a file that storage lost or a cleanup removed, and the run would then fail again
+    at once. Read before any lock is taken (the file can be 25 MB)."""
+    async with workspace_session(sm, ws) as s:
+        row = await repo.run(s, run_id)
+        conn = None if row is None else await repo.connection(s, row["connection_id"])
+    key = None if conn is None or conn["source"] != "csv" else conn["settings"].get("file_key")
+    if not key:
+        return  # not a CSV, or the checks under the lock refuse it with their own words
+    try:
+        await importers.store.get(str(key))
+    except ObjectMissing:
+        raise Conflict(
+            "This run's CSV file is no longer stored. Upload the file again and start a new "
+            "import: what is already here is skipped."
+        ) from None
 
 
 def _resumable(row: Mapping[Any, Any]) -> None:
@@ -2046,16 +2066,26 @@ async def _ticket(
     return ticket_id
 
 
+ARTICLE_MAX = 100_000  # hd_article.body's limit
+
+
 async def _articles(s: AsyncSession, ctx: _Ctx, items: list[Article]) -> dict[str, int]:
     created = 0
     for article in items:
         category_id = None
         if article.category is not None:
             category_id = await _category(s, ctx, article.category)
+        title = article.title.strip() or "(untitled)"
+        if article.translation_of and article.locale:  # a translation: its own article
+            title = f"{title} ({article.locale.strip()[:20]})"
+        if len(article.body) > ARTICLE_MAX:
+            rules.loss("article_cut")
         made = await repo.insert_article(
-            s, ctx.ws, category_id=category_id, title=article.title.strip()[:200] or "(untitled)",
-            body=article.body[:100_000], published=article.published, source=ctx.source,
+            s, ctx.ws, category_id=category_id, title=title[:200],
+            body=article.body[:ARTICLE_MAX], published=article.published, source=ctx.source,
             source_id=article.external_id[:200], updated_by=ctx.started_by,
+            published_at=rules.valid_date(article.published_at),
+            updated_at=rules.valid_date(article.updated_at),
         )  # fmt: skip
         if made is not None:
             await repo.put_map(s, ctx.ws, ctx.source, "article", article.external_id, made)

@@ -100,3 +100,30 @@ async def test_an_import_never_overwrites_a_phone_an_agent_set_and_erasure_clear
     left = await sql(sm, w["ws"], "SELECT 1 FROM hd_message WHERE recipients IS NOT NULL")
     assert left == []  # the addresses a message went to are erased with it
     await end_runs(sm, w["ws"])
+
+
+async def test_articles_keep_their_dates_translations_and_a_cut_is_counted(
+    im: AsyncClient, app_sessionmaker: Sm
+) -> None:
+    """P2-28: before, every article was dated the import's day, a translation had the same
+    title as its original, and a body over 100,000 characters was cut without a word."""
+    from cedesk.helpdesk.domain.imports import Article
+
+    sm = app_sessionmaker
+    src = Flaky()
+    src.articles = [
+        Article("a1", "Refunds", "How refunds work", published_at=AT, updated_at=AT),
+        Article("a2", "Refunds", "Comment rembourser", locale="fr", translation_of="a1"),
+        Article("a3", "Long", "x" * 100_001, published=False),
+    ]
+    w, conn, importers = await flaky_desk(im, sm, src)
+    run_id = await start(im, w, conn, kinds=["articles"])
+    await pass_(sm, importers, w["ws"])
+    rows = await sql(sm, w["ws"], "SELECT title, published_at, created_at, updated_at, "
+                     "length(body) AS n FROM hd_article ORDER BY source_id")  # fmt: skip
+    assert [r["title"] for r in rows] == ["Refunds", "Refunds (fr)", "Long"]
+    assert rows[0]["published_at"] == rows[0]["created_at"] == rows[0]["updated_at"] == AT
+    assert rows[2]["n"] == 100_000 and rows[2]["published_at"] is None
+    run = ok(await im.get(f"/api/v1/imports/runs/{run_id}", headers=w["admin"]))
+    assert ("article_cut", 1) in [(x["key"], x["count"]) for x in run["report"]["losses"]]
+    await end_runs(sm, w["ws"])
