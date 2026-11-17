@@ -326,6 +326,10 @@ class ContactPatch(Body):
 class ContactProfileOut(ContactOut):
     customer_since: datetime
     ticket_count: int
+    csat_average: float | None = Field(
+        default=None, description="Average of this customer's ratings, 1-5; null: none yet."
+    )
+    csat_count: int = 0
 
 
 class ContactTicketsOut(BaseModel):

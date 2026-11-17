@@ -8,6 +8,21 @@ route is under `/api/v1`. Breaking changes only come in v2 (md 2B). Newest first
 - `GET /tickets` rows (and `GET /tickets/{id}`) carry `jira_keys`: the keys of the Jira
   issues linked to the ticket (`["SUP-7", "SUP-12"]`), by key, or `[]`. It is read in the
   same query as the row, so the list makes one call. A new field; nothing else changes.
+## 2026-11-16: UI test fixes: a bell on manual assign, a VIP line, the customer's rating, the Cevanos events
+
+- Assigning a ticket to someone else by hand (`PATCH /tickets/{id}` with `assignee_id`, or
+  `POST /tickets` with one) now sends them an `assigned` notification ("<who> assigned you
+  T-123: subject"). Taking a ticket yourself, unassigning, and an unchanged assignee send
+  nothing. Auto-assignment keeps its own text.
+- Turning a customer's VIP flag on or off (`PATCH /contacts/{id}/profile`) now writes a system
+  line ("Customer marked VIP by <who>", "VIP removed by <who>") on each of the customer's open
+  tickets, the same set the SLA refresh walks. Resolved tickets and other customers get none.
+- `GET /contacts/{id}/tickets` and `PATCH /contacts/{id}/profile`: `contact` now has
+  `csat_average` (1-5, null: none yet) and `csat_count`, the same two fields the ticket's
+  customer card already had.
+- `GET/PUT /cevanos/connection`: new `webhook_events`, the four events (`conversation.escalated`,
+  `.classified`, `.reopened`, `.closed`) to subscribe the Cevanos webhook to. `webhook_path`
+  is unchanged.
 
 ## 2026-11-16: Imports: the dry run says when "to create" is only a guess (Phase 2, M4)
 

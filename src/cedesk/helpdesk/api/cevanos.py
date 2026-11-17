@@ -49,6 +49,9 @@ class ConnectionOut(BaseModel):
     team_name: str | None
     updated_at: str | None
     webhook_path: str = Field(description="Add this path, on the API's address, in Cevanos.")
+    webhook_events: list[str] = Field(
+        description="In Cevanos, subscribe that webhook to exactly these events."
+    )
 
 
 class ConnectionIn(BaseModel):
@@ -89,6 +92,7 @@ def _out(view: cevanos.ConnectionView) -> ConnectionOut:
         team_name=view.team_name,
         updated_at=view.updated_at.isoformat() if view.updated_at else None,
         webhook_path=view.webhook_path,
+        webhook_events=list(rules.WEBHOOK_EVENTS),
     )
 
 
