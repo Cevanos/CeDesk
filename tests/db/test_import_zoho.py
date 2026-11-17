@@ -70,8 +70,12 @@ async def test_a_zoho_desk_import_end_to_end(im: AsyncClient, app_sessionmaker: 
         "WHERE t.source_id = 'z1' AND m.kind <> 'system' ORDER BY m.created_at",
     )  # fmt: skip
     assert [k["kind"] for k in kinds] == ["customer", "note", "note", "agent", "agent"]
-    files = await sql(sm, w["ws"], "SELECT name, size FROM hd_attachment")
-    assert [(f["name"], f["size"]) for f in files] == [("label.pdf", len(b"%PDF-label"))]
+    files = await sql(sm, w["ws"], "SELECT name, size FROM hd_attachment ORDER BY name")
+    # The comment's file too (before, comment attachments were never read).
+    assert [(f["name"], f["size"]) for f in files] == [
+        ("label.pdf", len(b"%PDF-label")),
+        ("proof.png", 10),
+    ]
     articles = await sql(sm, w["ws"], "SELECT title FROM hd_article")
     assert [a["title"] for a in articles] == ["Refunds"]
 
@@ -90,5 +94,5 @@ async def test_a_zoho_desk_import_end_to_end(im: AsyncClient, app_sessionmaker: 
     await work(im, sm)
     assert (await run_state(im, w, again["id"]))["state"] == "done"
     assert len(await sql(sm, w["ws"], "SELECT 1 FROM hd_ticket WHERE source = 'zoho'")) == 2
-    assert len(await sql(sm, w["ws"], "SELECT 1 FROM hd_attachment")) == 1
+    assert len(await sql(sm, w["ws"], "SELECT 1 FROM hd_attachment")) == 2  # none twice
     assert len(await sql(sm, w["ws"], "SELECT 1 FROM hd_article")) == 1
