@@ -53,6 +53,10 @@ export function isCevanosMissing(e: unknown): boolean {
 export function aiErrorMessage(e: unknown): string {
   if (!(e instanceof ApiError)) return "The AI request failed. Try again.";
   if (isCevanosMissing(e)) return "Connect Cevanos in Settings to use AI.";
+  // The key is connected but lacks the ai:assist scope: the API's message tells an Admin what to do.
+  if (e.code === "cevanos_scope_missing") {
+    return e.message || "The Cevanos key lacks the ai:assist scope. Ask an Admin to add it.";
+  }
   if (e.status === 503) return "Cevanos didn't answer. Try again.";
   if (e.status === 422) return e.message || "The AI couldn't use that text.";
   return e.userMessage;
