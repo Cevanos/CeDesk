@@ -50,7 +50,7 @@ WHERE = {
     "zoho": (
         "a Self Client's client id and secret and a refresh token (api-console.zoho.com) "
         "with the scopes Desk.tickets.READ, Desk.contacts.READ, Desk.basic.READ and "
-        "Desk.articles.READ"
+        "Desk.articles.READ (archived tickets: also Desk.search.READ)"
     ),
 }
 

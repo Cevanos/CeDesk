@@ -624,6 +624,7 @@ class ZohoDeskConnector:
         if nxt is not None and nxt["from"] <= ARCHIVE_FROM_MAX:
             return Page(items, {"archived": department, "from": nxt["from"]})
         if nxt is not None:
+            rules.loss("archive_capped")
             self._notes.append(
                 f"Zoho Desk lists at most 5,000 archived tickets per department through its "
                 f"API: department {department} has more, and the rest were not read."

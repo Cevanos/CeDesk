@@ -592,9 +592,12 @@ def test_archived_paging_stops_at_zohos_5000_limit(monkeypatch: pytest.MonkeyPat
         return route(request)
 
     c = connector(full, include_archived="true")
-    page = run(c.page("tickets", {"archived": "d1", "from": 4999}))
+    losses = rules.Losses()
+    with rules.collecting(losses):
+        page = run(c.page("tickets", {"archived": "d1", "from": 4999}))
     assert page.cursor == {"archived": "d2", "from": 0}
     assert any("5,000 archived" in w for w in c.warnings())
+    assert losses.counts == {"archive_capped": 1}  # in the run report too
 
 
 # Articles

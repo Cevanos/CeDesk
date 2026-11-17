@@ -1631,11 +1631,12 @@ async def _contact(s: AsyncSession, ctx: _Ctx, contact: Contact) -> UUID:
 
 
 async def _contacts(s: AsyncSession, ctx: _Ctx, items: list[Contact]) -> dict[str, int]:
-    have = await repo.mapped(s, ctx.source, "contact", [c.external_id for c in items])
+    have = set(await repo.mapped(s, ctx.source, "contact", [c.external_id for c in items]))
     created = 0
     for contact in items:
-        if contact.external_id not in have:
+        if contact.external_id not in have:  # the same contact twice on a page: once
             await _contact(s, ctx, contact)
+            have.add(contact.external_id)
             created += 1
     return {"created": created, "skipped": len(items) - created}
 

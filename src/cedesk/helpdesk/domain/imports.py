@@ -658,6 +658,8 @@ LOSS_KEYS: Mapping[str, str] = {
     "message_without_text": "Messages with neither text nor a file: left out.",
     "message_deleted": "Messages deleted in the source: noted on their ticket.",
     "reply_skipped": "Saved replies whose name couldn't become a CeDesk shortcut: left out.",
+    "archive_capped": "Archived tickets past what the source's API lists (Zoho Desk: 5,000 "
+    "per department): not read.",
 }
 """Every counter a run's `losses` can hold, and what it means for the Admin."""
 
