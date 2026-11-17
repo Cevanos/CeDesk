@@ -235,7 +235,7 @@ async def erase_tickets(session: AsyncSession, ids: list[UUID]) -> dict[str, int
         ),
         "messages": await _changed(
             session,
-            "UPDATE hd_message SET body = :erased, email = NULL, "
+            "UPDATE hd_message SET body = :erased, email = NULL, recipients = NULL, "
             "author_name = CASE WHEN kind = 'customer' THEN :name ELSE author_name END "
             "WHERE ticket_id = ANY(:ids)",
             {**p, "name": ERASED_NAME},
@@ -345,6 +345,7 @@ async def erase_contact(session: AsyncSession, contact_id: UUID, email: str) -> 
     await session.execute(
         text(
             "UPDATE hd_contact SET email = :email, name = :name, vip = false, "
+            "phone = NULL, organization = NULL, "
             "erased_at = now(), updated_at = now() WHERE id = :c"
         ),
         {**p, "email": erased_email(contact_id), "name": ERASED_NAME},

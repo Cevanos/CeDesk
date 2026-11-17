@@ -323,3 +323,26 @@ async def test_0058_adds_the_credentials_updated_event_and_goes_back_down(
     await asyncio.to_thread(command.upgrade, cfg, "head")
     async with owner_engine.connect() as conn:
         assert "credentials_updated" in await conn.scalar(text(check))
+
+
+async def test_0059_adds_contact_details_and_recipients_and_goes_back_down(
+    owner_engine: Any,
+) -> None:
+    import asyncio
+
+    from sqlalchemy import text
+
+    cols = (
+        "SELECT table_name || '.' || column_name FROM information_schema.columns "
+        "WHERE (table_name, column_name) IN (('hd_contact', 'phone'), "
+        "('hd_contact', 'organization'), ('hd_message', 'recipients')) ORDER BY 1"
+    )
+    cfg = alembic_config()
+    await asyncio.to_thread(command.downgrade, cfg, "0058")
+    async with owner_engine.connect() as conn:
+        assert (await conn.execute(text(cols))).all() == []
+    await asyncio.to_thread(command.upgrade, cfg, "head")
+    async with owner_engine.connect() as conn:
+        assert [r[0] for r in (await conn.execute(text(cols))).all()] == [
+            "hd_contact.organization", "hd_contact.phone", "hd_message.recipients"
+        ]  # fmt: skip

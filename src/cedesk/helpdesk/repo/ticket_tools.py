@@ -123,7 +123,9 @@ async def touch(session: AsyncSession, ticket_id: UUID) -> None:
 # --- Links (X2) and the Related card ---
 
 
-async def add_link(session: AsyncSession, workspace_id: UUID, a: UUID, b: UUID, by: UUID) -> bool:
+async def add_link(
+    session: AsyncSession, workspace_id: UUID, a: UUID, b: UUID, by: UUID | None
+) -> bool:
     """False when the two were already linked."""
     result = await session.execute(
         text(
