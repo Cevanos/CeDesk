@@ -1,1 +1,1 @@
-{"id":202,"name":"Bob","email":"bob@example.org"}
+{"active":true,"address":null,"company_id":7,"description":null,"email":"bob@example.org","id":202,"job_title":null,"language":"en","mobile":null,"name":"Bob","phone":"+1 555 0100","time_zone":"Eastern Time (US & Canada)","twitter_id":null,"other_emails":["Bob@Example.org","bob.b@example.net"],"other_companies":[],"custom_fields":{},"created_at":"2023-11-01T09:00:00Z","updated_at":"2024-01-01T09:00:00Z"}
