@@ -34,6 +34,15 @@ export function StatusBadge({ status, label }: { status: TicketStatus; label?: s
   return <Badge tone={S_TONE[status]}>{label || STATUS_LABEL[status]}</Badge>;
 }
 
+/** "hi" -> "Hindi". An unknown code is shown as it came, in capitals. */
+export function languageName(code: string): string {
+  try {
+    return new Intl.DisplayNames(["en"], { type: "language" }).of(code) ?? code.toUpperCase();
+  } catch {
+    return code.toUpperCase();
+  }
+}
+
 export function VipBadge() {
   return (
     <Badge tone="warning">

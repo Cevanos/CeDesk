@@ -8,14 +8,17 @@ import {
   Clock,
   Inbox,
   Mail,
+  Pencil,
   Smile,
   Star,
   Ticket,
 } from "lucide-react";
 import Link from "next/link";
+import { useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 
 import { PriorityBadge, StatusBadge } from "@/components/tickets/badges";
-import { Button, Card, EmptyState, Skeleton } from "@/components/ui/primitives";
+import { Button, Card, EmptyState, Input, Skeleton } from "@/components/ui/primitives";
 import { useContactArchive } from "@/hooks/use-archive";
 import { useCurrentUser } from "@/hooks/use-auth";
 import { useContactTickets, useUpdateContact } from "@/hooks/use-tickets";
@@ -52,6 +55,74 @@ function Stat({
         </div>
       </div>
     </Card>
+  );
+}
+
+/** The customer's name with a pencil that turns it into a field (agents who may edit tickets). */
+function NameEditor({
+  name,
+  canEdit,
+  saving,
+  onSave,
+}: {
+  name: string;
+  canEdit: boolean;
+  saving: boolean;
+  onSave: (name: string, done: () => void) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(name);
+  const field = useRef<HTMLInputElement>(null);
+  // Move focus into the field when the pencil is used.
+  useEffect(() => {
+    if (editing) field.current?.focus();
+  }, [editing]);
+
+  if (!editing) {
+    return (
+      <>
+        <h1 className="truncate text-2xl font-semibold tracking-tight">{name}</h1>
+        {canEdit && (
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label="Edit name"
+            onClick={() => {
+              setDraft(name);
+              setEditing(true);
+            }}
+          >
+            <Pencil className="size-4" />
+          </Button>
+        )}
+      </>
+    );
+  }
+  const next = draft.trim();
+  return (
+    <form
+      className="flex items-center gap-2"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (!next || next === name) return setEditing(false);
+        onSave(next, () => setEditing(false));
+      }}
+    >
+      <Input
+        aria-label="Customer name"
+        ref={field}
+        maxLength={100}
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => e.key === "Escape" && setEditing(false)}
+      />
+      <Button type="submit" size="sm" loading={saving} disabled={!next}>
+        Save
+      </Button>
+      <Button type="button" size="sm" variant="ghost" onClick={() => setEditing(false)}>
+        Cancel
+      </Button>
+    </form>
   );
 }
 
@@ -119,7 +190,23 @@ export function CustomerView({ id }: { id: string }) {
           </div>
           <div className="min-w-0 flex-1 pt-3">
             <div className="flex flex-wrap items-center gap-2">
-              <h1 className="truncate text-2xl font-semibold tracking-tight">{contact.name}</h1>
+              <NameEditor
+                key={contact.name}
+                name={contact.name}
+                canEdit={perms.editTicket}
+                saving={update.isPending}
+                onSave={(name, done) =>
+                  update.mutate(
+                    { name },
+                    {
+                      onSuccess: () => {
+                        toast.success("Name updated");
+                        done();
+                      },
+                    },
+                  )
+                }
+              />
               {contact.vip && (
                 <span className="inline-flex items-center gap-1 rounded-full bg-gradient-to-r from-amber-100 to-amber-200 px-2.5 py-0.5 text-xs font-semibold text-amber-900 ring-1 ring-amber-300/60">
                   <Star className="size-3 fill-current" /> VIP

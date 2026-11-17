@@ -4,6 +4,12 @@ import { CheckCircle2, MailX, Send } from "lucide-react";
 import { useState } from "react";
 
 import { publicErrorMessage, publicFieldError } from "@/components/public/errors";
+import {
+  type FieldValues,
+  TypeFields,
+  fieldsPayload,
+  missingFields,
+} from "@/components/public/type-fields";
 import { Button, Card, EmptyState, Field, Input, Select, Skeleton, Textarea } from "@/components/ui/primitives";
 import { usePublicForm, useSubmitPublicForm, useWorkspaceSlug } from "@/hooks/use-portal";
 
@@ -12,11 +18,14 @@ export function ContactForm() {
   const ws = useWorkspaceSlug();
   const form = usePublicForm(ws);
   const submit = useSubmitPublicForm(ws);
-  const [v, setV] = useState({ name: "", email: "", subject: "", message: "", type_id: "" });
+  const [v, setV] = useState({ name: "", email: "", message: "", type_id: "" });
+  const [values, setValues] = useState<FieldValues>({});
   const [errs, setErrs] = useState<Record<string, string>>({});
   const [done, setDone] = useState(false);
   const set = (k: keyof typeof v) => (e: { target: { value: string } }) =>
     setV((x) => ({ ...x, [k]: e.target.value }));
+
+  const typeFields = (form.data?.types ?? []).find((t) => t.id === v.type_id)?.fields ?? [];
 
   if (form.isPending) return <Skeleton className="mx-auto h-96 max-w-2xl rounded-2xl" />;
   if (form.isError || form.data.enabled === false) {
@@ -60,17 +69,16 @@ export function ContactForm() {
             const next: Record<string, string> = {};
             if (!v.name.trim()) next.name = "Enter your name.";
             if (!/^\S+@\S+\.\S+$/.test(v.email.trim())) next.email = "Enter a valid email address.";
-            if (!v.subject.trim()) next.subject = "Add a short subject.";
             if (!v.message.trim()) next.message = "Write your message.";
+            Object.assign(next, missingFields(typeFields, values));
             setErrs(next);
             if (Object.keys(next).length) return;
             submit.mutate(
               {
                 name: v.name.trim(),
                 email: v.email.trim(),
-                subject: v.subject.trim(),
                 message: v.message.trim(),
-                ...(v.type_id ? { type_id: v.type_id } : {}),
+                ...(v.type_id ? { type_id: v.type_id, fields: fieldsPayload(typeFields, values) } : {}),
                 website: "",
               },
               {
@@ -79,7 +87,6 @@ export function ContactForm() {
                   setErrs({
                     name: publicFieldError(err, "name") ?? "",
                     email: publicFieldError(err, "email") ?? "",
-                    subject: publicFieldError(err, "subject") ?? "",
                     message: publicFieldError(err, "message") ?? "",
                     _form: publicErrorMessage(err),
                   }),
@@ -123,19 +130,20 @@ export function ContactForm() {
                 value={v.type_id}
                 placeholder="Choose one (optional)"
                 options={form.data.types.map((t) => ({ value: t.id, label: t.name }))}
-                onChange={set("type_id")}
+                onChange={(e) => {
+                  set("type_id")(e);
+                  setValues({});
+                }}
               />
             </Field>
           )}
-          <Field label="Subject" htmlFor="cf-subject" error={errs.subject}>
-            <Input
-              id="cf-subject"
-              maxLength={200}
-              value={v.subject}
-              aria-invalid={!!errs.subject}
-              onChange={set("subject")}
-            />
-          </Field>
+          <TypeFields
+            idPrefix="cf"
+            fields={typeFields}
+            values={values}
+            errors={errs}
+            onChange={(k, val) => setValues((x) => ({ ...x, [k]: val }))}
+          />
           <Field label="Message" htmlFor="cf-message" error={errs.message}>
             <Textarea
               id="cf-message"
@@ -146,7 +154,7 @@ export function ContactForm() {
               onChange={set("message")}
             />
           </Field>
-          {errs._form && !errs.name && !errs.email && !errs.subject && !errs.message && (
+          {errs._form && !errs.name && !errs.email && !errs.message && (
             <p role="alert" className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger">
               {errs._form}
             </p>

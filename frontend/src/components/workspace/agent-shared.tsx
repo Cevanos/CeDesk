@@ -32,10 +32,10 @@ export function Avatar({
   size = "md",
 }: {
   name: string;
-  status: AgentStatus;
+  status: AgentStatus | null;
   size?: "md" | "xl";
 }) {
-  const s = STATUS_META[status] ?? STATUS_META.offline;
+  const s = status ? (STATUS_META[status] ?? STATUS_META.offline) : null;
   return (
     <span
       className={cn(
@@ -45,15 +45,17 @@ export function Avatar({
       )}
     >
       {initials(name)}
-      <span
-        className={cn(
-          "absolute rounded-full ring-2 ring-surface",
-          s.dot,
-          size === "xl" ? "right-0.5 bottom-0.5 size-4" : "-right-0.5 -bottom-0.5 size-3",
-          status === "available" &&
-            "after:absolute after:inset-0 after:animate-ping after:rounded-full after:bg-success/50",
-        )}
-      />
+      {s && (
+        <span
+          className={cn(
+            "absolute rounded-full ring-2 ring-surface",
+            s.dot,
+            size === "xl" ? "right-0.5 bottom-0.5 size-4" : "-right-0.5 -bottom-0.5 size-3",
+            status === "available" &&
+              "after:absolute after:inset-0 after:animate-ping after:rounded-full after:bg-success/50",
+          )}
+        />
+      )}
     </span>
   );
 }

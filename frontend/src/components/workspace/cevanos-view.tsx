@@ -29,6 +29,14 @@ export function CevanosView() {
  * proxy hides it), so set NEXT_PUBLIC_API_PUBLIC_URL to show a full address;
  * otherwise the Admin sees the path to append to it.
  */
+/** What CDesk handles today; shown when the server does not list the events itself. */
+const DEFAULT_WEBHOOK_EVENTS = [
+  "conversation.escalated",
+  "conversation.classified",
+  "conversation.reopened",
+  "conversation.closed",
+];
+
 function webhookUrl(path: string): string {
   if (/^https?:\/\//.test(path)) return path;
   const api = (process.env.NEXT_PUBLIC_API_PUBLIC_URL ?? "").trim().replace(/\/+$/, "");
@@ -167,7 +175,8 @@ function CevanosBody({ conn }: { conn: CevanosConnection }) {
         <div>
           <h2 className="text-base font-semibold">Webhook address</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Paste this into Cevanos so it can send chats and messages to CDesk.
+            In Cevanos, add a webhook at this address and use the signing secret you saved above.
+            Without it, no handover from the AI agent reaches CDesk.
           </p>
         </div>
         {url.startsWith("<API") && (
@@ -197,6 +206,22 @@ function CevanosBody({ conn }: { conn: CevanosConnection }) {
             <Copy className="size-4" />
           </Button>
         </div>
+      </Card>
+
+      <Card className="space-y-3 p-4 sm:p-5">
+        <div>
+          <h2 className="text-base font-semibold">Webhook events</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Subscribe the Cevanos webhook to these events.
+          </p>
+        </div>
+        <ul aria-label="Webhook events" className="flex flex-wrap gap-2">
+          {(conn.webhook_events?.length ? conn.webhook_events : DEFAULT_WEBHOOK_EVENTS).map((e) => (
+            <li key={e}>
+              <code className="rounded-lg bg-surface-2 px-2.5 py-1 text-xs">{e}</code>
+            </li>
+          ))}
+        </ul>
       </Card>
 
       <Card className="space-y-3 p-4 sm:p-5">
