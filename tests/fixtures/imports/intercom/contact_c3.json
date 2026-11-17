@@ -1,0 +1,9 @@
+{
+ "type": "contact",
+ "id": "c3",
+ "role": "user",
+ "email": "bob@example.org",
+ "name": "Bob",
+ "phone": null,
+ "custom_attributes": {}
+}

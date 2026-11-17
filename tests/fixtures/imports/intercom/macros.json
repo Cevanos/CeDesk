@@ -1,0 +1,37 @@
+{
+ "type": "list",
+ "data": [
+  {
+   "type": "macro",
+   "id": "m1",
+   "name": "Refund: how long?",
+   "body": "<p>Hi <attribute key=\"user.name\" default=\"there\"/>, refunds take 3 days.</p>",
+   "body_text": "Hi {{user.name|fallback:\"there\"}}, refunds take 3 days.",
+   "created_at": "2025-01-01T10:00:00Z",
+   "updated_at": "2025-01-02T10:00:00Z",
+   "visible_to": "everyone",
+   "visible_to_team_ids": [],
+   "available_on": [
+    "inbox"
+   ]
+  },
+  {
+   "type": "macro",
+   "id": "m2",
+   "name": "!!!",
+   "body": "<p>Closing this now.</p>",
+   "body_text": "",
+   "created_at": "2025-01-01T10:00:00Z",
+   "updated_at": "2025-01-02T10:00:00Z",
+   "visible_to": "everyone",
+   "visible_to_team_ids": [],
+   "available_on": [
+    "inbox"
+   ]
+  }
+ ],
+ "pages": {
+  "type": "pages",
+  "per_page": 100
+ }
+}

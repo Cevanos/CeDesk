@@ -1,1 +1,54 @@
-{"type":"list","total_count":3,"data":[{"type":"contact","id":"c1","role":"user","email":"ann@example.org","name":"Ann Customer"},{"type":"contact","id":"c2","role":"lead","email":null,"name":null}],"pages":{"type":"pages","page":1,"per_page":2,"total_pages":2,"next":{"page":2,"starting_after":"cursor-2"}}}
+{
+ "type": "list",
+ "total_count": 3,
+ "data": [
+  {
+   "type": "contact",
+   "id": "c1",
+   "role": "user",
+   "email": "ann@example.org",
+   "name": "Ann Customer",
+   "phone": "+15551234567",
+   "custom_attributes": {
+    "plan": "pro",
+    "seats": 12,
+    "nested": {
+     "a": 1
+    },
+    "empty": null
+   },
+   "companies": {
+    "type": "list",
+    "data": [
+     {
+      "type": "company",
+      "id": "co1",
+      "url": "/companies/co1"
+     }
+    ],
+    "url": "/contacts/c1/companies",
+    "total_count": 1,
+    "has_more": false
+   }
+  },
+  {
+   "type": "contact",
+   "id": "c2",
+   "role": "lead",
+   "email": null,
+   "name": null,
+   "phone": null,
+   "custom_attributes": {}
+  }
+ ],
+ "pages": {
+  "type": "pages",
+  "page": 1,
+  "per_page": 2,
+  "total_pages": 2,
+  "next": {
+   "page": 2,
+   "starting_after": "cursor-2"
+  }
+ }
+}

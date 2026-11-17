@@ -1,0 +1,20 @@
+{
+ "type": "conversation.list",
+ "conversations": [
+  {
+   "type": "conversation",
+   "id": "501",
+   "created_at": 1740830300,
+   "updated_at": 1740830400,
+   "state": "open",
+   "open": true
+  }
+ ],
+ "total_count": 3,
+ "pages": {
+  "type": "pages",
+  "page": 2,
+  "per_page": 100,
+  "total_pages": 2
+ }
+}
