@@ -62,7 +62,11 @@ export function useSsoInfo(workspace: string) {
     queryFn: async () => {
       const d = await api.get<Record<string, unknown> | null>(`sso/${encodeURIComponent(ws)}`);
       const on = d?.enabled ?? d?.sso_enabled ?? d?.uses_sso ?? d?.sso;
-      return { enabled: on === true };
+      const start = typeof d?.start_url === "string" ? d.start_url : null;
+      return {
+        enabled: on === true,
+        startUrl: start && /^https?:\/\//i.test(start) ? start : null,
+      };
     },
   });
 }

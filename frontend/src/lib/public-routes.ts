@@ -16,6 +16,7 @@ const AGENT_AREAS = new Set([
   "reports",
   "reset-password",
   "settings",
+  "sso",
   "tickets",
 ]);
 
@@ -28,6 +29,8 @@ const AGENT_AREAS = new Set([
  */
 export function isPublicPage(pathname: string): boolean {
   if (pathname === "/rate" || pathname.startsWith("/rate/")) return true;
+  // Where the API sends the browser after single sign-on; the page itself reads the token.
+  if (pathname === "/sso/callback" || pathname === "/sso/callback/") return true;
   const [, first = ""] = pathname.split("/");
   if (AGENT_AREAS.has(first)) return false;
   if (/^\/[^/]+\/tickets\/[^/]+\/?$/.test(pathname)) return true;

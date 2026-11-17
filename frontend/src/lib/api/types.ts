@@ -414,6 +414,10 @@ export interface ReportTeamRow {
   resolved: number | null;
   open: number | null;
   sla_met_pct: number | null;
+  /** Share of the team's tickets answered within first-reply time; null if none measured. */
+  first_reply_sla_met_percent?: number | null;
+  /** How many tickets that percentage is out of. */
+  first_reply_sla_measured?: number | null;
   csat_average: number | null;
 }
 export interface ReportAgentRow {

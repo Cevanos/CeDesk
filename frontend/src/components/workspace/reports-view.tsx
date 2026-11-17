@@ -372,7 +372,23 @@ function ReportData({ data, stale }: { data: TeamReport; stale: boolean }) {
                     <Td>{count(t.created)}</Td>
                     <Td>{count(t.resolved)}</Td>
                     <Td>{count(t.open)}</Td>
-                    <Td>{percent(t.sla_met_pct)}</Td>
+                    <Td>
+                      <span
+                        title={
+                          t.first_reply_sla_measured != null
+                            ? `of ${t.first_reply_sla_measured} ticket${t.first_reply_sla_measured === 1 ? "" : "s"}`
+                            : undefined
+                        }
+                      >
+                        {percent(t.first_reply_sla_met_percent ?? t.sla_met_pct ?? null)}
+                      </span>
+                      {t.first_reply_sla_met_percent != null &&
+                        t.first_reply_sla_measured != null && (
+                          <span className="ml-1 text-xs text-muted-foreground">
+                            of {t.first_reply_sla_measured}
+                          </span>
+                        )}
+                    </Td>
                     <Td>{rating(t.csat_average)}</Td>
                   </tr>
                 ))}

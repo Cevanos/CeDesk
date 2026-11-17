@@ -46,6 +46,8 @@ export const RATE_LIMITED_PATHS = new Set([
   "auth/2fa",
   "auth/forgot-password",
   "auth/reset-password",
+  // Trades an SSO session token for cookies; guessing tokens must be slow.
+  "auth/sso-session",
 ]);
 export const AUTH_RATE_WINDOW_MS = 60_000;
 export function authRateLimit(): number {
@@ -124,6 +126,7 @@ export const PUBLIC_PATHS = new Set([
   "auth/sign-in",
   "auth/forgot-password",
   "auth/reset-password",
+  "auth/sso-session",
 ]);
 
 /** Single sign-on discovery and start only; the IdP's ACS post is not for the browser. */

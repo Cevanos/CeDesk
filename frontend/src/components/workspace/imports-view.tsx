@@ -789,6 +789,7 @@ function RunStep({
   const resume = useResumeImport(runId);
   const close = useCloseImportConnection(connectionId ?? "");
   const [closed, setClosed] = useState(false);
+  const [stoppedLive, setStoppedLive] = useState(false);
   const [showFailures, setShowFailures] = useState(false);
   const [resumeError, setResumeError] = useState<string | null>(null);
 
@@ -890,7 +891,10 @@ function RunStep({
               onClick={() => {
                 if (!confirm("We're live: stop syncing? This deletes the stored key.")) return;
                 syncStop.mutate(undefined, {
-                  onSuccess: () => toast.success("Syncing stopped"),
+                  onSuccess: () => {
+                    setStoppedLive(true);
+                    toast.success("Syncing stopped");
+                  },
                   onError: (e) =>
                     toast.error(e instanceof ApiError ? e.userMessage : "Couldn't stop"),
                 });
@@ -902,7 +906,7 @@ function RunStep({
         </div>
       )}
 
-      {r.state === "done" && !r.sync_on && connectionId && !closed && (
+      {r.state === "done" && !r.sync_on && connectionId && !closed && !stoppedLive && (
         <div className="flex flex-wrap items-center gap-3">
           <p className="text-sm text-muted-foreground">
             Finished. You can delete the stored key now.
@@ -926,7 +930,13 @@ function RunStep({
           </Button>
         </div>
       )}
-      {closed && <p className="text-sm text-success">Stored key deleted.</p>}
+      {(closed || stoppedLive) && (
+        <p className="text-sm text-success">
+          {stoppedLive
+            ? "Syncing stopped. The stored key is already deleted."
+            : "Stored key deleted."}
+        </p>
+      )}
 
       {!busy && (
         <div className="flex gap-2">

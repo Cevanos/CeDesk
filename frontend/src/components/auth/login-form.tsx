@@ -29,6 +29,19 @@ function landing(r: SignInResponse | undefined, next: string | null) {
   return r?.password_expired ? "/account?expired=1" : safeNext(next);
 }
 
+/** The SSO start link: the API's `start_url`, or the old same-origin path if it is missing. */
+export function ssoHref(startUrl: string | null, workspace: string, next: string | null) {
+  const safe = next && safeNext(next, "") ? safeNext(next, "") : "";
+  if (!startUrl) return `/api/sso/${encodeURIComponent(workspace)}/start`;
+  try {
+    const u = new URL(startUrl);
+    if (safe) u.searchParams.set("next", safe);
+    return u.toString();
+  } catch {
+    return `/api/sso/${encodeURIComponent(workspace)}/start`;
+  }
+}
+
 /** Waits for typing to pause before asking the API about the workspace. */
 function useDebounced<T>(value: T, ms = 400) {
   const [v, setV] = useState(value);
@@ -274,9 +287,14 @@ export function LoginForm() {
           Sign in
         </Button>
         {ssoOn && (
-          // A full page load on purpose: the proxy answers with a redirect to the identity provider.
+          // A full page load on purpose, to the API's own address: its cookie must belong to the
+          // host the identity provider posts back to.
           <a
-            href={`/api/sso/${encodeURIComponent(workspace.trim().toLowerCase())}/start`}
+            href={ssoHref(
+              sso.data?.startUrl ?? null,
+              workspace.trim().toLowerCase(),
+              params.get("next"),
+            )}
             className="inline-flex h-11 w-full items-center justify-center rounded-lg border border-border bg-surface text-sm font-medium hover:bg-surface-2"
           >
             Sign in with SSO

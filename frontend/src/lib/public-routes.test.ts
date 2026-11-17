@@ -5,6 +5,7 @@ import { isPublicPage } from "@/lib/public-routes";
 describe("isPublicPage", () => {
   it.each([
     "/rate",
+    "/sso/callback",
     "/acme-store/tickets/9b2f-1",
     "/acme-store/tickets/9b2f-1/",
     "/acme-store/portal",
@@ -16,6 +17,7 @@ describe("isPublicPage", () => {
   it.each([
     "/",
     "/login",
+    "/sso/other",
     "/tickets",
     "/tickets/abc",
     "/tickets/new",

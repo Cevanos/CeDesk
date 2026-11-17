@@ -73,6 +73,65 @@ function clearSession(res: NextResponse) {
 const secureCookies = () =>
   process.env.NODE_ENV === "production" && process.env.ALLOW_INSECURE_HTTP !== "1";
 
+/** The one place that sets the signed-in cookies, so every way of signing in matches. */
+function setSessionCookies(res: NextResponse, token: string, expiresAt?: string) {
+  const expires = expiresAt ? new Date(expiresAt) : undefined;
+  const cookieOpts = {
+    path: "/",
+    sameSite: "lax" as const,
+    secure: secureCookies(),
+    httpOnly: true,
+    ...(expires && !Number.isNaN(expires.valueOf()) ? { expires } : {}),
+  };
+  res.cookies.set(SESSION_COOKIE, token, cookieOpts);
+  res.cookies.set(SESSION_HINT_COOKIE, "1", cookieOpts);
+}
+
+/** What an SSO session token looks like: opaque, URL-safe, bounded. */
+const SSO_TOKEN = /^[A-Za-z0-9._~+/=-]{16,2048}$/;
+
+/**
+ * SSO hand-off: the API redirected the browser to /sso/callback#token=… and the page posts the
+ * token here. It is checked with the API before it becomes a cookie. It is never logged or echoed.
+ */
+async function ssoSession(req: NextRequest, base: string) {
+  const bad = () => errorBody("NotSignedIn", "That sign-in is not valid. Start again.", 401);
+  const body = (await req.json().catch(() => null)) as {
+    token?: unknown;
+    expires_at?: unknown;
+  } | null;
+  const token = body?.token;
+  if (typeof token !== "string" || !SSO_TOKEN.test(token)) {
+    return errorBody("BadRequest", "That sign-in is not valid. Start again.", 400);
+  }
+  const expiresAt = typeof body?.expires_at === "string" ? body.expires_at : undefined;
+
+  let me: Response;
+  try {
+    me = await fetch(`${base}/me`, {
+      headers: { authorization: `Bearer ${token}`, accept: "application/json" },
+      redirect: "manual",
+      cache: "no-store",
+      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+    });
+  } catch {
+    return errorBody("Unavailable", "We couldn't reach the service. Please try again.", 502);
+  }
+  if (me.status === 401 || me.status === 403) return bad();
+  if (!me.ok)
+    return errorBody("Unavailable", "We couldn't reach the service. Please try again.", 502);
+  const data = (await me.json().catch(() => null)) as {
+    member_id?: string;
+    id?: string;
+    role?: string;
+  } | null;
+  if (!data) return bad();
+
+  const res = NextResponse.json({ member_id: data.member_id ?? data.id, role: data.role });
+  setSessionCookies(res, token, expiresAt);
+  return res;
+}
+
 /** Pending 2FA cookie value: "<password_expired 0|1>.<token>". Never readable by page JS. */
 function packPending(token: string, passwordExpired: boolean) {
   return `${passwordExpired ? 1 : 0}.${token}`;
@@ -111,6 +170,8 @@ async function handle(req: NextRequest, { params }: Ctx) {
     console.error("CDESK_API_URL is not configured");
     return errorBody("Unavailable", "The service is not configured.", 503);
   }
+
+  if (path === "auth/sso-session" && req.method === "POST") return ssoSession(req, base);
 
   const isPublic = isPublicPath(path);
   const portal = isPortalPath(path);
@@ -266,8 +327,6 @@ async function handle(req: NextRequest, { params }: Ctx) {
       });
       return res;
     }
-    const expires = data.expires_at ? new Date(data.expires_at) : undefined;
-    const valid = expires && !Number.isNaN(expires.valueOf()) ? expires : undefined;
     const res = NextResponse.json(
       {
         member_id: data.member_id,
@@ -281,15 +340,7 @@ async function handle(req: NextRequest, { params }: Ctx) {
           : undefined,
       },
     );
-    const cookieOpts = {
-      path: "/",
-      sameSite: "lax" as const,
-      secure: process.env.NODE_ENV === "production" && process.env.ALLOW_INSECURE_HTTP !== "1",
-      httpOnly: true,
-      ...(valid ? { expires: valid } : {}),
-    };
-    res.cookies.set(SESSION_COOKIE, data.token, cookieOpts);
-    res.cookies.set(SESSION_HINT_COOKIE, "1", cookieOpts);
+    setSessionCookies(res, data.token, data.expires_at);
     if (twoFactor) {
       res.cookies.set(PENDING_2FA_COOKIE, "", { path: PENDING_2FA_PATH, maxAge: 0 });
     }

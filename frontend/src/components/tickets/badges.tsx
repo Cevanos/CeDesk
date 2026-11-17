@@ -51,7 +51,28 @@ export function VipBadge() {
   );
 }
 
+const IMPORT_SOURCES = new Set([
+  "csv",
+  "zendesk",
+  "freshdesk",
+  "intercom",
+  "helpscout",
+  "hubspot",
+  "zoho",
+  "zoho_desk",
+]);
+
 export function AiBadge({ source }: { source?: string | null }) {
+  const key = source?.toLowerCase().replace(/[\s-]/g, "_");
+  if (key && IMPORT_SOURCES.has(key)) {
+    const name =
+      key === "csv"
+        ? "CSV"
+        : key === "zoho_desk"
+          ? "Zoho Desk"
+          : source!.replace(/^./, (c) => c.toUpperCase());
+    return <Badge tone="neutral">Imported · {name}</Badge>;
+  }
   return (
     <Badge tone="primary">
       <Sparkles className="size-3" /> {source ? `AI · ${source}` : "AI"}

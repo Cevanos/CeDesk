@@ -438,3 +438,63 @@ describe("single sign-on", () => {
     expect(res.status).toBe(401);
   });
 });
+
+describe("SSO session hand-off", () => {
+  const TOKEN = "tok_abcdefghijklmnop1234";
+  const post = (body: unknown, headers: Record<string, string> = {}) =>
+    call(POST, ["auth", "sso-session"], {
+      method: "POST",
+      headers: { "content-type": "application/json", ...freshIp(), ...headers },
+      body: JSON.stringify(body),
+    });
+
+  it("sets httpOnly cookies for a token the API accepts and never returns it", async () => {
+    server.use(
+      http.get(`${BACKEND}/me`, ({ request }) =>
+        request.headers.get("authorization") === `Bearer ${TOKEN}`
+          ? HttpResponse.json({ member_id: "m1", role: "admin" })
+          : new HttpResponse(null, { status: 401 }),
+      ),
+    );
+    const res = await post({ token: TOKEN, expires_at: "2030-01-01T00:00:00Z" });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ member_id: "m1", role: "admin" });
+    const cookies = res.headers.getSetCookie().join("\n");
+    expect(cookies).toContain(`cdesk_session=${TOKEN}`);
+    expect(cookies).toContain("cdesk_auth=1");
+    expect(cookies.match(/HttpOnly/gi)?.length).toBe(2);
+  });
+
+  it("answers 401 with no cookie when the API refuses the token", async () => {
+    server.use(http.get(`${BACKEND}/me`, () => new HttpResponse(null, { status: 401 })));
+    const res = await post({ token: TOKEN });
+    expect(res.status).toBe(401);
+    expect(res.headers.getSetCookie()).toEqual([]);
+    expect(await res.text()).not.toContain(TOKEN);
+  });
+
+  it("blocks cross-site requests", async () => {
+    expect((await post({ token: TOKEN }, { origin: "https://evil.test" })).status).toBe(403);
+  });
+
+  it("rejects a malformed token without calling the API", async () => {
+    let called = false;
+    server.use(
+      http.get(`${BACKEND}/me`, () => {
+        called = true;
+        return HttpResponse.json({});
+      }),
+    );
+    expect((await post({ token: "short" })).status).toBe(400);
+    expect((await post({})).status).toBe(400);
+    expect(called).toBe(false);
+  });
+
+  it("rate limits the 11th try in a minute", async () => {
+    server.use(http.get(`${BACKEND}/me`, () => new HttpResponse(null, { status: 401 })));
+    const ip = { "x-forwarded-for": "10.9.9.9" };
+    let last = 0;
+    for (let i = 0; i < 11; i++) last = (await post({ token: TOKEN }, ip)).status;
+    expect(last).toBe(429);
+  });
+});
