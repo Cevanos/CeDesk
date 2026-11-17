@@ -1,5 +1,8 @@
 {"data": [
- {"id": 7, "name": "Refund Policy!", "actions": [{"name": "addTags", "arguments": {"tags": "x"}}, {"name": "setResponseText", "arguments": {"body_text": "Refunds take 5 days.", "body_html": "<p>Refunds take 5 days.</p>"}}]},
- {"id": 8, "name": "Tag only", "actions": [{"name": "addTags", "arguments": {}}]},
- {"id": 9, "name": "Html Only", "actions": [{"name": "setResponseText", "arguments": {"body_html": "<div>Hi <i>there</i></div>"}}]}
-], "meta": {"next_cursor": null, "total_resources": 3}}
+ {"id": 7, "name": "Refund Policy!", "language": "en", "usage": 12, "archived_datetime": null, "created_datetime": "2024-01-01T00:00:00+00:00", "actions": [{"name": "addTags", "title": "Add tags", "type": "user", "arguments": {"tags": "x"}}, {"name": "setResponseText", "title": "Add response text", "type": "user", "arguments": {"body_text": "Refunds take 5 days.", "body_html": "<p>Refunds take 5 days.</p>"}}]},
+ {"id": 8, "name": "Tag only", "language": "en", "usage": 3, "archived_datetime": null, "created_datetime": "2024-01-02T00:00:00+00:00", "actions": [{"name": "addTags", "title": "Add tags", "type": "user", "arguments": {}}]},
+ {"id": 9, "name": "Html Only", "language": "en", "usage": 1, "archived_datetime": null, "created_datetime": "2024-01-03T00:00:00+00:00", "actions": [{"name": "setResponseText", "title": "Add response text", "type": "user", "arguments": {"body_html": "<div>Hi <i>there</i></div>"}}]},
+ {"id": 10, "name": "Order delayed because of the carrier strike in the north region", "language": "en", "usage": 0, "archived_datetime": null, "created_datetime": "2024-01-04T00:00:00+00:00", "actions": [{"name": "setResponseText", "title": "Add response text", "type": "user", "arguments": {"body_text": "Your order is delayed."}}]},
+ {"id": 11, "name": "返品について", "language": "ja", "usage": 0, "archived_datetime": null, "created_datetime": "2024-01-05T00:00:00+00:00", "actions": [{"name": "setResponseText", "title": "Add response text", "type": "user", "arguments": {"body_text": "返品は30日以内です。"}}]},
+ {"id": 12, "name": "Remboursé rapide", "language": "fr", "usage": 0, "archived_datetime": null, "created_datetime": "2024-01-06T00:00:00+00:00", "actions": [{"name": "setStatus", "title": "Set status", "type": "system", "arguments": {"status": "closed"}}, {"name": "setResponseText", "title": "Add response text", "type": "user", "arguments": {"body_text": "Remboursement envoyé."}}]}
+], "meta": {"next_cursor": null, "prev_cursor": null, "total_resources": 6}}
