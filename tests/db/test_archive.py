@@ -271,6 +271,15 @@ async def test_privacy_export_and_erase_cover_the_archive(
     sm = app_sessionmaker
     w = await desk(client, sm)
     old = await an_old_ticket(client, sm, w)
+    # A side conversation about her parcel, archived with it.
+    [side] = await sql(sm, w["ws"],
+        "INSERT INTO hd_side_conversation (workspace_id, ticket_id, subject, to_addresses, "
+        "from_address) VALUES (:ws, :t, 'Priya parcel', ARRAY['ops@courier.test'], "
+        "'support@x.test') RETURNING id", ws=w["ws"], t=UUID(old["id"]))  # fmt: skip
+    await sql(sm, w["ws"],
+        "INSERT INTO hd_side_message (workspace_id, side_id, direction, body, author_name, "
+        "from_address, header_message_id) VALUES (:ws, :s, 'in', 'Priya refunded', 'Courier', "
+        "'ops@courier.test', '<side-p@courier.test>')", ws=w["ws"], s=side["id"])  # fmt: skip
     assert await archive.archive_workspace(sm, w["ws"], datetime.now(UTC)) == 1
     P = "/api/v1/privacy"
 
@@ -302,8 +311,12 @@ async def test_privacy_export_and_erase_cover_the_archive(
     assert payloads and all(p == {"erased": True} for p in payloads)
     [hook] = await sql(sm, w["ws"], "SELECT body, state FROM hd_webhook_delivery")
     assert (hook["body"], hook["state"]) == ({"erased": True}, "failed")
-    [row] = await sql(sm, w["ws"], "SELECT subject, ticket, messages, files, rating "
+    [row] = await sql(sm, w["ws"], "SELECT subject, ticket, messages, files, rating, related "
                       "FROM hd_ticket_archive")  # fmt: skip
+    [archived_side] = row["related"]["side_conversations"]
+    assert archived_side["subject"] == "(erased)"
+    assert archived_side["to_addresses"] == ["erased@erased.invalid"]
+    assert [m["body"] for m in archived_side["messages"]] == ["(erased)"]
     assert row["subject"] == "(erased)" and row["ticket"]["subject"] == "(erased)"
     assert {m["body"] for m in row["messages"]} == {"(erased)"}
     assert {m["author_name"] for m in row["messages"] if m["kind"] == "customer"} == {

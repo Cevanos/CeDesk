@@ -255,7 +255,7 @@ def _worker(once: bool) -> int:
     from cedesk.mail import MailboxError, make_mailbox, make_mailer
     from cedesk.push_client import FcmClient, PushConfigError
     from cedesk.scanning import make_scanner
-    from cedesk.settings import get_settings
+    from cedesk.settings import Env, ScanBackend, get_settings
     from cedesk.storage import make_store
     from cedesk.webhook_client import WebhookClient
 
@@ -281,6 +281,11 @@ def _worker(once: bool) -> int:
         print("Refusing to start:\n  " + "\n  ".join(problems), file=sys.stderr)
         return 1
     logger = logging.getLogger("cedesk.worker")
+    if settings.env is not Env.dev and settings.scan_backend is ScanBackend.none:
+        logger.warning(
+            "virus scan is off: files customers send are not checked "
+            "(set CEDESK_SCAN_BACKEND=clamd, deploy/README.md)"
+        )
 
     async def run() -> None:
         engine = make_engine(settings.database_url)

@@ -19,6 +19,7 @@ DEPLOY_ONLY = {
     "CEDESK_APP_PASSWORD",
     "CEDESK_SITE",
     "BACKUP_DIR",
+    "CEDESK_FORWARDED_ALLOW_IPS",
 }
 SETTINGS = {f"CEDESK_{name.upper()}" for name in Settings.model_fields}
 
