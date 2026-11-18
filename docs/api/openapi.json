@@ -218,6 +218,171 @@
         ]
       }
     },
+    "/api/v1/auth/signup-config": {
+      "get": {
+        "tags": [
+          "sign-up"
+        ],
+        "summary": "Whether self-service sign-up is on, and the CAPTCHA site key",
+        "operationId": "signup_config_api_v1_auth_signup_config_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SignupConfigOut"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/signup": {
+      "post": {
+        "tags": [
+          "sign-up"
+        ],
+        "summary": "Start creating a workspace: emails a 6-digit code",
+        "description": "Nothing is created yet: the code (10 minutes, 5 tries) goes to the email, and POST /auth/signup/verify creates the workspace. A new sign-up for the same email replaces a waiting one.",
+        "operationId": "start_signup_api_v1_auth_signup_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SignupBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SignupStartedOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`captcha_failed`: the CAPTCHA answer was missing or refused"
+          },
+          "404": {
+            "description": "Self-service sign-up is off on this server"
+          },
+          "409": {
+            "description": "`slug_taken`: another workspace has this address"
+          },
+          "422": {
+            "description": "An address, email, name or password that isn't allowed"
+          },
+          "429": {
+            "description": "Too many sign-ups from this address or codes for this email"
+          }
+        }
+      }
+    },
+    "/api/v1/auth/signup/verify": {
+      "post": {
+        "tags": [
+          "sign-up"
+        ],
+        "summary": "Finish: the emailed code creates the workspace and its first Admin",
+        "description": "Sign in afterwards with POST /auth/sign-in. Safe to repeat: a second call with the same code answers the same.",
+        "operationId": "verify_signup_api_v1_auth_signup_verify_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SignupVerifyBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SignupDoneOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Self-service sign-up is off on this server"
+          },
+          "409": {
+            "description": "`slug_taken`: send the same code again with a new `workspace`"
+          },
+          "410": {
+            "description": "`code_expired` (resend a code) or `signup_expired` (start over)"
+          },
+          "422": {
+            "description": "`bad_code`: the code is wrong; try again"
+          },
+          "429": {
+            "description": "Too many attempts from this address; see Retry-After"
+          }
+        }
+      }
+    },
+    "/api/v1/auth/signup/resend": {
+      "post": {
+        "tags": [
+          "sign-up"
+        ],
+        "summary": "Email a new code for a waiting sign-up (the old one stops working)",
+        "operationId": "resend_code_api_v1_auth_signup_resend_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SignupResendBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SignupStartedOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Self-service sign-up is off on this server"
+          },
+          "410": {
+            "description": "`signup_expired`: start the sign-up again"
+          },
+          "429": {
+            "description": "Asked too soon (60 s) or too often (3 an hour); see Retry-After"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/members": {
       "get": {
         "tags": [
@@ -13991,7 +14156,8 @@
           "retention",
           "plan",
           "demo",
-          "archive"
+          "archive",
+          "workspace"
         ],
         "title": "Area",
         "description": "Filter on the audit page. Other teams' features add their own (api_keys,\nwebhooks, apps, retention): the column takes any lower-case name."
@@ -22284,6 +22450,186 @@
           "role"
         ],
         "title": "SignedInOut"
+      },
+      "SignupBody": {
+        "properties": {
+          "workspace": {
+            "type": "string",
+            "maxLength": 40,
+            "minLength": 3,
+            "title": "Workspace",
+            "description": "The address to sign in with, e.g. 'acme'."
+          },
+          "workspace_name": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Workspace Name",
+            "description": "Shown name, e.g. 'Acme Support'."
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Name",
+            "description": "The person signing up, who becomes the first Admin."
+          },
+          "email": {
+            "type": "string",
+            "maxLength": 254,
+            "minLength": 3,
+            "pattern": "^[^@\\s]+@[^@\\s]+$",
+            "title": "Email"
+          },
+          "password": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Password"
+          },
+          "captcha_token": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2048
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Captcha Token",
+            "description": "The Turnstile token, when signup-config gave a site key."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "workspace",
+          "workspace_name",
+          "name",
+          "email",
+          "password"
+        ],
+        "title": "SignupBody"
+      },
+      "SignupConfigOut": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "description": "False: hide the sign-up link; the routes answer 404."
+          },
+          "captcha_site_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Captcha Site Key",
+            "description": "Cloudflare Turnstile site key to show, when one is needed."
+          }
+        },
+        "type": "object",
+        "required": [
+          "enabled"
+        ],
+        "title": "SignupConfigOut"
+      },
+      "SignupDoneOut": {
+        "properties": {
+          "workspace": {
+            "type": "string",
+            "title": "Workspace",
+            "description": "The address to sign in with (POST /auth/sign-in)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "workspace"
+        ],
+        "title": "SignupDoneOut"
+      },
+      "SignupResendBody": {
+        "properties": {
+          "signup_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Signup Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "signup_id"
+        ],
+        "title": "SignupResendBody"
+      },
+      "SignupStartedOut": {
+        "properties": {
+          "signup_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Signup Id",
+            "description": "Send it back with the code (verify) or to resend."
+          },
+          "code_expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Code Expires At"
+          },
+          "resend_after": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Resend After",
+            "description": "When POST /auth/signup/resend is allowed."
+          }
+        },
+        "type": "object",
+        "required": [
+          "signup_id",
+          "code_expires_at",
+          "resend_after"
+        ],
+        "title": "SignupStartedOut"
+      },
+      "SignupVerifyBody": {
+        "properties": {
+          "signup_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Signup Id"
+          },
+          "code": {
+            "type": "string",
+            "maxLength": 20,
+            "minLength": 1,
+            "title": "Code"
+          },
+          "workspace": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 40,
+                "minLength": 3
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workspace",
+            "description": "A new address, only after a 409 slug_taken: the same code works again."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "signup_id",
+          "code"
+        ],
+        "title": "SignupVerifyBody"
       },
       "SlaClockOut": {
         "properties": {

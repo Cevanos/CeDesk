@@ -234,12 +234,14 @@ def _worker(once: bool) -> int:
     outbox events (Cevanos take-overs and replies), alerts SLA breaches and overdue tasks
     (once a minute), and drops expired idempotency keys. Run one next to the API (sending
     and delivering are safe with several; reading a mailbox is meant for one)."""
+    import contextlib
     import logging
 
     from cedesk import logs
     from cedesk.cevanos_client import make_cevanos
     from cedesk.crypto import Sealer
-    from cedesk.db import make_engine, make_sessionmaker
+    from cedesk.db import make_engine, make_sessionmaker, notifications
+    from cedesk.helpdesk.domain import signup as signup_rules
     from cedesk.helpdesk.domain.limits import parse_plans
     from cedesk.helpdesk.service import limits as plan_limits
     from cedesk.helpdesk.service.apps import slack_bound
@@ -260,6 +262,7 @@ def _worker(once: bool) -> int:
     from cedesk.helpdesk.service.push import push_due
     from cedesk.helpdesk.service.scanning import scan_due
     from cedesk.helpdesk.service.security_alerts import SecurityAlertHandler
+    from cedesk.helpdesk.service.signup_mail import run_lane
     from cedesk.helpdesk.service.sla import refresh_everywhere
     from cedesk.helpdesk.service.sla_alerts import alert_everywhere
     from cedesk.helpdesk.service.slack_alerts import SlackAlertHandler
@@ -341,6 +344,33 @@ def _worker(once: bool) -> int:
         alerted_at = 0.0
         retained_at = -float(RETENTION_EVERY_SECONDS)  # due at the first pass
         logger.info("worker started", extra={"event": settings.mail_backend.value})
+        # Self-service sign-up codes go out on their own lane, beside this loop, so no job
+        # below can hold a code back. Only with sign-up on; off, nothing here changes.
+        lane: asyncio.Task[None] | None = None
+        listening = contextlib.AsyncExitStack()
+        if settings.signup_enabled:
+            wake = None
+            try:
+                wake = await listening.enter_async_context(
+                    notifications(engine, signup_rules.NOTIFY_CHANNEL)
+                )
+            except Exception:
+                logger.warning("sign-up lane: no LISTEN connection, checking every second")
+            sign_up_codes = run_lane(
+                sm,
+                mailer,
+                Sender(
+                    settings.mail_from_address or "no-reply@cedesk.local",
+                    settings.mail_from_name,
+                ),
+                concurrency=settings.signup_mail_concurrency,
+                wake=wake,
+                once=once,
+            )
+            if once:
+                await sign_up_codes
+            else:
+                lane = asyncio.create_task(sign_up_codes, name="signup-mail")
         # Tickets made before SLA was wired (or while the SLA code had a bug) get their
         # stored due time, so `sort=sla` is right after every deploy without a manual step.
         try:
@@ -470,6 +500,11 @@ def _worker(once: bool) -> int:
                     return
                 await asyncio.sleep(settings.worker_interval_seconds)
         finally:
+            if lane is not None:
+                lane.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await lane
+            await listening.aclose()
             await engine.dispose()
 
     try:

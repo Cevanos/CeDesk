@@ -234,18 +234,44 @@ async def create_workspace(
     workspace_id = uuid4()
     try:
         async with workspace_session(sm, workspace_id) as s:
-            await repo.insert_workspace(s, workspace_id, name)
-            await repo.add_directory_entry(s, slug, workspace_id)
-            await repo.insert_member(
+            await insert_workspace(
                 s,
-                workspace_id=workspace_id,
-                email=rules.normalise_email(admin_email),
-                name=admin_name,
-                role=Role.admin.value,
+                workspace_id,
+                name=name,
+                slug=slug,
+                admin_email=admin_email,
+                admin_name=admin_name,
                 password_hash=passwords.hash_password(admin_password),
+                seed=seed,
             )
-            if seed:
-                await seeds.apply(s, workspace_id)
     except IntegrityError as exc:
         raise Conflict("That workspace address is taken.") from exc
     return workspace_id
+
+
+async def insert_workspace(
+    s: AsyncSession,
+    workspace_id: UUID,
+    *,
+    name: str,
+    slug: str,
+    admin_email: str,
+    admin_name: str,
+    password_hash: str,
+    seed: bool = True,
+) -> None:
+    """The rows of a new workspace, in the caller's `workspace_session(workspace_id)`: the
+    workspace, its address, its first Admin (password already hashed) and the defaults.
+    A taken address raises IntegrityError, which rolls the whole transaction back."""
+    await repo.insert_workspace(s, workspace_id, name)
+    await repo.add_directory_entry(s, slug, workspace_id)
+    await repo.insert_member(
+        s,
+        workspace_id=workspace_id,
+        email=rules.normalise_email(admin_email),
+        name=admin_name,
+        role=Role.admin.value,
+        password_hash=password_hash,
+    )
+    if seed:
+        await seeds.apply(s, workspace_id)

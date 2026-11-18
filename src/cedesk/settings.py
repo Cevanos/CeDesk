@@ -242,6 +242,46 @@ class Settings(BaseSettings):
         description="The Firebase service account's JSON key (the whole file's content), "
         "with the 'Firebase Cloud Messaging API' role. Never logged.",
     )
+    # Self-service sign-up: anyone can create a workspace from the sign-in page, after
+    # proving their email with a code. Off unless turned on, so no install opens by accident.
+    signup_enabled: bool = Field(
+        default=False,
+        description="Lets anyone create a workspace from the sign-in page (email code first). "
+        "Off: the sign-up routes answer 404.",
+    )
+    signup_default_plan: str = Field(
+        default="free",
+        description="The cloud plan a workspace made by sign-up starts on (one of "
+        "CEDESK_PLANS). Ignored on self_hosted. Empty: no plan (no limits).",
+    )
+    signup_captcha_site_key: str = Field(
+        default="", description="Cloudflare Turnstile site key the sign-up page shows."
+    )
+    signup_captcha_secret: SecretStr | None = Field(
+        default=None,
+        description="Cloudflare Turnstile secret the API checks each sign-up with. Unset: no "
+        "CAPTCHA (refused on the cloud edition outside dev).",
+    )
+    signup_per_ip_hour: int = Field(
+        default=5, ge=1, description="Sign-ups started per IP per hour (kept in the database)."
+    )
+    signup_workspaces_per_ip_day: int = Field(
+        default=3, ge=1, description="Workspaces created by sign-up per IP per day."
+    )
+    signup_mail_concurrency: int = Field(
+        default=10,
+        ge=1,
+        le=50,
+        description="Sign-up code emails the worker sends at once (stay under the mail "
+        "provider's rate).",
+    )
+    signup_hash_slots: int = Field(
+        default=4,
+        ge=1,
+        le=64,
+        description="Sign-up passwords hashed at once per API process (each Argon2 hash "
+        "uses about 64 MB of memory).",
+    )
 
     def push_on(self) -> bool:
         return bool(self.push_fcm_project_id and self.push_fcm_service_account)
@@ -270,6 +310,23 @@ class Settings(BaseSettings):
             problems.append("CEDESK_INBOUND_EMAIL_TOKEN: use a random value of 32+ characters")
         return problems
 
+    def signup_problems(self) -> list[str]:
+        """The API's check, with sign-up on (outside dev): what lets bots in, or leaves the
+        codes with no sender. The worker checks the mail server (`mail_problems`)."""
+        if not self.signup_enabled or self.env is Env.dev:
+            return []
+        problems = []
+        if not self.mail_from_address:
+            problems.append("CEDESK_MAIL_FROM_ADDRESS: sign-up codes need a sender")
+        captcha = bool(self.signup_captcha_site_key) + bool(self.signup_captcha_secret)
+        if captcha == 1:
+            problems.append(
+                "CEDESK_SIGNUP_CAPTCHA_SITE_KEY and CEDESK_SIGNUP_CAPTCHA_SECRET: set both"
+            )
+        elif captcha == 0 and self.edition is Edition.cloud:
+            problems.append("CEDESK_SIGNUP_CAPTCHA_SECRET: the cloud edition needs a CAPTCHA")
+        return problems
+
     def mail_problems(self) -> list[str]:
         """What stops the worker sending email (the API itself sends none) or scanning."""
         problems = []
@@ -284,6 +341,11 @@ class Settings(BaseSettings):
                 "CEDESK_PUSH_FCM_PROJECT_ID and CEDESK_PUSH_FCM_SERVICE_ACCOUNT: set both, "
                 "or neither (push off)"
             )
+        if self.signup_enabled and self.env is not Env.dev:
+            if self.mail_backend is not MailBackend.smtp:
+                problems.append("CEDESK_MAIL_BACKEND: sign-up codes need smtp")
+            if not self.mail_from_address:
+                problems.append("CEDESK_MAIL_FROM_ADDRESS: sign-up codes need a sender")
         if self.env is not Env.dev and self.mail_backend is MailBackend.log:
             problems.append(
                 "CEDESK_MAIL_BACKEND: `log` keeps every email (with sign-in codes and reset "

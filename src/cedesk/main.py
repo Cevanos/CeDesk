@@ -18,6 +18,7 @@ from sqlalchemy.exc import DBAPIError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from cedesk import logs
+from cedesk.captcha import Turnstile
 from cedesk.cevanos_client import make_cevanos
 from cedesk.db import make_engine, make_sessionmaker
 from cedesk.dnscheck import DnsLookup
@@ -55,6 +56,7 @@ from cedesk.helpdesk.api import sandbox as sandbox_api
 from cedesk.helpdesk.api import saved_replies as saved_replies_api
 from cedesk.helpdesk.api import security as security_api
 from cedesk.helpdesk.api import side_conversations as side_conversations_api
+from cedesk.helpdesk.api import signup as signup_api
 from cedesk.helpdesk.api import sla as sla_api
 from cedesk.helpdesk.api import sso as sso_api
 from cedesk.helpdesk.api import stream as stream_api
@@ -138,7 +140,7 @@ _DOC_PATHS = ("/docs", "/redoc")
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
-    problems = settings.unsafe()
+    problems = settings.unsafe() + settings.signup_problems()
     if problems:
         raise RuntimeError(
             f"Refusing to start with CEDESK_ENV={settings.env.value}: " + "; ".join(problems)
@@ -195,9 +197,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # ...and how Jira issues are made and the Slack test line is sent (md X10, W20).
     app.state.app_post = jira_service.make_post
     # Cloud plan limits (md O4): only on the cloud edition, with the plans from config.
-    limits_service.configure(
-        cloud=settings.edition is Edition.cloud, plans=limit_rules.parse_plans(settings.plans)
-    )
+    plans = limit_rules.parse_plans(settings.plans)
+    limits_service.configure(cloud=settings.edition is Edition.cloud, plans=plans)
+    # Self-service sign-up: a default plan that doesn't exist stops the app here.
+    if (
+        settings.signup_enabled
+        and settings.edition is Edition.cloud
+        and settings.signup_default_plan
+        and settings.signup_default_plan not in plans
+    ):
+        raise RuntimeError(
+            f"CEDESK_SIGNUP_DEFAULT_PLAN={settings.signup_default_plan!r} is not one of the "
+            f"plans: {', '.join(sorted(plans))}"
+        )
+    secret = settings.signup_captcha_secret
+    app.state.captcha = Turnstile(secret.get_secret_value()) if secret else None
+    # Sign-up passwords hashed at once (each Argon2 hash takes about 64 MB).
+    app.state.signup_hash_slots = asyncio.Semaphore(settings.signup_hash_slots)
 
     @app.middleware("http")
     async def request_log(request: Request, call_next: Any) -> Response:
@@ -310,6 +326,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
 
     app.include_router(auth_api.router, prefix="/api/v1")
+    app.include_router(signup_api.router, prefix="/api/v1")
     app.include_router(members_api.router, prefix="/api/v1")
     app.include_router(roles_api.router, prefix="/api/v1")
     app.include_router(security_api.router, prefix="/api/v1")

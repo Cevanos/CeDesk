@@ -55,6 +55,7 @@ class Area(StrEnum):
     plan = "plan"
     demo = "demo"
     archive = "archive"
+    workspace = "workspace"  # the workspace itself was created (self-service sign-up)
 
 
 @dataclass(frozen=True)
