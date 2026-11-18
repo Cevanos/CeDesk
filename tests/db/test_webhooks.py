@@ -17,7 +17,12 @@ from cedesk.db import workspace_session
 from cedesk.egress import BadAddress
 from cedesk.helpdesk.domain import webhooks as rules
 from cedesk.helpdesk.service.delivery import deliver_due
-from cedesk.helpdesk.service.webhooks import WebhookFanout, prune_everywhere, send_due
+from cedesk.helpdesk.service.webhooks import (
+    TURNED_OFF,
+    WebhookFanout,
+    prune_everywhere,
+    send_due,
+)
 from cedesk.settings import Settings
 from cedesk.webhook_client import WebhookClient
 from tests.db.helpers import Sm, add, bearer, new_workspace, ok, sign_in
@@ -263,6 +268,17 @@ async def test_turned_off_and_deleted_webhooks(client: AsyncClient, app_sessionm
     assert t["id"] not in json.dumps(receiver.bodies())
     log = ok(await client.get(D, headers=w["h"]))["deliveries"]
     assert (log[0]["state"], log[0]["last_error"]) == ("failed", "The webhook is turned off.")
+
+    # Live retest: a retry while it is off was accepted (204), then refused by the worker,
+    # so the Admin was told "sent again". Now the API says so at once, and queues nothing.
+    retry = f"{D}/{log[0]['id']}/retry"
+    r = await client.post(retry, headers=w["h"])
+    assert r.status_code == 409 and r.json()["error"]["message"] == TURNED_OFF
+    assert ok(await client.get(D, headers=w["h"]))["deliveries"][0]["state"] == "failed"
+    ok(await client.patch(url, headers=w["h"], json={"enabled": True}))
+    assert (await client.post(retry, headers=w["h"])).status_code == 204
+    assert (await send_due(app_sessionmaker, SEALER, fake)).delivered == 1
+    assert t["id"] in json.dumps(receiver.bodies())  # on again: the retry went out
 
     assert (await client.delete(url, headers=w["h"])).status_code == 204
     assert ok(await client.get(D, headers=w["h"]))["deliveries"] == []  # the log went with it

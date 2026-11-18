@@ -10319,6 +10319,9 @@
           "404": {
             "description": "No failed delivery with that id"
           },
+          "409": {
+            "description": "Its webhook is turned off: turn it on first (the message says so)"
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -12534,6 +12537,48 @@
         ],
         "title": "App"
       },
+      "AppFieldOut": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label",
+            "description": "Show above the box, e.g. \"Jira site\"."
+          },
+          "hint": {
+            "type": "string",
+            "title": "Hint",
+            "description": "Show under the box, e.g. \"acme for acme.atlassian.net.\""
+          },
+          "send_as": {
+            "type": "string",
+            "enum": [
+              "settings",
+              "secret",
+              "signing_secret"
+            ],
+            "title": "Send As",
+            "description": "settings: send as `settings[key]`; secret or signing_secret: send as that field of the install body."
+          },
+          "secret": {
+            "type": "boolean",
+            "title": "Secret",
+            "description": "A password box: it is never shown again once saved."
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "label",
+          "hint",
+          "send_as",
+          "secret"
+        ],
+        "title": "AppFieldOut"
+      },
       "AppOut": {
         "properties": {
           "app": {
@@ -12542,6 +12587,14 @@
           "name": {
             "type": "string",
             "title": "Name"
+          },
+          "fields": {
+            "items": {
+              "$ref": "#/components/schemas/AppFieldOut"
+            },
+            "type": "array",
+            "title": "Fields",
+            "description": "The install form, in order: every setting and credential with its label and hint. Build the form from this; `settings_fields`, `credential` and `second_credential` say the same without labels."
           },
           "card": {
             "type": "string",
@@ -12657,6 +12710,7 @@
         "required": [
           "app",
           "name",
+          "fields",
           "card",
           "settings_fields",
           "credential",
