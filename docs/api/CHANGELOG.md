@@ -3,6 +3,21 @@
 `openapi.json` next to this file is the API as served (`uv run cedesk openapi`). Every
 route is under `/api/v1`. Breaking changes only come in v2 (md 2B). Newest first.
 
+## 2026-11-18: Limiting the portal to some domains signs the others out
+
+No route or field changed. No migration.
+
+- **Fixed (S7):** when an Admin saved a domain list (`PUT /portal-settings`,
+  `allowed_domains`), only new sign-ins were refused: a customer already signed in with
+  another email kept using the portal until their session ended (found in the Phase 3
+  retest). Now saving the list ends those sessions at once. Their next portal request
+  answers 401 and their live stream ends (`signed_out`); they can't sign in again. Opening
+  the list later doesn't bring an ended session back. The audit entry for the change says
+  how many sessions ended (`portal_sessions_ended`).
+- Every portal request also checks the email against the list, so a session made at the
+  very moment the list was saved is refused on its next request: 401 with the list's
+  message, e.g. "Only acme.com emails can open tickets here."
+
 ## 2026-11-18: App install forms with labels, webhook retry while off, portal names
 
 All additive; no field was removed or renamed. No migration. Found in the Phase 3 retest
