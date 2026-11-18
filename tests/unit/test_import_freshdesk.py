@@ -1032,3 +1032,33 @@ async def test_a_429_before_any_ticket_of_a_page_is_read_still_pauses_the_run() 
     with pytest.raises(RateLimited) as caught:
         await connect(quota).page("tickets", None)
     assert caught.value.retry_after == 1
+
+
+async def test_the_files_on_a_tickets_first_message_come_from_the_ticket_view() -> None:
+    """Freshdesk's ticket list has no `attachments`; only `GET /tickets/{id}` has them. A file
+    on the first message was never read (checked against a live account, 18 Nov)."""
+    full = fixture("ticket_2_attachments.json")
+    listed = {k: v for k, v in full.items() if k != "attachments"}  # as the list sends it
+    routes = {
+        **base_routes(),
+        "/api/v2/tickets": ticket_list([listed]),
+        "/api/v2/tickets/2": full,
+        "/api/v2/tickets/2/conversations": fixture("conversations_2_attachments.json"),
+    }
+    desk = Desk(routes)
+    items, _ = await drain(connect(desk, archived=False), "tickets")
+    first = items[0].messages[0]
+    assert [a.name for a in first.attachments] == ["photo.png"]
+    assert "/api/v2/tickets/2" in desk.paths()
+
+
+async def test_a_ticket_deleted_after_it_was_listed_has_no_view_and_is_still_read() -> None:
+    full = fixture("ticket_2_attachments.json")
+    listed = {k: v for k, v in full.items() if k != "attachments"}
+    routes = {
+        **base_routes(),
+        "/api/v2/tickets": ticket_list([listed]),
+        "/api/v2/tickets/2/conversations": fixture("conversations_2_attachments.json"),
+    }  # no view route: a 404
+    items, _ = await drain(connect(Desk(routes), archived=False), "tickets")
+    assert list(items[0].messages[0].attachments) == []
