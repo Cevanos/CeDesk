@@ -125,7 +125,7 @@ def test_tickets_ask_for_updated_order_and_no_trashed() -> None:
     run(connector(seen=seen).page("tickets", None))
     query = seen[0].url.params
     assert query["order_by"] == "updated_datetime:asc"
-    assert query["limit"] == "100" and query["trashed"] == "false"
+    assert query["limit"] == str(gorgias.TICKET_LIMIT) and query["trashed"] == "false"
 
 
 def test_messages_kinds_emails_and_text_versus_html() -> None:
@@ -494,3 +494,51 @@ def test_contact_phone_and_other_emails_from_channels() -> None:
     assert ann.phone == "+14155550123"
     assert list(ann.other_emails) == ["ann.lee@work.example"]
     assert nobody.phone is None and list(nobody.other_emails) == []
+
+
+# B-61: a page is read whole before it is saved, so a page that costs more requests than the
+# source allows in a window never finishes. Gorgias's trial: 40 requests every 20 seconds.
+
+
+def test_a_page_of_tickets_fits_a_trials_request_quota() -> None:
+    template = fixture("tickets_1")["data"][0]
+    rows = [
+        {**template, "id": 1000 + i, "updated_datetime": f"2025-03-01T10:{i % 60:02d}:00+00:00"}
+        for i in range(60)
+    ]
+    used = 0
+
+    def limited(request: httpx.Request) -> httpx.Response:
+        nonlocal used
+        used += 1
+        if used > 40:
+            return httpx.Response(429, headers={"Retry-After": "1"}, json={})
+        if request.url.path == "/api/tickets":
+            size = int(request.url.params["limit"])
+            start = int(request.url.params.get("cursor") or 0)
+            more = start + size < len(rows)
+            body = {
+                "data": rows[start : start + size],
+                "meta": {"next_cursor": str(start + size) if more else None},
+            }
+            return httpx.Response(200, json=body)
+        return route(request)
+
+    found: list[Any] = []
+    cursor: Any = None
+    for _window in range(30):
+        used = 0
+        c = connector(limited)  # the worker builds a new connector on every pass
+        try:
+            while True:
+                page = run(c.page("tickets", cursor))
+                found.extend(page.items)
+                cursor = page.cursor
+                if cursor is None:
+                    break
+        except RateLimited:
+            continue
+        break
+    else:
+        raise AssertionError("never finished: the page costs more than a window allows")
+    assert [t.external_id for t in found] == [str(1000 + i) for i in range(60)]
