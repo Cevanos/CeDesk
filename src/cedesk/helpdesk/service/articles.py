@@ -20,7 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from cedesk.db import workspace_session
 from cedesk.helpdesk.domain import articles as rules
 from cedesk.helpdesk.domain import audit as audit_rules
-from cedesk.helpdesk.domain import paging
+from cedesk.helpdesk.domain import markdown, paging
 from cedesk.helpdesk.domain.audit import Area
 from cedesk.helpdesk.domain.auth import Caller
 from cedesk.helpdesk.domain.permissions import Action
@@ -286,6 +286,24 @@ async def delete_article(sm: Sessionmaker, caller: Caller, article_id: UUID) -> 
             target_id=article_id,
             detail=audit_rules.snapshot(current, ARTICLE_FIELDS[1:]),
         )
+
+
+async def markdown_everywhere(sm: Sessionmaker) -> int:
+    """`cedesk articles-markdown`, once: imported articles still holding their source's
+    HTML (Zendesk and Intercom imports kept it until now) are written as Markdown, so the
+    help center shows them formatted instead of showing their tags. Safe to run again: a
+    converted body has no tags left. Returns how many articles changed."""
+    async with sm() as s, s.begin():
+        workspace_ids = await auth_repo.all_workspace_ids(s)
+    changed = 0
+    for workspace_id in workspace_ids:
+        async with workspace_session(sm, workspace_id) as s:
+            for row in await repo.imported_with_tags(s):
+                body = str(row["body"])
+                if markdown.has_html(body):
+                    await repo.set_body(s, row["id"], markdown.from_html(body)[: rules.BODY_MAX])
+                    changed += 1
+    return changed
 
 
 # The public help center (no sign-in; published articles only)

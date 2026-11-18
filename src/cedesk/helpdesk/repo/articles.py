@@ -200,6 +200,27 @@ async def update_article(
     )
 
 
+async def imported_with_tags(session: AsyncSession) -> Sequence[RowMapping]:
+    """Imported articles whose body may still hold HTML (`id`, `body`), locked: the
+    caller checks each body and writes the Markdown back."""
+    result = await session.execute(
+        text(
+            "SELECT id, body FROM hd_article WHERE source IS NOT NULL AND body LIKE '%<%' "
+            "ORDER BY id FOR UPDATE"
+        )
+    )
+    return result.mappings().all()
+
+
+async def set_body(session: AsyncSession, article_id: UUID, body: str) -> None:
+    """Only the body: the same text written as Markdown, so the article's dates and who
+    last edited it stay as they were."""
+    await session.execute(
+        text("UPDATE hd_article SET body = :body WHERE id = :id"),
+        {"id": article_id, "body": body},
+    )
+
+
 async def lock_article(session: AsyncSession, article_id: UUID) -> RowMapping | None:
     result = await session.execute(
         text(

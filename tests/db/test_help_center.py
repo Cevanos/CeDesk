@@ -3,11 +3,16 @@ only published articles, search finds words and prefixes, and votes are one per 
 (changeable), counted for agents."""
 
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime
 from typing import Any
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import text
 
+from cedesk.db import workspace_session
+from cedesk.helpdesk.repo import auth as auth_repo
+from cedesk.helpdesk.service.articles import markdown_everywhere
 from cedesk.main import create_app
 from cedesk.settings import Settings
 from tests.db.helpers import Sm, add, bearer, new_workspace, ok, sign_in
@@ -211,3 +216,48 @@ async def test_public_reads_have_a_limit(app_sessionmaker: Sm) -> None:
         ok(await c.get(f"{w['pub']}/{a['id']}"))
         r = await c.get(w["pub"], params={"q": "refund"})
         assert r.status_code == 429 and int(r.headers["retry-after"]) > 0
+
+
+async def test_imported_articles_still_holding_html_are_written_as_markdown(
+    client: AsyncClient, app_sessionmaker: Sm
+) -> None:
+    """P6: Zendesk and Intercom imports kept the source's HTML, so the public help center
+    showed `<p>` as text. `cedesk articles-markdown` rewrites those bodies once, and only
+    those: the dates stay the source's, and an Admin's own article is left alone."""
+    sm = app_sessionmaker
+    w = await desk(client, sm)
+    async with sm() as s, s.begin():
+        ws = await auth_repo.workspace_for_slug(s, w["slug"])
+    assert ws is not None
+    then = datetime(2024, 3, 5, tzinfo=UTC)
+    bodies = {
+        "zendesk": "<p>Hi <b>there</b></p><ul><li>order_id</li></ul>",
+        "intercom": r"Already Markdown, \<p> escaped",
+        "freshdesk": "Click reset.",
+        "": "<p>An Admin's own</p>",  # no source: not imported
+    }
+    async with workspace_session(sm, ws) as s:
+        for source, body in bodies.items():
+            await s.execute(
+                text(
+                    "INSERT INTO hd_article (workspace_id, title, body, status, source, "
+                    "source_id, created_at, updated_at) VALUES (:ws, :title, :body, "
+                    "'published', :source, :sid, :at, :at)"
+                ),
+                {"ws": ws, "title": source or "own", "body": body, "source": source or None,
+                 "sid": "1" if source else None, "at": then},
+            )  # fmt: skip
+
+    assert await markdown_everywhere(sm) >= 1
+    async with workspace_session(sm, ws) as s:
+        rows = (await s.execute(text("SELECT id, title, body, updated_at FROM hd_article"))).all()
+    after = {r.title: (r.body, r.updated_at) for r in rows}
+    shown = "Hi **there**\n\n- order\\_id"
+    assert after["zendesk"] == (shown, then)
+    assert after["intercom"][0] == bodies["intercom"]
+    assert after["freshdesk"][0] == bodies["freshdesk"]
+    assert after["own"][0] == bodies[""]
+    zendesk = next(r.id for r in rows if r.title == "zendesk")
+    seen = ok(await client.get(f"{w['pub']}/{zendesk}"))
+    assert seen["body"] == shown  # what the help center shows
+    assert await markdown_everywhere(sm) == 0  # nothing left: safe to run again
