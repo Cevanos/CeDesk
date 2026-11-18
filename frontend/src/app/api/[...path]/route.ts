@@ -19,7 +19,7 @@ import {
   trustedProxyHops,
   upstreamBase,
 } from "@/lib/server/config";
-import { clientKey, isAllowedTarget, isSameOrigin } from "@/lib/server/proxy-guards";
+import { clientKey, isAllowedTarget, isSameOrigin, visitorIp } from "@/lib/server/proxy-guards";
 import { createLimiter } from "@/lib/server/rate-limit";
 
 /**
@@ -105,11 +105,16 @@ async function ssoSession(req: NextRequest, base: string) {
     return errorBody("BadRequest", "That sign-in is not valid. Start again.", 400);
   }
   const expiresAt = typeof body?.expires_at === "string" ? body.expires_at : undefined;
+  const ip = visitorIp(req.headers, trustedProxyHops());
 
   let me: Response;
   try {
     me = await fetch(`${base}/me`, {
-      headers: { authorization: `Bearer ${token}`, accept: "application/json" },
+      headers: {
+        authorization: `Bearer ${token}`,
+        accept: "application/json",
+        ...(ip ? { "x-forwarded-for": ip } : {}),
+      },
       redirect: "manual",
       cache: "no-store",
       signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
@@ -198,6 +203,10 @@ async function handle(req: NextRequest, { params }: Ctx) {
     if (v) headers.set(h, v);
   }
   if (token && !isPublic) headers.set("authorization", `Bearer ${token}`);
+  // The API trusts X-Forwarded-For from us, so SET one address we worked out; never copy the
+  // incoming header.
+  const ip = visitorIp(req.headers, trustedProxyHops());
+  if (ip) headers.set("x-forwarded-for", ip);
 
   let body: ArrayBuffer | undefined;
   if (req.method !== "GET" && req.method !== "HEAD") {

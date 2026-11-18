@@ -1,9 +1,24 @@
 import { describe, expect, it } from "vitest";
 
-import { clientKey, isAllowedTarget, isSameOrigin } from "@/lib/server/proxy-guards";
+import { clientKey, isAllowedTarget, isSameOrigin, visitorIp } from "@/lib/server/proxy-guards";
 
 const allowed = new Set(["tickets", "me"]);
 const h = (o: Record<string, string>) => new Headers(o);
+
+describe("visitorIp", () => {
+  it("returns exactly the one address our proxy added", () =>
+    expect(visitorIp(h({ "x-forwarded-for": "1.2.3.4, 203.0.113.9" }), 1)).toBe("203.0.113.9"));
+  it("returns nothing with 0 hops, even if the visitor sent one", () =>
+    expect(visitorIp(h({ "x-forwarded-for": "1.2.3.4" }), 0)).toBeNull());
+  it("returns nothing for a value that is not an IP", () => {
+    expect(visitorIp(h({ "x-forwarded-for": "not-an-ip" }), 1)).toBeNull();
+    expect(visitorIp(h({}), 1)).toBeNull();
+  });
+  it("never returns more than one address", () =>
+    expect(visitorIp(h({ "x-forwarded-for": "1.1.1.1, 2.2.2.2, 3.3.3.3" }), 2)).toBe("2.2.2.2"));
+  it("accepts IPv6", () =>
+    expect(visitorIp(h({ "x-forwarded-for": "2001:db8::1" }), 1)).toBe("2001:db8::1"));
+});
 
 describe("isAllowedTarget", () => {
   it("allows known areas", () => {

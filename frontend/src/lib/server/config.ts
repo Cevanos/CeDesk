@@ -55,9 +55,18 @@ export function authRateLimit(): number {
   return r.ok ? r.env.AUTH_RATE_LIMIT_PER_MINUTE : 10;
 }
 
+let warnedHops = false;
 export function trustedProxyHops(): number {
   const r = parseEnv();
-  return r.ok ? r.env.TRUSTED_PROXY_HOPS : 1;
+  const hops = r.ok ? r.env.TRUSTED_PROXY_HOPS : 1;
+  if (!warnedHops && process.env.NODE_ENV === "production" && hops >= 1) {
+    warnedHops = true;
+    console.warn(
+      `TRUSTED_PROXY_HOPS=${hops} assumes a proxy that overwrites X-Forwarded-For. ` +
+        "Set it to 0 if the app is reached directly.",
+    );
+  }
+  return hops;
 }
 
 /**

@@ -1,5 +1,7 @@
 /** Pure request checks for the API proxy, kept separate so they can be unit tested. */
 
+import { isIP } from "node:net";
+
 const SEGMENT = /^[A-Za-z0-9._~-]+$/;
 
 /** True when every segment is a plain name and the first is an allowed area. */
@@ -19,6 +21,17 @@ export function isSameOrigin(headers: Pick<Headers, "get">, host: string): boole
   } catch {
     return false;
   }
+}
+
+/**
+ * The visitor's real IP to hand to the API as X-Forwarded-For, or null.
+ * The API trusts whatever Next.js sends, so this only returns an address we really worked
+ * out (a valid IP picked by `clientKey`); never "direct"/"unknown" and never a raw header.
+ */
+export function visitorIp(headers: Pick<Headers, "get">, trustedHops: number): string | null {
+  if (trustedHops <= 0) return null;
+  const key = clientKey(headers, trustedHops);
+  return isIP(key) ? key : null;
 }
 
 /**

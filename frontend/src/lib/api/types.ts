@@ -10,7 +10,8 @@ export type MessageKind = "customer" | "agent" | "ai" | "note" | "system" | "rep
 export type SlaState = "on_track" | "close" | "breached" | "met";
 export type SlaKind = "first_reply" | "resolve";
 export type Delivery = "pending" | "sent" | "failed";
-export type ScanStatus = "not_scanned" | "clean" | "infected" | "scan_failed" | (string & {});
+export type ScanStatus =
+  "not_scanned" | "clean" | "infected" | "scan_failed" | "erased" | (string & {});
 
 /**
  * What the sign-in call answers. When `two_factor_required` is true there is no session yet:

@@ -1,6 +1,6 @@
 "use client";
 
-import { Download, Loader2, Paperclip, ShieldAlert } from "lucide-react";
+import { Download, Loader2, Paperclip, ShieldAlert, ShieldCheck } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -28,6 +28,22 @@ export function FileChip({
 }) {
   const [busy, setBusy] = useState(false);
   const blocked = isBlocked(file.scan_status);
+
+  if (file.scan_status === "erased") {
+    return (
+      <span
+        className={cn(
+          "inline-flex max-w-full items-center gap-1.5 rounded-lg border border-border bg-surface-2 px-2.5 py-1.5 text-xs text-muted-foreground",
+          className,
+        )}
+        title="This file was erased at the customer's request."
+      >
+        <Paperclip className="size-3.5 flex-none" aria-hidden />
+        <span className="min-w-0 truncate line-through">{file.name}</span>
+        <span className="font-semibold">Removed</span>
+      </span>
+    );
+  }
 
   if (blocked) {
     return (
@@ -79,7 +95,17 @@ export function FileChip({
       {file.size !== undefined && (
         <span className="flex-none text-muted-foreground">{formatBytes(file.size)}</span>
       )}
-      <Download className="size-3 flex-none text-muted-foreground" aria-hidden />
+      {file.scan_status === "not_scanned" ? (
+        <span
+          className="inline-flex flex-none items-center gap-1 text-muted-foreground"
+          title="Being checked for viruses. If it isn't ready yet, try again in a moment."
+        >
+          <ShieldCheck className="size-3" aria-hidden />
+          Checking…
+        </span>
+      ) : (
+        <Download className="size-3 flex-none text-muted-foreground" aria-hidden />
+      )}
     </button>
   );
 }
