@@ -95,6 +95,7 @@ import httpx
 
 from cedesk.egress import BadAddress, Guard, check_public, fixed_host, pinned
 from cedesk.helpdesk.domain import imports as rules
+from cedesk.helpdesk.domain import markdown
 from cedesk.helpdesk.domain.imports import (
     AccountInfo,
     Article,
@@ -675,7 +676,7 @@ class ZohoDeskConnector:
         return Article(
             str(row["id"]),
             rules.subject(_str(source.get("title")) or "(untitled)")[:200],
-            _text(source.get("answer")),
+            markdown.from_html(_str(source.get("answer"))),
             Category(str(category["id"]), str(category.get("name") or category["id"]))
             if isinstance(category, dict) and category.get("id")
             else None,
