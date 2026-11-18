@@ -164,6 +164,22 @@ def _sla_refresh() -> int:
     return 0
 
 
+def _articles_markdown() -> int:
+    from cedesk.db import make_engine, make_sessionmaker
+    from cedesk.helpdesk.service.articles import markdown_everywhere
+    from cedesk.settings import get_settings
+
+    async def run() -> int:
+        engine = make_engine(get_settings().database_url)
+        try:
+            return await markdown_everywhere(make_sessionmaker(engine))
+        finally:
+            await engine.dispose()
+
+    print(f"Imported articles written as Markdown: {asyncio.run(run())}.")
+    return 0
+
+
 def _seed_demo(args: argparse.Namespace) -> int:
     from cedesk.db import make_engine, make_sessionmaker
     from cedesk.demo import seed_demo
@@ -525,6 +541,10 @@ def main(argv: list[str] | None = None) -> int:
         "sla-refresh",
         help="Work out the SLA of every open ticket again (once, after migration 0019)",
     )
+    sub.add_parser(
+        "articles-markdown",
+        help="Write imported help center articles that still hold HTML as Markdown (once)",
+    )
     plan = sub.add_parser("set-plan", help="Give a workspace its cloud plan (limits, md O4)")
     plan.add_argument("--workspace", required=True, help="Sign-in address, e.g. 'acme-store'")
     plan.add_argument("--plan", required=True, help="free, growth, enterprise, or none")
@@ -562,6 +582,8 @@ def main(argv: list[str] | None = None) -> int:
         return _clear_ip_allowlist(args.workspace)
     if args.command == "sla-refresh":
         return _sla_refresh()
+    if args.command == "articles-markdown":
+        return _articles_markdown()
     if args.command == "set-plan":
         return _set_plan(args.workspace, args.plan)
     if args.command == "openapi":
