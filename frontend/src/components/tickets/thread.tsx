@@ -337,12 +337,15 @@ export function Composer({
   canReply,
   accepted = true,
   channel = null,
+  replyCc = [],
 }: {
   ticketId: string;
   canReply: boolean;
   /** False on a handover ticket nobody has accepted yet: replies are refused (409). */
   accepted?: boolean;
   channel?: string | null;
+  /** Who the reply will copy, shown read-only above the text box. */
+  replyCc?: string[];
 }) {
   const send = useSendMessage(ticketId);
   const upload = useUploadAttachment(ticketId);
@@ -523,6 +526,11 @@ export function Composer({
           {full ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
         </button>
       </div>
+      {kind === "reply" && replyCc.length > 0 && (
+        <p className="px-2 pb-1.5 text-xs text-muted-foreground" data-testid="reply-cc">
+          <span className="font-medium">Cc:</span> {replyCc.join(", ")}
+        </p>
+      )}
       {isNote && mentions.length > 0 && (
         <div className="flex flex-wrap gap-1.5 px-1 pb-1.5">
           {mentions.map((m) => (

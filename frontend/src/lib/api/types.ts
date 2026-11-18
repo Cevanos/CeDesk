@@ -166,6 +166,8 @@ export interface Ticket extends TicketSummary {
   messages: Message[];
   older_messages_cursor: string | null;
   handover: Handover | null;
+  /** Who a reply will copy (read-only; the server decides it). */
+  reply_cc?: string[];
 }
 
 /** GET /tickets/{id}/messages: newest first. */
