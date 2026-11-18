@@ -373,9 +373,9 @@ Show them as they are in the editor.
 
 ### 2.16 Settings: apps, API keys, webhooks, Cevanos
 
-- Apps: `GET /apps` lists each app with what to ask for: `settings_fields`, `credential` (the credential to ask for; null when the app needs none) and `second_credential` (Slack side conversations: `signing_secret`). Credentials are never shown again, only `secret_hint`. `blocked` explains why an app can't be installed here.
+- Apps: `GET /apps` lists each app with what to ask for. Build the install form from `fields`, in order: each has `label` (above the box), `hint` (under it), `send_as` (`settings`: send as `settings[key]`; `secret` / `signing_secret`: that field of the install body) and `secret` (a password box). `settings_fields`, `credential` (null when the app needs none) and `second_credential` say the same without labels. Credentials are never shown again, only `secret_hint`. `blocked` explains why an app can't be installed here.
 - API keys and webhook secrets are shown **once**, on creation: say so.
-- Webhooks: events, delivery log, retry, test ping, new secret.
+- Webhooks: events, delivery log, retry, test ping, new secret. In the log, show `state` (`delivered`, `pending` = will try again at `next_try_at`, `failed`) and `tries` (a number); `attempts` is the list of tries (`at`, `status`, `ms`, `error`). Offer Retry only when `state` is `failed`. Retry answers 409 while the webhook is turned off: show its message. The test ping answers the delivery: show `state` and `last_status` / `last_error`, not just "sent".
 - Cevanos: connect with a key, check, disconnect. Failed events list (outbox). Under "Webhook address" show the full address and list `webhook_events` (the four events to subscribe the webhook to in Cevanos), so the Admin knows exactly what to choose there.
 
 | | Route | What it does |

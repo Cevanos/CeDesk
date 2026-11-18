@@ -3,6 +3,33 @@
 `openapi.json` next to this file is the API as served (`uv run cedesk openapi`). Every
 route is under `/api/v1`. Breaking changes only come in v2 (md 2B). Newest first.
 
+## 2026-11-18: App install forms with labels, webhook retry while off, portal names
+
+All additive; no field was removed or renamed. No migration. Found in the Phase 3 retest
+of the portal and Settings > Developers on the test server.
+
+- **New `fields` on `GET /apps` (and every app answer).** The install form, in order:
+  `{key, label, hint, send_as, secret}` for every setting and credential, e.g. Jira:
+  "Jira site" (hint "acme for acme.atlassian.net."), "Atlassian account email", "Project
+  key", "API token". `send_as` is `settings` (send as `settings[key]`), `secret` or
+  `signing_secret` (that field of the install body); `secret` true means a password box.
+  Before, only the bare keys came (`settings_fields: ["site", "email", "project"]`), so
+  the Jira and Calendly boxes showed no label. `settings_fields`, `credential` and
+  `second_credential` stay and say the same.
+- **`POST /webhooks/deliveries/{id}/retry` answers 409** "The webhook is turned off. Turn
+  it on, then send this again." when the delivery's webhook is turned off. Before, it
+  answered 204 and queued the delivery, which the worker then refused ("The webhook is
+  turned off."), so the page said "sent again" for something never sent. Nothing is
+  queued now; once the webhook is on, the retry works as before.
+- **A new customer's name** (portal sign-in, and a web form sent without a name) is made
+  from the part of the email before the @: `priya.shah@` is "Priya Shah", `ravi_k+orders@`
+  is "Ravi K". Before it was the bare "priya.shah", so a reply's
+  `{{customer.first_name}}` said "Hi priya.shah". A known customer keeps their name.
+- Tests: the DB tests connect to `127.0.0.1:5447` by default instead of `localhost`.
+  Compose publishes the port on 127.0.0.1 only, and on Windows `localhost` tries IPv6
+  first, so every connection waited about 2 s. `CEDESK_TEST_OWNER_URL` and
+  `CEDESK_TEST_APP_URL` still override it.
+
 ## 2026-11-18: Imported help center articles are Markdown
 
 No route or field changed. No migration.

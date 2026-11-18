@@ -110,9 +110,9 @@ async def test_a_form_post_is_a_web_ticket_answered_by_email(
     assert mail["to_addresses"] == ["priya@example.org"] and mail["header_message_id"]
     assert seen["label"] in mail["subject"]
 
-    # No name: the part before the @.
+    # No name: one made from the part before the @ ("Hi Ravi", not "Hi ravi.k").
     ok(await client.post(w["url"], json=post(name="  ", email="Ravi.K@Example.org")), 202)
-    assert (await web_tickets(app_sessionmaker, w))[-1]["name"] == "ravi.k"
+    assert (await web_tickets(app_sessionmaker, w))[-1]["name"] == "Ravi K"
 
 
 async def test_bad_posts_are_refused(client: AsyncClient, app_sessionmaker: Sm) -> None:

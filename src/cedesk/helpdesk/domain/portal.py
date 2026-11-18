@@ -101,8 +101,14 @@ def code_subject(workspace_name: str) -> str:
 
 
 def contact_name(email: str) -> str:
-    """A first name for a customer we haven't met yet: the part before `@`."""
-    return email.partition("@")[0][:120] or email[:120]
+    """A name for a customer we haven't met yet, made from the part before `@`, so a
+    reply's {{customer.first_name}} reads "Hi Priya", not "Hi priya.shah":
+    priya.shah@ → "Priya Shah", ravi_k+orders@ → "Ravi K". A part with no letters (a
+    number) is left out; with no letters at all, the part before `@` as it is."""
+    local = email.partition("@")[0]
+    words = [w for w in re.split(r"[._-]+", local.partition("+")[0]) if re.search(r"[^\W\d_]", w)]
+    name = " ".join(w[:1].upper() + w[1:] for w in words)
+    return (name or local or email)[:120]
 
 
 # Portal tickets (md P2-P4)

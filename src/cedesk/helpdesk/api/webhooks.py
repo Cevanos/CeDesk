@@ -216,7 +216,11 @@ async def list_deliveries(
     "/webhooks/deliveries/{delivery_id}/retry",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Send a failed delivery again (Admin)",
-    responses=_ADMIN | {404: {"description": "No failed delivery with that id"}},
+    responses=_ADMIN
+    | {
+        404: {"description": "No failed delivery with that id"},
+        409: {"description": "Its webhook is turned off: turn it on first (the message says so)"},
+    },
 )
 async def retry_delivery(delivery_id: UUID, caller: CallerDep, sm: SessionmakerDep) -> Response:
     await webhooks.retry_delivery(sm, caller, delivery_id)
