@@ -99,6 +99,55 @@ CATALOG: dict[App, AppInfo] = {
         "uninstalling removes it.",
     ),
 }
+
+
+@dataclass(frozen=True)
+class FormField:
+    """One box of an app's install form, as the Admin should see it."""
+
+    key: str
+    label: str
+    hint: str
+    send_as: str  # "settings": in settings[key]; "secret" or "signing_secret": that field
+    secret: bool  # a password box; never shown again once saved
+
+
+# The label and hint of every setting and credential, by its key (the keys don't repeat
+# across apps). Before, the form had only the bare keys, so the Jira and Calendly boxes
+# showed no label at all (live, Phase 3 retest).
+_FIELD_TEXT: dict[str, tuple[str, str]] = {
+    "shop": ("Shop name", "acme for acme.myshopify.com."),
+    "access_token": (
+        "Admin API access token",
+        "From a custom app with read_orders and read_customers.",
+    ),
+    "api_key": ("Restricted key", "Starts with rk_ (read only is enough), or sk_."),
+    "site": ("Jira site", "acme for acme.atlassian.net."),
+    "email": ("Atlassian account email", "The account the API token belongs to."),
+    "project": ("Project key", "Where new issues go, e.g. SUP."),
+    "api_token": ("API token", "id.atlassian.com > Security > API tokens."),
+    "webhook_url": ("Incoming webhook URL", "https://hooks.slack.com/services/..."),
+    "bot_token": ("Bot token", "Starts with xoxb-."),
+    "signing_secret": ("Signing secret", "Your Slack app > Basic Information > App Credentials."),
+    "link": ("Booking link", "Your Calendly page, e.g. https://calendly.com/acme/30min."),
+}
+
+
+def form(app: App) -> tuple[FormField, ...]:
+    """What the install form asks for, in order: the settings, then the credentials."""
+    info = CATALOG[app]
+    boxes = [(key, "settings", False) for key in info.settings]
+    if info.credential:
+        boxes.append((info.credential, "secret", True))
+    if info.second_credential:
+        boxes.append((info.second_credential, "signing_secret", True))
+    return tuple(
+        FormField(key, *_FIELD_TEXT.get(key, (key.replace("_", " ").capitalize(), "")),
+                  send_as=send_as, secret=secret)
+        for key, send_as, secret in boxes
+    )  # fmt: skip
+
+
 BOOK_SHORTCUT = "book"
 _CALENDLY = re.compile(r"^https://calendly\.com/[A-Za-z0-9_-]{1,100}(/[A-Za-z0-9_-]{1,100})?/?$")
 CARD_LIMIT = 5  # orders or payments shown per customer

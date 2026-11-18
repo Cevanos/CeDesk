@@ -106,6 +106,32 @@ async def put_app(client: AsyncClient, w: dict[str, Any], app: str, secret: str,
                             json={"secret": secret, "settings": settings or {}})  # fmt: skip
 
 
+async def test_each_install_form_names_its_boxes(client: AsyncClient, app_sessionmaker: Sm) -> None:
+    """Live retest: the Jira form showed three boxes with no label (the API gave only
+    "site", "email", "project"), and Calendly one. `fields` gives each box its label, its
+    hint and where to send it, in order."""
+    install_fakes(client)
+    w = await desk(client, app_sessionmaker)
+    listed = {a["app"]: a for a in ok(await client.get(A, headers=w["h"]))}
+    shown = {app: [(f["key"], f["label"], f["send_as"], f["secret"]) for f in a["fields"]]
+             for app, a in listed.items()}  # fmt: skip
+    assert shown["jira"] == [
+        ("site", "Jira site", "settings", False),
+        ("email", "Atlassian account email", "settings", False),
+        ("project", "Project key", "settings", False),
+        ("api_token", "API token", "secret", True),
+    ]
+    assert shown["calendly"] == [("link", "Booking link", "settings", False)]
+    assert shown["slack"] == [
+        ("bot_token", "Bot token", "secret", True),
+        ("signing_secret", "Signing secret", "signing_secret", True),
+    ]
+    for app in listed.values():  # every box has a label and a hint, none made up
+        assert app["fields"] and all(f["label"] and f["hint"] for f in app["fields"])
+        settings = [f["key"] for f in app["fields"] if f["send_as"] == "settings"]
+        assert settings == app["settings_fields"]  # the old field still says the same
+
+
 async def test_admins_install_change_and_uninstall(
     client: AsyncClient, app_sessionmaker: Sm
 ) -> None:

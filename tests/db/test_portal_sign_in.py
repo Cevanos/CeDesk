@@ -75,8 +75,9 @@ async def test_an_emailed_code_signs_a_new_customer_in(
     r = await enter(client, w["slug"], "priya.shah@example.org", f"{code[:3]} {code[3:]}")
     assert r.status_code == 200, r.text
     body = r.json()
+    # A name, not "priya.shah": a reply's {{customer.first_name}} says "Hi Priya".
     assert body["customer"] == {
-        "email": "priya.shah@example.org", "name": "priya.shah", "workspace_name": "Test",
+        "email": "priya.shah@example.org", "name": "Priya Shah", "workspace_name": "Test",
     }  # fmt: skip
     me = ok(await client.get(f"{P}/me", headers=bearer(body["token"])))
     assert me["email"] == "priya.shah@example.org"

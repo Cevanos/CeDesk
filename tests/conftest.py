@@ -20,13 +20,16 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 from cedesk.db import make_engine, make_sessionmaker
 
 ROOT = Path(__file__).resolve().parents[1]
+# 127.0.0.1, not localhost: docker-compose publishes the port on 127.0.0.1 only, and on
+# Windows "localhost" tries IPv6 (::1) first, so every connection waited about 2 s and the
+# DB tests ran ten times slower.
 OWNER_URL = os.environ.get(
     "CEDESK_TEST_OWNER_URL",
-    "postgresql+asyncpg://cedesk_owner:cedesk_owner_dev@localhost:5447/cedesk_test",
+    "postgresql+asyncpg://cedesk_owner:cedesk_owner_dev@127.0.0.1:5447/cedesk_test",
 )
 APP_URL = os.environ.get(
     "CEDESK_TEST_APP_URL",
-    "postgresql+asyncpg://cedesk_app:cedesk_app_dev@localhost:5447/cedesk_test",
+    "postgresql+asyncpg://cedesk_app:cedesk_app_dev@127.0.0.1:5447/cedesk_test",
 )
 
 
