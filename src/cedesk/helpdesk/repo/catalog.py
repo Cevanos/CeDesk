@@ -76,6 +76,12 @@ async def set_team_members(
         )
 
 
+async def remove_member_from_teams(session: AsyncSession, member_id: UUID) -> None:
+    """Takes a deactivated member out of every team: a team may only hold active
+    members, so leaving them in makes the team impossible to save."""
+    await session.execute(text("DELETE FROM hd_team_member WHERE member_id = :m"), {"m": member_id})
+
+
 async def delete_team(session: AsyncSession, team_id: UUID) -> bool:
     result = await session.execute(
         text("DELETE FROM hd_team WHERE id = :id RETURNING id"), {"id": team_id}
