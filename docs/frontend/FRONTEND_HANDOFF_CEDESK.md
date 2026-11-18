@@ -75,6 +75,7 @@ Show them as they are in the editor.
 
 - Sign-in page: workspace address, email, password. Then, if asked, the 2FA code (or a recovery code). "Forgot password" emails a link; the link's page calls `POST /auth/reset-password`.
 - SSO: `GET /sso/{workspace}` says whether the workspace uses it; then send the browser to `/sso/{workspace}/start`.
+- Create a workspace (self-service sign-up, off unless the server turns it on): `GET /auth/signup-config` (no sign-in) says `enabled` and gives the Cloudflare Turnstile `captcha_site_key` (or null: no CAPTCHA). Only when `enabled`, show "Create a workspace" on the sign-in page. The form (workspace address, workspace name, your name, email, password, the Turnstile token) posts to `POST /auth/signup` (202: `signup_id`, `code_expires_at`, `resend_after`); then a 6-digit code box posts `signup_id` + `code` to `POST /auth/signup/verify` (200: `workspace`), and the page goes to sign-in with that workspace address filled in. Error codes: `slug_taken` (409: on verify, let them pick another address and send the same code again with `workspace`), `bad_code` (422: try again), `code_expired` (410: offer "Send a new code", `POST /auth/signup/resend`, allowed from `resend_after`), `signup_expired` (410: start over), `captcha_failed` (403: reset the widget), 429 with `Retry-After`. Any error from `signup-config` (an older server answers 404) means off.
 - My account (avatar menu): change password, two-step sign-in (`POST /me/2fa/setup` gives an `otpauth_uri`: show it as a QR code; confirm with the first code, then show the recovery codes once), new recovery codes, sign out.
 
 | | Route | What it does |
@@ -84,6 +85,10 @@ Show them as they are in the editor.
 | `POST` | `/auth/reset-password` | Choose a new password with the emailed link (signs out everywhere) |
 | `POST` | `/auth/sign-in` | Sign in with workspace address, email and password |
 | `POST` | `/auth/sign-out` | End this session |
+| `GET` | `/auth/signup-config` | Whether self-service sign-up is on, and the CAPTCHA site key |
+| `POST` | `/auth/signup` | Start creating a workspace: emails a 6-digit code |
+| `POST` | `/auth/signup/resend` | Email a new code for a waiting sign-up (the old one stops working) |
+| `POST` | `/auth/signup/verify` | Finish: the emailed code creates the workspace and its first Admin |
 | `GET` | `/me` | The signed-in member and their workspace |
 | `GET` | `/me/2fa` | My two-step sign-in |
 | `POST` | `/me/2fa/confirm` | Confirm with the first code: 2FA is on; returns the recovery codes |

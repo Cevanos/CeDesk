@@ -3,6 +3,31 @@
 `openapi.json` next to this file is the API as served (`uv run cedesk openapi`). Every
 route is under `/api/v1`. Breaking changes only come in v2 (md 2B). Newest first.
 
+## 2026-11-18: Self-service sign-up (create a workspace from the sign-in page)
+
+All additive; nothing existing changed. Migration 0060 adds two tables. Off unless
+`CEDESK_SIGNUP_ENABLED=true`: then these routes answer 404, except the config route.
+
+- **`GET /auth/signup-config`** (no sign-in): `{enabled, captcha_site_key}`. Show the
+  "Create a workspace" link only when `enabled`; `captcha_site_key` is the Cloudflare
+  Turnstile key to show, or null for no CAPTCHA.
+- **`POST /auth/signup`** `{workspace, workspace_name, name, email, password,
+  captcha_token}`: 202 `{signup_id, code_expires_at, resend_after}`. Nothing is created
+  yet: a 6-digit code (10 minutes, 5 tries) is emailed. 409 `slug_taken`, 422 (an address
+  that is reserved or not 3-40 lowercase letters, digits and single dashes; a bad email;
+  a password under 10 characters), 403 `captcha_failed`, 429 (5 sign-ups an hour per IP,
+  3 workspaces a day per IP, 3 code emails an hour per email). A new sign-up for an email
+  replaces its waiting one.
+- **`POST /auth/signup/verify`** `{signup_id, code, workspace?}`: 200 `{workspace}`, then
+  sign in as usual. Creates the workspace, its first Admin, the default teams and ticket
+  types, the cloud plan (`CEDESK_SIGNUP_DEFAULT_PLAN`, cloud edition only) and the first
+  audit entries ("Self-service sign-up", area `workspace`). Safe to repeat: the same code
+  answers the same. 422 `bad_code`, 410 `code_expired` (resend) or `signup_expired`
+  (start over), 409 `slug_taken` (send the same code again with a new `workspace`).
+- **`POST /auth/signup/resend`** `{signup_id}`: 202 as above; the old code stops working.
+  429 before `resend_after` (60 s) or after 3 code emails an hour.
+- **Audit**: a new area `workspace`.
+
 ## 2026-11-18: App install forms with labels, webhook retry while off, portal names
 
 All additive; no field was removed or renamed. No migration. Found in the Phase 3 retest
