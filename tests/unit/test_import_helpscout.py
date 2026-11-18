@@ -330,7 +330,7 @@ def test_articles_with_a_docs_key() -> None:
     page = run(c.page("articles", None))
     assert page.cursor is None
     live, draft = page.items
-    assert live.title == "Reset password" and live.body == "Click Forgot." and live.published
+    assert live.title == "Reset password" and live.body == "Click **Forgot**." and live.published
     assert live.category is not None and live.category.name == "Account"
     assert not draft.published and draft.category is None
     docs = [r for r in fake.requests if r.url.host == DOCS]

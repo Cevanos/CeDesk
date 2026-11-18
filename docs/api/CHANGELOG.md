@@ -3,6 +3,29 @@
 `openapi.json` next to this file is the API as served (`uv run cedesk openapi`). Every
 route is under `/api/v1`. Breaking changes only come in v2 (md 2B). Newest first.
 
+## 2026-11-18: Imported help center articles are Markdown
+
+No route or field changed. No migration.
+
+- **Fixed (P6):** an article imported from **Zendesk or Intercom** kept the source's HTML,
+  so the help center (which shows `body` as Markdown, without raw HTML) showed tags such
+  as `<p class="no-margin">` and `<h2>` as text. Every article import now writes the body
+  as Markdown: headings, paragraphs, line breaks, lists (nested too), bold, italics, links,
+  images, quotes, code and rules keep their shape; a table becomes one line per row, cells
+  split by ` | `; an embedded video becomes a link. Scripts and styles are dropped, and so
+  is any other tag (its text stays). Only http(s) and mailto links and http(s) images are
+  kept; a relative link keeps its text. Text is escaped so it reads as written
+  (`order_id` stays `order_id`).
+- **Freshdesk, Zoho Desk and Help Scout** articles, which were turned into plain text, now
+  keep their formatting the same way (Freshdesk reads `description`, and
+  `description_text` only when there is no HTML).
+- **Articles imported before this:** re-importing doesn't change an article that is
+  already here, so run **`cedesk articles-markdown`** once on each server. It rewrites
+  imported articles whose body still holds HTML tags and leaves everything else alone: an
+  Admin's own articles and bodies that are already text or Markdown. Each article keeps
+  its dates and who last edited it. It prints how many it changed, and is safe to run
+  again.
+
 ## 2026-11-17: Imports: the run report, new credentials, and what imports now keep
 
 All additive; no field was removed or renamed. Migrations 0057, 0058, 0059.
