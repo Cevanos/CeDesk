@@ -132,6 +132,7 @@ import httpx
 from cedesk import egress
 from cedesk.egress import Guard
 from cedesk.helpdesk.domain import imports as rules
+from cedesk.helpdesk.domain import markdown
 from cedesk.helpdesk.domain.imports import (
     AccountInfo,
     Article,
@@ -987,7 +988,10 @@ class FreshdeskConnector:
 
     @staticmethod
     def _article(raw: Mapping[str, Any], folder_id: str, folder_name: str) -> Article:
-        text = str(raw.get("description_text") or "") or html_to_text(raw.get("description"))
+        # The HTML keeps the article's headings, lists and links; text only when there is none.
+        text = markdown.from_html(str(raw.get("description") or "")) or markdown.from_text(
+            str(raw.get("description_text") or "")
+        )
         published = _int(raw.get("status")) == 2
         return Article(
             external_id=str(raw["id"]),
