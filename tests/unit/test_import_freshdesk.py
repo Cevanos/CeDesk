@@ -544,12 +544,13 @@ def test_archived_tickets_are_on_unless_turned_off() -> None:
 async def test_articles_come_with_their_folder_and_status() -> None:
     items, _ = await drain(connect(Desk(base_routes() | solution_routes())), "articles")
     assert [a.external_id for a in items] == ["100", "101", "102"]
-    assert items[0].title == "Reset password" and items[0].body == "Click reset."
+    # the HTML is read as Markdown, so its bold stays (P6: it was plain text before)
+    assert items[0].title == "Reset password" and items[0].body == "Click **reset**."
     # the category's name is kept with the folder's; a subfolder's article is not lost
     assert items[0].category == rules.Category("10", "Basics / Getting started")
     assert items[2].category == rules.Category("12", "Basics / Getting started / Accounts")
     assert items[0].published is True and items[1].published is False
-    assert items[1].body == "wip"  # no description_text: the HTML is turned into text
+    assert items[1].body == "wip"  # no description_text: the HTML alone is enough
     assert items[0].updated_at == datetime(2024, 3, 5, 16, 20, tzinfo=UTC)
     assert items[0].published_at == datetime(2024, 1, 11, 9, 0, tzinfo=UTC)
     assert items[1].published_at is None  # a draft was never published

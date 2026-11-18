@@ -361,6 +361,8 @@ def test_articles_with_drafts_and_category() -> None:
     assert published.published and not draft.published
     assert published.category is not None and published.category.name == "Getting started"
     assert published.title == "Reset password"
+    # Markdown, not the source's HTML: the help center showed `<p>` as text (P6)
+    assert (published.body, draft.body) == ("Click reset", "soon")
 
 
 def test_macro_replies() -> None:

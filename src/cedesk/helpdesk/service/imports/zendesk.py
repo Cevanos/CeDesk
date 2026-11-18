@@ -114,6 +114,7 @@ import httpx
 from cedesk import egress
 from cedesk.egress import Guard
 from cedesk.helpdesk.domain import imports as rules
+from cedesk.helpdesk.domain import markdown
 from cedesk.helpdesk.domain.imports import (
     AccountInfo,
     Article,
@@ -520,7 +521,7 @@ class ZendeskConnector:
                 Article(
                     external_id=str(raw["id"]),
                     title=rules.subject(raw.get("title")),
-                    body=rules.body(raw.get("body")),
+                    body=markdown.from_html(str(raw.get("body") or "")),
                     category=category,
                     published=not raw.get("draft", False),
                 )

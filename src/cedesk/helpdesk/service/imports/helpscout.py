@@ -101,6 +101,7 @@ import httpx
 
 from cedesk.egress import Guard, fixed_host
 from cedesk.helpdesk.domain import imports as rules
+from cedesk.helpdesk.domain import markdown
 from cedesk.helpdesk.domain.imports import (
     AccountInfo,
     Article,
@@ -651,7 +652,7 @@ class HelpScoutConnector:
         return Article(
             external_id=article_id,
             title=rules.subject(raw.get("name")),
-            body=rules.body(plain_text(raw.get("text"))),
+            body=markdown.from_html(str(raw.get("text") or "")),
             category=category,
             published=str(raw.get("status", "")).lower() == "published",
         )
