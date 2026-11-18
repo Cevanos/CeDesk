@@ -702,8 +702,21 @@ class FreshdeskConnector:
         if ticket is not None:
             items.append(ticket)
 
+    async def _with_view(self, raw: Mapping[str, Any], ticket_id: str) -> Mapping[str, Any]:
+        """A live ticket's list row, with what only the ticket view carries: its `attachments`
+        (the list has none, so the files on the first message were never read) and the
+        `associated_tickets_list` the links need. A ticket that is gone by now has no view;
+        its conversations answer that."""
+        view = await self._http.get(f"/api/v2/tickets/{segment(ticket_id)}", missing_ok=True)
+        if not isinstance(view, dict):
+            return raw
+        extra = {k: view[k] for k in ("attachments", "associated_tickets_list") if k in view}
+        return {**raw, **extra}
+
     async def _ticket(self, raw: Mapping[str, Any], *, archived: bool) -> Ticket:
         ticket_id = str(raw["id"])
+        if not archived and "attachments" not in raw:
+            raw = await self._with_view(raw, ticket_id)
         created = rules.dated(
             self.failures,
             "ticket",
