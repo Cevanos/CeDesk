@@ -297,12 +297,23 @@ async def deliveries(
     return DeliveryPage([_delivery(r, by_delivery.get(r["id"], [])) for r in page], next_cursor)
 
 
+NO_FAILED = "No failed delivery with that id."
+TURNED_OFF = "The webhook is turned off. Turn it on, then send this again."
+
+
 async def retry_delivery(sm: Sessionmaker, caller: Caller, delivery_id: UUID) -> None:
-    """A failed delivery goes back in the queue, with a full set of tries."""
+    """A failed delivery goes back in the queue, with a full set of tries. Not while its
+    webhook is turned off: the worker would only refuse it, and the Admin would think it
+    was sent (live, Phase 3 retest)."""
     _admin(caller)
     async with workspace_session(sm, caller.workspace_id) as s:
+        enabled = await repo.failed_hook_enabled(s, delivery_id)
+        if enabled is None:
+            raise NotFound(NO_FAILED)
+        if not enabled:
+            raise Conflict(TURNED_OFF)
         if not await repo.retry(s, delivery_id):
-            raise NotFound("No failed delivery with that id.")
+            raise NotFound(NO_FAILED)
 
 
 # Sending
