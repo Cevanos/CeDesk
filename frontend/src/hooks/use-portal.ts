@@ -190,6 +190,12 @@ export function usePublicForm(ws: string) {
   });
 }
 
+/** The contact form is turned off: the server answers 404. Show links to it only otherwise. */
+export function useContactFormOff(ws: string): boolean {
+  const form = usePublicForm(ws);
+  return form.isError && form.error instanceof ApiError && form.error.status === 404;
+}
+
 export function useSubmitPublicForm(ws: string) {
   const [idem] = useState(createIdempotency);
   return useMutation({

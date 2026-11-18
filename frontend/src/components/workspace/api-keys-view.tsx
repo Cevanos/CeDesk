@@ -4,6 +4,7 @@ import { KeyRound, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
+import { useConfirm } from "@/components/ui/confirm";
 import { Dialog } from "@/components/ui/overlay";
 import {
   Button,
@@ -44,6 +45,7 @@ function when(iso?: string | null) {
 export function ApiKeysView() {
   const keys = useApiKeys();
   const revoke = useRevokeApiKey();
+  const { ask, dialog: confirmDialog } = useConfirm();
   const [creating, setCreating] = useState(false);
   const [shown, setShown] = useState<string | null>(null);
 
@@ -119,20 +121,21 @@ export function ApiKeysView() {
                       size="sm"
                       variant="ghost"
                       disabled={revoke.isPending}
-                      onClick={() => {
-                        if (
-                          confirm(
-                            `Revoke “${k.name || "this key"}”? Anything using it stops working at once.`,
-                          )
-                        )
-                          revoke.mutate(k.id, {
-                            onSuccess: () => toast.success("API key revoked"),
-                            onError: (e) =>
-                              toast.error(
-                                e instanceof ApiError ? e.userMessage : "Couldn't revoke",
-                              ),
-                          });
-                      }}
+                      onClick={() =>
+                        ask({
+                          title: "Revoke this key?",
+                          message: `Revoke “${k.name || "this key"}”? Anything using it stops working at once.`,
+                          confirmLabel: "Revoke",
+                          run: () =>
+                            revoke.mutate(k.id, {
+                              onSuccess: () => toast.success("API key revoked"),
+                              onError: (e) =>
+                                toast.error(
+                                  e instanceof ApiError ? e.userMessage : "Couldn't revoke",
+                                ),
+                            }),
+                        })
+                      }
                     >
                       <Trash2 className="size-3.5" /> Revoke
                     </Button>
@@ -161,6 +164,7 @@ export function ApiKeysView() {
         secret={shown}
         onClose={() => setShown(null)}
       />
+      {confirmDialog}
     </div>
   );
 }
@@ -176,6 +180,12 @@ function KeyForm({
   const [name, setName] = useState("");
   const [access, setAccess] = useState<ApiKeyAccess | "">("");
   const [errs, setErrs] = useState<Record<string, string>>({});
+  const clearErr = (k: string) =>
+    setErrs((p) => {
+      if (!p[k]) return p;
+      const { [k]: _gone, ...rest } = p;
+      return rest;
+    });
 
   return (
     <form
@@ -203,7 +213,15 @@ function KeyForm({
       }}
     >
       <Field label="Name" htmlFor="ak-name" error={errs.name} hint="For example “Billing sync”.">
-        <Input id="ak-name" value={name} onChange={(e) => setName(e.target.value)} maxLength={80} />
+        <Input
+          id="ak-name"
+          value={name}
+          onChange={(e) => {
+            setName(e.target.value);
+            clearErr("name");
+          }}
+          maxLength={80}
+        />
       </Field>
       <Field
         label="Access level"
@@ -217,7 +235,10 @@ function KeyForm({
         <Select
           id="ak-access"
           value={access}
-          onChange={(e) => setAccess(e.target.value as ApiKeyAccess | "")}
+          onChange={(e) => {
+            setAccess(e.target.value as ApiKeyAccess | "");
+            clearErr("access");
+          }}
           options={[
             { value: "", label: "Choose…" },
             ...ACCESS.map((x) => ({ value: x.value, label: x.label })),

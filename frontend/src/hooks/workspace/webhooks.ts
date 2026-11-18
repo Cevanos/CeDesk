@@ -19,14 +19,31 @@ export interface WebhookCreated extends WebhookRow {
   secret?: string;
 }
 
+/** One try at sending a delivery. */
+export interface DeliveryAttempt {
+  at?: string;
+  status?: number | null;
+  ms?: number | null;
+  error?: string | null;
+  response?: string | null;
+}
+
+export type DeliveryState = "delivered" | "pending" | "failed";
+
 export interface WebhookDelivery {
   id: string;
   webhook_id?: string;
   event?: string;
-  status?: string;
-  response_status?: number | null;
-  attempts?: number;
-  error?: string | null;
+  state?: DeliveryState;
+  /** How many tries so far. */
+  tries?: number;
+  /** The tries themselves, oldest first. */
+  attempts?: DeliveryAttempt[];
+  last_status?: number | null;
+  last_error?: string | null;
+  last_ms?: number | null;
+  /** When a `pending` delivery is tried again. */
+  next_try_at?: string | null;
   created_at?: string;
 }
 
@@ -55,7 +72,9 @@ export function useWebhookDeliveries(enabled = true) {
 export interface WebhookInput {
   url: string;
   events: string[];
+  /** Sent as `enabled` (the server's name; default true). */
   active?: boolean;
+  enabled?: boolean;
 }
 
 export function useSaveWebhook() {
@@ -88,7 +107,8 @@ export function useRotateWebhookSecret() {
 export function useTestWebhook() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => api.post<unknown>(`webhooks/${id}/test`),
+    // The answer is the delivery itself: delivered or failed, with the status and time.
+    mutationFn: (id: string) => api.post<WebhookDelivery>(`webhooks/${id}/test`),
     onSuccess: () => qc.invalidateQueries({ queryKey: webhookKeys.deliveries }),
   });
 }

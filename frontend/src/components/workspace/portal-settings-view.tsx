@@ -53,8 +53,8 @@ function PortalBody({ saved }: { saved: PortalSettings }) {
           Who can sign in
         </h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          Customers sign in to the portal with a 6-digit code sent to their email. Only addresses on
-          these domains get a code. Leave it empty to allow everyone who has written to you.
+          Customers sign in to the portal with a 6-digit code sent to their email. Leave it empty to
+          let anyone sign in. Add domains (like acme.com) to allow only those emails.
         </p>
         <Card className="mt-3 p-4">
           <TagInput

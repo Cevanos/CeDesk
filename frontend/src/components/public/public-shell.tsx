@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams, usePathname } from "next/navigation";
 
 import { Logo, ThemeToggle } from "@/components/ui/brand";
+import { useContactFormOff } from "@/hooks/use-portal";
 import { cn } from "@/lib/utils";
 
 /** "acme-store" -> "Acme Store". The real name is shown on pages that load it. */
@@ -23,11 +24,21 @@ export function prettySlug(slug: string) {
 export function PublicShell({ children }: { children: React.ReactNode }) {
   const { workspace } = useParams<{ workspace?: string }>();
   const pathname = usePathname();
+  const formOff = useContactFormOff(workspace ?? "");
 
   const nav = workspace
     ? [
         { href: `/${workspace}/help`, label: "Help center", icon: BookOpen, match: "/help" },
-        { href: `/${workspace}/contact`, label: "Contact us", icon: MessageSquareText, match: "/contact" },
+        ...(formOff
+          ? []
+          : [
+              {
+                href: `/${workspace}/contact`,
+                label: "Contact us",
+                icon: MessageSquareText,
+                match: "/contact",
+              },
+            ]),
         { href: `/${workspace}/portal`, label: "My tickets", icon: Ticket, match: "/portal" },
       ]
     : [];

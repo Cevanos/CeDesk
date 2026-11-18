@@ -138,7 +138,115 @@ function SlackEventsUrl() {
   );
 }
 
+/** The install form built from the server's `fields` list: label, hint, password boxes, all required. */
+function AppFieldsForm({ app, onClose }: { app: WorkspaceApp; onClose: () => void }) {
+  const save = useSaveApp();
+  const fields = app.fields ?? [];
+  const [values, setValues] = useState<Record<string, string>>(() =>
+    Object.fromEntries(
+      fields.map((f) => [
+        f.key,
+        f.send_as === "settings" ? String(app.settings?.[f.key] ?? "") : "",
+      ]),
+    ),
+  );
+  const [errs, setErrs] = useState<Record<string, string>>({});
+  const needsEventsUrl = fields.some((f) => f.send_as === "signing_secret");
+
+  return (
+    <form
+      noValidate
+      className="space-y-4"
+      onSubmit={(e) => {
+        e.preventDefault();
+        const next: Record<string, string> = {};
+        for (const f of fields) {
+          // An installed app keeps a saved secret when its box is left blank.
+          const keepsSaved = app.installed && f.send_as !== "settings";
+          if (!keepsSaved && !values[f.key]?.trim()) next[f.key] = `Enter ${f.label}`;
+        }
+        setErrs(next);
+        if (Object.keys(next).length) return;
+
+        const settings: Record<string, string> = {};
+        const extra: Record<string, string> = {};
+        for (const f of fields) {
+          const v = (values[f.key] ?? "").trim();
+          if (f.send_as === "settings") settings[f.key] = v;
+          else if (v) extra[f.send_as] = v;
+        }
+        const { secret, ...rest } = extra;
+        save.mutate(
+          { app: app.app, settings, ...(secret ? { secret } : {}), extra: rest },
+          {
+            onSuccess: (res) => {
+              toast.success("App saved");
+              if (res?.note) toast.warning(res.note, { duration: 12_000 });
+              onClose();
+            },
+            onError: (err) =>
+              setErrs(
+                err instanceof ApiError && err.status !== 422
+                  ? { _form: err.userMessage }
+                  : fieldErrors(err),
+              ),
+          },
+        );
+      }}
+    >
+      {fields.map((f) => (
+        <Field
+          key={f.key}
+          label={f.label}
+          htmlFor={`app-${f.key}`}
+          error={
+            errs[f.key] ??
+            errs[`settings.${f.key}`] ??
+            (f.send_as !== "settings" ? errs[f.send_as] : undefined)
+          }
+          hint={
+            f.send_as !== "settings" && app.installed
+              ? `${f.hint ? `${f.hint} ` : ""}Saved. Leave blank to keep it.`
+              : (f.hint ?? undefined)
+          }
+        >
+          <Input
+            id={`app-${f.key}`}
+            type={f.secret ? "password" : "text"}
+            autoComplete="off"
+            value={values[f.key] ?? ""}
+            onChange={(e) => {
+              setValues((v) => ({ ...v, [f.key]: e.target.value }));
+              setErrs((p) => ({ ...p, [f.key]: "" }));
+            }}
+            autoCapitalize="none"
+            spellCheck={false}
+          />
+        </Field>
+      ))}
+      {needsEventsUrl && <SlackEventsUrl />}
+      {fields.length === 0 && (
+        <p className="text-sm text-muted-foreground">This app needs no settings.</p>
+      )}
+      <FormError message={errs._form} />
+      <div className="flex justify-end gap-2">
+        <Button variant="ghost" onClick={onClose}>
+          Cancel
+        </Button>
+        <Button type="submit" loading={save.isPending}>
+          {app.installed ? "Save" : "Install"}
+        </Button>
+      </div>
+    </form>
+  );
+}
+
 function AppForm({ app, onClose }: { app: WorkspaceApp; onClose: () => void }) {
+  if (app.fields && app.fields.length > 0) return <AppFieldsForm app={app} onClose={onClose} />;
+  return <LegacyAppForm app={app} onClose={onClose} />;
+}
+
+function LegacyAppForm({ app, onClose }: { app: WorkspaceApp; onClose: () => void }) {
   const save = useSaveApp();
   const fields: AppField[] = app.settings_fields ?? [];
   const [values, setValues] = useState<Record<string, string>>(() =>

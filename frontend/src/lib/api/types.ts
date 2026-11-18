@@ -523,6 +523,10 @@ export interface PortalTicketSummary {
 }
 export interface PortalTicket extends PortalTicketSummary {
   messages: PortalMessage[];
+  /** The ticket type, e.g. "Shipping issue", and what the customer filled in (by field key). */
+  type_id?: string | null;
+  type_name?: string | null;
+  fields?: Record<string, string | number | null> | null;
   csat?: Csat | null;
   /** The survey is on and the ticket is resolved. */
   workspace_name?: string | null;

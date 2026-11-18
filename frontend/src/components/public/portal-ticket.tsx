@@ -10,16 +10,25 @@ import { PortalSignIn } from "@/components/public/portal-signin";
 import { RatingPicker, scoreLabel } from "@/components/public/rating";
 import { StatusBadge } from "@/components/tickets/badges";
 import { FileChip } from "@/components/tickets/message-files";
-import { Button, Card, EmptyState, Field, Skeleton, Textarea } from "@/components/ui/primitives";
+import {
+  Badge,
+  Button,
+  Card,
+  EmptyState,
+  Field,
+  Skeleton,
+  Textarea,
+} from "@/components/ui/primitives";
 import { usePortalLiveUpdates } from "@/hooks/use-live-stream";
 import {
   isUnauthorized,
   usePortalTicket,
+  usePortalTicketTypes,
   useRatePortalTicket,
   useSendPortalMessage,
   useWorkspaceSlug,
 } from "@/hooks/use-portal";
-import type { PortalMessage } from "@/lib/api/types";
+import type { PortalMessage, PortalTicket } from "@/lib/api/types";
 import { cn, formatDateTime } from "@/lib/utils";
 
 /**
@@ -81,6 +90,8 @@ export function PortalTicketPage() {
         <StatusBadge status={t.status} label={t.status_label} />
       </div>
 
+      <TicketDetails ws={ws} t={t} />
+
       <ol aria-label="Conversation" className="mt-8 space-y-4">
         {t.messages.map((m) => (
           <Bubble key={m.id} m={m} />
@@ -89,6 +100,35 @@ export function PortalTicketPage() {
 
       {resolved && <Rating id={t.id} ticket={t} />}
       <ReplyBox id={t.id} resolved={resolved} />
+    </div>
+  );
+}
+
+/** The ticket type and the answers the customer gave, labelled from the type's field list. */
+function TicketDetails({ ws, t }: { ws: string; t: PortalTicket }) {
+  const types = usePortalTicketTypes(ws);
+  const type = (types.data ?? []).find((x) => (t.type_id ? x.id === t.type_id : x.name === t.type_name));
+  const rows = Object.entries(t.fields ?? {})
+    .filter(([, v]) => v !== null && v !== undefined && String(v).trim() !== "")
+    .map(([key, v]) => ({
+      key,
+      label: type?.fields.find((f) => f.key === key)?.label ?? key,
+      value: String(v),
+    }));
+  if (!t.type_name && rows.length === 0) return null;
+  return (
+    <div className="mt-4">
+      {t.type_name && <Badge tone="primary">{t.type_name}</Badge>}
+      {rows.length > 0 && (
+        <dl className="mt-3 grid grid-cols-1 gap-x-6 gap-y-2 rounded-2xl border border-border bg-surface p-4 text-sm sm:grid-cols-2">
+          {rows.map((r) => (
+            <div key={r.key} className="min-w-0">
+              <dt className="text-xs text-muted-foreground">{r.label}</dt>
+              <dd className="font-medium break-words">{r.value}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
     </div>
   );
 }

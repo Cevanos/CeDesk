@@ -13,6 +13,17 @@ export interface AppField {
   options?: string[];
 }
 
+/** One box of the install form, from `fields` on each app in `GET /apps`, in order. */
+export interface AppFormField {
+  key: string;
+  label: string;
+  hint?: string | null;
+  /** `settings`: `settings[key]`; `secret` and `signing_secret`: a body field of that name. */
+  send_as: "settings" | "secret" | "signing_secret";
+  /** A password box. */
+  secret?: boolean;
+}
+
 export interface AppCredential {
   key?: string;
   label?: string;
@@ -25,6 +36,8 @@ export interface WorkspaceApp {
   name?: string;
   description?: string;
   installed?: boolean;
+  /** The install form, labelled and in order. Older servers send none: use the fields below. */
+  fields?: AppFormField[];
   settings_fields?: AppField[];
   settings?: Record<string, unknown>;
   /** null: the app needs no credential (e.g. Calendly). */

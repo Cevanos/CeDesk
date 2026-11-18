@@ -123,7 +123,8 @@ export function normalizeRun(raw: unknown): ImportRun {
     state,
     kinds: strings(r.kinds),
     counts,
-    sync_on: r.sync_on === true || (!explicitState && result === "syncing"),
+    // A failed run can keep `sync_on: true`; History rows say `result`, which has the last word.
+    sync_on: result ? result === "syncing" : r.sync_on === true,
     last_sync_at: text(r.last_sync_at),
     last_error: text(r.last_error),
     started_by: text(r.started_by_name) ?? text(r.started_by),

@@ -138,7 +138,8 @@ function NewTicketForm({ onDone }: { onDone: () => void }) {
     return (
       <Card className="mt-6 rounded-2xl border-success/30 bg-success-soft p-5">
         <p role="status" className="text-sm font-medium text-success">
-          Thanks, we got your request. We&apos;ll reply by email.
+          Thanks, we got your request. We&apos;ll email you when we reply; you&apos;ll see the
+          conversation here.
         </p>
         <Button className="mt-3" size="sm" variant="outline" onClick={onDone}>
           Close

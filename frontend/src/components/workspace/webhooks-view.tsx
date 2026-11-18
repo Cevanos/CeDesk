@@ -4,6 +4,7 @@ import { KeyRound, Pencil, Plus, RefreshCw, Send, Trash2, Webhook } from "lucide
 import { useState } from "react";
 import { toast } from "sonner";
 
+import { useConfirm } from "@/components/ui/confirm";
 import { Dialog } from "@/components/ui/overlay";
 import {
   Badge,
@@ -26,15 +27,17 @@ import {
   useWebhookDeliveries,
   useWebhooks,
 } from "@/hooks/use-workspace";
-import type { WebhookDelivery, WebhookRow } from "@/hooks/use-workspace";
+import type { WebhookRow } from "@/hooks/use-workspace";
 import { ApiError } from "@/lib/api/client";
 
-const EVENT_HINTS = [
-  "ticket.created",
-  "ticket.updated",
-  "ticket.resolved",
-  "message.created",
-  "assignment.changed",
+const EVENTS: { value: string; label: string }[] = [
+  { value: "ticket.created", label: "A ticket is created" },
+  {
+    value: "ticket.updated",
+    label: "A ticket changes (status, priority, team, assignee, type)",
+  },
+  { value: "ticket.resolved", label: "A ticket is resolved" },
+  { value: "message.created", label: "A customer or agent replies (never notes)" },
 ];
 
 const isOn = (w: WebhookRow) => w.active ?? w.enabled ?? true;
@@ -52,6 +55,7 @@ export function WebhooksView() {
   const del = useDeleteWebhook();
   const rotate = useRotateWebhookSecret();
   const test = useTestWebhook();
+  const { ask, dialog: confirmDialog } = useConfirm();
   const [editing, setEditing] = useState<WebhookRow | "new" | null>(null);
   const [secret, setSecret] = useState<string | null>(null);
   const [showLog, setShowLog] = useState(false);
@@ -104,7 +108,7 @@ export function WebhooksView() {
                     disabled={save.isPending}
                     onChange={(v) =>
                       save.mutate(
-                        { id: w.id, active: v },
+                        { id: w.id, enabled: v },
                         { onError: (e) => toast.error(errMsg(e, "Couldn't change the webhook")) },
                       )
                     }
@@ -116,7 +120,19 @@ export function WebhooksView() {
                       loading={test.isPending && test.variables === w.id}
                       onClick={() =>
                         test.mutate(w.id, {
-                          onSuccess: () => toast.success("Test ping sent"),
+                          onSuccess: (d) => {
+                            if (d?.state === "failed") {
+                              toast.error(
+                                `Failed: ${d.last_error || (d.last_status ? `HTTP ${d.last_status}` : "no answer")}`,
+                              );
+                            } else if (d?.state === "delivered") {
+                              toast.success(
+                                `Delivered: HTTP ${d.last_status ?? "OK"}${d.last_ms != null ? ` in ${d.last_ms} ms` : ""}`,
+                              );
+                            } else {
+                              toast.message("Test ping queued");
+                            }
+                          },
                           onError: (e) => toast.error(errMsg(e, "The test ping failed")),
                         })
                       }
@@ -130,14 +146,19 @@ export function WebhooksView() {
                       size="sm"
                       variant="outline"
                       disabled={rotate.isPending}
-                      onClick={() => {
-                        if (confirm("Make a new secret? The old one stops working at once."))
-                          rotate.mutate(w.id, {
-                            onSuccess: (r) =>
-                              r.secret ? setSecret(r.secret) : toast.success("New secret made"),
-                            onError: (e) => toast.error(errMsg(e, "Couldn't make a new secret")),
-                          });
-                      }}
+                      onClick={() =>
+                        ask({
+                          title: "Make a new secret?",
+                          message: "Make a new secret? The old one stops working at once.",
+                          confirmLabel: "New secret",
+                          run: () =>
+                            rotate.mutate(w.id, {
+                              onSuccess: (r) =>
+                                r.secret ? setSecret(r.secret) : toast.success("New secret made"),
+                              onError: (e) => toast.error(errMsg(e, "Couldn't make a new secret")),
+                            }),
+                        })
+                      }
                     >
                       <KeyRound className="size-3.5" /> New secret
                     </Button>
@@ -145,13 +166,18 @@ export function WebhooksView() {
                       size="sm"
                       variant="ghost"
                       disabled={del.isPending}
-                      onClick={() => {
-                        if (confirm("Delete this webhook? Its queue and log are deleted too."))
-                          del.mutate(w.id, {
-                            onSuccess: () => toast.success("Webhook deleted"),
-                            onError: (e) => toast.error(errMsg(e, "Couldn't delete")),
-                          });
-                      }}
+                      onClick={() =>
+                        ask({
+                          title: "Delete this webhook?",
+                          message: "Delete this webhook? Its queue and log are deleted too.",
+                          confirmLabel: "Delete",
+                          run: () =>
+                            del.mutate(w.id, {
+                              onSuccess: () => toast.success("Webhook deleted"),
+                              onError: (e) => toast.error(errMsg(e, "Couldn't delete")),
+                            }),
+                        })
+                      }
                     >
                       <Trash2 className="size-3.5" /> Delete
                     </Button>
@@ -198,6 +224,7 @@ export function WebhooksView() {
         secret={secret}
         onClose={() => setSecret(null)}
       />
+      {confirmDialog}
     </div>
   );
 }
@@ -214,41 +241,74 @@ function DeliveryLog() {
         <p className="px-4 py-6 text-center text-sm text-muted-foreground">No deliveries yet.</p>
       </Card>
     );
-  const ok = (d: WebhookDelivery) => ["delivered", "success", "ok"].includes(d.status ?? "");
   return (
     <Card className="overflow-hidden">
       <ul className="divide-y divide-border">
-        {log.data.map((d) => (
-          <li key={d.id} className="flex flex-wrap items-center gap-3 px-4 py-2.5 text-sm">
-            <div className="min-w-0 flex-1 basis-56">
-              <div className="font-mono text-[13px]">{d.event ?? "event"}</div>
-              <div className="text-xs text-muted-foreground">
-                {stamp(d.created_at)}
-                {d.response_status ? ` · HTTP ${d.response_status}` : ""}
-                {d.attempts ? ` · ${d.attempts} attempt${d.attempts === 1 ? "" : "s"}` : ""}
-                {d.error ? ` · ${d.error}` : ""}
+        {log.data.map((d) => {
+          const tries =
+            typeof d.tries === "number"
+              ? d.tries
+              : Array.isArray(d.attempts)
+                ? d.attempts.length
+                : 0;
+          const attempts = Array.isArray(d.attempts) ? d.attempts : [];
+          const failed = d.state === "failed";
+          return (
+            <li key={d.id} className="px-4 py-2.5 text-sm">
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="min-w-0 flex-1 basis-56">
+                  <div className="font-mono text-[13px]">{d.event ?? "event"}</div>
+                  <div className="text-xs text-muted-foreground">
+                    {stamp(d.created_at)}
+                    {d.last_status ? ` · HTTP ${d.last_status}` : ""}
+                    {tries ? ` · ${tries} attempt${tries === 1 ? "" : "s"}` : ""}
+                    {failed && d.last_error ? ` · ${d.last_error}` : ""}
+                  </div>
+                </div>
+                {d.state === "delivered" && <Badge tone="success">Delivered</Badge>}
+                {d.state === "pending" && (
+                  <Badge tone="warning">
+                    {d.next_try_at ? `Retrying at ${stamp(d.next_try_at)}` : "Retrying"}
+                  </Badge>
+                )}
+                {failed && <Badge tone="danger">Failed</Badge>}
+                {failed && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    loading={retry.isPending && retry.variables === d.id}
+                    onClick={() =>
+                      retry.mutate(d.id, {
+                        onSuccess: () => toast.success("Queued to send again"),
+                        onError: (e) => toast.error(errMsg(e, "Couldn't retry")),
+                      })
+                    }
+                  >
+                    <RefreshCw className="size-3.5" /> Retry
+                  </Button>
+                )}
               </div>
-            </div>
-            <Badge tone={ok(d) ? "success" : d.status === "pending" ? "neutral" : "danger"}>
-              {d.status ?? "unknown"}
-            </Badge>
-            {!ok(d) && (
-              <Button
-                size="sm"
-                variant="outline"
-                loading={retry.isPending && retry.variables === d.id}
-                onClick={() =>
-                  retry.mutate(d.id, {
-                    onSuccess: () => toast.success("Sent again"),
-                    onError: (e) => toast.error(errMsg(e, "Couldn't retry")),
-                  })
-                }
-              >
-                <RefreshCw className="size-3.5" /> Retry
-              </Button>
-            )}
-          </li>
-        ))}
+              {attempts.length > 0 && (
+                <details className="mt-1.5 text-xs text-muted-foreground">
+                  <summary className="cursor-pointer select-none">Show attempts</summary>
+                  <ol className="mt-1.5 space-y-1 pl-4">
+                    {attempts.map((a, i) => (
+                      <li key={i} className="list-decimal">
+                        {stamp(a.at)}
+                        {a.status ? ` · HTTP ${a.status}` : ""}
+                        {a.ms != null ? ` · ${a.ms} ms` : ""}
+                        {a.error ? ` · ${a.error}` : ""}
+                        {a.response ? (
+                          <span className="block truncate font-mono">{a.response}</span>
+                        ) : null}
+                      </li>
+                    ))}
+                  </ol>
+                </details>
+              )}
+            </li>
+          );
+        })}
       </ul>
     </Card>
   );
@@ -265,7 +325,11 @@ function WebhookForm({
 }) {
   const save = useSaveWebhook();
   const [url, setUrl] = useState(hook?.url ?? "");
-  const [events, setEvents] = useState((hook?.events ?? ["ticket.created"]).join(", "));
+  const [events, setEvents] = useState<string[]>(
+    (hook?.events ?? ["ticket.created"]).filter((e) => EVENTS.some((x) => x.value === e)),
+  );
+  // New webhooks start off, so the Admin can Test before real ticket events flow.
+  const [enabled, setEnabled] = useState(hook ? isOn(hook) : false);
   const [errs, setErrs] = useState<Record<string, string>>({});
 
   return (
@@ -274,10 +338,7 @@ function WebhookForm({
       className="space-y-4"
       onSubmit={(e) => {
         e.preventDefault();
-        const list = events
-          .split(/[\s,]+/)
-          .map((s) => s.trim())
-          .filter(Boolean);
+        const list = events;
         const next: Record<string, string> = {};
         if (!/^https?:\/\/\S+$/i.test(url.trim()))
           next.url = "Enter a full URL starting with https://";
@@ -285,7 +346,7 @@ function WebhookForm({
         setErrs(next);
         if (Object.keys(next).length) return;
         save.mutate(
-          { id: hook?.id, url: url.trim(), events: list },
+          { id: hook?.id, url: url.trim(), events: list, enabled },
           {
             onSuccess: (r) => {
               if (!hook && r.secret) return onCreated(r.secret);
@@ -302,26 +363,55 @@ function WebhookForm({
           id="wh-url"
           type="url"
           value={url}
-          onChange={(e) => setUrl(e.target.value)}
+          onChange={(e) => {
+            setUrl(e.target.value);
+            setErrs((p) => ({ ...p, url: "" }));
+          }}
           placeholder="https://example.com/hooks/cedesk"
           autoCapitalize="none"
           spellCheck={false}
         />
       </Field>
-      <Field
-        label="Events"
-        htmlFor="wh-events"
-        error={errs.events}
-        hint={`Separate with commas, e.g. ${EVENT_HINTS.join(", ")}`}
-      >
-        <Input
-          id="wh-events"
-          value={events}
-          onChange={(e) => setEvents(e.target.value)}
-          autoCapitalize="none"
-          spellCheck={false}
-        />
-      </Field>
+      <fieldset>
+        <legend className="mb-1.5 text-sm font-medium">Events</legend>
+        <div className="space-y-2">
+          {EVENTS.map((ev) => (
+            <label key={ev.value} className="flex items-start gap-2.5 text-sm">
+              <input
+                type="checkbox"
+                className="mt-0.5 size-4 accent-primary"
+                checked={events.includes(ev.value)}
+                onChange={(e) => {
+                  setEvents((cur) =>
+                    e.target.checked ? [...cur, ev.value] : cur.filter((x) => x !== ev.value),
+                  );
+                  setErrs((p) => ({ ...p, events: "" }));
+                }}
+              />
+              <span>
+                {ev.label}
+                <span className="block font-mono text-xs text-muted-foreground">{ev.value}</span>
+              </span>
+            </label>
+          ))}
+        </div>
+        {errs.events && (
+          <p role="alert" className="mt-1.5 text-xs text-danger">
+            {errs.events}
+          </p>
+        )}
+      </fieldset>
+      <div className="flex items-center justify-between gap-3">
+        <div className="text-sm">
+          <div className="font-medium">Active</div>
+          <div className="text-xs text-muted-foreground">
+            {hook
+              ? "Turn off to stop sending."
+              : "Off by default, so you can Test it before real events are sent."}
+          </div>
+        </div>
+        <Switch label="Active" checked={enabled} onChange={setEnabled} />
+      </div>
       {!hook && (
         <p className="text-xs text-muted-foreground">
           A secret is made for this webhook. You&apos;ll see it once, right after you save.

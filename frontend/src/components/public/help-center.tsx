@@ -10,6 +10,7 @@ import { Markdown } from "@/components/public/markdown";
 import { prettySlug } from "@/components/public/public-shell";
 import { Badge, Button, Card, EmptyState, Skeleton } from "@/components/ui/primitives";
 import {
+  useContactFormOff,
   usePublicArticle,
   usePublicHelp,
   useVoteArticle,
@@ -61,6 +62,7 @@ export function HelpHome() {
   const q = params.get("q") ?? "";
   const cat = params.get("category") ?? "";
   const help = usePublicHelp(ws, q);
+  const formOff = useContactFormOff(ws);
   const [text, setText] = useState(q);
 
   const go = (next: { q?: string; category?: string }) => {
@@ -174,15 +176,17 @@ export function HelpHome() {
         )}
       </section>
 
-      <p className="mt-12 text-center text-sm text-muted-foreground">
-        Can&apos;t find it?{" "}
-        <Link
-          href={`/${encodeURIComponent(ws)}/contact`}
-          className="font-medium text-primary-ink hover:underline"
-        >
-          Contact us
-        </Link>
-      </p>
+      {!formOff && (
+        <p className="mt-12 text-center text-sm text-muted-foreground">
+          Can&apos;t find it?{" "}
+          <Link
+            href={`/${encodeURIComponent(ws)}/contact`}
+            className="font-medium text-primary-ink hover:underline"
+          >
+            Contact us
+          </Link>
+        </p>
+      )}
     </div>
   );
 }
