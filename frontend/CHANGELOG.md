@@ -14,6 +14,7 @@ Notable changes are listed here. The format follows [Keep a Changelog](https://k
 ### Fixed
 
 - Settings > Roles: creating or editing a role no longer fails with "Extra inputs are not permitted". The form now offers the five rights the API has (reply, assign to anyone, reports, settings, approve), and the list counts them correctly.
+- Settings > Teams: the member picker lists only active members, and a member deactivated after the team was saved is no longer sent back (which the API refused).
 - Settings > Roles, Apps, API keys, Webhooks, Security, Privacy, Audit log and Plan & retention (and Demo data) no longer show "Not found": their API areas were missing from the proxy allow-list.
 - Customer portal: a new ticket now sends `message`, `type_id` and the type's own `fields` (the subject is made by the server), and shows the fields the chosen type asks for (for example order ID and amount for a refund). The contact form does the same and no longer sends a subject.
 - Customer portal: a resolved ticket keeps its reply box (a reply reopens it) and always offers the 1 to 5 rating.

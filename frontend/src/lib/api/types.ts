@@ -209,6 +209,8 @@ export interface AgentRow {
   channels: ChannelGroup[];
   capacity: Partial<Record<ChannelGroup, number>> | number | null;
   skills: string[];
+  /** `false` for a deactivated member. `GET /agents` lists everyone on purpose. */
+  is_active?: boolean;
 }
 
 export interface Member {
