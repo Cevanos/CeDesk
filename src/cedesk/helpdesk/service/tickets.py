@@ -40,6 +40,7 @@ from cedesk.helpdesk.repo import messages as message_repo
 from cedesk.helpdesk.repo import tickets as repo
 from cedesk.helpdesk.repo.tickets import Row
 from cedesk.helpdesk.service import children, idempotency, limits, routing, sla, triage
+from cedesk.helpdesk.service import email as email_service
 from cedesk.helpdesk.service import rules as automation
 from cedesk.helpdesk.service import scope as scope_rules
 from cedesk.helpdesk.service.attachments import IncomingFiles, save_incoming
@@ -131,6 +132,7 @@ class TicketView:
     other_tickets: int
     older_messages_cursor: str | None = None
     sla: TicketSla | None = None
+    reply_cc: Sequence[str] = ()
 
 
 @dataclass(frozen=True)
@@ -298,6 +300,7 @@ async def _view(s: AsyncSession, ticket_id: UUID) -> TicketView:
         other_tickets=await repo.other_ticket_count(s, ticket["contact_id"], ticket_id),
         older_messages_cursor=older,
         sla=sla.state(ticket, await sla.config(s)),
+        reply_cc=await email_service.reply_cc(s, ticket_id, str(ticket["contact_email"])),
     )
 
 

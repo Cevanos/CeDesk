@@ -24207,6 +24207,15 @@
             ],
             "title": "Source Id"
           },
+          "reply_cc": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Reply Cc",
+            "description": "Who a reply will copy (from the customer's first email that had a CC, without our own addresses or the customer). Read-only: the reply box shows it.",
+            "default": []
+          },
           "messages": {
             "items": {
               "$ref": "#/components/schemas/MessageOut"
