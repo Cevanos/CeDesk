@@ -296,6 +296,11 @@ class TicketOut(TicketRowOut):
     handover: dict[str, Any] | None = Field(description="The AI summary and reason.")
     source_id: str | None
     contact: ContactCard
+    reply_cc: list[str] = Field(
+        default=[],
+        description="Who a reply will copy (from the customer's first email that had a CC, "
+        "without our own addresses or the customer). Read-only: the reply box shows it.",
+    )
     messages: list[MessageOut] = Field(description="The latest 50 messages, oldest to newest.")
     older_messages_cursor: str | None = Field(
         description="Send as `cursor` to GET /tickets/{id}/messages for older messages; "
