@@ -31,6 +31,7 @@ import {
 } from "@/hooks/use-workspace";
 import { ApiError } from "@/lib/api/client";
 import type { Member, Role } from "@/lib/api/types";
+import { newPassword, passwordError, PASSWORD_HINT } from "@/lib/password";
 import { ROLE_LABEL } from "@/lib/permissions";
 
 const ROLES: Role[] = ["light_agent", "agent", "supervisor", "admin"];
@@ -193,7 +194,7 @@ const addSchema = z.object({
   name: z.string().trim().min(1, "Enter a name").max(120),
   email: z.string().trim().min(1, "Enter an email").email("Enter a valid email"),
   role: z.enum(["light_agent", "agent", "supervisor", "admin"]),
-  password: z.string().min(10, "Use at least 10 characters").max(128, "Use at most 128 characters"),
+  password: newPassword(),
 });
 type AddValues = z.infer<typeof addSchema>;
 
@@ -234,6 +235,9 @@ function AddMemberDialog({ open, onClose }: { open: boolean; onClose: () => void
                 for (const d of e.details)
                   if (d.field in addSchema.shape)
                     setError(d.field as keyof AddValues, { message: d.message });
+                // The workspace's own minimum length comes back without a field.
+                const pw = passwordError(e, "password");
+                if (pw) setError("password", { message: pw });
               }
             },
           }),
@@ -258,7 +262,7 @@ function AddMemberDialog({ open, onClose }: { open: boolean; onClose: () => void
           label="Temporary password"
           htmlFor="m-pw"
           error={errors.password?.message}
-          hint="10 to 128 characters."
+          hint={PASSWORD_HINT}
         >
           <PasswordInput id="m-pw" autoComplete="new-password" {...register("password")} />
         </Field>
@@ -276,10 +280,7 @@ function AddMemberDialog({ open, onClose }: { open: boolean; onClose: () => void
 }
 
 const resetSchema = z.object({
-  new_password: z
-    .string()
-    .min(10, "Use at least 10 characters")
-    .max(128, "Use at most 128 characters"),
+  new_password: newPassword(),
 });
 
 function ResetPasswordDialog({ member, onClose }: { member: Member | null; onClose: () => void }) {
@@ -288,6 +289,7 @@ function ResetPasswordDialog({ member, onClose }: { member: Member | null; onClo
     register,
     handleSubmit,
     reset: resetForm,
+    setError,
     formState: { errors },
   } = useForm<z.infer<typeof resetSchema>>({ resolver: zodResolver(resetSchema) });
 
@@ -314,11 +316,20 @@ function ResetPasswordDialog({ member, onClose }: { member: Member | null; onClo
                 toast.success("Password reset");
                 close();
               },
+              onError: (e) => {
+                const pw = passwordError(e, "new_password");
+                if (pw) setError("new_password", { message: pw });
+              },
             },
           ),
         )}
       >
-        <Field label="New password" htmlFor="r-pw" error={errors.new_password?.message}>
+        <Field
+          label="New password"
+          htmlFor="r-pw"
+          error={errors.new_password?.message}
+          hint={PASSWORD_HINT}
+        >
           <PasswordInput id="r-pw" autoComplete="new-password" {...register("new_password")} />
         </Field>
         <div className="flex justify-end gap-2">
