@@ -38,6 +38,18 @@ async def audit(client: AsyncClient, w: dict[str, Any]) -> list[Any]:
     return [(e["action"], e["detail"]) for e in page["entries"]]
 
 
+async def test_a_link_copied_from_the_address_bar_is_saved_clean(
+    client: AsyncClient, app_sessionmaker: Sm
+) -> None:
+    """Live retest: the link as the browser shows it (?month=...) was refused. It's saved
+    as the page alone, and nothing of its query reaches /book."""
+    w = await desk(client, app_sessionmaker)
+    copied = {"settings": {"link": "www.calendly.com/acme/30min?month=2026-11&x=<b>"}}
+    got = ok(await client.put(f"{A}/calendly", headers=w["h"], json=copied))
+    assert got["settings"] == {"link": LINK}
+    assert (await replies(client, w))["book"]["body"] == rules.book_reply(LINK)
+
+
 async def test_installing_calendly_adds_book(client: AsyncClient, app_sessionmaker: Sm) -> None:
     w = await desk(client, app_sessionmaker)
     [info] = [a for a in ok(await client.get(A, headers=w["h"])) if a["app"] == "calendly"]
@@ -45,7 +57,7 @@ async def test_installing_calendly_adds_book(client: AsyncClient, app_sessionmak
 
     bad_links = ["http://calendly.com/acme", "https://calendly.com.evil.test/acme",
                  "https://evil.test/calendly.com/acme", "https://calendly.com/",
-                 "https://calendly.com/acme/30min?x=<b>", "javascript:alert(1)", "",
+                 "javascript:alert(1)", "",
                  "https://user@calendly.com/acme", "https://calendly.com/a/b/c"]  # fmt: skip
     for link in bad_links:
         r = await client.put(f"{A}/calendly", headers=w["h"], json={"settings": {"link": link}})

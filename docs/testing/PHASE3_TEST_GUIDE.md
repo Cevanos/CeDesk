@@ -148,6 +148,7 @@ As **Admin**. Calendly needs no secret: a booking link is public.
 | CAL-2 | `PUT /apps/calendly` with `{"settings": {"link": "https://calendly.com/acme/30min"}}` | Installed | |
 | CAL-3 | `GET /saved-replies?q=book` | A reply with `shortcut: "book"`, `source: "calendly"`. Its text is "Hi {{customer.first_name}}, you can pick a time that suits you here: https://calendly.com/acme/30min". | |
 | CAL-4 | Try these links: `http://calendly.com/acme` (not https), `https://evil.example.com/acme`, `https://calendly.com.evil.com/x`. Also send a `"secret"`. | 422 for each | |
+| CAL-4b | Paste the link as the browser's address bar shows it, e.g. `www.calendly.com/acme/30min?month=2026-11` (no https://, with www. and ?month=) | Saved as `https://calendly.com/acme/30min`; `/book` has that, nothing after `?` | |
 | CAL-5 | Change the link to `https://calendly.com/acme/60min` | `/book` now has the 60min link; the rest of its text is unchanged | |
 | CAL-6 | Edit `/book` by hand so the link is gone (`PATCH /saved-replies/{id}`). Then change the Calendly link again. | The answer's `note` says "/book was edited by hand; update its link yourself." Your text is not touched. | |
 | CAL-7 | `DELETE /apps/calendly` with the edited reply | The reply is **kept**, now with `source: "manual"` | |
