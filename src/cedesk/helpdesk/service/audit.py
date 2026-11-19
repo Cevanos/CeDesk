@@ -27,6 +27,7 @@ from cedesk.helpdesk.service.auth import Sessionmaker
 from cedesk.helpdesk.service.errors import Forbidden
 
 SERVER = "Server (command line)"
+SIGNUP = "Self-service sign-up"
 
 
 def require(caller: Caller, action: Action) -> None:
@@ -70,15 +71,18 @@ async def record_server(
     target: str,
     *,
     detail: Mapping[str, Any] | None = None,
+    actor_name: str = SERVER,
+    ip: str | None = None,
 ) -> None:
-    """A change made from the server's command line (no signed-in member)."""
+    """A change made with no signed-in member: from the server's command line, or (with
+    `actor_name` SIGNUP and the client's `ip`) by self-service sign-up."""
     await repo.append(
         s,
         workspace_id,
         at=datetime.now(UTC),
         actor_id=None,
-        actor_name=SERVER,
-        ip=None,
+        actor_name=actor_name,
+        ip=ip,
         area=area.value,
         action=action,
         target=target,

@@ -134,6 +134,25 @@ Settings > Email can tell Admins. "Check forwarding" there proves an address arr
 Auto-replies, bounces and mailing lists are ignored, so CeDesk never answers an
 out-of-office forever.
 
+## Self-service sign-up (optional)
+
+New workspaces are made with `cedesk create-workspace`. To let anyone create one from the
+sign-in page instead (a form, then a 6-digit code emailed to them, then they sign in), set
+in `.env`:
+
+```
+CEDESK_SIGNUP_ENABLED=true
+CEDESK_MAIL_FROM_ADDRESS=no-reply@your-domain
+CEDESK_MAIL_BACKEND=smtp        # and the CEDESK_SMTP_* settings
+```
+
+Anyone who can reach the sign-in page can then make a workspace, so leave it off for a
+server only your team uses. To stop bots, add a Cloudflare Turnstile CAPTCHA (free; the
+site key and secret from the Cloudflare dashboard) as `CEDESK_SIGNUP_CAPTCHA_SITE_KEY` and
+`CEDESK_SIGNUP_CAPTCHA_SECRET`. The worker sends the codes on a lane of their own, so
+nothing else it does can hold one back. Limits and the rest: [SETTINGS.md](SETTINGS.md),
+"Self-service sign-up".
+
 ## Files
 
 Uploaded files live in one place for the API and the worker (they must share it).
