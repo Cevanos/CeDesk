@@ -155,6 +155,11 @@ async def start(
     workspace_name, admin_name = workspace_name.strip(), admin_name.strip()
     if not workspace_name or not admin_name:
         raise Invalid("Enter the workspace name and your name.")
+    problem = rules.name_problem(workspace_name, "The workspace name") or rules.name_problem(
+        admin_name, "Your name"
+    )
+    if problem:
+        raise Invalid(problem)
     problem = auth_rules.password_problem(password)
     if problem:
         raise Invalid(problem)
@@ -208,7 +213,7 @@ async def start(
                 signup_id=signup_id,
                 to=address,
                 subject=rules.SUBJECT,
-                body=rules.code_email(admin_name, code),
+                body=rules.code_email(code),
                 channel=rules.NOTIFY_CHANNEL,
             )
     except IntegrityError as exc:  # only if the locks were bypassed; never expected
@@ -352,7 +357,7 @@ async def resend(sm: Sessionmaker, *, signup_id: UUID, secret_key: str) -> Start
             signup_id=signup_id,
             to=address,
             subject=rules.SUBJECT,
-            body=rules.code_email(str(row["admin_name"]), code),
+            body=rules.code_email(code),
             channel=rules.NOTIFY_CHANNEL,
         )
     logger.info("sign-up code sent again", extra={"event": "signup_resent"})

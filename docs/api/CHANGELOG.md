@@ -15,9 +15,12 @@ All additive; nothing existing changed. Migration 0060 adds two tables. Off unle
   captcha_token}`: 202 `{signup_id, code_expires_at, resend_after}`. Nothing is created
   yet: a 6-digit code (10 minutes, 5 tries) is emailed. 409 `slug_taken`, 422 (an address
   that is reserved or not 3-40 lowercase letters, digits and single dashes; a bad email;
-  a password under 10 characters), 403 `captcha_failed`, 429 (5 sign-ups an hour per IP,
+  a password under 10 characters; a name or workspace name with a line break, a hidden
+  character, or a web or email address in it), 403 `captcha_failed`, 429 (5 sign-ups an hour per IP,
   3 code emails an hour per email from one IP, 10 per email in all). A new sign-up for an
   email from the same IP replaces its waiting one; one from another IP doesn't.
+  The code email holds only the code and CeDesk's own words: nothing typed on the form
+  (it can name anyone's email) goes into it.
 - **`POST /auth/signup/verify`** `{signup_id, code, workspace?}`: 200 `{workspace}`, then
   sign in as usual. Creates the workspace, its first Admin, the default teams and ticket
   types, the cloud plan (`CEDESK_SIGNUP_DEFAULT_PLAN`, cloud edition only) and the first

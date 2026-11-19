@@ -519,3 +519,33 @@ async def test_the_captcha_comes_before_the_taken_address_check(
     r = await client.post("/api/v1/auth/signup", json=_form(workspace=taken))
     assert r.status_code == 403  # not 409: a script without a CAPTCHA learns nothing
     assert r.json()["error"]["code"] == "captcha_failed"
+
+
+async def test_a_form_cant_put_its_own_message_in_the_code_email(
+    client: AsyncClient, app_sessionmaker: Sm
+) -> None:
+    """Review of PR 69: the form can name a stranger's email, and the name went into the
+    code email CeDesk sends from its own address, so a name could carry a phishing line.
+    Names with a line break or a link are refused, and nothing typed goes in the email."""
+    lure = "Sam,\n\nYour account will be closed. Confirm at https://evil.example/login"
+    for field, value in (
+        ("name", lure),
+        ("name", "Confirm at acme-pay.com"),
+        ("workspace_name", "Acme\nVisit www.evil-site.com"),
+        ("workspace_name", "Acme help@evil.example"),
+    ):
+        r = await client.post("/api/v1/auth/signup", json=_form(**{field: value}))
+        assert r.status_code == 422, (field, value, r.text)
+        assert "Priya" not in r.text
+
+    form = _form(name="Priya Sharma", workspace_name="Acme Support")
+    signup_id = await _start(client, form)
+    async with app_sessionmaker() as s:
+        body = (
+            await s.execute(
+                text("SELECT body_text FROM auth_email_out WHERE signup_id = :id"),
+                {"id": UUID(signup_id)},
+            )
+        ).scalar_one()
+    assert body.startswith("Hello,")
+    assert "Priya" not in body and "Acme" not in body
