@@ -46,6 +46,8 @@ export interface WorkspaceApp {
   second_credential?: AppCredential | string | null;
   secret_hint?: string | null;
   blocked?: string | null;
+  /** Setup steps for the Admin, from the server. Shown above the install fields. */
+  credential_help?: string | null;
   /** Where the app shows up, e.g. `side` (Slack) or `book` (Calendly). */
   card?: string | null;
 }

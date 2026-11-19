@@ -152,6 +152,21 @@ function SlackEventsUrl() {
   );
 }
 
+/** The server's setup steps for an app, with the real API address and workspace id filled in. */
+function CredentialHelp({ app }: { app: WorkspaceApp }) {
+  const { user } = useCurrentUser();
+  if (!app.credential_help) return null;
+  const api = (process.env.NEXT_PUBLIC_API_PUBLIC_URL ?? "").trim().replace(/\/+$/, "");
+  let text = app.credential_help;
+  if (api) text = text.replaceAll("<CeDesk API>", api);
+  if (user?.workspace_id) text = text.replaceAll("<workspace id>", user.workspace_id);
+  return (
+    <p className="rounded-lg bg-surface-2 px-3 py-2 text-sm wrap-break-word text-muted-foreground">
+      {text}
+    </p>
+  );
+}
+
 /** The install form built from the server's `fields` list: label, hint, password boxes, all required. */
 function AppFieldsForm({ app, onClose }: { app: WorkspaceApp; onClose: () => void }) {
   const save = useSaveApp();
@@ -208,6 +223,7 @@ function AppFieldsForm({ app, onClose }: { app: WorkspaceApp; onClose: () => voi
         );
       }}
     >
+      <CredentialHelp app={app} />
       {fields.map((f) => (
         <Field
           key={f.key}
@@ -310,6 +326,7 @@ function LegacyAppForm({ app, onClose }: { app: WorkspaceApp; onClose: () => voi
         );
       }}
     >
+      <CredentialHelp app={app} />
       {fields.map((f) => (
         <Field
           key={f.key}

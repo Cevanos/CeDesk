@@ -167,9 +167,17 @@ function Side({
       )}
       <ul className="mt-2 space-y-2">
         {s.messages.map((m, i) => (
-          <li key={m.id ?? i} className="rounded-lg bg-surface-2 px-2.5 py-2">
+          <li
+            key={m.id ?? i}
+            className={
+              m.direction === "in"
+                ? "ml-4 rounded-lg border border-border bg-surface px-2.5 py-2"
+                : "mr-4 rounded-lg bg-surface-2 px-2.5 py-2"
+            }
+          >
             <div className="text-xs text-muted-foreground">
               {m.author_name ?? m.from ?? ""}
+              {m.direction === "in" && ` (${slack ? "in Slack" : "by email"})`}
               {m.created_at && ` ${formatDateTime(m.created_at)}`}
             </div>
             <div className="wrap-break-word whitespace-pre-wrap">{m.body}</div>

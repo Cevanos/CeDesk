@@ -62,7 +62,7 @@ export function normalizeMe(input: Record<string, unknown>): Me {
   // The API answers { member, workspace }; older shapes were flat.
   const member = input.member as Record<string, unknown> | undefined;
   const raw: Record<string, unknown> = member ? { ...input, ...member } : input;
-  const ws = raw.workspace as { name?: string; slug?: string } | string | undefined;
+  const ws = raw.workspace as { id?: string; name?: string; slug?: string } | string | undefined;
   const st = raw.status as { status?: string; value?: string } | string | null | undefined;
   const me = {
     ...raw,
@@ -71,6 +71,8 @@ export function normalizeMe(input: Record<string, unknown>): Me {
       (raw.workspace_name as string | undefined) ??
       (typeof ws === "object" ? (ws?.name ?? ws?.slug) : ws),
     workspace: typeof ws === "object" ? ws?.slug : ws,
+    workspace_id:
+      (raw.workspace_id as string | undefined) ?? (typeof ws === "object" ? ws?.id : undefined),
     status: (typeof st === "object" && st ? (st.status ?? st.value) : st) as Me["status"],
   } as Me;
   return validate(meSchema, me, "GET /me") as Me;
