@@ -66,4 +66,5 @@ class SlackAlertHandler:
         try:
             await self._post(rules.HOST, {}, "Slack").post(rules.path_of(url), text)
         except AppCallError as exc:
-            raise HandlerError(str(exc), permanent=exc.permanent) from None
+            said = rules.webhook_problem(exc.status) or str(exc)
+            raise HandlerError(said, permanent=exc.permanent) from None

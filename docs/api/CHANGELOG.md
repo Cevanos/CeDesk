@@ -3,6 +3,44 @@
 `openapi.json` next to this file is the API as served (`uv run cedesk openapi`). Every
 route is under `/api/v1`. Breaking changes only come in v2 (md 2B). Newest first.
 
+## 2026-11-19: Slack: alerts say why a webhook stopped working; side conversation replies read better
+
+No route or field changed. No migration. Found testing both Slack apps against a real
+Slack workspace. The Slack side conversations app now needs the `files:read` bot scope
+(see below; without it everything works, a file's name just may read "[file]").
+
+- **Slack side conversations, replies read better** (a reply's `body` in
+  `GET /tickets/{id}/side-conversations`):
+  - **A pasted link showed twice.** Slack labels it with the address minus `https://`, and
+    it read "example.com/logs (https://example.com/logs)". Now it's just the address. A
+    real label still reads "label (address)".
+  - **Mentioned colleagues get their names:** `@Meena`, was `@U07ABC123`. Only the
+    replier's name was asked for before. Up to 5 people per reply, asked together within
+    the same 1.5 s.
+  - **A shared file without its name in Slack's event** (`file_access: check_file_info`)
+    read "[file: unnamed]". Its name is now asked for with `files.info`, so the Slack app
+    needs the **`files:read`** bot scope; the file itself is still never fetched. Without
+    the scope, or if Slack doesn't answer in time, the line is "[file]".
+  - A reply that is only a file, sent without `text` and without a subtype (Slack's
+    current form), is kept.
+- **Slack side conversations, clearer channel errors** (422 on
+  `POST /tickets/{id}/side-conversations/slack`): `channel_not_found` adds "If it's a
+  private channel, invite the bot there first: type /invite @<your bot> in it." (a
+  private channel the bot isn't in answers the same). An archived channel says so.
+- The Slack app's setup text (`GET /apps`, `credential_help`) lists `files:read`.
+- **Slack alerts, clearer messages** when Slack refuses the webhook. They show in a
+  failed event's `last_error` (`GET /outbox/failed`, Settings > Channels > Failed events),
+  and as the 422 when installing with such a webhook (`PUT /apps/slack_alerts`). Both used
+  to say only "Slack has no such thing.":
+  - 404 (removed in Slack, the Slack app uninstalled, or the channel deleted): "Slack no
+    longer has this webhook: ... Add a new webhook in Slack (Incoming Webhooks) and
+    install Slack alerts with its URL.";
+  - 410 (channel archived): "The webhook's Slack channel is archived. ...";
+  - 401/403 (revoked, or the channel doesn't let apps post): "Slack refused this
+    webhook: ...".
+
+  Timeouts and 5xx keep the general message and are retried as before.
+
 ## 2026-11-19: Jira: a clickable link back to the ticket, and clear "not found" messages
 
 No route or field changed. No migration. Found testing the Jira app against a real Jira
