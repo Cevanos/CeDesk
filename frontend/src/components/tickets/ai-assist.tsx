@@ -3,6 +3,7 @@
 import { Languages, Sparkles, Undo2, Wand2, X } from "lucide-react";
 import { useState } from "react";
 
+import { LinkifiedText } from "@/components/ui/linkified-text";
 import { MenuItem, Popover } from "@/components/ui/overlay";
 import { Button, Card } from "@/components/ui/primitives";
 import {
@@ -254,7 +255,7 @@ export function TranslateMessage({ text }: { text: string }) {
       {result && (
         <div className="rounded-lg border border-border bg-surface-2/70 px-3 py-2">
           <p className="text-sm leading-relaxed wrap-break-word whitespace-pre-wrap">
-            {result.text}
+            <LinkifiedText text={result.text} />
           </p>
           <p className="mt-1 flex items-center gap-2 text-[11px] text-muted-foreground">
             Translated{result.from ? ` from ${result.from}` : ""} by AI

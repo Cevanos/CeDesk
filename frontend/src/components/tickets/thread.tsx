@@ -6,6 +6,7 @@ import { toast } from "sonner";
 
 import { TranslateMessage } from "@/components/tickets/ai-assist";
 import { FileChip } from "@/components/tickets/message-files";
+import { LinkifiedText } from "@/components/ui/linkified-text";
 import { Badge, Button, Card } from "@/components/ui/primitives";
 import { useCurrentUser } from "@/hooks/use-auth";
 import { useAcceptTicket, useOlderMessages } from "@/hooks/use-tickets";
@@ -192,7 +193,9 @@ function Bubble({ m, mine }: { m: Message; mine: boolean }) {
         </div>
         {recipientLine && <p className="mb-1 text-[11px] text-muted-foreground">{recipientLine}</p>}
         {m.body && (
-          <p className="text-sm leading-relaxed wrap-break-word whitespace-pre-wrap">{m.body}</p>
+          <p className="text-sm leading-relaxed wrap-break-word whitespace-pre-wrap">
+            <LinkifiedText text={m.body} />
+          </p>
         )}
         {m.body && <TranslateMessage text={m.body} />}
         {files.length > 0 && (

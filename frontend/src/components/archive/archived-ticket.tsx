@@ -7,6 +7,7 @@ import { ticketName } from "@/components/archive/archive-search";
 import { DetailSkeleton } from "@/components/feedback/skeletons";
 import { CsatCard } from "@/components/tickets/csat";
 import { formatBytes } from "@/components/tickets/message-files";
+import { LinkifiedText } from "@/components/ui/linkified-text";
 import { Badge, Card, EmptyState } from "@/components/ui/primitives";
 import { useArchivedTicket } from "@/hooks/use-archive";
 import { ApiError } from "@/lib/api/client";
@@ -70,7 +71,9 @@ function ReadOnlyMessage({ m }: { m: Message }) {
           <time dateTime={m.created_at}>{formatDateTime(m.created_at)}</time>
         </div>
         {m.body && (
-          <p className="text-sm leading-relaxed wrap-break-word whitespace-pre-wrap">{m.body}</p>
+          <p className="text-sm leading-relaxed wrap-break-word whitespace-pre-wrap">
+            <LinkifiedText text={m.body} />
+          </p>
         )}
         {files.length > 0 && (
           <ul className="mt-2 flex flex-wrap gap-1.5" aria-label="Files">

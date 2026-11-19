@@ -13,6 +13,7 @@ import {
   toastError,
   type ExtraProps,
 } from "@/components/tickets/extras-shared";
+import { LinkifiedText } from "@/components/ui/linkified-text";
 import { Button, Input, Select, Textarea } from "@/components/ui/primitives";
 import {
   useSideConversations,
@@ -180,7 +181,9 @@ function Side({
               {m.direction === "in" && ` (${slack ? "in Slack" : "by email"})`}
               {m.created_at && ` ${formatDateTime(m.created_at)}`}
             </div>
-            <div className="wrap-break-word whitespace-pre-wrap">{m.body}</div>
+            <div className="wrap-break-word whitespace-pre-wrap">
+              <LinkifiedText text={m.body ?? ""} />
+            </div>
           </li>
         ))}
       </ul>

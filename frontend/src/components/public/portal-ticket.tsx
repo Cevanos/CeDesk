@@ -10,6 +10,7 @@ import { PortalSignIn } from "@/components/public/portal-signin";
 import { RatingPicker, scoreLabel } from "@/components/public/rating";
 import { StatusBadge } from "@/components/tickets/badges";
 import { FileChip } from "@/components/tickets/message-files";
+import { LinkifiedText } from "@/components/ui/linkified-text";
 import {
   Badge,
   Button,
@@ -169,7 +170,7 @@ function Bubble({ m }: { m: PortalMessage }) {
               : "rounded-tl-md border border-border bg-surface",
           )}
         >
-          {m.body}
+          <LinkifiedText text={m.body} />
         </div>
         {m.attachments && m.attachments.length > 0 && (
           <ul
