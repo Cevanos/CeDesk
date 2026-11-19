@@ -61,10 +61,23 @@ def client(post: PostFactory, settings: Mapping[str, Any], token: str) -> AppPos
 
 
 async def check_install(post: PostFactory, settings: Mapping[str, Any], token: str) -> None:
-    """The token works and can see the project. Raises `AppCallError`."""
+    """The token works and can see the project. Raises `AppCallError`, saying which of
+    the site or the project Jira doesn't have."""
     jira = client(post, settings, token)
-    await jira.get(f"{rules.API}/myself")
-    await jira.get(f"{rules.API}/project/{settings['project']}")
+    try:
+        await jira.get(f"{rules.API}/myself")
+    except AppCallError as exc:
+        if exc.status == 404:
+            raise AppCallError(rules.NO_SITE.format(host=jira.host), permanent=True) from None
+        raise
+    try:
+        await jira.get(f"{rules.API}/project/{settings['project']}")
+    except AppCallError as exc:
+        if exc.status == 404:
+            raise AppCallError(
+                rules.NO_PROJECT.format(project=settings["project"]), permanent=True
+            ) from None
+        raise
 
 
 def _issue(row: Any) -> JiraIssue:
@@ -181,6 +194,8 @@ async def link_issue(
     try:
         await jira.get(f"{rules.API}/issue/{key}?fields=summary")
     except AppCallError as exc:
+        if exc.status == 404:  # was "Jira has no such thing." (live, Phase 3 retest)
+            raise Invalid(rules.NO_ISSUE.format(key=key)) from None
         raise _failed(exc) from None
     who = await _who(sm, caller)
     return await _save(

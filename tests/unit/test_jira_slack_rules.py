@@ -22,13 +22,35 @@ def test_the_issue_carries_a_link_back_and_no_customer_text() -> None:
                           "https://app.cedesk.in/tickets/abc")  # fmt: skip
     fields = body["fields"]
     assert fields["project"] == {"key": "SUP"} and fields["summary"] == "Refund stuck"
-    lines = [
-        p["content"][0]["text"] if p["content"] else "" for p in fields["description"]["content"]
-    ]
+    lines = ["".join(n["text"] for n in p["content"]) for p in fields["description"]["content"]]
     assert lines == ["Check payout", "for order 1234", "",
                      "From CeDesk ticket T-1042: https://app.cedesk.in/tickets/abc"]  # fmt: skip
+    last = fields["description"]["content"][-1]["content"]
+    assert last == [
+        {"type": "text", "text": "From CeDesk ticket T-1042: "},
+        {"type": "text", "text": "https://app.cedesk.in/tickets/abc",
+         "marks": [{"type": "link", "attrs": {"href": "https://app.cedesk.in/tickets/abc"}}]},
+    ]  # fmt: skip
     plain = jira.new_issue("SUP", "x", None, "T-1", "https://x/t")
     assert len(plain["fields"]["description"]["content"]) == 1
+
+
+def test_links_in_the_agents_text_are_links_too() -> None:
+    """Live retest: Jira doesn't turn plain text into links, so the link back to the ticket
+    couldn't be clicked. Every http(s) address is sent as a link; the punctuation after it
+    stays text."""
+    body = jira.new_issue("SUP", "x", "See http://a.example/x?y=1, and (https://b.example/z).",
+                          "T-1", "http://cedesk.test/t/1")  # fmt: skip
+    first = body["fields"]["description"]["content"][0]["content"]
+    assert [(n["text"], [m["attrs"]["href"] for m in n.get("marks", [])]) for n in first] == [
+        ("See ", []),
+        ("http://a.example/x?y=1", ["http://a.example/x?y=1"]),
+        (", and (", []),
+        ("https://b.example/z", ["https://b.example/z"]),
+        (").", []),
+    ]
+    no_link = jira.new_issue("SUP", "x", "ftp://old.example and mailto:a@b.co", "T-1", "")
+    assert all("marks" not in n for n in no_link["fields"]["description"]["content"][0]["content"])
 
 
 def test_the_summary_defaults_to_the_subject() -> None:
