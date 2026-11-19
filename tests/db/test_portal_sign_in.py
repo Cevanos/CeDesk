@@ -201,6 +201,43 @@ async def test_the_portal_can_be_limited_to_some_domains(
     await signed_in(client, app_sessionmaker, w, "d@gmail.com")  # empty: anyone
 
 
+async def test_narrowing_the_domains_signs_those_customers_out(
+    client: AsyncClient, app_sessionmaker: Sm
+) -> None:
+    """Live retest: a customer signed in before the Admin limited the portal to some
+    domains kept using it; only new sign-ins were refused. Now saving the list ends their
+    session at once (their live stream ends with it), and the audit log says how many."""
+    sm = app_sessionmaker
+    w = await desk(client, sm)
+    url = "/api/v1/portal-settings"
+    outside = await signed_in(client, sm, w, "ann@gmail.com")
+    inside = await signed_in(client, sm, w, "bob@mail.acme.com")  # a subdomain: allowed
+    ok(await client.get(f"{P}/me", headers=bearer(outside)))
+
+    ok(await client.put(url, headers=w["admin"], json={"allowed_domains": ["acme.com"]}))
+    assert (await client.get(f"{P}/me", headers=bearer(outside))).status_code == 401
+    assert (await client.get(f"{P}/tickets", headers=bearer(outside))).status_code == 401
+    assert ok(await client.get(f"{P}/me", headers=bearer(inside)))["email"] == "bob@mail.acme.com"
+    async with workspace_session(sm, w["ws"]) as s:
+        detail = (await s.execute(text(
+            "SELECT detail FROM hd_audit WHERE area = 'portal' ORDER BY seq DESC LIMIT 1"
+        ))).scalar_one()  # fmt: skip
+    assert detail["portal_sessions_ended"] == 1
+
+    # Opening the list again doesn't bring an ended session back.
+    ok(await client.put(url, headers=w["admin"], json={"allowed_domains": []}))
+    assert (await client.get(f"{P}/me", headers=bearer(outside))).status_code == 401
+
+    # A session made while the list was being saved is caught on its next request.
+    late = await signed_in(client, sm, w, "carl@gmail.com")
+    async with workspace_session(sm, w["ws"]) as s:
+        await s.execute(text("UPDATE hd_portal_settings SET allowed_domains = '{acme.com}'"))
+    r = await client.get(f"{P}/me", headers=bearer(late))
+    assert r.status_code == 401
+    assert r.json()["error"]["message"] == "Only acme.com emails can open tickets here."
+    assert ok(await client.get(f"{P}/me", headers=bearer(inside)))["name"]
+
+
 async def test_portal_and_agent_tokens_never_cross(
     client: AsyncClient, app_sessionmaker: Sm
 ) -> None:

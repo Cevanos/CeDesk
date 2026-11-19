@@ -332,7 +332,7 @@ Show them as they are in the editor.
 
 ### 2.14 Settings: customer portal and help center
 
-- Portal settings: who may sign in (allowed email domains), the CSAT survey and the public web form on or off.
+- Portal settings: who may sign in (allowed email domains), the CSAT survey and the public web form on or off. Saving a domain list signs out, at once, customers signed in with other emails: say so next to the box, e.g. "Customers signed in with other emails are signed out when you save."
 - Help center: categories and articles (draft or published).
 
 | | Route | What it does |
