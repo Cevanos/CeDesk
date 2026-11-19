@@ -13,6 +13,7 @@ import {
   toastError,
   type ExtraProps,
 } from "@/components/tickets/extras-shared";
+import { useConfirm } from "@/components/ui/confirm";
 import { Button, Input, Select } from "@/components/ui/primitives";
 import {
   useCreateChild,
@@ -160,11 +161,13 @@ export function RelatedCard({ ticketId, canEdit }: ExtraProps) {
   const merge = useMergeTicket(ticketId);
   const link = useLinkTicket(ticketId);
   const unlink = useUnlinkTicket(ticketId);
+  const { ask, dialog } = useConfirm();
   const r = q.data;
   const empty = r && !r.parent && !r.children.length && !r.links.length && !r.merges.length;
 
   return (
     <ExtraCard title="Related">
+      {dialog}
       <QueryState q={q} />
       {r && (
         <>
@@ -174,7 +177,18 @@ export function RelatedCard({ ticketId, canEdit }: ExtraProps) {
           <Group
             title="Linked"
             items={r.links}
-            onUnlink={canEdit ? (id) => unlink.mutate(id, { onError: toastError }) : undefined}
+            onUnlink={
+              canEdit
+                ? (id) =>
+                    ask({
+                      title: "Remove this link?",
+                      message: "The two tickets are no longer linked.",
+                      detail: id,
+                      confirmLabel: "Remove link",
+                      run: () => unlink.mutate(id, { onError: toastError }),
+                    })
+                : undefined
+            }
           />
           <Group title="Merged in" items={r.merges} />
           <div className="mt-2 flex flex-wrap gap-2">
@@ -205,19 +219,26 @@ export function RelatedCard({ ticketId, canEdit }: ExtraProps) {
                   placeholder="Open ticket ID to merge into"
                   pending={merge.isPending}
                   close={close}
-                  submit={(id) => {
-                    if (!window.confirm("Merge this ticket into the other one?")) return;
-                    merge.mutate(
-                      { into_id: id },
-                      {
-                        onSuccess: () => {
-                          toast.success("Ticket merged");
-                          close();
-                        },
-                        onError: toastError,
-                      },
-                    );
-                  }}
+                  submit={(id) =>
+                    ask({
+                      title: "Merge this ticket?",
+                      message: "It is merged into the other ticket and can't be split apart again.",
+                      detail: `Into ${id}`,
+                      confirmLabel: "Merge",
+                      tone: "warning",
+                      run: () =>
+                        merge.mutate(
+                          { into_id: id },
+                          {
+                            onSuccess: () => {
+                              toast.success("Ticket merged");
+                              close();
+                            },
+                            onError: toastError,
+                          },
+                        ),
+                    })
+                  }
                 />
               )}
             </AddToggle>

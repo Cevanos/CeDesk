@@ -4,6 +4,7 @@ import { Pencil, Plus, Trash2, Workflow } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
+import { useConfirm } from "@/components/ui/confirm";
 import { Dialog } from "@/components/ui/overlay";
 import {
   Badge,
@@ -49,6 +50,7 @@ export function RulesView() {
   const del = useDeleteRule();
   const reorder = useReorderRules();
   const toggle = useSaveRule();
+  const { ask, dialog } = useConfirm();
   const [editing, setEditing] = useState<Rule | "new" | null>(null);
 
   const move = (i: number, dir: -1 | 1) => {
@@ -62,6 +64,7 @@ export function RulesView() {
 
   return (
     <div>
+      {dialog}
       <div className="mb-4 flex items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground">
           Rules run by themselves, top to bottom, when a ticket is created, the customer replies or
@@ -126,10 +129,16 @@ export function RulesView() {
                     size="sm"
                     variant="ghost"
                     disabled={del.isPending}
-                    onClick={() => {
-                      if (confirm(`Delete rule “${r.name}”?`))
-                        del.mutate(r.id, { onSuccess: () => toast.success("Rule deleted") });
-                    }}
+                    onClick={() =>
+                      ask({
+                        title: "Delete this rule?",
+                        message: "It stops running on tickets straight away. This can't be undone.",
+                        detail: r.name,
+                        confirmLabel: "Delete",
+                        run: () =>
+                          del.mutate(r.id, { onSuccess: () => toast.success("Rule deleted") }),
+                      })
+                    }
                   >
                     <Trash2 className="size-3.5" /> Delete
                   </Button>

@@ -4,6 +4,7 @@ import { CalendarDays, Pencil, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
+import { useConfirm } from "@/components/ui/confirm";
 import { Dialog } from "@/components/ui/overlay";
 import { Badge, Button, EmptyState, Field, Input } from "@/components/ui/primitives";
 import { FormError, fieldErrors } from "@/components/workspace/list-shared";
@@ -32,6 +33,7 @@ function dayLabel(day: string) {
 
 export function SlaHolidays({ holidays, canEdit }: { holidays: Holiday[]; canEdit: boolean }) {
   const del = useDeleteHoliday();
+  const { ask, dialog } = useConfirm();
   const [today] = useState(() => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -41,6 +43,7 @@ export function SlaHolidays({ holidays, canEdit }: { holidays: Holiday[]; canEdi
 
   return (
     <div>
+      {dialog}
       <div className="flex items-center justify-between gap-3">
         <h3 className="text-sm font-semibold">Holidays</h3>
         {canEdit && (
@@ -81,10 +84,18 @@ export function SlaHolidays({ holidays, canEdit }: { holidays: Holiday[]; canEdi
                     variant="ghost"
                     aria-label={`Remove ${h.name}`}
                     disabled={del.isPending}
-                    onClick={() => {
-                      if (confirm(`Remove ${h.name} (${h.day})?`))
-                        del.mutate(h.id!, { onSuccess: () => toast.success("Holiday removed") });
-                    }}
+                    onClick={() =>
+                      ask({
+                        title: "Remove this holiday?",
+                        message: "The SLA timer will no longer pause on this day.",
+                        detail: `${h.name} · ${h.day}`,
+                        confirmLabel: "Remove",
+                        run: () =>
+                          del.mutate(h.id!, {
+                            onSuccess: () => toast.success("Holiday removed"),
+                          }),
+                      })
+                    }
                   >
                     <Trash2 className="size-3.5" />
                   </Button>

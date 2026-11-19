@@ -4,6 +4,7 @@ import { Pencil, Plus, Trash2, Zap } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
+import { useConfirm } from "@/components/ui/confirm";
 import { Dialog } from "@/components/ui/overlay";
 import {
   Button,
@@ -23,10 +24,12 @@ const PLACEHOLDERS = ["{{customer.first_name}}", "{{customer.name}}", "{{agent.n
 export function SavedRepliesView() {
   const replies = useSavedReplies("");
   const del = useDeleteSavedReply();
+  const { ask, dialog } = useConfirm();
   const [editing, setEditing] = useState<SavedReply | "new" | null>(null);
 
   return (
     <div>
+      {dialog}
       <div className="mb-4 flex items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground">
           Agents type <kbd className="rounded bg-surface-2 px-1">/</kbd> in the reply box to insert
@@ -65,10 +68,18 @@ export function SavedRepliesView() {
                   size="sm"
                   variant="ghost"
                   disabled={del.isPending}
-                  onClick={() => {
-                    if (confirm(`Delete saved reply “/${r.shortcut}”?`))
-                      del.mutate(r.id, { onSuccess: () => toast.success("Saved reply deleted") });
-                  }}
+                  onClick={() =>
+                    ask({
+                      title: "Delete this saved reply?",
+                      message: "Agents will no longer be able to insert it. This can't be undone.",
+                      detail: `/${r.shortcut}`,
+                      confirmLabel: "Delete",
+                      run: () =>
+                        del.mutate(r.id, {
+                          onSuccess: () => toast.success("Saved reply deleted"),
+                        }),
+                    })
+                  }
                 >
                   <Trash2 className="size-3.5" /> Delete
                 </Button>

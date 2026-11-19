@@ -4,6 +4,7 @@ import { Pencil, Plus, ShieldCheck, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
+import { useConfirm } from "@/components/ui/confirm";
 import { Dialog } from "@/components/ui/overlay";
 import {
   Badge,
@@ -35,10 +36,12 @@ export function RolesView() {
   const roles = useRoles();
   const teams = useTeams();
   const del = useDeleteRole();
+  const { ask, dialog } = useConfirm();
   const [editing, setEditing] = useState<CustomRole | "new" | null>(null);
 
   return (
     <div>
+      {dialog}
       <div className="mb-4 flex items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground">
           Custom roles sit beside Admin, Supervisor, Agent and Light agent. Changes reach members
@@ -89,18 +92,25 @@ export function RolesView() {
                     size="sm"
                     variant="ghost"
                     disabled={del.isPending}
-                    onClick={() => {
-                      if (confirm(`Delete the role “${r.name}”?`))
-                        del.mutate(r.id, {
-                          onSuccess: () => toast.success("Role deleted"),
-                          onError: (e) =>
-                            toast.error(
-                              e instanceof ApiError
-                                ? e.userMessage
-                                : "Couldn't delete the role. Move its members to another role first.",
-                            ),
-                        });
-                    }}
+                    onClick={() =>
+                      ask({
+                        title: "Delete this role?",
+                        message:
+                          "Members must be moved to another role first. This can't be undone.",
+                        detail: r.name,
+                        confirmLabel: "Delete",
+                        run: () =>
+                          del.mutate(r.id, {
+                            onSuccess: () => toast.success("Role deleted"),
+                            onError: (e) =>
+                              toast.error(
+                                e instanceof ApiError
+                                  ? e.userMessage
+                                  : "Couldn't delete the role. Move its members to another role first.",
+                              ),
+                          }),
+                      })
+                    }
                   >
                     <Trash2 className="size-3.5" /> Delete
                   </Button>

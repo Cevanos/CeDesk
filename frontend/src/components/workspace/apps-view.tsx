@@ -4,6 +4,7 @@ import { Plug } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
+import { useConfirm } from "@/components/ui/confirm";
 import { CopyButton } from "@/components/ui/copy-button";
 import { Dialog } from "@/components/ui/overlay";
 import {
@@ -33,6 +34,7 @@ function humanize(s?: string) {
 export function AppsView() {
   const apps = useApps();
   const remove = useUninstallApp();
+  const { ask, dialog } = useConfirm();
   const [editing, setEditing] = useState<WorkspaceApp | null>(null);
 
   if (apps.isPending) return <Skeleton className="h-40" />;
@@ -48,6 +50,7 @@ export function AppsView() {
 
   return (
     <div>
+      {dialog}
       <p className="mb-4 text-sm text-muted-foreground">
         Connect other tools. Keys and secrets are stored safely and never shown again.
       </p>
@@ -80,16 +83,22 @@ export function AppsView() {
                     size="sm"
                     variant="ghost"
                     disabled={remove.isPending}
-                    onClick={() => {
-                      if (confirm(`Uninstall ${a.name ?? a.app}? Its saved credential is deleted.`))
-                        remove.mutate(a.app, {
-                          onSuccess: () => toast.success("App uninstalled"),
-                          onError: (e) =>
-                            toast.error(
-                              e instanceof ApiError ? e.userMessage : "Couldn't uninstall",
-                            ),
-                        });
-                    }}
+                    onClick={() =>
+                      ask({
+                        title: "Uninstall this app?",
+                        message: "Its saved credential is deleted.",
+                        detail: a.name ?? humanize(a.app),
+                        confirmLabel: "Uninstall",
+                        run: () =>
+                          remove.mutate(a.app, {
+                            onSuccess: () => toast.success("App uninstalled"),
+                            onError: (e) =>
+                              toast.error(
+                                e instanceof ApiError ? e.userMessage : "Couldn't uninstall",
+                              ),
+                          }),
+                      })
+                    }
                   >
                     Uninstall
                   </Button>

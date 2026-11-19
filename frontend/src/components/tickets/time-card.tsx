@@ -11,6 +11,7 @@ import {
   toastError,
   type ExtraProps,
 } from "@/components/tickets/extras-shared";
+import { useConfirm } from "@/components/ui/confirm";
 import { Button, Input } from "@/components/ui/primitives";
 import { useCurrentUser } from "@/hooks/use-auth";
 import { useDeleteTime, useLogTime, useTimeLog } from "@/hooks/use-ticket-extras";
@@ -21,6 +22,7 @@ export function TimeCard({ ticketId, canEdit }: ExtraProps) {
   const q = useTimeLog(ticketId);
   const log = useLogTime(ticketId);
   const del = useDeleteTime(ticketId);
+  const { ask, dialog } = useConfirm();
   const [minutes, setMinutes] = useState("");
   const [note, setNote] = useState("");
   const [billable, setBillable] = useState(false);
@@ -44,6 +46,7 @@ export function TimeCard({ ticketId, canEdit }: ExtraProps) {
 
   return (
     <ExtraCard title="Time">
+      {dialog}
       <QueryState q={q} />
       {q.data && (
         <>
@@ -75,7 +78,15 @@ export function TimeCard({ ticketId, canEdit }: ExtraProps) {
                       aria-label="Remove time entry"
                       disabled={del.isPending}
                       className="grid size-7 flex-none place-items-center rounded-md text-muted-foreground hover:bg-surface-2 hover:text-danger"
-                      onClick={() => del.mutate(e.id, { onError: toastError })}
+                      onClick={() =>
+                        ask({
+                          title: "Remove this time entry?",
+                          message: "The logged time is deleted from this ticket.",
+                          detail: `${fmtMinutes(Number(e.minutes) || 0)}${e.note ? ` · ${e.note}` : ""}`,
+                          confirmLabel: "Remove",
+                          run: () => del.mutate(e.id, { onError: toastError }),
+                        })
+                      }
                     >
                       <Trash2 className="size-3.5" />
                     </button>

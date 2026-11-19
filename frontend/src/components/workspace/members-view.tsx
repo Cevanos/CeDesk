@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { z } from "zod";
 
 import { PasswordInput } from "@/components/auth/password-input";
+import { useConfirm } from "@/components/ui/confirm";
 import { Dialog } from "@/components/ui/overlay";
 import {
   Badge,
@@ -39,12 +40,14 @@ export function MembersView() {
   const q = useMembers();
   const update = useUpdateMember();
   const reset2fa = useResetMember2fa();
+  const { ask, dialog } = useConfirm();
   const [adding, setAdding] = useState(false);
   const [resetFor, setResetFor] = useState<Member | null>(null);
   const rows = useMemo(() => q.data?.pages.flatMap((p) => p.items) ?? [], [q.data]);
 
   return (
     <div>
+      {dialog}
       <div className="mb-4 flex items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground">
           New members start Offline until they set themselves Available.
@@ -114,17 +117,20 @@ export function MembersView() {
                         size="sm"
                         variant="outline"
                         disabled={reset2fa.isPending}
-                        onClick={() => {
-                          if (
-                            !confirm(
-                              `Turn off two-step sign-in for ${m.name}? They'll be signed out everywhere and set it up again at next sign-in.`,
-                            )
-                          )
-                            return;
-                          reset2fa.mutate(m.id, {
-                            onSuccess: () => toast.success(`2FA reset for ${m.name}.`),
-                          });
-                        }}
+                        onClick={() =>
+                          ask({
+                            title: "Reset two-step sign-in?",
+                            message:
+                              "They'll be signed out everywhere and set it up again at next sign-in.",
+                            detail: m.name,
+                            confirmLabel: "Reset 2FA",
+                            tone: "warning",
+                            run: () =>
+                              reset2fa.mutate(m.id, {
+                                onSuccess: () => toast.success(`2FA reset for ${m.name}.`),
+                              }),
+                          })
+                        }
                       >
                         <ShieldOff className="size-3.5" /> Reset 2FA
                       </Button>
@@ -133,18 +139,27 @@ export function MembersView() {
                       size="sm"
                       variant="ghost"
                       disabled={update.isPending}
-                      onClick={() =>
-                        update.mutate(
-                          { id: m.id, is_active: !m.is_active },
-                          // e.g. "the last active Admin can't be removed" comes back as the message.
-                          {
-                            onSuccess: () =>
-                              toast.success(
-                                m.is_active ? "Member deactivated" : "Member reactivated",
-                              ),
-                          },
-                        )
-                      }
+                      onClick={() => {
+                        const toggle = () =>
+                          update.mutate(
+                            { id: m.id, is_active: !m.is_active },
+                            // e.g. "the last active Admin can't be removed" comes back as the message.
+                            {
+                              onSuccess: () =>
+                                toast.success(
+                                  m.is_active ? "Member deactivated" : "Member reactivated",
+                                ),
+                            },
+                          );
+                        if (!m.is_active) return toggle();
+                        ask({
+                          title: "Deactivate this member?",
+                          message: "They can no longer sign in. You can reactivate them later.",
+                          detail: m.name,
+                          confirmLabel: "Deactivate",
+                          run: toggle,
+                        });
+                      }}
                     >
                       {m.is_active ? "Deactivate" : "Reactivate"}
                     </Button>

@@ -4,6 +4,7 @@ import { Pencil, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
+import { useConfirm } from "@/components/ui/confirm";
 import { Dialog } from "@/components/ui/overlay";
 import {
   Badge,
@@ -21,10 +22,12 @@ import type { Team } from "@/lib/api/types";
 export function TeamsView() {
   const teams = useTeams();
   const del = useDeleteTeam();
+  const { ask, dialog } = useConfirm();
   const [editing, setEditing] = useState<Team | "new" | null>(null);
 
   return (
     <div>
+      {dialog}
       <div className="mb-4 flex items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground">
           Teams decide who auto-assigned tickets go to (round-robin).
@@ -67,10 +70,16 @@ export function TeamsView() {
                   size="sm"
                   variant="ghost"
                   disabled={del.isPending}
-                  onClick={() => {
-                    if (confirm(`Delete team “${t.name}”?`))
-                      del.mutate(t.id, { onSuccess: () => toast.success("Team deleted") });
-                  }}
+                  onClick={() =>
+                    ask({
+                      title: "Delete this team?",
+                      message: "Tickets routed to it will no longer be auto-assigned.",
+                      detail: t.name,
+                      confirmLabel: "Delete",
+                      run: () =>
+                        del.mutate(t.id, { onSuccess: () => toast.success("Team deleted") }),
+                    })
+                  }
                 >
                   <Trash2 className="size-3.5" /> Delete
                 </Button>

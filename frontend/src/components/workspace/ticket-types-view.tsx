@@ -4,6 +4,7 @@ import { ArrowDown, ArrowUp, Pencil, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
+import { useConfirm } from "@/components/ui/confirm";
 import { Dialog } from "@/components/ui/overlay";
 import {
   Badge,
@@ -29,6 +30,7 @@ export function TicketTypesView() {
   const types = useTicketTypes();
   const del = useDeleteTicketType();
   const reorder = useReorderTicketTypes();
+  const { ask, dialog } = useConfirm();
   const [editing, setEditing] = useState<TicketType | "new" | null>(null);
 
   const move = (i: number, dir: -1 | 1) => {
@@ -45,6 +47,7 @@ export function TicketTypesView() {
 
   return (
     <div>
+      {dialog}
       <div className="mb-4 flex items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground">
           Each type can ask for its own fields (up to 30).
@@ -96,10 +99,16 @@ export function TicketTypesView() {
                   size="sm"
                   variant="ghost"
                   disabled={del.isPending}
-                  onClick={() => {
-                    if (confirm(`Delete ticket type “${t.name}”?`))
-                      del.mutate(t.id, { onSuccess: () => toast.success("Type deleted") });
-                  }}
+                  onClick={() =>
+                    ask({
+                      title: "Delete this ticket type?",
+                      message: "This can't be undone.",
+                      detail: t.name,
+                      confirmLabel: "Delete",
+                      run: () =>
+                        del.mutate(t.id, { onSuccess: () => toast.success("Type deleted") }),
+                    })
+                  }
                 >
                   <Trash2 className="size-3.5" /> Delete
                 </Button>

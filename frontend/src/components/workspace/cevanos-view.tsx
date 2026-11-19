@@ -5,6 +5,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 
 import { PasswordInput } from "@/components/auth/password-input";
+import { useConfirm } from "@/components/ui/confirm";
 import { Badge, Button, Card, Field, Select, Skeleton } from "@/components/ui/primitives";
 import { FormError, fieldErrors, LoadError } from "@/components/workspace/list-shared";
 import {
@@ -48,6 +49,7 @@ function CevanosBody({ conn }: { conn: CevanosConnection }) {
   const disconnect = useDisconnectCevanos();
   const check = useCheckCevanos();
   const teams = useTeams();
+  const { ask, dialog } = useConfirm();
 
   // Secrets are never sent back: the fields start empty and are only sent when typed.
   const [apiKey, setApiKey] = useState("");
@@ -80,6 +82,7 @@ function CevanosBody({ conn }: { conn: CevanosConnection }) {
 
   return (
     <div className="space-y-5">
+      {dialog}
       <div className="flex flex-wrap items-center gap-3">
         <p className="text-sm text-muted-foreground">
           Connect Cevanos so AI chats that need a person arrive here as tickets and agents can reply
@@ -154,12 +157,17 @@ function CevanosBody({ conn }: { conn: CevanosConnection }) {
               <Button
                 variant="ghost"
                 loading={disconnect.isPending}
-                onClick={() => {
-                  if (confirm("Disconnect Cevanos? Chats will stop arriving as tickets."))
-                    disconnect.mutate(undefined, {
-                      onSuccess: () => toast.success("Cevanos disconnected"),
-                    });
-                }}
+                onClick={() =>
+                  ask({
+                    title: "Disconnect Cevanos?",
+                    message: "Chats will stop arriving as tickets.",
+                    confirmLabel: "Disconnect",
+                    run: () =>
+                      disconnect.mutate(undefined, {
+                        onSuccess: () => toast.success("Cevanos disconnected"),
+                      }),
+                  })
+                }
               >
                 <Unplug className="size-4" /> Disconnect
               </Button>

@@ -4,6 +4,7 @@ import { FlaskConical } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
+import { useConfirm } from "@/components/ui/confirm";
 import { Button, Card } from "@/components/ui/primitives";
 import { useLoadSamples, useResetDemo, useSeedDemo } from "@/hooks/use-workspace";
 import { ApiError } from "@/lib/api/client";
@@ -12,6 +13,7 @@ export function DemoView() {
   const seed = useSeedDemo();
   const samples = useLoadSamples();
   const reset = useResetDemo();
+  const { ask, dialog } = useConfirm();
   // 403 from the API means demo is off on this server (or this is production).
   const [off, setOff] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -32,6 +34,7 @@ export function DemoView() {
 
   return (
     <Card className="p-5">
+      {dialog}
       <div className="flex items-start gap-3">
         <span className="grid size-10 flex-none place-items-center rounded-xl bg-primary-soft text-primary-ink">
           <FlaskConical className="size-5" />
@@ -70,13 +73,18 @@ export function DemoView() {
             variant="outline"
             loading={reset.isPending}
             disabled={busy}
-            onClick={() => {
-              if (!confirm("Reset demo data? Only demo tickets are removed.")) return;
-              run(
-                reset,
-                (r) => `Demo data reset${r?.deleted != null ? ` (${r.deleted} removed)` : ""}`,
-              )();
-            }}
+            onClick={() =>
+              ask({
+                title: "Reset demo data?",
+                message: "Only demo tickets are removed. Real and imported tickets stay.",
+                confirmLabel: "Reset demo",
+                tone: "warning",
+                run: run(
+                  reset,
+                  (r) => `Demo data reset${r?.deleted != null ? ` (${r.deleted} removed)` : ""}`,
+                ),
+              })
+            }
           >
             Reset demo
           </Button>

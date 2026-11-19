@@ -4,6 +4,7 @@ import { Pencil, Plus, Trash2, Wand2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
+import { useConfirm } from "@/components/ui/confirm";
 import { Dialog } from "@/components/ui/overlay";
 import { Button, Card, EmptyState, Field, Input, Skeleton } from "@/components/ui/primitives";
 import {
@@ -27,6 +28,7 @@ export function MacrosView() {
   const macros = useMacros();
   const del = useDeleteMacro();
   const reorder = useReorderMacros();
+  const { ask, dialog } = useConfirm();
   const [editing, setEditing] = useState<Macro | "new" | null>(null);
 
   const move = (i: number, dir: -1 | 1) => {
@@ -40,6 +42,7 @@ export function MacrosView() {
 
   return (
     <div>
+      {dialog}
       <div className="mb-4 flex items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground">
           A macro runs several steps on a ticket with one click. If one step is refused, nothing is
@@ -86,10 +89,16 @@ export function MacrosView() {
                     size="sm"
                     variant="ghost"
                     disabled={del.isPending}
-                    onClick={() => {
-                      if (confirm(`Delete macro “${m.name}”?`))
-                        del.mutate(m.id, { onSuccess: () => toast.success("Macro deleted") });
-                    }}
+                    onClick={() =>
+                      ask({
+                        title: "Delete this macro?",
+                        message: "This can't be undone.",
+                        detail: m.name,
+                        confirmLabel: "Delete",
+                        run: () =>
+                          del.mutate(m.id, { onSuccess: () => toast.success("Macro deleted") }),
+                      })
+                    }
                   >
                     <Trash2 className="size-3.5" /> Delete
                   </Button>

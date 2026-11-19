@@ -23,6 +23,7 @@ import { SideConversations } from "@/components/tickets/side-conversations";
 import { SlaPanel } from "@/components/tickets/sla";
 import { TasksCard } from "@/components/tickets/tasks-card";
 import { TimeCard } from "@/components/tickets/time-card";
+import { useConfirm } from "@/components/ui/confirm";
 import { Badge, Card, Input, Select, Skeleton } from "@/components/ui/primitives";
 import { useCurrentUser } from "@/hooks/use-auth";
 import {
@@ -76,6 +77,7 @@ export function TicketSidebar({ ticket, etag }: { ticket: Ticket; etag: string |
   const teams = useTeams();
   const types = useTicketTypes();
   const agents = useAgents();
+  const { ask, dialog } = useConfirm();
   const [tag, setTag] = useState("");
   const [tab, setTab] = useState<"details" | "customer" | "files" | "more">("details");
 
@@ -113,6 +115,7 @@ export function TicketSidebar({ ticket, etag }: { ticket: Ticket; etag: string |
 
   return (
     <div className="space-y-4">
+      {dialog}
       <div
         role="tablist"
         aria-label="Ticket sections"
@@ -183,15 +186,19 @@ export function TicketSidebar({ ticket, etag }: { ticket: Ticket; etag: string |
               disabled={disabled}
               value={ticket.type_id ?? ""}
               onChange={(e) => {
-                if (
-                  isImported(ticket) &&
-                  importedRows(ticket, type).length > 0 &&
-                  !confirm(
-                    "Fields from the old help desk that are not in this type will be removed. Continue?",
-                  )
-                )
+                const next = e.target.value || null;
+                if (isImported(ticket) && importedRows(ticket, type).length > 0) {
+                  ask({
+                    title: "Change the ticket type?",
+                    message:
+                      "Fields from the old help desk that are not in this type will be removed.",
+                    confirmLabel: "Change type",
+                    tone: "warning",
+                    run: () => patch({ type_id: next }),
+                  });
                   return;
-                patch({ type_id: e.target.value || null });
+                }
+                patch({ type_id: next });
               }}
             >
               <option value="">None</option>

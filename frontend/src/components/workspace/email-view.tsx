@@ -4,6 +4,7 @@ import { Mail, Pencil, Plus, Send, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
+import { useConfirm } from "@/components/ui/confirm";
 import { Dialog } from "@/components/ui/overlay";
 import {
   Badge,
@@ -29,10 +30,12 @@ export function EmailView() {
   const addresses = useEmailAddresses();
   const del = useDeleteEmailAddress();
   const test = useSendTestEmail();
+  const { ask, dialog } = useConfirm();
   const [editing, setEditing] = useState<EmailAddress | "new" | null>(null);
 
   return (
     <div>
+      {dialog}
       <div className="mb-4 flex items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground">
           Support addresses your customers write to and get replies from. Emails sent to them become
@@ -86,10 +89,16 @@ export function EmailView() {
                   size="sm"
                   variant="ghost"
                   disabled={del.isPending}
-                  onClick={() => {
-                    if (confirm(`Remove ${a.address}?`))
-                      del.mutate(a.id, { onSuccess: () => toast.success("Address removed") });
-                  }}
+                  onClick={() =>
+                    ask({
+                      title: "Remove this address?",
+                      message: "Customers will no longer be able to email it to reach support.",
+                      detail: a.address,
+                      confirmLabel: "Remove",
+                      run: () =>
+                        del.mutate(a.id, { onSuccess: () => toast.success("Address removed") }),
+                    })
+                  }
                 >
                   <Trash2 className="size-3.5" /> Delete
                 </Button>

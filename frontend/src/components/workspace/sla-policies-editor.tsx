@@ -6,6 +6,7 @@ import { toast } from "sonner";
 
 import { PRIORITIES, PRIORITY_LABEL } from "@/components/tickets/badges";
 import { formatMinutes } from "@/components/tickets/sla";
+import { useConfirm } from "@/components/ui/confirm";
 import { Dialog } from "@/components/ui/overlay";
 import { Badge, Button, Card, Field, Input } from "@/components/ui/primitives";
 import { Switch } from "@/components/ui/switch";
@@ -102,6 +103,7 @@ export function SlaPoliciesEditor({
 }) {
   const save = useSaveSlaPolicies();
   const reset = useResetSlaPolicies();
+  const { ask, dialog } = useConfirm();
   const [rows, setRows] = useState<PolicyDraft[]>(() => policies.map((p) => toDraft(p, nextKey())));
   const [dirty, setDirty] = useState(false);
   const [editing, setEditing] = useState<PolicyDraft | "new" | null>(null);
@@ -129,6 +131,7 @@ export function SlaPoliciesEditor({
 
   return (
     <section aria-labelledby="sla-policies">
+      {dialog}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 id="sla-policies" className="text-base font-semibold">
@@ -148,15 +151,18 @@ export function SlaPoliciesEditor({
               size="sm"
               loading={reset.isPending}
               disabled={isDefault && !dirty}
-              onClick={() => {
-                if (
-                  !confirm("Reset the policies to the built-in ones? Your own policies are lost.")
-                )
-                  return;
-                reset.mutate(undefined, {
-                  onSuccess: () => toast.success("Policies reset to built-in"),
-                });
-              }}
+              onClick={() =>
+                ask({
+                  title: "Reset to built-in policies?",
+                  message: "Your own policies are lost.",
+                  confirmLabel: "Reset",
+                  tone: "warning",
+                  run: () =>
+                    reset.mutate(undefined, {
+                      onSuccess: () => toast.success("Policies reset to built-in"),
+                    }),
+                })
+              }
             >
               <RotateCcw className="size-3.5" /> Reset to built-in
             </Button>
@@ -266,10 +272,15 @@ export function SlaPoliciesEditor({
                         variant="ghost"
                         disabled={locked}
                         aria-label={`Delete ${p.name}`}
-                        onClick={() => {
-                          if (confirm(`Delete policy “${p.name}”?`))
-                            change(rows.filter((r) => r.key !== p.key));
-                        }}
+                        onClick={() =>
+                          ask({
+                            title: "Delete this policy?",
+                            message: "It's removed from the list until you save your changes.",
+                            detail: p.name,
+                            confirmLabel: "Delete",
+                            run: () => change(rows.filter((r) => r.key !== p.key)),
+                          })
+                        }
                       >
                         <Trash2 className="size-3.5" /> Delete
                       </Button>

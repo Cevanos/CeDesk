@@ -4,6 +4,7 @@ import { ArrowDown, ArrowUp, FlaskConical, Pencil, Plus, Rocket, Trash2 } from "
 import { useState } from "react";
 import { toast } from "sonner";
 
+import { useConfirm } from "@/components/ui/confirm";
 import { Dialog } from "@/components/ui/overlay";
 import {
   Badge,
@@ -95,12 +96,14 @@ const TABS: { kind: SandboxKind; label: string }[] = [
 
 function SandboxEditor({ sandbox }: { sandbox: Sandbox }) {
   const del = useDeleteSandbox();
+  const { ask, dialog } = useConfirm();
   const [tab, setTab] = useState<SandboxKind>("rules");
   const [showTry, setShowTry] = useState(false);
   const [showCompare, setShowCompare] = useState(false);
 
   return (
     <div className="space-y-4">
+      {dialog}
       <Card className="flex flex-wrap items-center gap-3 p-4">
         <div className="min-w-0 flex-1 basis-60">
           <div className="flex items-center gap-2">
@@ -124,14 +127,15 @@ function SandboxEditor({ sandbox }: { sandbox: Sandbox }) {
         <Button
           variant="ghost"
           loading={del.isPending}
-          onClick={() => {
-            if (
-              confirm(
-                "Delete the sandbox? Your live rules, macros and saved replies are not touched.",
-              )
-            )
-              del.mutate(undefined, { onSuccess: () => toast.success("Sandbox deleted") });
-          }}
+          onClick={() =>
+            ask({
+              title: "Delete the sandbox?",
+              message: "Your live rules, macros and saved replies are not touched.",
+              confirmLabel: "Delete sandbox",
+              run: () =>
+                del.mutate(undefined, { onSuccess: () => toast.success("Sandbox deleted") }),
+            })
+          }
         >
           <Trash2 className="size-4" /> Delete sandbox
         </Button>
@@ -197,6 +201,7 @@ function ListEditor<T extends { id?: string; problems?: string[] }>({
   form: (p: { item: T | null; onSave: (item: T) => void; onCancel: () => void }) => React.ReactNode;
 }) {
   const save = useSaveSandboxList();
+  const { ask, dialog } = useConfirm();
   const [draft, setDraft] = useState<T[]>(items);
   const [editing, setEditing] = useState<number | "new" | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -215,6 +220,7 @@ function ListEditor<T extends { id?: string; problems?: string[] }>({
 
   return (
     <div>
+      {dialog}
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground">
           Edit the whole list, then save it to the sandbox. Nothing here is live.
@@ -281,7 +287,14 @@ function ListEditor<T extends { id?: string; problems?: string[] }>({
                   <Button
                     size="sm"
                     variant="ghost"
-                    onClick={() => setDraft((d) => d.filter((_, j) => j !== i))}
+                    onClick={() =>
+                      ask({
+                        title: `Remove this ${noun}?`,
+                        message: "It's removed from the list until you save your changes.",
+                        confirmLabel: "Remove",
+                        run: () => setDraft((d) => d.filter((_, j) => j !== i)),
+                      })
+                    }
                   >
                     <Trash2 className="size-3.5" /> Remove
                   </Button>

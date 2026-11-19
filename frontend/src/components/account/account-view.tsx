@@ -18,6 +18,7 @@ import { z } from "zod";
 
 import { QrCode } from "@/components/account/qr-code";
 import { PasswordInput, PasswordStrength } from "@/components/auth/password-input";
+import { useConfirm } from "@/components/ui/confirm";
 import { CopyButton, copyText } from "@/components/ui/copy-button";
 import { Dialog } from "@/components/ui/overlay";
 import { Badge, Button, Card, Field, Input, Skeleton } from "@/components/ui/primitives";
@@ -135,12 +136,14 @@ function Section({
 function DevicesCard() {
   const q = useDevices();
   const remove = useRemoveDevice();
+  const { ask, dialog } = useConfirm();
   return (
     <Section
       icon={<Smartphone className="size-5" />}
       title="My devices"
       description="Phones that get push notifications. Signing out on a phone removes it."
     >
+      {dialog}
       {q.isPending ? (
         <Skeleton className="h-12" />
       ) : q.isError ? (
@@ -179,14 +182,22 @@ function DevicesCard() {
                     size="sm"
                     variant="ghost"
                     disabled={remove.isPending}
-                    onClick={() => {
-                      if (!confirm("Remove this phone? It stops getting notifications.")) return;
-                      remove.mutate(d.id, {
-                        onSuccess: () => toast.success("Device removed"),
-                        onError: (e) =>
-                          toast.error(e instanceof ApiError ? e.userMessage : "Couldn't remove it"),
-                      });
-                    }}
+                    onClick={() =>
+                      ask({
+                        title: "Remove this phone?",
+                        message: "It stops getting notifications.",
+                        detail: `${d.platform}${d.token_hint ? ` …${d.token_hint}` : ""}`,
+                        confirmLabel: "Remove",
+                        run: () =>
+                          remove.mutate(d.id, {
+                            onSuccess: () => toast.success("Device removed"),
+                            onError: (e) =>
+                              toast.error(
+                                e instanceof ApiError ? e.userMessage : "Couldn't remove it",
+                              ),
+                          }),
+                      })
+                    }
                   >
                     Remove
                   </Button>

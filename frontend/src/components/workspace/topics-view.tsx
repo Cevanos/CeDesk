@@ -4,6 +4,7 @@ import { RotateCcw, ShieldAlert, Tag } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
+import { useConfirm } from "@/components/ui/confirm";
 import { Badge, Button, Card, Skeleton } from "@/components/ui/primitives";
 import { Switch } from "@/components/ui/switch";
 import { TagInput } from "@/components/ui/tag-input";
@@ -27,6 +28,7 @@ export function TopicsView() {
 
 function TopicsBody({ saved }: { saved: TriageSettings }) {
   const save = useSaveTriageSettings();
+  const { ask, dialog } = useConfirm();
   const [topics, setTopics] = useState(saved.topics);
   const [redact, setRedact] = useState(saved.redact_cards);
   const [errs, setErrs] = useState<Record<string, string>>({});
@@ -39,6 +41,7 @@ function TopicsBody({ saved }: { saved: TriageSettings }) {
 
   return (
     <div className="space-y-6">
+      {dialog}
       <section aria-labelledby="topics-h">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
@@ -55,15 +58,20 @@ function TopicsBody({ saved }: { saved: TriageSettings }) {
             variant="outline"
             size="sm"
             disabled={save.isPending}
-            onClick={() => {
-              if (
-                confirm("Reset every topic to the built-in keyword lists? Your changes are lost.")
-              )
-                save.mutate(
-                  { reset: true, redact_cards: saved.redact_cards },
-                  { onSuccess: () => toast.success("Topics reset to the built-in lists") },
-                );
-            }}
+            onClick={() =>
+              ask({
+                title: "Reset all topics?",
+                message:
+                  "Every topic goes back to the built-in keyword lists. Your changes are lost.",
+                confirmLabel: "Reset",
+                tone: "warning",
+                run: () =>
+                  save.mutate(
+                    { reset: true, redact_cards: saved.redact_cards },
+                    { onSuccess: () => toast.success("Topics reset to the built-in lists") },
+                  ),
+              })
+            }
           >
             <RotateCcw className="size-3.5" /> Reset to built-in lists
           </Button>

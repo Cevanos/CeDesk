@@ -151,6 +151,7 @@ export function WebhooksView() {
                           title: "Make a new secret?",
                           message: "Make a new secret? The old one stops working at once.",
                           confirmLabel: "New secret",
+                          tone: "warning",
                           run: () =>
                             rotate.mutate(w.id, {
                               onSuccess: (r) =>

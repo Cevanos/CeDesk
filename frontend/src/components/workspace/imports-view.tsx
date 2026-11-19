@@ -14,6 +14,7 @@ import { SiHelpscout, SiHubspot, SiIntercom, SiZendesk, SiZoho } from "react-ico
 import { toast } from "sonner";
 
 import { PasswordInput } from "@/components/auth/password-input";
+import { useConfirm } from "@/components/ui/confirm";
 import {
   Badge,
   Button,
@@ -786,6 +787,7 @@ function RunStep({
   const q = useImportRun(runId);
   const syncNow = useSyncNow(runId);
   const syncStop = useSyncStop(runId);
+  const { ask, dialog } = useConfirm();
   const resume = useResumeImport(runId);
   const close = useCloseImportConnection(connectionId ?? "");
   const [closed, setClosed] = useState(false);
@@ -801,6 +803,7 @@ function RunStep({
 
   return (
     <Card className="space-y-4 p-5" aria-live="polite">
+      {dialog}
       <div className="flex flex-wrap items-center gap-2">
         <h3 className="text-base font-semibold">Import from {r.label ?? label(r.source)}</h3>
         <RunBadge run={r} />
@@ -888,17 +891,23 @@ function RunStep({
             <Button
               variant="outline"
               loading={syncStop.isPending}
-              onClick={() => {
-                if (!confirm("We're live: stop syncing? This deletes the stored key.")) return;
-                syncStop.mutate(undefined, {
-                  onSuccess: () => {
-                    setStoppedLive(true);
-                    toast.success("Syncing stopped");
-                  },
-                  onError: (e) =>
-                    toast.error(e instanceof ApiError ? e.userMessage : "Couldn't stop"),
-                });
-              }}
+              onClick={() =>
+                ask({
+                  title: "Stop syncing?",
+                  message: "We're live: syncing stops and the stored key is deleted.",
+                  confirmLabel: "Stop syncing",
+                  tone: "warning",
+                  run: () =>
+                    syncStop.mutate(undefined, {
+                      onSuccess: () => {
+                        setStoppedLive(true);
+                        toast.success("Syncing stopped");
+                      },
+                      onError: (e) =>
+                        toast.error(e instanceof ApiError ? e.userMessage : "Couldn't stop"),
+                    }),
+                })
+              }
             >
               We&apos;re live: stop syncing
             </Button>
@@ -1049,8 +1058,10 @@ function Meta({ label, children }: { label: string; children: React.ReactNode })
 function HistorySyncActions({ run }: { run: ImportRun }) {
   const syncNow = useSyncNow(run.id);
   const syncStop = useSyncStop(run.id);
+  const { ask, dialog } = useConfirm();
   return (
     <div className="flex flex-wrap gap-2">
+      {dialog}
       <Button
         variant="outline"
         size="sm"
@@ -1068,13 +1079,20 @@ function HistorySyncActions({ run }: { run: ImportRun }) {
         variant="outline"
         size="sm"
         loading={syncStop.isPending}
-        onClick={() => {
-          if (!confirm("We're live: stop syncing? This deletes the stored key.")) return;
-          syncStop.mutate(undefined, {
-            onSuccess: () => toast.success("Syncing stopped"),
-            onError: (e) => toast.error(e instanceof ApiError ? e.userMessage : "Couldn't stop"),
-          });
-        }}
+        onClick={() =>
+          ask({
+            title: "Stop syncing?",
+            message: "We're live: syncing stops and the stored key is deleted.",
+            confirmLabel: "Stop syncing",
+            tone: "warning",
+            run: () =>
+              syncStop.mutate(undefined, {
+                onSuccess: () => toast.success("Syncing stopped"),
+                onError: (e) =>
+                  toast.error(e instanceof ApiError ? e.userMessage : "Couldn't stop"),
+              }),
+          })
+        }
       >
         We&apos;re live: stop syncing
       </Button>

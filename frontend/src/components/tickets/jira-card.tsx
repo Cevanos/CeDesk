@@ -13,6 +13,7 @@ import {
   toastError,
   type ExtraProps,
 } from "@/components/tickets/extras-shared";
+import { useConfirm } from "@/components/ui/confirm";
 import { Badge, Button, Input } from "@/components/ui/primitives";
 import { useCreateJira, useJira, useLinkJira, useUnlinkJira } from "@/hooks/use-ticket-extras";
 
@@ -76,8 +77,10 @@ function JiraForm({ ticketId, close }: { ticketId: string; close: () => void }) 
 export function JiraCard({ ticketId, canEdit }: ExtraProps) {
   const q = useJira(ticketId);
   const unlink = useUnlinkJira(ticketId);
+  const { ask, dialog } = useConfirm();
   return (
     <ExtraCard title="Jira">
+      {dialog}
       <QueryState q={q} />
       {q.data && (
         <>
@@ -105,7 +108,15 @@ export function JiraCard({ ticketId, canEdit }: ExtraProps) {
                     <button
                       aria-label={`Unlink ${j.key}`}
                       className="grid size-7 flex-none place-items-center rounded-md text-muted-foreground hover:bg-surface-2 hover:text-foreground"
-                      onClick={() => unlink.mutate(j.key, { onError: toastError })}
+                      onClick={() =>
+                        ask({
+                          title: "Unlink this Jira issue?",
+                          message: "It stays in Jira; it's only detached from this ticket.",
+                          detail: j.key,
+                          confirmLabel: "Unlink",
+                          run: () => unlink.mutate(j.key, { onError: toastError }),
+                        })
+                      }
                     >
                       <Unlink className="size-3.5" />
                     </button>

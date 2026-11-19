@@ -5,6 +5,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 
 import { PasswordInput } from "@/components/auth/password-input";
+import { useConfirm } from "@/components/ui/confirm";
 import { Badge, Button, Field, Skeleton } from "@/components/ui/primitives";
 import { FormError, LoadError } from "@/components/workspace/list-shared";
 import {
@@ -143,6 +144,7 @@ export function RunReport({
 
 function FailureRow({ f, runId }: { f: ImportFailure; runId: string }) {
   const dismiss = useDismissImportFailure(runId);
+  const { ask, dialog } = useConfirm();
   return (
     <tr className="border-t border-border align-top">
       <td className="py-2 pr-3 capitalize">{f.kind}</td>
@@ -154,25 +156,33 @@ function FailureRow({ f, runId }: { f: ImportFailure; runId: string }) {
         {f.last_failed_at ? formatDateTime(f.last_failed_at) : "—"}
       </td>
       <td className="py-2 text-right">
+        {dialog}
         {f.status === "open" ? (
           <Button
             variant="outline"
             size="sm"
             loading={dismiss.isPending}
-            onClick={() => {
-              if (!confirm("Accept that this record is missing?")) return;
-              dismiss.mutate(f.id, {
-                onSuccess: () => toast.success("Dismissed"),
-                onError: (e) =>
-                  toast.error(
-                    e instanceof ApiError && e.status === 409
-                      ? "That record is no longer open."
-                      : e instanceof ApiError
-                        ? e.userMessage
-                        : "Couldn't dismiss",
-                  ),
-              });
-            }}
+            onClick={() =>
+              ask({
+                title: "Dismiss this record?",
+                message: "You're accepting that it is missing from the import.",
+                detail: f.external_id,
+                confirmLabel: "Dismiss",
+                tone: "warning",
+                run: () =>
+                  dismiss.mutate(f.id, {
+                    onSuccess: () => toast.success("Dismissed"),
+                    onError: (e) =>
+                      toast.error(
+                        e instanceof ApiError && e.status === 409
+                          ? "That record is no longer open."
+                          : e instanceof ApiError
+                            ? e.userMessage
+                            : "Couldn't dismiss",
+                      ),
+                  }),
+              })
+            }
           >
             Dismiss
           </Button>
