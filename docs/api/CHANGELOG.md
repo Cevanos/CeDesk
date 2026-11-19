@@ -3,6 +3,26 @@
 `openapi.json` next to this file is the API as served (`uv run cedesk openapi`). Every
 route is under `/api/v1`. Breaking changes only come in v2 (md 2B). Newest first.
 
+## 2026-11-19: Jira: a clickable link back to the ticket, and clear "not found" messages
+
+No route or field changed. No migration. Found testing the Jira app against a real Jira
+Cloud site.
+
+- **Fixed:** the description of an issue made from a ticket ends with "From CeDesk ticket
+  T-1042: <link>", but the link was plain text in Jira (Jira doesn't turn text into
+  links), so it had to be copied. Every http(s) address in the description is now sent
+  as a link (Atlassian Document Format link marks), the ticket's and any the agent
+  wrote; punctuation right after an address stays text.
+- **Clearer messages** (422) where Jira answers 404:
+  - `POST /tickets/{id}/jira/link` with a key Jira doesn't have: "Jira has no issue
+    KAN-777, or the Jira account in Settings > Apps can't see it." (was "Jira has no such
+    thing.");
+  - installing Jira with a project it doesn't have: "Jira has no project NOPE, or this
+    account can't see it."; with a site that doesn't exist: "There's no Jira site at
+    acme.atlassian.net. Check the site name."
+- Other apps' 404 now says "<App> couldn't find what was asked for (404)." instead of
+  "<App> has no such thing."
+
 ## 2026-11-18: Self-service sign-up (create a workspace from the sign-in page)
 
 All additive; nothing existing changed. Migration 0060 adds two tables. Off unless
