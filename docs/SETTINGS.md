@@ -129,6 +129,28 @@ Over a limit: 429 with `Retry-After`. Counted in each API process.
 | `CEDESK_PUBLIC_WINDOW_SECONDS` | `600` | That window. | api | no |
 | `CEDESK_API_KEY_LIMIT` | `700` | Requests a minute per workspace with API keys, all its keys together. | api | no |
 
+## Self-service sign-up
+
+Anyone can create a workspace from the sign-in page: a form, then a 6-digit code emailed
+to them (10 minutes, 5 tries), then they sign in. Nothing is created before the code.
+The worker sends the codes on a lane of their own, beside its other jobs, within about
+a second. Off by default. On (outside `dev`), the API refuses to start without
+`CEDESK_MAIL_FROM_ADDRESS` and, on the cloud edition, without a CAPTCHA; the worker
+refuses without `CEDESK_MAIL_BACKEND=smtp`. Per email: 3 code emails an hour from one
+address (10 from all addresses together), and one waiting sign-up per address. The per-address limits below are kept in the database, so they hold across API
+processes.
+
+| Setting | Default | What it does | Read by | In compose |
+|---|---|---|---|---|
+| `CEDESK_SIGNUP_ENABLED` | `false` | Turns self-service sign-up on. Off: `GET /auth/signup-config` says so and the other sign-up routes answer 404. | api, worker | api, worker |
+| `CEDESK_SIGNUP_DEFAULT_PLAN` | `free` | The cloud plan a new workspace starts on (one of `CEDESK_PLANS`; a name that isn't stops the API at start-up). Ignored on `self_hosted`. Empty: no plan. | api | api |
+| `CEDESK_SIGNUP_CAPTCHA_SITE_KEY` | (empty) | Cloudflare Turnstile site key the sign-up page shows. Set it with the secret, or neither. | api | api |
+| `CEDESK_SIGNUP_CAPTCHA_SECRET` | (empty: no CAPTCHA) | Cloudflare Turnstile secret each sign-up is checked with. Required on the cloud edition outside `dev`. Secret: never logged. | api | api |
+| `CEDESK_SIGNUP_PER_IP_HOUR` | `5` | Sign-ups started per IP per hour. | api | api |
+| `CEDESK_SIGNUP_WORKSPACES_PER_IP_DAY` | `3` | Workspaces created by sign-up per IP per day (checked when the code is verified). | api | api |
+| `CEDESK_SIGNUP_MAIL_CONCURRENCY` | `10` | Code emails the worker sends at once (1 to 50); keep it under the mail provider's rate. | worker | worker |
+| `CEDESK_SIGNUP_HASH_SLOTS` | `4` | Sign-up passwords hashed at once per API process (1 to 64). Each Argon2 hash uses about 64 MB, so this caps the memory a burst of sign-ups can take. | api | api |
+
 ## Cloud plans and the worker
 
 | Setting | Default | What it does | Read by | In compose |

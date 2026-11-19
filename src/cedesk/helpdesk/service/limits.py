@@ -135,6 +135,24 @@ async def set_plan(sm: Sessionmaker, slug: str, plan: str | None) -> UUID:
     return workspace_id
 
 
+def plan_known(plan: str) -> bool:
+    return plan in (_config.plans or {})
+
+
+async def start_plan(
+    s: AsyncSession, workspace_id: UUID, plan: str, *, actor_name: str, ip: str | None
+) -> None:
+    """A new workspace's first plan, in the transaction that creates it (self-service
+    sign-up). Only on the cloud edition, and only a plan that exists; audited."""
+    if not _config.enabled or not plan or not plan_known(plan):
+        return
+    await repo.set_plan(s, workspace_id, plan)
+    await audit.record_server(
+        s, workspace_id, Area.plan, "changed", "Cloud plan",
+        detail={"changes": {"plan": [None, plan]}}, actor_name=actor_name, ip=ip,
+    )  # fmt: skip
+
+
 # Retention (md O2)
 
 

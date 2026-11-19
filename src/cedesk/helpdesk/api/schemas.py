@@ -151,3 +151,49 @@ class ChangeMemberBody(Body):
     role: Role | None = None
     role_id: UUID | None = Field(default=None, description="With role custom: which role.")
     is_active: bool | None = None
+
+
+# Self-service sign-up
+
+Slug = Annotated[str, StringConstraints(strip_whitespace=True, min_length=3, max_length=40)]
+
+
+class SignupConfigOut(BaseModel):
+    enabled: bool = Field(description="False: hide the sign-up link; the routes answer 404.")
+    captcha_site_key: str | None = Field(
+        default=None, description="Cloudflare Turnstile site key to show, when one is needed."
+    )
+
+
+class SignupBody(Body):
+    workspace: Slug = Field(description="The address to sign in with, e.g. 'acme'.")
+    workspace_name: Name = Field(description="Shown name, e.g. 'Acme Support'.")
+    name: Name = Field(description="The person signing up, who becomes the first Admin.")
+    email: Email
+    password: Password
+    captcha_token: Annotated[str, StringConstraints(max_length=2048)] | None = Field(
+        default=None, description="The Turnstile token, when signup-config gave a site key."
+    )
+
+
+class SignupStartedOut(BaseModel):
+    signup_id: UUID = Field(description="Send it back with the code (verify) or to resend.")
+    code_expires_at: datetime
+    resend_after: datetime = Field(description="When POST /auth/signup/resend is allowed.")
+
+
+class SignupVerifyBody(Body):
+    signup_id: UUID
+    code: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=20)]
+    workspace: Slug | None = Field(
+        default=None,
+        description="A new address, only after a 409 slug_taken: the same code works again.",
+    )
+
+
+class SignupDoneOut(BaseModel):
+    workspace: str = Field(description="The address to sign in with (POST /auth/sign-in).")
+
+
+class SignupResendBody(Body):
+    signup_id: UUID
