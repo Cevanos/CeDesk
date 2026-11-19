@@ -14,6 +14,7 @@ import pytest
 from httpx import AsyncClient
 
 from cedesk.crypto import Sealer
+from cedesk.helpdesk.domain import jira as jira_rules
 from cedesk.helpdesk.service import apps
 from cedesk.helpdesk.service.app_post import AppPost
 from cedesk.helpdesk.service.delivery import deliver_due
@@ -111,6 +112,16 @@ async def test_jira_issues_from_tickets(client: AsyncClient, app_sessionmaker: S
             f"{A}/jira", headers=w["h"], json={"settings": settings, "secret": secret}
         )
         assert r.status_code == 422, (settings, r.text)
+    # Live retest: Jira's 404 only said "Jira has no such thing."; now it says what's missing.
+    no_site = jira_rules.NO_SITE.format(host="nosite.atlassian.net")
+    for settings, said in (
+        (JIRA_SETTINGS | {"project": "NOPE"}, jira_rules.NO_PROJECT.format(project="NOPE")),
+        (JIRA_SETTINGS | {"site": "nosite"}, no_site),
+    ):  # fmt: skip
+        r = await client.put(
+            f"{A}/jira", headers=w["h"], json={"settings": settings, "secret": TOKEN}
+        )
+        assert (r.status_code, r.json()["error"]["message"]) == (422, said)
     made = ok(await client.put(f"{A}/jira", headers=w["h"],
                                json={"settings": JIRA_SETTINGS, "secret": TOKEN}))  # fmt: skip
     assert made["settings"] == {"site": "acme", "email": "ops@acme.com", "project": "SUP"}
@@ -123,15 +134,21 @@ async def test_jira_issues_from_tickets(client: AsyncClient, app_sessionmaker: S
     text = json.dumps(sent["description"])
     assert "Payout bug" in text and f"/tickets/{t['id']}" in text
     assert "charged twice" not in text  # the customer's words stay in CeDesk
+    # The link back is a real link in Jira, not text to copy (live retest with a real Jira).
+    nodes = [node for p in sent["description"]["content"] for node in p["content"]]
+    hrefs = [m["attrs"]["href"] for node in nodes for m in node.get("marks", [])]
+    assert len(hrefs) == 1 and hrefs[0].endswith(f"/tickets/{t['id']}")
 
     linked = ok(await client.post(f"{url}/link", headers=w["neha"], json={"key": "sup-7"}), 201)
     assert (linked["key"], linked["made_here"]) == ("SUP-7", False)
     assert (
         await client.post(f"{url}/link", headers=w["neha"], json={"key": "SUP-7"})
     ).status_code == 409
-    assert (
-        await client.post(f"{url}/link", headers=w["neha"], json={"key": "SUP-404"})
-    ).status_code == 422
+    r = await client.post(f"{url}/link", headers=w["neha"], json={"key": "SUP-404"})
+    assert r.status_code == 422
+    assert r.json()["error"]["message"] == (
+        "Jira has no issue SUP-404, or the Jira account in Settings > Apps can't see it."
+    )
     assert (
         await client.post(f"{url}/link", headers=w["neha"], json={"key": "nope"})
     ).status_code == 422
