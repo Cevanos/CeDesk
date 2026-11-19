@@ -174,7 +174,7 @@ A side conversation in a Slack channel instead of by email. The customer never s
 ### Part B: with a test Slack workspace and bot
 
 The Slack app needs:
-- the bot scopes `chat:write`, `channels:history`, `groups:history` and `users:read`;
+- the bot scopes `chat:write`, `channels:history`, `groups:history`, `users:read` and `files:read` (for a shared file's name);
 - the events `message.channels` and `message.groups`;
 - the Request URL `<server>/api/v1/slack/events/<workspace_id>`.
 
@@ -184,7 +184,7 @@ The Slack app needs:
 | SLK-B2 | Invite the bot to `#warehouse`. Start a side conversation there from a ticket. | 201. The bot posts your message with the ticket number and subject, **never** the customer's messages. | |
 | SLK-B3 | Reply in that Slack thread as a person | The reply shows on the side conversation, with the person's name. The ticket gets a line like "Ravi replied in the side conversation in Slack #warehouse", and the assignee gets a notification. | |
 | SLK-B4 | Reply from CeDesk (`POST /side-conversations/{id}/messages`) | It appears in the same Slack thread | |
-| SLK-B5 | Reply in the thread with a photo | Your text, plus a line `[file: <name>]` | |
+| SLK-B5 | Reply in the thread with a photo, mentioning a colleague (`@name`) and pasting a link | Your text with `@<their name>` (not `@U…`) and the link once, plus a line `[file: <name>]` | |
 | SLK-B6 | Edit or delete a Slack reply, or post outside the thread | Nothing changes on the ticket | |
 | SLK-B7 | Start one in a channel the bot isn't in, and in one that doesn't exist | 422 | |
 | SLK-B8 | Uninstall the app, then reply in the thread | Nothing is stored | |
