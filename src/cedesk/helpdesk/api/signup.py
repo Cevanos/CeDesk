@@ -5,7 +5,11 @@ it did not exist. The config route always answers, so the sign-in page knows whe
 show the "Create a workspace" link.
 """
 
-from fastapi import APIRouter, Request, status
+from collections.abc import Callable, Coroutine
+from typing import Any
+
+from fastapi import APIRouter, Request, Response, status
+from fastapi.routing import APIRoute
 
 from cedesk.helpdesk.api.deps import AttemptLimit, PublicLimit, SessionmakerDep, client_ip
 from cedesk.helpdesk.api.schemas import (
@@ -20,14 +24,37 @@ from cedesk.helpdesk.service import signup
 from cedesk.helpdesk.service.errors import NotFound
 from cedesk.settings import Settings
 
-router = APIRouter(tags=["sign-up"])
-
 
 def _settings(request: Request) -> Settings:
     settings: Settings = request.app.state.settings
     if not settings.signup_enabled:
         raise NotFound("Not Found")
     return settings
+
+
+def _limits(settings: Settings) -> signup.Limits:
+    return signup.Limits(
+        per_ip_hour=settings.signup_per_ip_hour,
+        workspaces_per_ip_day=settings.signup_workspaces_per_ip_day,
+    )
+
+
+class _OnlyWhenOn(APIRoute):
+    """Answers 404 when sign-up is off, before the body is read or checked: a switched-off
+    server can't be told apart from one without these routes, even by a bad body."""
+
+    def get_route_handler(self) -> Callable[[Request], Coroutine[Any, Any, Response]]:
+        handler = super().get_route_handler()
+
+        async def guarded(request: Request) -> Response:
+            _settings(request)
+            return await handler(request)
+
+        return guarded
+
+
+router = APIRouter(tags=["sign-up"])
+_when_on = APIRouter(tags=["sign-up"], route_class=_OnlyWhenOn)
 
 
 @router.get(
@@ -43,14 +70,14 @@ async def signup_config(request: Request) -> SignupConfigOut:
     return SignupConfigOut(enabled=True, captcha_site_key=settings.signup_captcha_site_key or None)
 
 
-@router.post(
+@_when_on.post(
     "/auth/signup",
     status_code=status.HTTP_202_ACCEPTED,
     response_model=SignupStartedOut,
     summary="Start creating a workspace: emails a 6-digit code",
     description="Nothing is created yet: the code (10 minutes, 5 tries) goes to the email, "
     "and POST /auth/signup/verify creates the workspace. A new sign-up for the same email "
-    "replaces a waiting one.",
+    "from the same address replaces its waiting one.",
     responses={
         403: {"description": "`captcha_failed`: the CAPTCHA answer was missing or refused"},
         404: {"description": "Self-service sign-up is off on this server"},
@@ -74,10 +101,7 @@ async def start_signup(body: SignupBody, request: Request, sm: SessionmakerDep) 
         captcha=request.app.state.captcha,
         captcha_token=body.captcha_token,
         hash_slots=request.app.state.signup_hash_slots,
-        ip_limits=signup.Limits(
-            per_ip_hour=settings.signup_per_ip_hour,
-            workspaces_per_ip_day=settings.signup_workspaces_per_ip_day,
-        ),
+        ip_limits=_limits(settings),
     )
     return SignupStartedOut(
         signup_id=started.signup_id,
@@ -86,7 +110,7 @@ async def start_signup(body: SignupBody, request: Request, sm: SessionmakerDep) 
     )
 
 
-@router.post(
+@_when_on.post(
     "/auth/signup/verify",
     response_model=SignupDoneOut,
     summary="Finish: the emailed code creates the workspace and its first Admin",
@@ -113,11 +137,12 @@ async def verify_signup(
         ip=client_ip(request),
         secret_key=settings.secret_key.get_secret_value(),
         default_plan=settings.signup_default_plan,
+        ip_limits=_limits(settings),
     )
     return SignupDoneOut(workspace=done.workspace)
 
 
-@router.post(
+@_when_on.post(
     "/auth/signup/resend",
     status_code=status.HTTP_202_ACCEPTED,
     response_model=SignupStartedOut,
@@ -141,3 +166,6 @@ async def resend_code(
         code_expires_at=started.code_expires_at,
         resend_after=started.resend_after,
     )
+
+
+router.include_router(_when_on)

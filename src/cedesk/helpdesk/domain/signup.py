@@ -6,6 +6,11 @@ code emailed to them. Until then the sign-up is a row in the global `workspace_s
 table (there is no workspace yet to hold it), and its code email waits in the global
 `auth_email_out` queue, which the worker sends on its own lane, apart from every other job.
 
+Locks, always taken in this order so two requests never wait on each other in a circle:
+the requester's IP (`signup-ip:`), then the email (`signup:`), then the sign-up row. Every
+limit is counted under its lock, in the transaction that writes, so parallel requests
+can't all slip under it.
+
 The code is stored only as an HMAC bound to the sign-up and the email (never in plain
 text, never logged), lasts 10 minutes, and allows 5 tries. The client's IP address is
 kept only as an HMAC too: enough to count sign-ups per address, not to read it back.
@@ -23,7 +28,11 @@ SLUG = re.compile(r"^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$")
 
 CODE_LIFETIME = timedelta(minutes=10)
 CODE_TRIES = 5  # tries of one code (right or wrong) before it stops working
-CODES_PER_HOUR = 3  # code emails per email address per hour (sign-ups and resends)
+# Code emails per hour (sign-ups and resends). Counted per email *and* requester (the
+# client IP), so a stranger can't use up someone else's codes; the total per email is
+# capped higher, so nobody can flood an inbox from many addresses.
+CODES_PER_HOUR = 3
+EMAIL_CODES_PER_HOUR = 10
 RESEND_AFTER = timedelta(seconds=60)  # between two code emails of one sign-up
 SIGNUP_LIFETIME = timedelta(hours=24)  # after this, start again (resend no longer works)
 SIGNUP_KEPT = timedelta(days=2)  # rows are deleted after this (the per-day counts need 1)

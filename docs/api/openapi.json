@@ -242,10 +242,11 @@
     "/api/v1/auth/signup": {
       "post": {
         "tags": [
+          "sign-up",
           "sign-up"
         ],
         "summary": "Start creating a workspace: emails a 6-digit code",
-        "description": "Nothing is created yet: the code (10 minutes, 5 tries) goes to the email, and POST /auth/signup/verify creates the workspace. A new sign-up for the same email replaces a waiting one.",
+        "description": "Nothing is created yet: the code (10 minutes, 5 tries) goes to the email, and POST /auth/signup/verify creates the workspace. A new sign-up for the same email from the same address replaces its waiting one.",
         "operationId": "start_signup_api_v1_auth_signup_post",
         "requestBody": {
           "content": {
@@ -289,6 +290,7 @@
     "/api/v1/auth/signup/verify": {
       "post": {
         "tags": [
+          "sign-up",
           "sign-up"
         ],
         "summary": "Finish: the emailed code creates the workspace and its first Admin",
@@ -336,6 +338,7 @@
     "/api/v1/auth/signup/resend": {
       "post": {
         "tags": [
+          "sign-up",
           "sign-up"
         ],
         "summary": "Email a new code for a waiting sign-up (the old one stops working)",

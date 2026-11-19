@@ -3,9 +3,10 @@ flow, the races (double verify, parallel guesses, an address taken meanwhile), t
 and the worker's sign-up lane."""
 
 import asyncio
+import itertools
 import re
 from collections.abc import AsyncIterator, Callable
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -14,6 +15,7 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
 
 from cedesk.helpdesk.domain import signup as rules
+from cedesk.helpdesk.repo import signup as signup_repo
 from cedesk.helpdesk.service import signup_mail
 from cedesk.helpdesk.service.auth import create_workspace
 from cedesk.helpdesk.service.password_reset import Sender
@@ -25,6 +27,7 @@ from tests.db.helpers import PASSWORD, Sm, bearer, sign_in
 pytestmark = pytest.mark.db
 
 SENDER = Sender("no-reply@example.com", "CeDesk")
+_ADDRESSES = itertools.count(1)  # every client its own address
 Client = Callable[..., AsyncClient]
 
 
@@ -47,7 +50,7 @@ async def make_client(app_sessionmaker: Sm) -> AsyncIterator[Client]:
     opened: list[AsyncClient] = []
 
     def make(ip: str | None = None, **settings: Any) -> AsyncClient:
-        ip = ip or f"198.51.100.{uuid4().int % 250 + 1}"
+        ip = ip or f"2001:db8::{next(_ADDRESSES):x}:{uuid4().hex[:4]}"
         transport = ASGITransport(app=_app(app_sessionmaker, **settings), client=(ip, 1234))
         client = AsyncClient(transport=transport, base_url="http://t")
         opened.append(client)
@@ -359,3 +362,160 @@ async def test_the_lane_sends_each_code_once_and_wipes_it(
     assert all(not re.search(r"\d{6}", r["body_text"]) for r in rows)
     again = await signup_mail.send_due(app_sessionmaker, mailer, SENDER, concurrency=3)
     assert again.claimed == 0
+
+
+# Review fixes (PR 69): lock order, limits under their locks, the daily cap at verify,
+# strangers, the CAPTCHA before the address check, cancelled old codes.
+
+
+async def test_resend_and_a_new_signup_at_once_never_deadlock(
+    make_client: Client, app_sessionmaker: Sm, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(rules, "RESEND_AFTER", timedelta(0))
+    client = make_client()
+    for _ in range(6):
+        form = _form()
+        signup_id = await _start(client, form)
+        resent, again = await asyncio.gather(
+            client.post("/api/v1/auth/signup/resend", json={"signup_id": signup_id}),
+            client.post(
+                "/api/v1/auth/signup", json={**form, "workspace": form["workspace"] + "-b"}
+            ),
+        )
+        # Either order is fine (the resend may find its sign-up replaced: 410); a
+        # deadlock would show as 409 "Someone changed this" or a 500.
+        assert resent.status_code in (202, 410), resent.text
+        assert again.status_code == 202, again.text
+
+
+async def test_parallel_signups_from_one_address_respect_the_hourly_limit(
+    make_client: Client, app_sessionmaker: Sm
+) -> None:
+    client = make_client(signup_per_ip_hour=2)
+    answers = await asyncio.gather(
+        *(client.post("/api/v1/auth/signup", json=_form()) for _ in range(10))
+    )
+    statuses = sorted(r.status_code for r in answers)
+    assert statuses.count(202) == 2, statuses
+    assert statuses.count(429) == 8
+
+
+async def test_the_daily_workspace_cap_holds_at_verify(
+    make_client: Client, app_sessionmaker: Sm
+) -> None:
+    client = make_client(signup_workspaces_per_ip_day=1)
+    first, second = await _start(client, _form()), await _start(client, _form())
+    r = await _verify(client, first, await _code(app_sessionmaker, first))
+    assert r.status_code == 200
+    # The second sign-up started before the first was finished; it can't finish today.
+    r = await _verify(client, second, await _code(app_sessionmaker, second))
+    assert r.status_code == 429, r.text
+    assert (await _signup_row(app_sessionmaker, second))["code_tries"] == 0  # not used up
+
+
+async def test_parallel_verifies_from_one_address_respect_the_daily_cap(
+    make_client: Client, app_sessionmaker: Sm
+) -> None:
+    client = make_client(signup_workspaces_per_ip_day=2)
+    ids = [await _start(client, _form()) for _ in range(5)]
+    codes = [await _code(app_sessionmaker, i) for i in ids]
+    answers = await asyncio.gather(
+        *(_verify(client, i, c) for i, c in zip(ids, codes, strict=True))
+    )
+    statuses = sorted(r.status_code for r in answers)
+    assert statuses.count(200) == 2, statuses
+    assert statuses.count(429) == 3
+
+
+async def test_a_stranger_cannot_replace_or_lock_out_your_signup(
+    make_client: Client, app_sessionmaker: Sm
+) -> None:
+    you, stranger = make_client(), make_client()
+    form = _form()
+    yours = await _start(you, form)
+    your_code = await _code(app_sessionmaker, yours)
+    # The stranger uses up their own 3 codes for your email...
+    for _ in range(rules.CODES_PER_HOUR):
+        await _start(stranger, {**form, "workspace": f"x-{uuid4().hex[:10]}"})
+    r = await stranger.post("/api/v1/auth/signup", json=form)
+    assert r.status_code == 429
+    # ...but your sign-up still waits, and you can still finish or start again.
+    assert (await _signup_row(app_sessionmaker, yours))["status"] == "pending"
+    assert (await _verify(you, yours, your_code)).status_code == 200
+    await _start(you, {**form, "workspace": f"y-{uuid4().hex[:10]}"})
+
+
+async def test_one_email_gets_at_most_ten_codes_an_hour_from_everyone(
+    make_client: Client,
+) -> None:
+    form = _form()
+    accepted = 0
+    for _ in range(5):
+        client = make_client()
+        for _ in range(rules.CODES_PER_HOUR):
+            r = await client.post(
+                "/api/v1/auth/signup", json={**form, "workspace": f"z-{uuid4().hex[:10]}"}
+            )
+            accepted += r.status_code == 202
+    assert accepted == rules.EMAIL_CODES_PER_HOUR
+
+
+async def test_resend_cancels_the_old_codes_unsent_email(
+    client: AsyncClient, app_sessionmaker: Sm, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(rules, "RESEND_AFTER", timedelta(0))
+    signup_id = await _start(client, _form())
+    r = await client.post("/api/v1/auth/signup/resend", json={"signup_id": signup_id})
+    assert r.status_code == 202
+    async with app_sessionmaker() as s:
+        statuses = (
+            (
+                await s.execute(
+                    text(
+                        "SELECT status FROM auth_email_out WHERE signup_id = :id "
+                        "ORDER BY created_at"
+                    ),
+                    {"id": UUID(signup_id)},
+                )
+            )
+            .scalars()
+            .all()
+        )
+    assert statuses == ["cancelled", "pending"]
+    # A late result for the cancelled one (a worker that was mid-send) doesn't revive it.
+    async with app_sessionmaker() as s, s.begin():
+        old = (
+            await s.execute(
+                text(
+                    "SELECT id FROM auth_email_out WHERE signup_id = :id AND status = 'cancelled'"
+                ),
+                {"id": UUID(signup_id)},
+            )
+        ).scalar_one()
+        await signup_repo.mark_retry(s, old, "late", datetime.now(UTC))
+        status = (
+            await s.execute(text("SELECT status FROM auth_email_out WHERE id = :id"), {"id": old})
+        ).scalar_one()
+    assert status == "cancelled"
+
+
+class Refuse:
+    async def passed(self, token: str, ip: str | None) -> bool:
+        return False
+
+
+async def test_the_captcha_comes_before_the_taken_address_check(
+    make_client: Client, app_sessionmaker: Sm
+) -> None:
+    taken = f"tk-{uuid4().hex[:10]}"
+    await create_workspace(
+        app_sessionmaker, name="T", slug=taken, admin_email="a@example.com",
+        admin_name="A", admin_password=PASSWORD, seed=False,
+    )  # fmt: skip
+    client = make_client()
+    transport = client._transport
+    assert isinstance(transport, ASGITransport)
+    transport.app.state.captcha = Refuse()  # type: ignore[attr-defined]
+    r = await client.post("/api/v1/auth/signup", json=_form(workspace=taken))
+    assert r.status_code == 403  # not 409: a script without a CAPTCHA learns nothing
+    assert r.json()["error"]["code"] == "captcha_failed"
