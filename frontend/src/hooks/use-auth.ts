@@ -103,7 +103,7 @@ export function useChangePassword() {
 
 /**
  * Password reset by email. Forgot is always 202; reset is 204,
- * 410 (link used or expired) or 422 (password must be 10 to 128 characters).
+ * 410 (link used or expired) or 422 (password too short for the workspace, or over 128 characters).
  */
 export function useForgotPassword() {
   return useMutation({

@@ -15,6 +15,7 @@ import { Button, Field, Skeleton } from "@/components/ui/primitives";
 import { useDevices, useRemoveDevice } from "@/hooks/use-account";
 import { useChangePassword, useCurrentUser, useSignOut } from "@/hooks/use-auth";
 import { ApiError } from "@/lib/api/client";
+import { newPassword, passwordError, PASSWORD_HINT } from "@/lib/password";
 import { ROLE_LABEL } from "@/lib/permissions";
 import { formatDateTime } from "@/lib/utils";
 
@@ -164,10 +165,7 @@ function DevicesCard() {
 const pwSchema = z
   .object({
     current_password: z.string().min(1, "Enter your current password"),
-    new_password: z
-      .string()
-      .min(10, "Use at least 10 characters")
-      .max(128, "Use at most 128 characters"),
+    new_password: newPassword(),
     confirm: z.string(),
   })
   .refine((v) => v.new_password === v.confirm, {
@@ -209,6 +207,9 @@ function PasswordCard({ expired }: { expired: boolean }) {
             for (const d of fields) {
               setError(d.field as "current_password" | "new_password", { message: d.message });
             }
+            // The workspace's own minimum length comes back without a field.
+            const pw = fields.length === 0 ? passwordError(e, "new_password") : null;
+            if (pw) setError("new_password", { message: pw });
             // 403 is "old password is wrong".
             if (e.status === 403 && fields.length === 0) {
               setError("current_password", { message: e.message });
@@ -242,7 +243,7 @@ function PasswordCard({ expired }: { expired: boolean }) {
           label="New password"
           htmlFor="ac-new"
           error={errors.new_password?.message}
-          hint="10 to 128 characters."
+          hint={PASSWORD_HINT}
         >
           <PasswordInput
             id="ac-new"

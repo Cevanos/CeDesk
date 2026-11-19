@@ -15,6 +15,7 @@ import { Button, Field } from "@/components/ui/primitives";
 import { useChangePassword, useCurrentUser, useSetMyStatus, useSignOut } from "@/hooks/use-auth";
 import { ApiError } from "@/lib/api/client";
 import type { AgentStatus } from "@/lib/api/types";
+import { newPassword, passwordError, PASSWORD_HINT } from "@/lib/password";
 import { ROLE_LABEL } from "@/lib/permissions";
 import { cn, initials } from "@/lib/utils";
 
@@ -135,10 +136,7 @@ export function UserMenu() {
 const schema = z
   .object({
     current_password: z.string().min(1, "Enter your current password"),
-    new_password: z
-      .string()
-      .min(10, "Use at least 10 characters")
-      .max(128, "Use at most 128 characters"),
+    new_password: newPassword(),
     confirm: z.string(),
   })
   .refine((v) => v.new_password === v.confirm, {
@@ -180,6 +178,9 @@ function ChangePasswordDialog({ open, onClose }: { open: boolean; onClose: () =>
                 setError(d.field, { message: d.message });
               }
             }
+            // The workspace's own minimum length comes back without a field.
+            const pw = passwordError(e, "new_password");
+            if (pw && e.details.length === 0) setError("new_password", { message: pw });
           }
         },
       },
@@ -210,7 +211,7 @@ function ChangePasswordDialog({ open, onClose }: { open: boolean; onClose: () =>
           label="New password"
           htmlFor="cp-new"
           error={errors.new_password?.message}
-          hint="10 to 128 characters."
+          hint={PASSWORD_HINT}
         >
           <PasswordInput
             id="cp-new"

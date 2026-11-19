@@ -11,13 +11,11 @@ import { PasswordInput, PasswordStrength } from "@/components/auth/password-inpu
 import { Button, Field } from "@/components/ui/primitives";
 import { useResetPassword } from "@/hooks/use-auth";
 import { ApiError } from "@/lib/api/client";
+import { newPassword, PASSWORD_HINT } from "@/lib/password";
 
 const schema = z
   .object({
-    new_password: z
-      .string()
-      .min(10, "Use at least 10 characters")
-      .max(128, "Use at most 128 characters"),
+    new_password: newPassword(),
     confirm: z.string(),
   })
   .refine((v) => v.new_password === v.confirm, {
@@ -125,9 +123,7 @@ export function ResetForm() {
   return (
     <div className="animate-rise">
       <h1 className="text-[1.75rem] font-semibold tracking-tight">Set a new password</h1>
-      <p className="mt-1.5 text-sm text-muted-foreground">
-        Choose a password of 10 to 128 characters.
-      </p>
+      <p className="mt-1.5 text-sm text-muted-foreground">Choose a new password. {PASSWORD_HINT}</p>
 
       {error && (
         <div
