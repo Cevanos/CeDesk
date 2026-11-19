@@ -26,6 +26,12 @@ _ERRORS: dict[int | str, dict[str, Any]] = {
     503: {"description": "Cevanos is down or slow: try again"},
 }
 _TICKET_ERRORS = _ERRORS | {404: {"description": "No such ticket, or another team's"}}
+_UNTRANSLATED: dict[int | str, dict[str, Any]] = {
+    503: {
+        "description": "Cevanos is down or slow, or sent the text back untranslated "
+        '("Cevanos didn\'t translate this. Try again later.")'
+    }
+}
 _ONLY = "Only when Cevanos is connected (`GET /me` `ai`); nothing is stored."
 
 
@@ -58,10 +64,26 @@ class TranslateIn(Body):
     )
 
 
+class ImprovedOut(BaseModel):
+    text: str
+    note: str | None = Field(
+        default=None,
+        description='Show it to the agent when set: "No changes suggested. Try another '
+        'tone." (Cevanos sent the text back as it was; `text` is that text).',
+    )
+
+
 class TranslationOut(BaseModel):
     text: str
     from_: str | None = Field(
         alias="from", serialization_alias="from", description="The language found, e.g. hi."
+    )
+    note: str | None = Field(
+        default=None,
+        description='Show it to the agent when set, instead of "Translated from …": '
+        '"This is already in English." or "Cevanos found nothing to translate in this '
+        'text." (`text` is the text as it was). A text Cevanos should have translated but '
+        "sent back as it was is a 503 instead.",
     )
 
     model_config = {"populate_by_name": True}
@@ -98,30 +120,32 @@ async def suggest(
 
 @router.post(
     "/assist/improve",
-    response_model=TextOut,
+    response_model=ImprovedOut,
     summary="Improve the writing of a reply or note (Cevanos AI)",
-    description="Returns the text rewritten in the tone, for the agent to edit and send. " + _ONLY,
+    description="Returns the text rewritten in the tone, for the agent to edit and send; "
+    "`note` says when nothing changed. " + _ONLY,
     responses=_ERRORS,
 )
 async def improve(
     body: ImproveIn, request: Request, caller: CallerDep, sm: SessionmakerDep
-) -> TextOut:
+) -> ImprovedOut:
     found = await ai.improve(sm, _cevanos(request), caller, text=body.text, tone=body.tone)
-    return TextOut(text=found)
+    return ImprovedOut(text=found.text, note=found.note)
 
 
 @router.post(
     "/assist/translate",
     response_model=TranslationOut,
     summary="Translate a message or a reply (Cevanos AI)",
-    description="Returns the text in `to` and the language it was in. " + _ONLY,
-    responses=_ERRORS,
+    description="Returns the text in `to` and the language it was in; `note` says when "
+    "there was nothing to translate. " + _ONLY,
+    responses=_ERRORS | _UNTRANSLATED,
 )
 async def translate(
     body: TranslateIn, request: Request, caller: CallerDep, sm: SessionmakerDep
 ) -> TranslationOut:
     found = await ai.translate(sm, _cevanos(request), caller, text=body.text, to=body.to)
-    return TranslationOut(text=found.text, from_=found.source)
+    return TranslationOut(text=found.text, from_=found.source, note=found.note)
 
 
 class AiNumbersOut(BaseModel):

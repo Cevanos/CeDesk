@@ -3,6 +3,26 @@
 `openapi.json` next to this file is the API as served (`uv run cedesk openapi`). Every
 route is under `/api/v1`. Breaking changes only come in v2 (md 2B). Newest first.
 
+## 2026-11-19: AI improve and translate say when Cevanos changed nothing
+
+Additive: one new field on each answer. No migration. Found testing the AI features
+against the real Cevanos: every translation came back untranslated but was shown as
+"Translated from hi by AI", and "Shorter" never changed a reply, with no word to the
+agent. The fix itself is Cevanos's (reported to them); this stops CeDesk misleading the
+agent meanwhile.
+
+- **`POST /assist/improve`** answers `{text, note}`. `note` is null, or "No changes
+  suggested. Try another tone." when Cevanos sent the text back as it was (spaces
+  aside). Show it.
+- **`POST /assist/translate`** answers `{text, from, note}`:
+  - Cevanos found another language but sent the text back untranslated: **503**
+    "Cevanos didn't translate this. Try again later." (was a 200 with the same text);
+  - the text is already in `to` (`from` and `to` are the same language, `en` = `en-GB`):
+    200 with `note` "This is already in English." (or "…in that language.");
+  - Cevanos found no language (e.g. "ORD-1042"): 200 with `note` "Cevanos found
+    nothing to translate in this text.";
+  - with a `note`, show it instead of "Translated from …".
+
 ## 2026-11-19: Assignee pickers can tell who takes tickets; the refusal says who and why
 
 Additive: two new fields. No migration. Found on staging: the New ticket form's Assignee
