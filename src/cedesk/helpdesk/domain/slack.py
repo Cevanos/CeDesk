@@ -10,8 +10,10 @@
 
 Side conversations in Slack (md X5), the `slack` app: a Slack bot of the workspace's own.
 - An Admin makes a Slack app (scopes chat:write, channels:history, groups:history,
-  users:read; events message.channels and message.groups), installs it in Slack, and gives
-  CeDesk the bot token (xoxb-...) and the signing secret. Both are sealed together.
+  users:read, files:read; events message.channels and message.groups), installs it in
+  Slack, and gives CeDesk the bot token (xoxb-...) and the signing secret. Both are sealed
+  together. files:read only reads a shared file's name (files.info), when Slack's event
+  doesn't carry it; the file itself is never fetched.
 - An agent starts a side conversation in a channel the bot is in: the bot posts the
   agent's message there, and the thread is the side conversation.
 - Slack sends each message in the thread to the events URL. Its signature (HMAC-SHA256 of
@@ -19,8 +21,10 @@ Side conversations in Slack (md X5), the `slack` app: a Slack bot of the workspa
   before anything is read. A person's reply in the thread comes back to the ticket (with
   a photo or a file: its text and a "[file: name]" line per file; the file itself isn't
   fetched); a bot's message (ours included), an edit, a delete or a join is ignored.
-- Slack's markup in a reply is made readable: <@U123> becomes @name (or @U123),
-  <https://x|label> becomes "label (https://x)", and &lt; &gt; &amp; are unescaped.
+- Slack's markup in a reply is made readable: <@U123> becomes @name (the replier's and
+  the mentioned people's names are asked for; @U123 if Slack doesn't say in time),
+  <https://x|label> becomes "label (https://x)" (just https://x when the label is the
+  address again), and &lt; &gt; &amp; are unescaped.
 """
 
 import hashlib
@@ -189,13 +193,28 @@ def signature_ok(
 
 
 @dataclass(frozen=True)
+class SlackFile:
+    """A file shared with a reply. Slack sometimes sends only its id (`file_access:
+    check_file_info`); the name then comes from files.info (live, Phase 3 retest: a photo
+    showed as "[file: unnamed]")."""
+
+    id: str | None
+    name: str | None
+
+
+@dataclass(frozen=True)
 class ThreadReply:
     channel: str
     thread_ts: str
     ts: str
     user: str
     text: str  # with Slack's markup; `reply_body` makes it readable
-    files: tuple[str, ...] = ()  # "[file: name]" lines
+    files: tuple[SlackFile, ...] = ()
+
+    @property
+    def unnamed(self) -> list[str]:
+        """The ids of the files Slack sent without a name, each once."""
+        return list(dict.fromkeys(f.id for f in self.files if f.name is None and f.id))
 
 
 def _unescape(text: str) -> str:
@@ -212,6 +231,24 @@ FILES_MAX = 20  # "[file: ...]" lines of one reply
 FILE_NAME_MAX = 200
 
 
+def _same_place(url: str, label: str) -> bool:
+    """Whether a link's label is just its address: Slack labels a pasted link with the
+    address minus its scheme (<https://example.com/logs|example.com/logs>, or
+    <mailto:a@b.example|a@b.example>), which read "example.com/logs (https://...)" twice
+    (live, Phase 3 retest)."""
+    bare = url.split(":", 1)[1].removeprefix("//")
+    return label.rstrip("/") in (url.rstrip("/"), bare.rstrip("/"))
+
+
+def mentioned(text: str) -> list[str]:
+    """The Slack ids of the people mentioned (<@U123>), in order, each once."""
+    found = []
+    for markup in _MARKUP.finditer(text):
+        if (mention := _MENTION.match(markup.group(1))) and mention.group(1) not in found:
+            found.append(mention.group(1))
+    return found
+
+
 def readable(text: str, names: Mapping[str, str] | None = None) -> str:
     """Slack's message markup as plain text: <@U123> -> @name (if known, else @U123),
     <https://x|label> -> "label (https://x)", <https://x> -> https://x, <#C1|name> ->
@@ -226,7 +263,9 @@ def readable(text: str, names: Mapping[str, str] | None = None) -> str:
             return "@" + (known.get(user) or user)
         if link := _LINK.match(inner):
             url, label = link.group(1), (link.group(2) or "").strip()
-            return f"{label} ({url})" if label and label != url else url
+            if label and _same_place(url, label):  # Slack's own label: the address again
+                return label if url.startswith("mailto:") else url
+            return f"{label} ({url})" if label else url
         if ref := _CHANNEL_REF.match(inner):
             return "#" + ref.group(1)
         if special := _SPECIAL.match(inner):
@@ -236,17 +275,31 @@ def readable(text: str, names: Mapping[str, str] | None = None) -> str:
     return _unescape(_MARKUP.sub(one, text))
 
 
-def _file_lines(files: Any) -> list[str]:
+_FILE_ID = re.compile(r"^F[A-Z0-9]{2,40}$")
+
+
+def file_name(item: Any) -> str | None:
+    """A Slack file object's name (or title), cut to FILE_NAME_MAX; None if it has none."""
+    if not isinstance(item, dict):
+        return None
+    name = item.get("name") or item.get("title")
+    shown = name.strip()[:FILE_NAME_MAX] if isinstance(name, str) else ""
+    return shown or None
+
+
+def _files(files: Any) -> tuple[SlackFile, ...]:
     if not isinstance(files, list):
-        return []
-    lines = []
+        return ()
+    found = []
     for item in files[:FILES_MAX]:
         if not isinstance(item, dict):
             continue
-        name = item.get("name") or item.get("title")
-        shown = str(name).strip()[:FILE_NAME_MAX] if isinstance(name, str) else ""
-        lines.append(f"[file: {shown or 'unnamed'}]")
-    return lines
+        file_id = item.get("id")
+        found.append(SlackFile(
+            file_id if isinstance(file_id, str) and _FILE_ID.match(file_id) else None,
+            file_name(item),
+        ))  # fmt: skip
+    return tuple(found)
 
 
 def thread_reply(payload: Any) -> ThreadReply | None:
@@ -262,8 +315,8 @@ def thread_reply(payload: Any) -> ThreadReply | None:
     subtype = event.get("subtype")
     if subtype not in (None, "thread_broadcast", FILE_SHARE) or event.get("bot_id"):
         return None
-    if subtype == FILE_SHARE and event.get("text") is None:
-        event = {**event, "text": ""}  # a file with no words
+    if event.get("text") is None and (subtype == FILE_SHARE or event.get("files")):
+        event = {**event, "text": ""}  # a file with no words (Slack now sends no subtype)
     fields = [event.get(k) for k in ("channel", "thread_ts", "ts", "user", "text")]
     if not all(isinstance(v, str) for v in fields):
         return None
@@ -272,13 +325,23 @@ def thread_reply(payload: Any) -> ThreadReply | None:
         return None
     if not _TS.match(thread_ts) or not _TS.match(ts):
         return None
-    files = tuple(_file_lines(event.get("files")))
-    return ThreadReply(channel_id, thread_ts, ts, user[:40], text, files)
+    return ThreadReply(channel_id, thread_ts, ts, user[:40], text, _files(event.get("files")))
 
 
-def reply_body(reply: ThreadReply, names: Mapping[str, str] | None = None) -> str:
-    """What is saved on the side conversation: the readable text, then the file lines."""
-    return "\n".join([readable(reply.text, names).strip(), *reply.files]).strip()
+def reply_body(
+    reply: ThreadReply,
+    names: Mapping[str, str] | None = None,
+    file_names: Mapping[str, str] | None = None,
+) -> str:
+    """What is saved on the side conversation: the readable text, then a "[file: name]"
+    line per file ("[file]" when neither the event nor files.info said its name).
+    `names`: Slack id -> name of the people mentioned; `file_names`: file id -> name."""
+    known = file_names or {}
+    lines = []
+    for f in reply.files:
+        name = f.name or (known.get(f.id) if f.id else None)
+        lines.append(f"[file: {name}]" if name else "[file]")
+    return "\n".join([readable(reply.text, names).strip(), *lines]).strip()
 
 
 def message_key(channel_id: str, ts: str) -> str:
@@ -310,8 +373,14 @@ def api_problem(data: Any, where: str) -> tuple[str, bool] | None:
         return "Slack refused the bot token: install the Slack app again.", True
     if error == "not_in_channel":
         return f"The CeDesk bot isn't in {where}: type /invite @<your bot> there first.", True
-    if error in ("channel_not_found", "is_archived"):
-        return f"Slack has no open channel {where} the bot can see.", True
+    if error == "channel_not_found":  # also a private channel the bot wasn't invited to
+        return (
+            f"Slack has no open channel {where} the bot can see. If it's a private "
+            "channel, invite the bot there first: type /invite @<your bot> in it.",
+            True,
+        )
+    if error == "is_archived":
+        return f"Slack channel {where} is archived.", True
     if error == "ratelimited":
         return "Slack is busy; try again in a minute.", False
     return f"Slack refused it ({error[:60]}).", True
