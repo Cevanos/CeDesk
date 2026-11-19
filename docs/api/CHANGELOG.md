@@ -3,6 +3,22 @@
 `openapi.json` next to this file is the API as served (`uv run cedesk openapi`). Every
 route is under `/api/v1`. Breaking changes only come in v2 (md 2B). Newest first.
 
+## 2026-11-19: Calendly: a booking link is taken as the Admin copies it
+
+No route or field changed. No migration. Found testing the Calendly app with a real
+Calendly account.
+
+- **Fixed:** `PUT /apps/calendly` refused the link as the browser's address bar shows it
+  once the page has loaded (`https://calendly.com/acme/30min?month=2026-11`), with
+  `www.`, or without `https://`, and Calendly's one-off links
+  (`https://calendly.com/d/<code>/<event>`). These are now accepted and saved as
+  `https://calendly.com/<path>`: the query, a `#...` and a trailing slash are dropped, so
+  `/book` only ever carries the page.
+- Still a 422: http, another host (`calendly.com.evil.com`), a user or a port, a path
+  longer than `<you>/<event>`. The message now says where to get the link: "Give your
+  Calendly booking link: on Calendly, use the event's Copy link, e.g.
+  https://calendly.com/acme/30min."
+
 ## 2026-11-19: Slack: alerts say why a webhook stopped working; side conversation replies read better
 
 No route or field changed. No migration. Found testing both Slack apps against a real
