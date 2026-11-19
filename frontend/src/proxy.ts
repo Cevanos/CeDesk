@@ -15,13 +15,14 @@ import { safeNext } from "@/lib/safe-next";
  * passes it to our layout.
  */
 const SESSION_COOKIE = "cdesk_session";
-const AUTH_PAGES = ["/login", "/forgot-password", "/reset-password"];
+const AUTH_PAGES = ["/login", "/forgot-password", "/reset-password", "/signup"];
 const isDev = process.env.NODE_ENV !== "production";
 
 export function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
   const nonce = makeNonce();
-  const csp = buildCsp(nonce, isDev);
+  // Cloudflare Turnstile is allowed on the sign-up page only (docs/adr/0003).
+  const csp = buildCsp(nonce, isDev, { turnstile: pathname === "/signup" });
 
   const withCsp = (res: NextResponse) => {
     res.headers.set("Content-Security-Policy", csp);

@@ -4,6 +4,13 @@ Notable changes are listed here. The format follows [Keep a Changelog](https://k
 
 ## [Unreleased]
 
+### Added (self-service sign-up)
+
+- Create a workspace from the sign-in page (`/signup`): workspace name and address (suggested from the name), your name, email and password, then a 6 digit emailed code with resend countdown. Ends on `/login?workspace=<address>` with the address filled in. Everything is hidden when the server has sign-up off (or answers an error).
+- Sign-in reads `?workspace=` and prefers it over the remembered workspace.
+- Cloudflare Turnstile CAPTCHA when the server gives a site key. The CSP is widened for it on `/signup` only (ADR 0003).
+- Proxy: `auth/signup-config`, `auth/signup`, `auth/signup/verify` and `auth/signup/resend` are public; the last three are rate limited. `signup` is a reserved workspace address.
+
 ### Fixed
 
 - Settings > Roles, Apps, API keys, Webhooks, Security, Privacy, Audit log and Plan & retention (and Demo data) no longer show "Not found": their API areas were missing from the proxy allow-list.

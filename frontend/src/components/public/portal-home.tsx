@@ -50,7 +50,10 @@ export function PortalHome() {
       </div>
     );
   }
-  if (isUnauthorized(tickets.error)) return <PortalSignIn />;
+  if (isUnauthorized(tickets.error)) {
+    // Had a list before = was signed in and got signed out: say why (e.g. domain list changed).
+    return <PortalSignIn notice={tickets.data ? publicErrorMessage(tickets.error) : undefined} />;
+  }
   if (tickets.isError) {
     return (
       <p role="alert" className="mx-auto max-w-xl rounded-xl bg-danger-soft p-4 text-sm text-danger">

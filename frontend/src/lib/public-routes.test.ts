@@ -17,6 +17,7 @@ describe("isPublicPage", () => {
   it.each([
     "/",
     "/login",
+    "/signup",
     "/sso/other",
     "/tickets",
     "/tickets/abc",

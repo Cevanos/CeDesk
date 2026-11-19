@@ -11,6 +11,7 @@ import { z } from "zod";
 import { PasswordInput } from "@/components/auth/password-input";
 import { Button, Field, Input } from "@/components/ui/primitives";
 import { useSignIn, useSsoInfo, useTwoFactorSignIn } from "@/hooks/use-auth";
+import { useSignupConfig } from "@/hooks/use-signup";
 import { ApiError } from "@/lib/api/client";
 import type { SignInResponse } from "@/lib/api/types";
 import { safeNext } from "@/lib/utils";
@@ -57,6 +58,9 @@ export function LoginForm() {
   const params = useSearchParams();
   const signIn = useSignIn();
   const twoFactor = useTwoFactorSignIn();
+  const signup = useSignupConfig();
+  // A workspace just created (or linked to) fills the field and beats the remembered one.
+  const fromUrl = params.get("workspace")?.trim().toLowerCase() ?? "";
   // After a correct password the page asks for the code (the proxy holds the token).
   const [step, setStep] = useState<"password" | "code">("password");
   const [recovery, setRecovery] = useState(false);
@@ -76,7 +80,7 @@ export function LoginForm() {
   } = useForm<Values>({
     resolver: zodResolver(schema),
     defaultValues: {
-      workspace: process.env.NEXT_PUBLIC_DEFAULT_WORKSPACE ?? "",
+      workspace: fromUrl || (process.env.NEXT_PUBLIC_DEFAULT_WORKSPACE ?? ""),
       email: "",
       password: "",
     },
@@ -88,6 +92,10 @@ export function LoginForm() {
 
   // Remember the workspace (not the password) on this device.
   useEffect(() => {
+    if (fromUrl) {
+      setFocus("email");
+      return;
+    }
     try {
       const saved = localStorage.getItem(WS_KEY);
       if (saved) {
@@ -97,7 +105,7 @@ export function LoginForm() {
     } catch {
       /* storage blocked: fine */
     }
-  }, [setValue, setFocus]);
+  }, [setValue, setFocus, fromUrl]);
 
   const onSubmit = handleSubmit((v) => {
     signIn.mutate(v, {
@@ -301,6 +309,15 @@ export function LoginForm() {
           </a>
         )}
       </form>
+
+      {signup.data?.enabled === true && (
+        <p className="mt-6 text-center text-sm text-muted-foreground">
+          New to CDesk?{" "}
+          <Link href="/signup" className="font-medium text-primary-ink hover:underline">
+            Create a workspace
+          </Link>
+        </p>
+      )}
 
       <p className="mt-6 text-center text-xs text-muted-foreground">
         After 10 wrong tries an account is locked for 15 minutes. An admin can unlock it.

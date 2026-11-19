@@ -53,6 +53,7 @@ export function PortalTicketPage() {
   if (isUnauthorized(ticket.error)) {
     return (
       <PortalSignIn
+        notice={ticket.data ? publicErrorMessage(ticket.error) : undefined}
         title="Sign in to see your ticket"
         intro="Enter the email address you wrote to us with. We'll send a 6-digit code to it."
       />
@@ -108,8 +109,15 @@ export function PortalTicketPage() {
 function TicketDetails({ ws, t }: { ws: string; t: PortalTicket }) {
   const types = usePortalTicketTypes(ws);
   const type = (types.data ?? []).find((x) => (t.type_id ? x.id === t.type_id : x.name === t.type_name));
+  // The form's order first (the type's field list), anything left over last.
+  const order = (type?.fields ?? []).map((f) => f.key);
+  const rank = (k: string) => {
+    const i = order.indexOf(k);
+    return i === -1 ? order.length : i;
+  };
   const rows = Object.entries(t.fields ?? {})
     .filter(([, v]) => v !== null && v !== undefined && String(v).trim() !== "")
+    .sort(([a], [b]) => rank(a) - rank(b))
     .map(([key, v]) => ({
       key,
       label: type?.fields.find((f) => f.key === key)?.label ?? key,

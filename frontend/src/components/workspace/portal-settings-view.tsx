@@ -37,6 +37,7 @@ function PortalBody({ saved }: { saved: PortalSettings }) {
   const [csat, setCsat] = useState(saved.csat_survey);
   const [form, setForm] = useState(saved.web_form);
   const [errs, setErrs] = useState<Record<string, string>>({});
+  const [tagKey, setTagKey] = useState(0);
 
   const dirty =
     csat !== saved.csat_survey ||
@@ -58,18 +59,25 @@ function PortalBody({ saved }: { saved: PortalSettings }) {
         </p>
         <Card className="mt-3 p-4">
           <TagInput
+            key={tagKey}
             label="Allowed email domains"
             tags={domains}
             placeholder="example.com"
             transform={cleanDomain}
             validate={validateDomain}
-            onChange={setDomains}
+            onChange={(d) => {
+              setDomains(d);
+              setErrs((x) => ({ ...x, allowed_domains: "" }));
+            }}
           />
           {errs.allowed_domains && (
             <p role="alert" className="mt-1 text-xs text-danger">
               {errs.allowed_domains}
             </p>
           )}
+          <p className="mt-2 text-xs text-muted-foreground">
+            Customers signed in with other emails are signed out when you save.
+          </p>
         </Card>
       </section>
 
@@ -107,6 +115,7 @@ function PortalBody({ saved }: { saved: PortalSettings }) {
             setCsat(saved.csat_survey);
             setForm(saved.web_form);
             setErrs({});
+            setTagKey((k) => k + 1); // remounts the domain box: drops typed text and its error
           }}
         >
           Discard
@@ -162,6 +171,7 @@ function ToggleRow({
       <Switch
         checked={checked}
         onChange={onChange}
+        label={title}
         labelledBy={`${id}-l`}
         describedBy={`${id}-d`}
       />

@@ -16,6 +16,7 @@ const AGENT_AREAS = new Set([
   "reports",
   "reset-password",
   "settings",
+  "signup",
   "sso",
   "tickets",
 ]);

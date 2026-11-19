@@ -48,6 +48,21 @@ describe("route guard", () => {
   });
 });
 
+describe("sign-up page", () => {
+  it("is open to signed-out visitors and redirects a signed-in agent", () => {
+    expect(proxy(req("/signup")).status).toBe(200);
+    const res = proxy(req("/signup", "cdesk_session=t"));
+    expect(new URL(res.headers.get("location") ?? "").pathname).toBe("/tickets");
+  });
+
+  it("allows Turnstile on /signup only", () => {
+    const on = proxy(req("/signup")).headers.get("content-security-policy") ?? "";
+    const off = proxy(req("/login")).headers.get("content-security-policy") ?? "";
+    expect(on).toContain("challenges.cloudflare.com");
+    expect(off).not.toContain("cloudflare");
+  });
+});
+
 describe("content security policy", () => {
   it("sets a nonce-based CSP on every response", () => {
     for (const res of [proxy(req("/tickets", "cdesk_session=t")), proxy(req("/tickets"))]) {

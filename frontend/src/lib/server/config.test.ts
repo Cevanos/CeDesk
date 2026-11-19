@@ -11,6 +11,20 @@ describe("proxy path classes", () => {
     expect(isPublicPath("portal/acme/session")).toBe(true);
   });
 
+  it("opens the four sign-up calls without a session and rate limits all but the config", () => {
+    for (const p of [
+      "auth/signup-config",
+      "auth/signup",
+      "auth/signup/verify",
+      "auth/signup/resend",
+    ])
+      expect(isPublicPath(p)).toBe(true);
+    for (const p of ["auth/signup", "auth/signup/verify", "auth/signup/resend"])
+      expect(isRateLimitedPath(p)).toBe(true);
+    expect(isRateLimitedPath("auth/signup-config")).toBe(false);
+    expect(isPublicPath("auth/signup/other")).toBe(false);
+  });
+
   it("keeps every other portal and agent route behind a token", () => {
     expect(isPublicPath("portal/tickets")).toBe(false);
     expect(isPublicPath("portal/sign-out")).toBe(false);

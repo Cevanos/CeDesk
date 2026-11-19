@@ -477,8 +477,8 @@ export interface Article {
   title: string;
   body: string;
   status: ArticleStatus;
-  helpful_yes?: number;
-  helpful_no?: number;
+  helpful_count?: number;
+  not_helpful_count?: number;
   updated_at?: string | null;
 }
 

@@ -14,6 +14,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 
 import { Markdown } from "@/components/public/markdown";
+import { useConfirm } from "@/components/ui/confirm";
 import { Dialog } from "@/components/ui/overlay";
 import {
   Badge,
@@ -57,6 +58,7 @@ export function HelpCenterView() {
   const delArticle = useDeleteArticle();
   const delCategory = useDeleteArticleCategory();
   const saveArticle = useSaveArticle();
+  const { ask, dialog } = useConfirm();
 
   const [category, setCategory] = useState(ALL);
   const [status, setStatus] = useState("");
@@ -77,6 +79,7 @@ export function HelpCenterView() {
 
   return (
     <div className="space-y-4">
+      {dialog}
       <p className="text-sm text-muted-foreground">
         Articles customers find on your public help center. Only published articles are visible;
         drafts stay private.
@@ -106,19 +109,20 @@ export function HelpCenterView() {
                   active={category === c.id}
                   onSelect={() => setCategory(c.id)}
                   onEdit={() => setEditingCategory(c)}
-                  onDelete={() => {
-                    if (
-                      confirm(
-                        `Delete category “${c.name}”? Its ${countIn(c.id)} articles stay, without a category.`,
-                      )
-                    )
-                      delCategory.mutate(c.id, {
-                        onSuccess: () => {
-                          if (category === c.id) setCategory(ALL);
-                          toast.success("Category deleted");
-                        },
-                      });
-                  }}
+                  onDelete={() =>
+                    ask({
+                      title: "Delete category?",
+                      message: `“${c.name}” will be deleted. Its ${countIn(c.id)} articles stay, without a category.`,
+                      confirmLabel: "Delete",
+                      run: () =>
+                        delCategory.mutate(c.id, {
+                          onSuccess: () => {
+                            if (category === c.id) setCategory(ALL);
+                            toast.success("Category deleted");
+                          },
+                        }),
+                    })
+                  }
                 />
               ))}
             </ul>
@@ -150,7 +154,7 @@ export function HelpCenterView() {
             <Card className="overflow-hidden">
               <ul className="divide-y divide-border">
                 {shown.map((a) => {
-                  const pct = helpfulPercent(a.helpful_yes, a.helpful_no);
+                  const pct = helpfulPercent(a.helpful_count, a.not_helpful_count);
                   return (
                     <li key={a.id} className="flex flex-wrap items-center gap-3 px-4 py-3.5">
                       <div className="min-w-0 flex-1 basis-60">
@@ -165,7 +169,7 @@ export function HelpCenterView() {
                           {a.updated_at && ` · Updated ${timeAgo(a.updated_at)}`}
                         </div>
                       </div>
-                      <Helpful yes={a.helpful_yes ?? 0} no={a.helpful_no ?? 0} pct={pct} />
+                      <Helpful yes={a.helpful_count ?? 0} no={a.not_helpful_count ?? 0} pct={pct} />
                       <Button
                         size="sm"
                         variant="outline"
@@ -195,12 +199,17 @@ export function HelpCenterView() {
                         variant="ghost"
                         disabled={delArticle.isPending}
                         aria-label={`Delete ${a.title}`}
-                        onClick={() => {
-                          if (confirm(`Delete article “${a.title}”?`))
-                            delArticle.mutate(a.id, {
-                              onSuccess: () => toast.success("Article deleted"),
-                            });
-                        }}
+                        onClick={() =>
+                          ask({
+                            title: "Delete article?",
+                            message: `“${a.title}” will be removed from the help center.`,
+                            confirmLabel: "Delete",
+                            run: () =>
+                              delArticle.mutate(a.id, {
+                                onSuccess: () => toast.success("Article deleted"),
+                              }),
+                          })
+                        }
                       >
                         <Trash2 className="size-3.5" />
                       </Button>

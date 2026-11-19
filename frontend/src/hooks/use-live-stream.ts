@@ -28,6 +28,7 @@ export const PORTAL_EVENTS = [
   "message.created",
   "reset",
   "end",
+  "signed_out",
 ] as const;
 
 export type StreamEvent = { name: string; data: Record<string, unknown> };

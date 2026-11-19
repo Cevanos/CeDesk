@@ -22,8 +22,12 @@ export function ContactForm() {
   const [values, setValues] = useState<FieldValues>({});
   const [errs, setErrs] = useState<Record<string, string>>({});
   const [done, setDone] = useState(false);
-  const set = (k: keyof typeof v) => (e: { target: { value: string } }) =>
+  const set = (k: keyof typeof v) => (e: { target: { value: string } }) => {
     setV((x) => ({ ...x, [k]: e.target.value }));
+    clearErr(k);
+  };
+  const clearErr = (k: string) =>
+    setErrs((x) => (x[k] || x._form ? { ...x, [k]: "", _form: "" } : x));
 
   const typeFields = (form.data?.types ?? []).find((t) => t.id === v.type_id)?.fields ?? [];
 
@@ -142,7 +146,10 @@ export function ContactForm() {
             fields={typeFields}
             values={values}
             errors={errs}
-            onChange={(k, val) => setValues((x) => ({ ...x, [k]: val }))}
+            onChange={(k, val) => {
+              setValues((x) => ({ ...x, [k]: val }));
+              clearErr(k);
+            }}
           />
           <Field label="Message" htmlFor="cf-message" error={errs.message}>
             <Textarea

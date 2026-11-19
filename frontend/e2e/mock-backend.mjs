@@ -64,11 +64,19 @@ async function readJson(req) {
   return raw ? JSON.parse(raw) : {};
 }
 
+let signup = null;
+const signupAck = () => ({
+  signup_id: "00000000-0000-4000-8000-000000000001",
+  code_expires_at: new Date(Date.now() + 600_000).toISOString(),
+  resend_after: new Date(Date.now() + 60_000).toISOString(),
+});
+
 createServer(async (req, res) => {
   const url = new URL(req.url ?? "/", `http://localhost:${PORT}`);
   if (url.pathname === "/health") return send(res, 200, { ok: true });
   if (url.pathname === "/__reset" && req.method === "POST") {
     tickets = seedTickets();
+    signup = null;
     return send(res, 200, { ok: true });
   }
 
@@ -90,6 +98,24 @@ createServer(async (req, res) => {
     });
   }
   if (area === "auth" && id === "sign-out") return send(res, 204);
+
+  // Self-service sign-up. The code is always 123456; no CAPTCHA (site key null).
+  if (area === "auth" && id === "signup-config" && method === "GET")
+    return send(res, 200, { enabled: true, captcha_site_key: null });
+  if (area === "auth" && id === "signup" && !sub && method === "POST") {
+    const body = await readJson(req);
+    if (body.workspace === "taken") return fail(res, 409, "slug_taken", "That address is taken.");
+    signup = { workspace: body.workspace };
+    return send(res, 202, signupAck());
+  }
+  if (area === "auth" && id === "signup" && sub === "verify" && method === "POST") {
+    const body = await readJson(req);
+    if (!signup) return fail(res, 410, "signup_expired", "Start again.");
+    if (body.code !== "123456") return fail(res, 422, "bad_code", "Wrong code.");
+    return send(res, 200, { workspace: body.workspace ?? signup.workspace });
+  }
+  if (area === "auth" && id === "signup" && sub === "resend" && method === "POST")
+    return send(res, 202, signupAck());
 
   if (req.headers.authorization !== `Bearer ${TOKEN}`) {
     return fail(res, 401, "NotSignedIn", "Please sign in.");

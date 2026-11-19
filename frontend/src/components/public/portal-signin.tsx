@@ -14,9 +14,12 @@ import { useCodeSignIn, useRequestCode, useWorkspaceSlug } from "@/hooks/use-por
 export function PortalSignIn({
   title = "Sign in to your tickets",
   intro = "Enter your email and we'll send you a 6-digit code. No password needed.",
+  notice,
 }: {
   title?: string;
   intro?: string;
+  /** Why the customer was signed out (the server's 401 message). */
+  notice?: string;
 }) {
   const ws = useWorkspaceSlug();
   const request = useRequestCode(ws);
@@ -51,6 +54,11 @@ export function PortalSignIn({
       <h1 className="mt-5 text-2xl font-semibold tracking-tight">
         {step === "email" ? title : "Enter your code"}
       </h1>
+      {notice && step === "email" && (
+        <p role="status" className="mt-3 rounded-lg bg-warning-soft px-3 py-2 text-sm">
+          {notice}
+        </p>
+      )}
       <p className="mt-2 text-sm text-muted-foreground">
         {step === "email" ? (
           intro

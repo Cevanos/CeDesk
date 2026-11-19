@@ -40,3 +40,31 @@ test.describe("authentication", () => {
     await expect(page.getByRole("heading", { name: "Page not found" })).toBeVisible();
   });
 });
+
+test.describe("self-service sign-up", () => {
+  test("create a workspace, confirm the code, then sign in with it prefilled", async ({ page }) => {
+    await page.goto("/login");
+    await page.getByRole("link", { name: "Create a workspace" }).click();
+    await expect(page).toHaveURL(/\/signup$/);
+
+    await page.getByLabel("Workspace name").fill("Acme Support");
+    await expect(page.getByLabel("Workspace address")).toHaveValue("acme-support");
+    await page.getByLabel("Workspace address").fill("acme");
+    await page.getByLabel("Your name").fill("Ada Lovelace");
+    await page.getByLabel("Email").fill("ada@example.com");
+    await page.getByLabel("Password", { exact: true }).fill("correct-horse");
+    await page.getByRole("button", { name: "Create workspace" }).click();
+
+    await expect(page.getByRole("heading", { name: "Check your email" })).toBeVisible();
+    await expect(page.getByLabel("6 digit code")).toBeFocused();
+    await page.getByLabel("6 digit code").fill("123 456");
+    await page.getByRole("button", { name: "Verify" }).click();
+
+    await expect(page).toHaveURL(/\/login\?workspace=acme/);
+    await expect(page.getByLabel("Workspace")).toHaveValue("acme");
+    await page.getByLabel("Email").fill("ada@example.com");
+    await page.getByLabel("Password", { exact: true }).fill("correct-horse");
+    await page.getByRole("button", { name: "Sign in" }).click();
+    await expect(page).toHaveURL(/\/tickets/);
+  });
+});

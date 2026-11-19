@@ -24,6 +24,22 @@ describe("buildCsp", () => {
   });
 });
 
+describe("buildCsp on the sign-up page", () => {
+  const on = buildCsp("abc", false, { turnstile: true });
+  const off = buildCsp("abc", false);
+
+  it("allows Cloudflare Turnstile for scripts and frames", () => {
+    expect(on).toMatch(/script-src[^;]*https:\/\/challenges\.cloudflare\.com/);
+    expect(on).toContain("frame-src https://challenges.cloudflare.com");
+    expect(on).toContain("'nonce-abc'");
+  });
+
+  it("keeps every other page strict", () => {
+    expect(off).not.toContain("cloudflare");
+    expect(off).toContain("frame-src 'none'");
+  });
+});
+
 describe("makeNonce", () => {
   it("is unique per call", () => expect(makeNonce()).not.toBe(makeNonce()));
 });

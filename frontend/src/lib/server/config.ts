@@ -48,6 +48,10 @@ export const RATE_LIMITED_PATHS = new Set([
   "auth/reset-password",
   // Trades an SSO session token for cookies; guessing tokens must be slow.
   "auth/sso-session",
+  // Sign-up sends an email and creates a workspace; the code is a 6 digit guess.
+  "auth/signup",
+  "auth/signup/verify",
+  "auth/signup/resend",
 ]);
 export const AUTH_RATE_WINDOW_MS = 60_000;
 export function authRateLimit(): number {
@@ -136,6 +140,11 @@ export const PUBLIC_PATHS = new Set([
   "auth/forgot-password",
   "auth/reset-password",
   "auth/sso-session",
+  // Self-service sign-up: no session exists yet, and none is set by these routes.
+  "auth/signup-config",
+  "auth/signup",
+  "auth/signup/verify",
+  "auth/signup/resend",
 ]);
 
 /** Single sign-on discovery and start only; the IdP's ACS post is not for the browser. */
