@@ -164,15 +164,40 @@ async def insert_session(
 
 
 async def live_session(session: AsyncSession, token_hash: bytes) -> RowMapping | None:
+    """The session and its customer, with the portal's email domains (in the same query,
+    so every portal request checks them at no extra cost)."""
     result = await session.execute(
         text(
-            "SELECT s.id AS session_id, s.contact_id, c.email, c.name "
+            "SELECT s.id AS session_id, s.contact_id, c.email, c.name, "
+            "(SELECT allowed_domains FROM hd_portal_settings) AS allowed_domains "
             "FROM hd_portal_session s JOIN hd_contact c ON c.id = s.contact_id "
             "WHERE s.token_hash = :hash AND s.revoked_at IS NULL AND s.expires_at > now()"
         ),
         {"hash": token_hash},
     )
     return result.mappings().first()
+
+
+async def live_sessions(session: AsyncSession) -> Sequence[RowMapping]:
+    """Every portal session still signed in (`id`, `email`), locked: the caller ends the
+    ones whose email the portal no longer allows."""
+    result = await session.execute(
+        text(
+            "SELECT s.id, c.email FROM hd_portal_session s "
+            "JOIN hd_contact c ON c.id = s.contact_id "
+            "WHERE s.revoked_at IS NULL AND s.expires_at > now() FOR UPDATE OF s"
+        )
+    )
+    return result.mappings().all()
+
+
+async def revoke_sessions(session: AsyncSession, session_ids: Sequence[UUID]) -> None:
+    await session.execute(
+        text(
+            "UPDATE hd_portal_session SET revoked_at = now() WHERE id = ANY(CAST(:ids AS uuid[]))"
+        ),
+        {"ids": list(session_ids)},
+    )
 
 
 async def revoke_session(session: AsyncSession, session_id: UUID) -> None:

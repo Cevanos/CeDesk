@@ -65,7 +65,8 @@ class PortalSettingsIn(Body):
     allowed_domains: list[Annotated[str, StringConstraints(max_length=253)]] = Field(
         max_length=50,
         description="Empty: anyone can sign in. Otherwise only these email domains "
-        '(and their subdomains), e.g. ["acme.com"].',
+        '(and their subdomains), e.g. ["acme.com"]. Saving a list signs out, at once, '
+        "customers already signed in with another email.",
     )
     csat_survey: bool = Field(
         default=True, description="Email a 1-5 survey when a ticket is resolved."
