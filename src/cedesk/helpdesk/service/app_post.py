@@ -19,11 +19,14 @@ USER_AGENT = "CeDesk/1 (+apps)"
 
 
 class AppCallError(Exception):
-    """`permanent`: trying again won't help (refused, bad request); otherwise it might."""
+    """`permanent`: trying again won't help (refused, bad request); otherwise it might.
+    `status`: the provider's HTTP answer, when there was one, so a caller can say what was
+    missing (Jira: which issue or project) instead of the general message."""
 
-    def __init__(self, message: str, *, permanent: bool) -> None:
+    def __init__(self, message: str, *, permanent: bool, status: int | None = None) -> None:
         super().__init__(message)
         self.permanent = permanent
+        self.status = status
 
 
 class AppPost:
@@ -66,15 +69,25 @@ class AppPost:
             ) from None
         status = response.status_code
         if status in (401, 403):
-            raise AppCallError(f"{self._label} refused the credentials.", permanent=True)
+            raise AppCallError(
+                f"{self._label} refused the credentials.", permanent=True, status=status
+            )
         if status == 404:
-            raise AppCallError(f"{self._label} has no such thing.", permanent=True)
+            raise AppCallError(
+                f"{self._label} couldn't find what was asked for (404).", permanent=True, status=404
+            )
         if 300 <= status < 400:
-            raise AppCallError(f"{self._label} sent us elsewhere; not followed.", permanent=True)
+            raise AppCallError(
+                f"{self._label} sent us elsewhere; not followed.", permanent=True, status=status
+            )
         if status == 429 or status >= 500:
-            raise AppCallError(f"{self._label} answered {status}; try again.", permanent=False)
+            raise AppCallError(
+                f"{self._label} answered {status}; try again.", permanent=False, status=status
+            )
         if status >= 400:
-            raise AppCallError(f"{self._label} refused the request ({status}).", permanent=True)
+            raise AppCallError(
+                f"{self._label} refused the request ({status}).", permanent=True, status=status
+            )
         if not response.content:
             return None
         try:

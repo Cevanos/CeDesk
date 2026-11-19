@@ -20,6 +20,11 @@ API = "/rest/api/3"
 ISSUE_TYPE = "Task"
 MAX_LINKS = 10  # issues per ticket
 
+# What Jira's 404 means, said plainly (Jira answers 404 too for what the account can't see).
+NO_ISSUE = "Jira has no issue {key}, or the Jira account in Settings > Apps can't see it."
+NO_PROJECT = "Jira has no project {project}, or this account can't see it."
+NO_SITE = "There's no Jira site at {host}. Check the site name."
+
 
 class JiraInputError(ValueError):
     """The message is for the person who typed it."""
@@ -50,14 +55,33 @@ def summary(subject: str, given: str | None) -> str:
     return text[:SUMMARY_MAX]
 
 
+_LINK = re.compile(r"https?://[^\s<>\"]+")
+_LINK_END = ".,;:!?)]}'"  # punctuation after a link ends the sentence, not the link
+
+
+def _line(line: str) -> list[dict[str, Any]]:
+    """One line as Atlassian Document Format text, each http(s) address a real link.
+    Plain text isn't made a link by Jira, so the link back to the ticket couldn't be
+    clicked (live, Phase 3 retest with a real Jira)."""
+    nodes: list[dict[str, Any]] = []
+    at = 0
+    for found in _LINK.finditer(line):
+        url = found.group().rstrip(_LINK_END)
+        start, end = found.start(), found.start() + len(url)
+        if start > at:
+            nodes.append({"type": "text", "text": line[at:start]})
+        nodes.append(
+            {"type": "text", "text": url, "marks": [{"type": "link", "attrs": {"href": url}}]}
+        )
+        at = end
+    if at < len(line):
+        nodes.append({"type": "text", "text": line[at:]})
+    return nodes
+
+
 def _paragraphs(text: str) -> list[dict[str, Any]]:
     """Plain text as Atlassian Document Format: one paragraph per line."""
-    return [
-        {"type": "paragraph", "content": [{"type": "text", "text": line}]}
-        if line
-        else {"type": "paragraph", "content": []}
-        for line in text.splitlines()
-    ]
+    return [{"type": "paragraph", "content": _line(line)} for line in text.splitlines()]
 
 
 def new_issue(
