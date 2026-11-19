@@ -3,10 +3,21 @@
 `openapi.json` next to this file is the API as served (`uv run cedesk openapi`). Every
 route is under `/api/v1`. Breaking changes only come in v2 (md 2B). Newest first.
 
-## 2026-11-19: Jira: a clickable link back to the ticket, and clear "not found" messages
+## 2026-11-19: Jira: a clickable link back to the ticket, and clear "not found" messages; Slack alerts: say why a webhook stopped working
 
 No route or field changed. No migration. Found testing the Jira app against a real Jira
-Cloud site.
+Cloud site, and Slack alerts against a real Slack workspace.
+
+- **Slack alerts, clearer messages** when Slack refuses the webhook. They show in a
+  failed event's `last_error` (`GET /outbox/failed`, Settings > Channels > Failed events),
+  and as the 422 when installing with such a webhook (`PUT /apps/slack_alerts`). Both used
+  to say only "Slack has no such thing.":
+  - 404 (removed in Slack, the Slack app uninstalled, or the channel deleted): "Slack no
+    longer has this webhook: ... Add a new webhook in Slack (Incoming Webhooks) and
+    install Slack alerts with its URL.";
+  - 410 (channel archived): "The webhook's Slack channel is archived. ...";
+  - 401/403 (revoked, or the channel doesn't let apps post): "Slack refused this
+    webhook: ...".
 
 - **Fixed:** the description of an issue made from a ticket ends with "From CeDesk ticket
   T-1042: <link>", but the link was plain text in Jira (Jira doesn't turn text into

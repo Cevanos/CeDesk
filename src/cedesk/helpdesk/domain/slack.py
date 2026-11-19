@@ -61,6 +61,38 @@ def path_of(url: str) -> str:
     return urlsplit(url).path
 
 
+# What Slack's refusal of a webhook post means, said so an Admin knows what to do (live,
+# Phase 3 retest: a webhook removed in Slack showed only "Slack has no such thing."). Slack
+# answers 404 (no_service, channel_not_found) when the webhook was removed, the Slack app
+# uninstalled or the channel deleted; 410 when the channel is archived; 403 when the
+# webhook was revoked or the channel doesn't let apps post.
+WEBHOOK_GONE = (
+    "Slack no longer has this webhook: it was removed in Slack, the Slack app was "
+    "uninstalled, or the channel was deleted. Add a new webhook in Slack (Incoming "
+    "Webhooks) and install Slack alerts with its URL."
+)
+WEBHOOK_ARCHIVED = (
+    "The webhook's Slack channel is archived. Unarchive it in Slack, or install Slack "
+    "alerts with a webhook for another channel."
+)
+WEBHOOK_REFUSED = (
+    "Slack refused this webhook: it was revoked, or the channel doesn't let apps post. "
+    "Add a new webhook in Slack (Incoming Webhooks) and install Slack alerts with its URL."
+)
+
+
+def webhook_problem(status: int | None) -> str | None:
+    """What Slack's answer to a webhook post means for the Admin; None for an answer
+    that says nothing about the webhook (a 5xx, a timeout)."""
+    if status == 404:
+        return WEBHOOK_GONE
+    if status == 410:
+        return WEBHOOK_ARCHIVED
+    if status in (401, 403):
+        return WEBHOOK_REFUSED
+    return None
+
+
 def alerts_for(event: str, payload: dict[str, Any]) -> bool:
     """Whether this outbox event is an Urgent or High ticket to tell the channel about."""
     ticket = payload.get("ticket")

@@ -4,6 +4,7 @@ events alert, the message, and the webhook URL check."""
 import pytest
 
 from cedesk.helpdesk.domain import jira, slack
+from cedesk.helpdesk.domain.delivery import ERROR_MAX
 
 
 def test_jira_keys() -> None:
@@ -109,3 +110,14 @@ def test_a_good_webhook_url() -> None:
     url = "https://hooks.slack.com/services/T000/B000/XXXX"
     assert slack.check_webhook(f"  {url} ") == url
     assert slack.path_of(url) == "/services/T000/B000/XXXX"
+
+
+def test_a_refused_webhook_says_what_happened_and_what_to_do() -> None:
+    """Live retest: a webhook removed in Slack showed only "Slack has no such thing."."""
+    assert slack.webhook_problem(404) == slack.WEBHOOK_GONE
+    assert slack.webhook_problem(410) == slack.WEBHOOK_ARCHIVED
+    assert slack.webhook_problem(403) == slack.webhook_problem(401) == slack.WEBHOOK_REFUSED
+    for other in (None, 400, 429, 500, 503):  # says nothing about the webhook
+        assert slack.webhook_problem(other) is None
+    for said in (slack.WEBHOOK_GONE, slack.WEBHOOK_ARCHIVED, slack.WEBHOOK_REFUSED):
+        assert len(f"slack_alerts: {said}") <= ERROR_MAX  # a failed event keeps all of it
