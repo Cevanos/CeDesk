@@ -197,6 +197,37 @@ async def test_status_and_routing_permissions(client: AsyncClient, app_sessionma
     assert mine["status"] == "offline"
 
 
+async def test_the_assignee_picker_knows_who_takes_tickets(
+    client: AsyncClient, app_sessionmaker: Sm
+) -> None:
+    """Live retest: the Assignee picker offered a light agent and a deactivated member, and
+    the ticket then failed with "That person can't be assigned tickets.", naming neither
+    who nor why."""
+    w = await desk(client, app_sessionmaker, names=("Asha",))
+    token = w["admin"]["Authorization"].split()[1]
+    lee = await add(client, token, "lee@example.com", "light_agent", "Lee")
+    bo = await add(client, token, "bo@example.com", "agent", "Bo")
+    ok(await client.patch(f"/api/v1/members/{bo}", headers=w["admin"], json={"is_active": False}))
+
+    agents = {a["name"]: a for a in ok(await client.get("/api/v1/agents", headers=w["admin"]))}
+    assert {n: agents[n]["assignable"] for n in ("Asha", "Lee", "Bo")} == {
+        "Asha": True, "Lee": False, "Bo": False,
+    }  # fmt: skip
+    assert agents["Asha"]["works_on_team_id"] is None
+
+    body = {"subject": "Parcel", "contact": {"email": "priya@example.com", "name": "Priya"}}
+    said = {}
+    for name, who in (("Lee", lee), ("Bo", bo)):
+        r = await client.post("/api/v1/tickets", headers=w["admin"],
+                              json=body | {"assignee_id": who})  # fmt: skip
+        said[name] = (r.status_code, r.json()["error"]["message"])
+    assert said == {
+        "Lee": (422, "Lee can't be assigned tickets: the Light agent role doesn't reply to "
+                "customers."),
+        "Bo": (422, "Bo is deactivated, so can't be assigned tickets."),
+    }  # fmt: skip
+
+
 async def test_workspace_default_capacity(client: AsyncClient, app_sessionmaker: Sm) -> None:
     w = await desk(client, app_sessionmaker, names=("Asha", "Bilal"))
     h = w["admin"]

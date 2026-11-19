@@ -229,6 +229,9 @@ async def test_a_role_without_reply_takes_no_tickets_and_changes_apply_at_once(
     assert t["assignee_id"] == w["neha"]  # routing skips Ravi
     r = await client.patch(f"{T}/{t['id']}", headers=w["h"], json={"assignee_id": w["ravi"]})
     assert r.status_code == 422
+    assert r.json()["error"]["message"] == (
+        f"Ravi can't be assigned tickets: the {made['name']} role doesn't reply to customers."
+    )
     assert (
         await client.post(
             f"{T}/{t['id']}/messages", headers=ravi, json={"kind": "reply", "body": "Hi"}
@@ -236,7 +239,8 @@ async def test_a_role_without_reply_takes_no_tickets_and_changes_apply_at_once(
     ).status_code == 403
     assert ok(await client.get(f"{T}/{t['id']}", headers=ravi))["view_only_reason"] is None
     agents = ok(await client.get("/api/v1/agents", headers=w["h"]))
-    assert next(a for a in agents if a["id"] == w["ravi"])["status"] is None
+    listed = next(a for a in agents if a["id"] == w["ravi"])
+    assert (listed["status"], listed["assignable"]) == (None, False)  # not in a picker
 
     # The Admin ticks reply: Ravi can reply on his next request, no new sign-in.
     body = {
@@ -284,6 +288,12 @@ async def test_a_scoped_role_only_gets_and_opens_its_own_teams_tickets(
     ravi = await give(client, w, made["id"])
     teams = f"/api/v1/teams/{w['teams']['Billing']}"
     ok(await client.patch(teams, headers=w["h"], json={"member_ids": [w["ravi"]]}))
+
+    # The Assignee picker can tell: he takes tickets, but only Shipping's.
+    listed = {a["id"]: a for a in ok(await client.get("/api/v1/agents", headers=w["h"]))}
+    assert (listed[w["ravi"]]["assignable"], listed[w["ravi"]]["works_on_team_id"]) == (
+        True, w["teams"]["Shipping"],
+    )  # fmt: skip
 
     # Routing skips him for Billing, and nobody can give him a Billing ticket.
     t = await ticket(client, w, "Refund", "Billing")
