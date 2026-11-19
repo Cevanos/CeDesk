@@ -11978,7 +11978,7 @@
           "ai"
         ],
         "summary": "Improve the writing of a reply or note (Cevanos AI)",
-        "description": "Returns the text rewritten in the tone, for the agent to edit and send. Only when Cevanos is connected (`GET /me` `ai`); nothing is stored.",
+        "description": "Returns the text rewritten in the tone, for the agent to edit and send; `note` says when nothing changed. Only when Cevanos is connected (`GET /me` `ai`); nothing is stored.",
         "operationId": "improve_api_v1_assist_improve_post",
         "requestBody": {
           "content": {
@@ -11996,7 +11996,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/TextOut"
+                  "$ref": "#/components/schemas/ImprovedOut"
                 }
               }
             }
@@ -12034,7 +12034,7 @@
           "ai"
         ],
         "summary": "Translate a message or a reply (Cevanos AI)",
-        "description": "Returns the text in `to` and the language it was in. Only when Cevanos is connected (`GET /me` `ai`); nothing is stored.",
+        "description": "Returns the text in `to` and the language it was in; `note` says when there was nothing to translate. Only when Cevanos is connected (`GET /me` `ai`); nothing is stored.",
         "operationId": "translate_api_v1_assist_translate_post",
         "requestBody": {
           "content": {
@@ -12064,7 +12064,7 @@
             "description": "`cevanos_not_connected` (connect Cevanos in Settings), `cevanos_scope_missing` (the key lacks a scope; the message names it) or `cevanos_refused`"
           },
           "503": {
-            "description": "Cevanos is down or slow: try again"
+            "description": "Cevanos is down or slow, or sent the text back untranslated (\"Cevanos didn't translate this. Try again later.\")"
           },
           "422": {
             "description": "Validation Error",
@@ -17721,6 +17721,31 @@
           "text"
         ],
         "title": "ImproveIn"
+      },
+      "ImprovedOut": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note",
+            "description": "Show it to the agent when set: \"No changes suggested. Try another tone.\" (Cevanos sent the text back as it was; `text` is that text)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "text"
+        ],
+        "title": "ImprovedOut"
       },
       "InboundMessageIn": {
         "properties": {
@@ -25046,6 +25071,18 @@
             ],
             "title": "From",
             "description": "The language found, e.g. hi."
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note",
+            "description": "Show it to the agent when set, instead of \"Translated from …\": \"This is already in English.\" or \"Cevanos found nothing to translate in this text.\" (`text` is the text as it was). A text Cevanos should have translated but sent back as it was is a 503 instead."
           }
         },
         "type": "object",
