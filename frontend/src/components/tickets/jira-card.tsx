@@ -14,18 +14,79 @@ import {
   type ExtraProps,
 } from "@/components/tickets/extras-shared";
 import { useConfirm } from "@/components/ui/confirm";
-import { Badge, Button, Input } from "@/components/ui/primitives";
+import { Badge, Button, Input, Textarea } from "@/components/ui/primitives";
 import { useCreateJira, useJira, useLinkJira, useUnlinkJira } from "@/hooks/use-ticket-extras";
 
-function JiraForm({ ticketId, close }: { ticketId: string; close: () => void }) {
+function JiraForm({
+  ticketId,
+  subject,
+  close,
+}: {
+  ticketId: string;
+  subject?: string;
+  close: () => void;
+}) {
   const create = useCreateJira(ticketId);
   const link = useLinkJira(ticketId);
   const [key, setKey] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [summary, setSummary] = useState(subject ?? "");
+  const [description, setDescription] = useState("");
   const [error, setError] = useState<string | null>(null);
   const done = () => {
     toast.success("Jira updated");
     close();
   };
+
+  if (creating)
+    return (
+      <form
+        className="space-y-2"
+        onSubmit={(e) => {
+          e.preventDefault();
+          setError(null);
+          const s = summary.trim();
+          const d = description.trim();
+          create.mutate(
+            { ...(s ? { summary: s } : {}), ...(d ? { description: d } : {}) },
+            { onSuccess: done, onError: (err) => setError(errText(err)) },
+          );
+        }}
+      >
+        <Input
+          value={summary}
+          onChange={(e) => setSummary(e.target.value)}
+          placeholder="Summary"
+          aria-label="Jira issue summary"
+          maxLength={255}
+          className="h-9"
+        />
+        <Textarea
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          placeholder="Description (optional)"
+          aria-label="Jira issue description"
+          rows={4}
+        />
+        <p className="text-xs text-muted-foreground">
+          The customer&apos;s messages aren&apos;t sent. Add what engineering needs.
+        </p>
+        {error && (
+          <p role="alert" className="text-sm text-danger">
+            {error}
+          </p>
+        )}
+        <div className="flex flex-wrap gap-2">
+          <Button size="sm" type="submit" loading={create.isPending}>
+            Create
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => setCreating(false)}>
+            Cancel
+          </Button>
+        </div>
+      </form>
+    );
+
   return (
     <div className="space-y-2">
       <Input
@@ -58,10 +119,9 @@ function JiraForm({ ticketId, close }: { ticketId: string; close: () => void }) 
         <Button
           size="sm"
           variant="outline"
-          loading={create.isPending}
           onClick={() => {
             setError(null);
-            create.mutate({}, { onSuccess: done, onError: (e) => setError(errText(e)) });
+            setCreating(true);
           }}
         >
           Create new issue
@@ -74,7 +134,26 @@ function JiraForm({ ticketId, close }: { ticketId: string; close: () => void }) 
   );
 }
 
-export function JiraCard({ ticketId, canEdit }: ExtraProps) {
+/** The "Jira KAN-5" chip for the ticket header, linking to the first issue. Renders nothing without one. */
+export function JiraHeaderChip({ ticketId }: { ticketId: string }) {
+  const q = useJira(ticketId);
+  const issues = q.data ?? [];
+  const first = issues[0];
+  if (!first) return null;
+  const label = `Jira ${first.key}${issues.length > 1 ? ` +${issues.length - 1}` : ""}`;
+  const title = issues.map((j) => j.key).join(", ");
+  return first.url && /^https?:\/\//i.test(first.url) ? (
+    <a href={first.url} target="_blank" rel="noopener noreferrer" title={title}>
+      <Badge className="hover:underline">
+        {label} <ExternalLink className="size-3" aria-hidden />
+      </Badge>
+    </a>
+  ) : (
+    <Badge title={title}>{label}</Badge>
+  );
+}
+
+export function JiraCard({ ticketId, canEdit, subject }: ExtraProps & { subject?: string }) {
   const q = useJira(ticketId);
   const unlink = useUnlinkJira(ticketId);
   const { ask, dialog } = useConfirm();
@@ -129,7 +208,7 @@ export function JiraCard({ ticketId, canEdit }: ExtraProps) {
           )}
           <div className="flex">
             <AddToggle label="Add Jira issue" disabled={!canEdit}>
-              {(close) => <JiraForm ticketId={ticketId} close={close} />}
+              {(close) => <JiraForm ticketId={ticketId} subject={subject} close={close} />}
             </AddToggle>
           </div>
         </>

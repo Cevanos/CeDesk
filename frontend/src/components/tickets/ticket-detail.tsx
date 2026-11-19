@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { AiSummaryCard } from "@/components/tickets/ai-assist";
 import { PriorityBadge, StatusBadge, VipBadge, languageName } from "@/components/tickets/badges";
 import { Composer } from "@/components/tickets/composer";
+import { JiraHeaderChip } from "@/components/tickets/jira-card";
 import { MacrosMenu } from "@/components/tickets/macros-menu";
 import { TicketSidebar } from "@/components/tickets/sidebar";
 import { SlaPill } from "@/components/tickets/sla";
@@ -107,6 +108,7 @@ export function TicketDetail({ id }: { id: string }) {
               {ticket.language && (
                 <Badge title={ticket.language}>{languageName(ticket.language)}</Badge>
               )}
+              <JiraHeaderChip ticketId={ticket.id} />
               <SlaPill sla={ticket.sla} />
             </div>
             <h1 className="mt-3 text-xl font-semibold tracking-tight text-balance wrap-break-word sm:text-[26px] sm:leading-8">

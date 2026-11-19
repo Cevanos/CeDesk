@@ -356,7 +356,7 @@ export function useCreateJira(ticketId: string) {
   return useExtraMutation(
     ticketId,
     ["jira"],
-    (v: { project?: string; summary?: string; issue_type?: string }, h) =>
+    (v: { project?: string; summary?: string; description?: string; issue_type?: string }, h) =>
       api.post(`${t(ticketId)}/jira`, v, h),
     { creating: true },
   );

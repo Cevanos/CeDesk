@@ -263,7 +263,11 @@ function DeliveryLog() {
                     {stamp(d.created_at)}
                     {d.last_status ? ` · HTTP ${d.last_status}` : ""}
                     {tries ? ` · ${tries} attempt${tries === 1 ? "" : "s"}` : ""}
-                    {failed && d.last_error ? ` · ${d.last_error}` : ""}
+                    {failed &&
+                    d.last_error &&
+                    d.last_error.replace(/\.$/, "").trim() !== `HTTP ${d.last_status}`
+                      ? ` · ${d.last_error}`
+                      : ""}
                   </div>
                 </div>
                 {d.state === "delivered" && <Badge tone="success">Delivered</Badge>}

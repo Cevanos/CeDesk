@@ -62,6 +62,28 @@ const IMPORT_SOURCES = new Set([
   "zoho_desk",
 ]);
 
+const SOURCE_NAMES: Record<string, string> = {
+  web_form: "Web form",
+  web: "Web",
+  email: "Email",
+  chat: "Chat",
+  widget: "Chat widget",
+  api: "API",
+  portal: "Portal",
+  whatsapp: "WhatsApp",
+  voice: "Voice",
+  phone: "Phone",
+  sms: "SMS",
+};
+
+/** A readable name for a raw ticket source, e.g. `web_form` becomes "Web form". */
+function sourceLabel(source: string): string {
+  const key = source.toLowerCase().replace(/[\s-]/g, "_");
+  if (SOURCE_NAMES[key]) return SOURCE_NAMES[key];
+  const t = key.replace(/_/g, " ");
+  return t.charAt(0).toUpperCase() + t.slice(1);
+}
+
 export function AiBadge({ source }: { source?: string | null }) {
   const key = source?.toLowerCase().replace(/[\s-]/g, "_");
   if (key && IMPORT_SOURCES.has(key)) {
@@ -75,7 +97,7 @@ export function AiBadge({ source }: { source?: string | null }) {
   }
   return (
     <Badge tone="primary">
-      <Sparkles className="size-3" /> {source ? `AI · ${source}` : "AI"}
+      <Sparkles className="size-3" /> {source ? `AI · ${sourceLabel(source)}` : "AI"}
     </Badge>
   );
 }

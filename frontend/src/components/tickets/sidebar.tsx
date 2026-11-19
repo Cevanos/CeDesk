@@ -459,7 +459,7 @@ export function TicketSidebar({ ticket, etag }: { ticket: Ticket; etag: string |
             <TasksCard ticketId={ticket.id} canEdit={canEdit} />
             <TimeCard ticketId={ticket.id} canEdit={canEdit} />
             <SideConversations ticketId={ticket.id} canEdit={canEdit} />
-            <JiraCard ticketId={ticket.id} canEdit={canEdit} />
+            <JiraCard ticketId={ticket.id} canEdit={canEdit} subject={ticket.subject} />
           </>
         )}
       </div>

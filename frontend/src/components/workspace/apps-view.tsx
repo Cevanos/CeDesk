@@ -85,9 +85,13 @@ export function AppsView() {
                     disabled={remove.isPending}
                     onClick={() =>
                       ask({
-                        title: "Uninstall this app?",
-                        message: "Its saved credential is deleted.",
-                        detail: a.name ?? humanize(a.app),
+                        title: `Uninstall ${a.name ?? humanize(a.app)}?`,
+                        message:
+                          a.app === "calendly"
+                            ? "The saved reply /book is removed too (kept if you've edited it)."
+                            : a.app === "jira"
+                              ? "Its credential is deleted, so it has to be pasted again to reinstall. Issues already in Jira stay there."
+                              : "Its credential is deleted, so it has to be pasted again to reinstall.",
                         confirmLabel: "Uninstall",
                         run: () =>
                           remove.mutate(a.app, {
@@ -131,8 +135,9 @@ export function AppsView() {
 /** The URL to paste into Slack's Event Subscriptions. */
 function SlackEventsUrl() {
   const { user } = useCurrentUser();
-  const origin = typeof window === "undefined" ? "" : window.location.origin;
-  const url = `${origin}/api/v1/slack/events/${user?.workspace_id ?? "<workspace_id>"}`;
+  // The backend's public https address (same as the Cevanos page), not the web app's origin.
+  const api = (process.env.NEXT_PUBLIC_API_PUBLIC_URL ?? "").trim().replace(/\/+$/, "");
+  const url = `${api || "<API address>"}/api/v1/slack/events/${user?.workspace_id ?? "<workspace_id>"}`;
   return (
     <Field
       label="Events Request URL"
