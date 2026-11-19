@@ -106,6 +106,9 @@ function TeamDialog({ team, onClose }: { team: Team | "new" | null; onClose: () 
 function TeamForm({ team, onClose }: { team: Team | null; onClose: () => void }) {
   const save = useSaveTeam();
   const agents = useAgents();
+  // GET /agents lists everyone (the status screen needs that); a team can only
+  // hold active members, so the picker offers just those.
+  const active = (agents.data ?? []).filter((a) => a.is_active !== false);
   const [name, setName] = useState(team?.name ?? "");
   const [auto, setAuto] = useState(team?.auto_assign ?? true);
   const [max, setMax] = useState(String(team?.max_open_per_agent ?? 5));
@@ -130,7 +133,11 @@ function TeamForm({ team, onClose }: { team: Team | null; onClose: () => void })
             name: name.trim(),
             auto_assign: auto,
             max_open_per_agent: n,
-            member_ids: members,
+            // A member deactivated since the team was saved is still in
+            // `team.member_ids`; sending them back would be refused.
+            member_ids: agents.data
+              ? members.filter((id) => active.some((a) => a.member_id === id))
+              : members,
           },
           {
             onSuccess: () => {
@@ -174,7 +181,7 @@ function TeamForm({ team, onClose }: { team: Team | null; onClose: () => void })
       <fieldset>
         <legend className="mb-1.5 text-[13px] font-medium text-foreground-2">Members</legend>
         <div className="max-h-48 space-y-1 overflow-y-auto rounded-lg border border-border p-2">
-          {(agents.data ?? []).map((a) => (
+          {active.map((a) => (
             <label
               key={a.member_id}
               className="flex items-center gap-2 rounded-md px-2 py-1 text-sm hover:bg-surface-2"

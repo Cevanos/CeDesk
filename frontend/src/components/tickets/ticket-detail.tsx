@@ -173,6 +173,7 @@ export function TicketDetail({ id }: { id: string }) {
               canReply={perms.reply}
               accepted={ticket.accepted !== false}
               channel={ticket.channel}
+              replyCc={ticket.reply_cc}
             />
           </div>
         </section>

@@ -166,6 +166,8 @@ export interface Ticket extends TicketSummary {
   messages: Message[];
   older_messages_cursor: string | null;
   handover: Handover | null;
+  /** Who a reply will copy (read-only; the server decides it). */
+  reply_cc?: string[];
 }
 
 /** GET /tickets/{id}/messages: newest first. */
@@ -209,6 +211,8 @@ export interface AgentRow {
   channels: ChannelGroup[];
   capacity: Partial<Record<ChannelGroup, number>> | number | null;
   skills: string[];
+  /** `false` for a deactivated member. `GET /agents` lists everyone on purpose. */
+  is_active?: boolean;
 }
 
 export interface Member {

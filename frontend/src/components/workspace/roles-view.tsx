@@ -17,14 +17,16 @@ import {
 } from "@/components/ui/primitives";
 import { FormError, fieldErrors, LoadError } from "@/components/workspace/list-shared";
 import {
-  ROLE_ACTIONS,
+  DEFAULT_ROLE_RIGHTS,
+  ROLE_RIGHTS,
   ROLE_SCOPES,
+  rightsHeld,
   useDeleteRole,
   useRoles,
   useSaveRole,
   useTeams,
 } from "@/hooks/use-workspace";
-import type { CustomRole } from "@/hooks/use-workspace";
+import type { CustomRole, RoleRightKey, RoleRights } from "@/hooks/use-workspace";
 import { ApiError } from "@/lib/api/client";
 
 const scopeLabel = (s?: string) => ROLE_SCOPES.find((x) => x.value === s)?.label ?? s ?? "";
@@ -72,7 +74,7 @@ export function RolesView() {
                         {scopeLabel(r.scope)}
                         {team ? `: ${team.name}` : ""}
                       </Badge>
-                      <Badge>{(r.actions ?? []).length} rights</Badge>
+                      <Badge>{rightsHeld(r)} rights</Badge>
                       {typeof r.member_count === "number" && (
                         <Badge>
                           {r.member_count} member{r.member_count === 1 ? "" : "s"}
@@ -130,14 +132,23 @@ function RoleForm({ role, onClose }: { role: CustomRole | null; onClose: () => v
   const save = useSaveRole();
   const teams = useTeams();
   const [name, setName] = useState(role?.name ?? "");
-  const [actions, setActions] = useState<string[]>(role?.actions ?? ["read_ticket"]);
+  const [rights, setRights] = useState<RoleRights>(
+    role
+      ? {
+          reply: role.reply,
+          assign_any: role.assign_any,
+          reports: role.reports,
+          settings: role.settings,
+          approve: role.approve,
+        }
+      : DEFAULT_ROLE_RIGHTS,
+  );
   const [scope, setScope] = useState(role?.scope ?? "all");
   const [teamId, setTeamId] = useState(role?.team_id ?? "");
   const [errs, setErrs] = useState<Record<string, string>>({});
 
   const needsTeam = scope !== "all";
-  const toggle = (k: string) =>
-    setActions((a) => (a.includes(k) ? a.filter((x) => x !== k) : [...a, k]));
+  const toggle = (k: RoleRightKey) => setRights((r) => ({ ...r, [k]: !r[k] }));
 
   return (
     <form
@@ -154,7 +165,7 @@ function RoleForm({ role, onClose }: { role: CustomRole | null; onClose: () => v
           {
             id: role?.id,
             name: name.trim(),
-            actions,
+            ...rights,
             scope,
             team_id: needsTeam ? teamId : null,
           },
@@ -184,19 +195,34 @@ function RoleForm({ role, onClose }: { role: CustomRole | null; onClose: () => v
 
       <fieldset className="space-y-1.5">
         <legend className="text-[13px] font-medium text-foreground-2">Rights</legend>
-        <div className="grid gap-1.5 sm:grid-cols-2">
-          {ROLE_ACTIONS.map((a) => (
-            <label key={a.key} className="flex items-center gap-2 text-sm">
+        <div className="grid gap-2">
+          {ROLE_RIGHTS.map((a) => (
+            <div key={a.key} className="flex items-start gap-2 text-sm">
               <input
+                id={`role-right-${a.key}`}
                 type="checkbox"
-                className="size-4 accent-[var(--primary)]"
-                checked={actions.includes(a.key)}
+                className="mt-0.5 size-4 accent-[var(--primary)]"
+                checked={rights[a.key]}
+                aria-describedby={"hint" in a ? `role-right-${a.key}-hint` : undefined}
                 onChange={() => toggle(a.key)}
               />
-              {a.label}
-            </label>
+              <div>
+                <label htmlFor={`role-right-${a.key}`}>{a.label}</label>
+                {"hint" in a && (
+                  <span
+                    id={`role-right-${a.key}-hint`}
+                    className="block text-xs text-muted-foreground"
+                  >
+                    {a.hint}
+                  </span>
+                )}
+              </div>
+            </div>
           ))}
         </div>
+        <p className="text-xs text-muted-foreground">
+          Managing members, roles and security stays with Admins.
+        </p>
         {errs.actions && (
           <p role="alert" className="text-xs text-danger">
             {errs.actions}
