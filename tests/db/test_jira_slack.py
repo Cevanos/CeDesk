@@ -15,6 +15,7 @@ from httpx import AsyncClient
 
 from cedesk.crypto import Sealer
 from cedesk.helpdesk.domain import jira as jira_rules
+from cedesk.helpdesk.domain import slack as slack_rules
 from cedesk.helpdesk.service import apps
 from cedesk.helpdesk.service.app_post import AppPost
 from cedesk.helpdesk.service.delivery import deliver_due
@@ -38,6 +39,7 @@ class Fake:
     def __init__(self) -> None:
         self.seen: list[httpx.Request] = []
         self.slack_gone = False
+        self.slack_archived = False
 
     def __call__(self, request: httpx.Request) -> httpx.Response:
         self.seen.append(request)
@@ -56,6 +58,8 @@ class Fake:
         if request.url.host == "hooks.slack.com":
             if self.slack_gone or path != "/services/T01/B02/abcd":
                 return httpx.Response(404, text="no_service")
+            if self.slack_archived:
+                return httpx.Response(410, text="channel_is_archived")
             return httpx.Response(200, text="ok")
         return httpx.Response(404)
 
@@ -199,6 +203,11 @@ async def test_slack_alerts_for_urgent_and_high(client: AsyncClient, app_session
     for bad in ("https://evil.com/services/x", "http://hooks.slack.com/services/x"):
         r = await client.put(f"{A}/slack_alerts", headers=w["h"], json={"secret": bad})
         assert r.status_code == 422, bad
+    # Live retest: an old webhook (removed in Slack) said only "Slack has no such thing."
+    old = HOOK.replace("abcd", "gone")
+    r = await client.put(f"{A}/slack_alerts", headers=w["h"], json={"secret": old})
+    assert (r.status_code, r.json()["error"]["message"]) == (422, slack_rules.WEBHOOK_GONE)
+    fake.seen.clear()
     ok(await client.put(f"{A}/slack_alerts", headers=w["h"], json={"secret": HOOK}))
     assert fake.slack() == [apps.SLACK_TEST_LINE]  # installing posts a test line
 
@@ -226,7 +235,15 @@ async def test_slack_alerts_for_urgent_and_high(client: AsyncClient, app_session
     result = await deliver_due(sm, [handler])
     assert result.failed == 1
     failed = ok(await client.get("/api/v1/outbox/failed", headers=w["h"]))
-    assert any(e["ticket_id"] == gone["id"] for e in failed["events"])
+    said = {e["ticket_id"]: e["last_error"] for e in failed["events"]}
+    assert said[gone["id"]] == f"slack_alerts: {slack_rules.WEBHOOK_GONE}"
+
+    fake.slack_gone, fake.slack_archived = False, True  # the channel was archived
+    archived = await ticket(client, w, "Site down again", "urgent")
+    assert (await deliver_due(sm, [handler])).failed == 1
+    failed = ok(await client.get("/api/v1/outbox/failed", headers=w["h"]))
+    said = {e["ticket_id"]: e["last_error"] for e in failed["events"]}
+    assert said[archived["id"]] == f"slack_alerts: {slack_rules.WEBHOOK_ARCHIVED}"
 
     other = await desk(client, sm)  # no Slack app: nothing posted
     before = len(fake.slack())

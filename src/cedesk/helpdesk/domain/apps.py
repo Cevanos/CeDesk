@@ -81,7 +81,8 @@ CATALOG: dict[App, AppInfo] = {
         settings=(),
         credential="bot_token",
         credential_help="Make a Slack app (api.slack.com/apps) with the bot scopes "
-        "chat:write, channels:history, groups:history and users:read, install it in your "
+        "chat:write, channels:history, groups:history, users:read and files:read (only a "
+        "shared file's name is read, never the file), install it in your "
         "Slack, and paste its bot token (xoxb-...) and, as `signing_secret`, its signing "
         "secret. Then, in the Slack app's Event Subscriptions, set the Request URL to "
         "<CeDesk API>/api/v1/slack/events/<workspace id> and subscribe the bot to "
