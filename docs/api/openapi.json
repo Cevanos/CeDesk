@@ -19833,7 +19833,7 @@
             "type": "array",
             "maxItems": 50,
             "title": "Allowed Domains",
-            "description": "Empty: anyone can sign in. Otherwise only these email domains (and their subdomains), e.g. [\"acme.com\"]."
+            "description": "Empty: anyone can sign in. Otherwise only these email domains (and their subdomains), e.g. [\"acme.com\"]. Saving a list signs out, at once, customers already signed in with another email."
           },
           "csat_survey": {
             "type": "boolean",
