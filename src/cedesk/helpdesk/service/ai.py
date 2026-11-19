@@ -124,22 +124,31 @@ async def summary(sm: Sessionmaker, cevanos: Cevanos, caller: Caller, ticket_id:
     return await ask(lambda: link.api.summarize(text=text), rules.summary, rules.AI_ASSIST)
 
 
+@dataclass(frozen=True)
+class Improved:
+    text: str
+    note: str | None = None  # for the agent, when Cevanos changed nothing
+
+
 async def improve(
     sm: Sessionmaker, cevanos: Cevanos, caller: Caller, *, text: str, tone: str | None
-) -> str:
-    """AI2: the agent's text, rewritten in a tone, for the agent to edit and send."""
+) -> Improved:
+    """AI2: the agent's text, rewritten in a tone, for the agent to edit and send; with a
+    note when Cevanos sent it back unchanged."""
     require(caller, Action.read_ticket)
     _person(caller)
     text = rules.clean(_checked(lambda: rules.check_text(text)))
     tone = _checked(lambda: rules.check_tone(tone))
     link = await _link(sm, cevanos, caller)
-    return await ask(lambda: link.api.rewrite(text=text, tone=tone), rules.text, rules.AI_ASSIST)
+    found = await ask(lambda: link.api.rewrite(text=text, tone=tone), rules.text, rules.AI_ASSIST)
+    return Improved(found, rules.NO_CHANGES if rules.unchanged(text, found) else None)
 
 
 @dataclass(frozen=True)
 class Translation:
     text: str
     source: str | None  # the language Cevanos found, e.g. hi
+    note: str | None = None  # for the agent: already in that language, or nothing to do
 
 
 async def translate(
@@ -154,7 +163,11 @@ async def translate(
     found, source = await ask(
         lambda: link.api.translate(text=text, to=to), rules.translation, rules.AI_ASSIST
     )
-    return Translation(found, source)
+    try:
+        note = rules.untranslated(text, found, source, to)
+    except rules.BadAnswer as exc:  # another language, sent back untranslated
+        raise Unavailable(str(exc)) from None
+    return Translation(found, source, note)
 
 
 async def draft(sm: Sessionmaker, cevanos: Cevanos, caller: Caller, ticket_id: UUID) -> str:
