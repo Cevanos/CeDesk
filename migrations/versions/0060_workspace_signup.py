@@ -6,11 +6,13 @@ tenancy test lists them in GLOBAL_TABLES):
 - `workspace_signup`: one row per sign-up started from the sign-in page. It holds what the
   person typed (address, names, email), the Argon2 hash of their password until the
   workspace is created, and the 6-digit code only as an HMAC. The client IP is kept only
-  as an HMAC, to count sign-ups per address. One pending sign-up per email (a new one
-  supersedes the old). Rows are deleted two days after they were made.
+  as an HMAC, to count sign-ups per address. One pending sign-up per email and requester
+  (a new one from the same address supersedes the old; a stranger's can't replace yours).
+  Rows are deleted two days after they were made.
 - `auth_email_out`: the code emails, apart from the per-workspace `hd_email_out`, so the
   worker sends them on their own lane and no other job (a slow mailbox, a big import, a
-  stuck webhook) can delay a code. The text is wiped once sent or failed.
+  stuck webhook) can delay a code. The text is wiped once sent, failed, or cancelled (a
+  newer code for the same sign-up was queued, so an old one never arrives after it).
 
 Nothing existing is changed. Downgrade drops both tables (pending sign-ups are lost;
 workspaces already created stay).
@@ -54,10 +56,10 @@ def upgrade() -> None:
         )
         """
     )
-    # One pending sign-up per email: two at once can't both be waiting for a code.
+    # One pending sign-up per email and requester: two from one place can't both wait.
     op.execute(
-        "CREATE UNIQUE INDEX workspace_signup_one_pending ON workspace_signup (email) "
-        "WHERE status = 'pending'"
+        "CREATE UNIQUE INDEX workspace_signup_one_pending ON workspace_signup "
+        "(email, coalesce(ip_hash, ''::bytea)) WHERE status = 'pending'"
     )
     # The per-address limits, and the sweep of old rows.
     op.execute(
@@ -80,7 +82,7 @@ def upgrade() -> None:
             subject          text NOT NULL CHECK (length(subject) BETWEEN 1 AND 200),
             body_text        text NOT NULL,
             status           text NOT NULL DEFAULT 'pending'
-                             CHECK (status IN ('pending', 'sent', 'failed')),
+                             CHECK (status IN ('pending', 'sent', 'failed', 'cancelled')),
             attempts         integer NOT NULL DEFAULT 0 CHECK (attempts >= 0),
             next_attempt_at  timestamptz NOT NULL DEFAULT now(),
             last_error       text CHECK (length(last_error) <= 500),

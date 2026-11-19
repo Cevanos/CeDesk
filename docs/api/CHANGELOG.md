@@ -16,15 +16,17 @@ All additive; nothing existing changed. Migration 0060 adds two tables. Off unle
   yet: a 6-digit code (10 minutes, 5 tries) is emailed. 409 `slug_taken`, 422 (an address
   that is reserved or not 3-40 lowercase letters, digits and single dashes; a bad email;
   a password under 10 characters), 403 `captcha_failed`, 429 (5 sign-ups an hour per IP,
-  3 workspaces a day per IP, 3 code emails an hour per email). A new sign-up for an email
-  replaces its waiting one.
+  3 code emails an hour per email from one IP, 10 per email in all). A new sign-up for an
+  email from the same IP replaces its waiting one; one from another IP doesn't.
 - **`POST /auth/signup/verify`** `{signup_id, code, workspace?}`: 200 `{workspace}`, then
   sign in as usual. Creates the workspace, its first Admin, the default teams and ticket
   types, the cloud plan (`CEDESK_SIGNUP_DEFAULT_PLAN`, cloud edition only) and the first
   audit entries ("Self-service sign-up", area `workspace`). Safe to repeat: the same code
   answers the same. 422 `bad_code`, 410 `code_expired` (resend) or `signup_expired`
-  (start over), 409 `slug_taken` (send the same code again with a new `workspace`).
-- **`POST /auth/signup/resend`** `{signup_id}`: 202 as above; the old code stops working.
+  (start over), 409 `slug_taken` (send the same code again with a new `workspace`), 429
+  (3 workspaces a day per IP).
+- **`POST /auth/signup/resend`** `{signup_id}`: 202 as above; the old code stops working,
+  and its email is not sent if it hadn't gone yet.
   429 before `resend_after` (60 s) or after 3 code emails an hour.
 - **Audit**: a new area `workspace`.
 

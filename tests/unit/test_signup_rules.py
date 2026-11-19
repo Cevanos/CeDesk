@@ -12,9 +12,11 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 from pydantic import SecretStr
+from sqlalchemy.exc import IntegrityError
 
 from cedesk.captcha import VERIFY_URL, Turnstile
 from cedesk.helpdesk.domain import signup as rules
+from cedesk.helpdesk.service import signup as signup_service
 from cedesk.helpdesk.service import signup_mail
 from cedesk.helpdesk.service.password_reset import Sender
 from cedesk.mail import OutgoingEmail, SendError
@@ -476,3 +478,42 @@ async def test_the_lane_runs_once_when_asked(monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.setattr(signup_mail, "housekeeping", nothing)
     await signup_mail.run_lane(FakeDb(), FakeMailer(), SENDER, concurrency=1, once=True)  # type: ignore[arg-type]
     assert calls == [1]
+
+
+def test_signup_off_answers_404_even_to_a_bad_body() -> None:
+    """Off must look like no such route: not a 422 that gives the routes away."""
+    with _client() as client:
+        for path in (
+            "/api/v1/auth/signup",
+            "/api/v1/auth/signup/verify",
+            "/api/v1/auth/signup/resend",
+        ):
+            for body in ({}, {"junk": 1}):
+                r = client.post(path, json=body)
+                assert r.status_code == 404, (path, body, r.text)
+            r = client.post(
+                path, content=b"{not json", headers={"content-type": "application/json"}
+            )
+            assert r.status_code == 404, path
+
+
+def test_signup_on_still_checks_the_body() -> None:
+    with _client(signup_enabled=True) as client:
+        r = client.post("/api/v1/auth/signup", json={})
+    assert r.status_code == 422
+
+
+class _Pg(Exception):
+    def __init__(self, constraint: str | None) -> None:
+        super().__init__(f'duplicate key value violates unique constraint "{constraint}"')
+        self.constraint_name = constraint
+
+
+def _integrity(constraint: str | None) -> IntegrityError:
+    return IntegrityError("INSERT ...", {}, _Pg(constraint))
+
+
+def test_only_a_taken_address_counts_as_slug_taken() -> None:
+    assert signup_service._slug_clash(_integrity("workspace_directory_pkey"))
+    assert not signup_service._slug_clash(_integrity("member_workspace_id_email_key"))
+    assert not signup_service._slug_clash(_integrity(None))
