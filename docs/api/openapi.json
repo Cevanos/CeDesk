@@ -12451,6 +12451,24 @@
             },
             "type": "object",
             "title": "Open By Channel"
+          },
+          "assignable": {
+            "type": "boolean",
+            "title": "Assignable",
+            "description": "Can be given tickets: active, and the role replies to customers (not a light agent, nor a custom role without the reply right). An Assignee picker lists only these; anyone else is refused with a 422 that says why."
+          },
+          "works_on_team_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Works On Team Id",
+            "description": "A custom role limited to one team: only that team's tickets can be given to them (a ticket of another team, or of no team, is a 422). null: any team."
           }
         },
         "type": "object",
@@ -12467,7 +12485,9 @@
           "cap_overrides",
           "skills",
           "open_tickets",
-          "open_by_channel"
+          "open_by_channel",
+          "assignable",
+          "works_on_team_id"
         ],
         "title": "AgentOut"
       },

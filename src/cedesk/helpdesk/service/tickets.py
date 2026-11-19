@@ -217,9 +217,17 @@ async def _check_assignee(
     if new is None:
         return None
     member = await repo.member_brief(s, new)
-    if member is None or not member["is_active"] or not member_access(member).takes_tickets:
-        raise Invalid("That person can't be assigned tickets.")
+    # Live retest: "That person can't be assigned tickets." named no one and no reason.
+    if member is None:
+        raise Invalid("That person isn't a member of this workspace.")
+    if not member["is_active"]:
+        raise Invalid(f"{member['name']} is deactivated, so can't be assigned tickets.")
     access = member_access(member)
+    if not access.takes_tickets:
+        raise Invalid(
+            f"{member['name']} can't be assigned tickets: the {access.label} role doesn't "
+            "reply to customers."
+        )
     if not access.edits(team_id):
         raise Invalid(
             f"{member['name']}'s role works on {access.team_name or 'another team'}'s tickets "
