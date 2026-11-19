@@ -108,10 +108,48 @@ def test_mail_retries_end_well_within_the_code_lifetime() -> None:
 
 
 def test_code_email_holds_the_code_and_says_it_expires() -> None:
-    body = rules.code_email("Priya", "123456")
+    body = rules.code_email("123456")
     assert "123456" in body
     assert "10 minutes" in body
     assert "123456" not in rules.SUBJECT
+
+
+def test_code_email_has_nothing_typed_on_the_form() -> None:
+    """The form can name a stranger's email: what it says must not reach their inbox."""
+    body = rules.code_email("123456")
+    assert body.startswith("Hello,\n")
+    assert "Hi " not in body
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "Priya", "Priya Sharma", "Acme Support", "J.R. Smith & Co.", "O'Brien", "Zoë Müller",
+        "Café 24/7", "Team #1 (EU)", "प्रिया", "Acme Inc.", "St. Louis Help",
+    ],
+)  # fmt: skip
+def test_ordinary_names_are_allowed(name: str) -> None:
+    assert rules.name_problem(name, "Your name") is None
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "Sam,\n\nYour account will be closed",  # line breaks: a message of its own
+        "Sam\r\nBcc: x@example.com",
+        "Sam\u2028Visit us",  # Unicode line separator
+        "Sam\u202egnp.exe",  # right-to-left override
+        "Sam\u200b",  # zero-width space
+        "Visit https://evil.example/login",
+        "go to www.evil-site.com now",
+        "evil.example/login",
+        "Confirm at acme-pay.com",
+        "mail help@evil.example",
+        "hxxp://x",
+    ],
+)
+def test_names_carrying_a_message_are_refused(name: str) -> None:
+    assert rules.name_problem(name, "Your name") is not None
 
 
 # Settings
@@ -370,7 +408,7 @@ def _row(to: str, attempts: int = 1) -> dict[str, Any]:
         "id": uuid4(),
         "to_address": to,
         "subject": rules.SUBJECT,
-        "body_text": rules.code_email("Priya", "123456"),
+        "body_text": rules.code_email("123456"),
         "attempts": attempts,
     }
 

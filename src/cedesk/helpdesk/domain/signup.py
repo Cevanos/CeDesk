@@ -19,6 +19,7 @@ kept only as an HMAC too: enough to count sign-ups per address, not to read it b
 import hashlib
 import hmac
 import re
+import unicodedata
 from datetime import timedelta
 from uuid import UUID
 
@@ -84,6 +85,25 @@ def slug_problem(slug: str) -> str | None:
     return None
 
 
+# A stranger types these, and the workspace name goes into emails CeDesk sends from its own
+# address (every portal sign-in code says "Your sign-in code for <name> support"), so they
+# can't carry a message of their own: no line breaks or other control or invisible
+# characters, and nothing that reads as a link or an email address.
+_LINK = re.compile(
+    r"://|\bwww\.|@|[a-z0-9-]{2,}\.(?:[a-z]{2,24})(?=$|[\s/:?#.,;!)\]])", re.IGNORECASE
+)
+
+
+def name_problem(value: str, what: str) -> str | None:
+    """Why a typed name (`what`: "Your name", "The workspace name") can't be used, or None.
+    `value` is stripped already."""
+    if any(unicodedata.category(ch) in ("Cc", "Cf", "Zl", "Zp") for ch in value):
+        return f"{what} can't contain line breaks or hidden characters."
+    if _LINK.search(value):
+        return f"{what} can't contain a web or email address."
+    return None
+
+
 def normalise_email(email: str) -> str | None:
     """Lower-case and trimmed, or None when it isn't an email address."""
     return portal.normalise_email(email)
@@ -111,9 +131,11 @@ def ip_hash(secret_key: str, ip: str | None) -> bytes | None:
     return hmac.new(secret_key.encode(), f"signup-ip:{ip}".encode(), hashlib.sha256).digest()
 
 
-def code_email(name: str, code: str) -> str:
+def code_email(code: str) -> str:
+    """Only our own words and the code: nothing typed on the form goes in, since the form
+    can name any email address (a stranger's) and CeDesk sends this from its own."""
     return (
-        f"Hi {name},\n\n"
+        "Hello,\n\n"
         "Your code to finish creating your CeDesk workspace is:\n\n"
         f"    {code}\n\n"
         "It works for 10 minutes. If you didn't ask for it, ignore this email: nothing is "
