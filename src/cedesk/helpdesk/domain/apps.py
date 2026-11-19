@@ -20,6 +20,7 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from enum import StrEnum
 from typing import Any
+from urllib.parse import urlsplit
 
 
 class App(StrEnum):
@@ -150,7 +151,11 @@ def form(app: App) -> tuple[FormField, ...]:
 
 
 BOOK_SHORTCUT = "book"
-_CALENDLY = re.compile(r"^https://calendly\.com/[A-Za-z0-9_-]{1,100}(/[A-Za-z0-9_-]{1,100})?/?$")
+_CALENDLY_HOSTS = ("calendly.com", "www.calendly.com")
+_SLUG = r"[A-Za-z0-9_-]{1,100}"
+# /<you>, /<you>/<event> (or a team's /<team>/<event>), or a one-off /d/<code>/<event>
+_CALENDLY_PATH = re.compile(rf"^/(?:d/{_SLUG}/{_SLUG}|{_SLUG}(?:/{_SLUG})?)$")
+LINK_MAX = 300
 CARD_LIMIT = 5  # orders or payments shown per customer
 SECRET_MAX = 300
 SHOPIFY_API = "2024-10"
@@ -181,13 +186,38 @@ def secret_hint(value: str) -> str:
 
 
 def booking_link(raw: Any) -> str:
-    """A Calendly page: https://calendly.com/<you> or https://calendly.com/<you>/<event>."""
-    link = str(raw or "").strip()
-    if not _CALENDLY.match(link):
-        raise BadCredentials(
-            "Give your Calendly booking link, e.g. https://calendly.com/acme/30min."
-        )
-    return link.rstrip("/")
+    """A Calendly page: https://calendly.com/<you>, .../<you>/<event>, or a one-off
+    .../d/<code>/<event>, as the Admin copied it: without https://, with www., or from the
+    browser's address bar with ?month=2026-11 (live, Phase 3 retest: that was refused).
+    Saved as https://calendly.com/<path>, without the query or a trailing slash, so /book
+    never carries anything but the page. Anything else (http, another host, a user or a
+    port, more path) is refused."""
+    text = str(raw or "").strip()
+    if not text or len(text) > LINK_MAX or any(c.isspace() for c in text):
+        raise BadCredentials(_LINK_HELP)
+    if "://" not in text:  # "calendly.com/acme"; "javascript:x" becomes a bad host
+        text = "https://" + text
+    try:
+        parts = urlsplit(text)
+        port = parts.port
+    except ValueError:
+        raise BadCredentials(_LINK_HELP) from None
+    path = parts.path.rstrip("/")
+    if (
+        parts.scheme.lower() != "https"
+        or (parts.hostname or "") not in _CALENDLY_HOSTS
+        or port is not None
+        or parts.username is not None
+        or not _CALENDLY_PATH.match(path)
+    ):
+        raise BadCredentials(_LINK_HELP)
+    return f"https://calendly.com{path}"
+
+
+_LINK_HELP = (
+    "Give your Calendly booking link: on Calendly, use the event's Copy link, e.g. "
+    "https://calendly.com/acme/30min."
+)
 
 
 def book_reply(link: str) -> str:
