@@ -119,6 +119,7 @@ def _ticket_out(view: TicketView) -> TicketOut:
         {
             **_row(t, view.sla),
             "contact": card,
+            "reply_cc": list(view.reply_cc),
             "messages": [MessageOut.model_validate(dict(m)) for m in view.messages],
             "older_messages_cursor": view.older_messages_cursor,
         }
