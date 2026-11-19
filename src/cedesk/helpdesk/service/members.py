@@ -18,6 +18,7 @@ from cedesk.helpdesk.domain.auth import Caller
 from cedesk.helpdesk.domain.limits import Kind
 from cedesk.helpdesk.domain.permissions import Action, Role
 from cedesk.helpdesk.repo import auth as repo
+from cedesk.helpdesk.repo import catalog as catalog_repo
 from cedesk.helpdesk.repo import roles as role_repo
 from cedesk.helpdesk.repo import security as security_repo
 from cedesk.helpdesk.repo.auth import Row
@@ -167,6 +168,7 @@ async def change_member(
             await limits.check(s, Kind.agents, adding=0)
         if is_active is False:
             await repo.revoke_member_sessions(s, member_id)
+            await catalog_repo.remove_member_from_teams(s, member_id)
         if _role_label(updated) != _role_label(current):
             # Someone made an Admin is the alert that matters most after a takeover (S6).
             await security_repo.queue_alert(
