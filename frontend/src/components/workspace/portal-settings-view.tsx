@@ -10,6 +10,7 @@ import { Switch } from "@/components/ui/switch";
 import { TagInput } from "@/components/ui/tag-input";
 import { FormError, fieldErrors, LoadError } from "@/components/workspace/list-shared";
 import { useCurrentUser } from "@/hooks/use-auth";
+import { useFieldErrors } from "@/hooks/use-field-errors";
 import { useUnsavedChanges } from "@/hooks/use-unsaved-changes";
 import { usePortalSettings, useSavePortalSettings } from "@/hooks/use-workspace";
 import type { PortalSettings } from "@/lib/api/types";
@@ -36,7 +37,7 @@ function PortalBody({ saved }: { saved: PortalSettings }) {
   const [domains, setDomains] = useState(saved.allowed_domains);
   const [csat, setCsat] = useState(saved.csat_survey);
   const [form, setForm] = useState(saved.web_form);
-  const [errs, setErrs] = useState<Record<string, string>>({});
+  const { errors: errs, setErrors: setErrs, clear: clearErr, reset: resetErrs } = useFieldErrors();
   const [tagKey, setTagKey] = useState(0);
 
   const dirty =
@@ -67,7 +68,7 @@ function PortalBody({ saved }: { saved: PortalSettings }) {
             validate={validateDomain}
             onChange={(d) => {
               setDomains(d);
-              setErrs((x) => ({ ...x, allowed_domains: "" }));
+              clearErr("allowed_domains");
             }}
           />
           {errs.allowed_domains && (
@@ -114,8 +115,8 @@ function PortalBody({ saved }: { saved: PortalSettings }) {
             setDomains(saved.allowed_domains);
             setCsat(saved.csat_survey);
             setForm(saved.web_form);
-            setErrs({});
-            setTagKey((k) => k + 1); // remounts the domain box: drops typed text and its error
+            resetErrs();
+            setTagKey((k) => k + 1); // remount the domain box to drop typed text
           }}
         >
           Discard

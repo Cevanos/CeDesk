@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 
-import { Composer } from "@/components/tickets/thread";
+import { Composer } from "@/components/tickets/composer";
 import { renderWithProviders } from "@/test/render";
 import { server } from "@/test/server";
 

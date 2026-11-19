@@ -100,6 +100,9 @@ export function usePortalTickets(ws: string) {
     queryFn: async () => listOf<PortalTicketSummary>(await api.get<unknown>("portal/tickets")),
     retry: false,
     staleTime: 15_000,
+    // Signed out (401): re-checking on tab focus resets the query to pending and unmounts the
+    // sign-in box mid-entry (e.g. when the customer switches to their mail app and back).
+    refetchOnWindowFocus: (q) => !isUnauthorized(q.state.error),
   });
 }
 

@@ -6,10 +6,11 @@ import { toast } from "sonner";
 
 import { AiSummaryCard } from "@/components/tickets/ai-assist";
 import { PriorityBadge, StatusBadge, VipBadge, languageName } from "@/components/tickets/badges";
+import { Composer } from "@/components/tickets/composer";
 import { MacrosMenu } from "@/components/tickets/macros-menu";
 import { TicketSidebar } from "@/components/tickets/sidebar";
 import { SlaPill } from "@/components/tickets/sla";
-import { AcceptCard, Composer, HandoverCard, Thread } from "@/components/tickets/thread";
+import { AcceptCard, HandoverCard, Thread } from "@/components/tickets/thread";
 import { Badge, Button, EmptyState, Skeleton } from "@/components/ui/primitives";
 import { useCurrentUser } from "@/hooks/use-auth";
 import { useResolveTicket, useTicket } from "@/hooks/use-tickets";

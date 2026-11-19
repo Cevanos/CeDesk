@@ -11,6 +11,7 @@ import {
   missingFields,
 } from "@/components/public/type-fields";
 import { Button, Card, EmptyState, Field, Input, Select, Skeleton, Textarea } from "@/components/ui/primitives";
+import { useFieldErrors } from "@/hooks/use-field-errors";
 import { usePublicForm, useSubmitPublicForm, useWorkspaceSlug } from "@/hooks/use-portal";
 
 /** `/<workspace>/contact`: a plain "Contact us" form that needs no sign-in. */
@@ -20,14 +21,12 @@ export function ContactForm() {
   const submit = useSubmitPublicForm(ws);
   const [v, setV] = useState({ name: "", email: "", message: "", type_id: "" });
   const [values, setValues] = useState<FieldValues>({});
-  const [errs, setErrs] = useState<Record<string, string>>({});
+  const { errors: errs, setErrors: setErrs, clear: clearErr } = useFieldErrors();
   const [done, setDone] = useState(false);
   const set = (k: keyof typeof v) => (e: { target: { value: string } }) => {
     setV((x) => ({ ...x, [k]: e.target.value }));
     clearErr(k);
   };
-  const clearErr = (k: string) =>
-    setErrs((x) => (x[k] || x._form ? { ...x, [k]: "", _form: "" } : x));
 
   const typeFields = (form.data?.types ?? []).find((t) => t.id === v.type_id)?.fields ?? [];
 

@@ -7,6 +7,29 @@ import { publicErrorMessage } from "@/components/public/errors";
 import { Button, Card, Field, Input } from "@/components/ui/primitives";
 import { useCodeSignIn, useRequestCode, useWorkspaceSlug } from "@/hooks/use-portal";
 
+type Saved = { step: "email" | "code"; email: string };
+const savedKey = (ws: string) => `cdesk:portal-signin:${ws}`;
+
+function readSaved(ws: string): Saved {
+  try {
+    const v = JSON.parse(sessionStorage.getItem(savedKey(ws)) ?? "null") as Saved | null;
+    if (v && typeof v.email === "string" && (v.step === "email" || v.step === "code")) {
+      return v.step === "code" && !v.email ? { step: "email", email: "" } : v;
+    }
+  } catch {
+    /* storage unavailable or corrupt: start fresh */
+  }
+  return { step: "email", email: "" };
+}
+
+function writeSaved(ws: string, v: Saved) {
+  try {
+    sessionStorage.setItem(savedKey(ws), JSON.stringify(v));
+  } catch {
+    /* private mode etc.: state just won't survive a reload */
+  }
+}
+
 /**
  * Two steps, no password: email -> 6-digit code sent to it. Used on the portal page and
  * inline on a ticket page that was opened from an email while signed out.
@@ -24,9 +47,19 @@ export function PortalSignIn({
   const ws = useWorkspaceSlug();
   const request = useRequestCode(ws);
   const signIn = useCodeSignIn(ws);
-  const [step, setStep] = useState<"email" | "code">("email");
-  const [email, setEmail] = useState("");
+  // Step + email live in sessionStorage so a remount or full reload returns to "Enter your code".
+  const [saved] = useState(() => readSaved(ws));
+  const [step, setStepState] = useState<"email" | "code">(saved.step);
+  const [email, setEmailState] = useState(saved.email);
   const [code, setCode] = useState("");
+  const setStep = (s: "email" | "code") => {
+    setStepState(s);
+    writeSaved(ws, { step: s, email });
+  };
+  const setEmail = (v: string) => {
+    setEmailState(v);
+    writeSaved(ws, { step, email: v });
+  };
   const [error, setError] = useState<string | null>(null);
   const [resent, setResent] = useState(false);
   const codeRef = useRef<HTMLInputElement>(null);
@@ -111,7 +144,10 @@ export function PortalSignIn({
             setError(null);
             signIn.mutate(
               { email: email.trim(), code },
-              { onError: (err) => setError(publicErrorMessage(err)) },
+              {
+                onSuccess: () => writeSaved(ws, { step: "email", email: "" }),
+                onError: (err) => setError(publicErrorMessage(err)),
+              },
             );
           }}
         >
