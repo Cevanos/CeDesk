@@ -140,6 +140,40 @@ def translation(raw: Any) -> tuple[str, str | None]:
     return _text(data.get("text"), "translation"), source
 
 
+# When Cevanos sends the text back as it was (live, Phase 3 retest: every translation came
+# back untranslated, and "Shorter" never changed a reply), the agent is told so instead
+# of being shown the same text as if it were the result.
+NOT_TRANSLATED = "Cevanos didn't translate this. Try again later."
+NOTHING_TO_TRANSLATE = "Cevanos found nothing to translate in this text."
+NO_CHANGES = "No changes suggested. Try another tone."
+LANGUAGES = {"en": "English", "hi": "Hindi", "es": "Spanish", "fr": "French", "de": "German",
+             "pt": "Portuguese", "it": "Italian", "nl": "Dutch", "ar": "Arabic",
+             "zh": "Chinese", "ja": "Japanese", "ko": "Korean"}  # fmt: skip
+
+
+def unchanged(before: str, after: str) -> bool:
+    """The same text, spaces aside (a change of case or spelling is a change)."""
+    return " ".join(before.split()) == " ".join(after.split())
+
+
+def _base(code: str) -> str:
+    return code.split("-")[0].strip().lower()
+
+
+def untranslated(text: str, found: str, source: str | None, to: str) -> str | None:
+    """Why a translation that came back as the text itself is shown as it is (a note for
+    the agent), or None when it was translated. Raises `BadAnswer` when it should have
+    been translated: Cevanos found another language but sent the text back."""
+    if not unchanged(text, found):
+        return None
+    if source is None:
+        return NOTHING_TO_TRANSLATE
+    if _base(source) == _base(to):
+        name = LANGUAGES.get(_base(to))
+        return f"This is already in {name}." if name else "This is already in that language."
+    raise BadAnswer(NOT_TRANSLATED)
+
+
 # AI6: the chat's contact
 
 
