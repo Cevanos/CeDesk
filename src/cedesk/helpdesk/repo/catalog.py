@@ -13,8 +13,9 @@ Row = RowMapping
 _TEAM = """
     SELECT t.id, t.name, t.auto_assign, t.max_open_per_agent,
            coalesce(array_agg(m.member_id ORDER BY m.position, m.member_id)
-                    FILTER (WHERE m.member_id IS NOT NULL), '{}') AS member_ids
+                    FILTER (WHERE mb.id IS NOT NULL), '{}') AS member_ids
     FROM hd_team t LEFT JOIN hd_team_member m ON m.team_id = t.id
+         LEFT JOIN member mb ON mb.id = m.member_id AND mb.is_active
 """
 
 
