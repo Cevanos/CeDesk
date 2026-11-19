@@ -3,6 +3,26 @@
 `openapi.json` next to this file is the API as served (`uv run cedesk openapi`). Every
 route is under `/api/v1`. Breaking changes only come in v2 (md 2B). Newest first.
 
+## 2026-11-19: Assignee pickers can tell who takes tickets; the refusal says who and why
+
+Additive: two new fields. No migration. Found on staging: the New ticket form's Assignee
+list offered a light agent and a deactivated member, and choosing either failed with
+"That person can't be assigned tickets." (the form showed nothing).
+
+- **New on `GET /agents`** (and `PUT /me/status`, `PATCH /agents/{id}/routing`):
+  - `assignable` (bool): can be given tickets: active, and the role replies to customers
+    (not a light agent, nor a custom role without the reply right). List only these in
+    an Assignee picker.
+  - `works_on_team_id` (uuid or null): a custom role limited to one team; only that
+    team's tickets can be given to them. null: any team.
+- **Clearer 422** when a ticket is given to someone who can't take it
+  (`POST /tickets`, `PATCH /tickets/{id}`, `POST /tickets/{id}/accept`):
+  - "Meena can't be assigned tickets: the Light agent role doesn't reply to customers."
+  - "Test Intern is deactivated, so can't be assigned tickets."
+  - "That person isn't a member of this workspace." (an unknown id)
+
+  The team case is unchanged ("Ravi's role works on Shipping's tickets only, …").
+
 ## 2026-11-19: Calendly: a booking link is taken as the Admin copies it
 
 No route or field changed. No migration. Found testing the Calendly app with a real
