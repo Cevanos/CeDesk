@@ -255,7 +255,7 @@ Show them as they are in the editor.
 
 | | Route | What it does |
 |---|---|---|
-| `GET` | `/agents` | Everyone's status, load and skills |
+| `GET` | `/agents` | Everyone's status, load and skills. Every **Assignee picker** lists only `assignable: true` (active, and the role replies), and with `works_on_team_id` set only for that team's tickets |
 | `PATCH` | `/agents/{member_id}/routing` | Status, channels, capacity per channel and skills (Admin) |
 | `GET` | `/members` | Members, 50 per page by default |
 | `POST` | `/members` | Add a member (Admin) |

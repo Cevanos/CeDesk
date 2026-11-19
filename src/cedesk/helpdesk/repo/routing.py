@@ -56,9 +56,10 @@ _AGENTS = (
     "SELECT m.id, m.name, m.role, m.is_active, "  # noqa: S608
     + TAKES_TICKETS
     + " AS takes_tickets, "
-    + _STATE
-    + " FROM member m"
-    + _JOINS
+    # A custom role limited to one team edits only that team's tickets (A3), so only
+    # those can be given to them; NULL: any team.
+    "(SELECT wr.team_id FROM hd_role wr WHERE m.role = 'custom' AND wr.id = m.role_id "
+    "AND wr.scope <> 'all') AS works_on_team_id, " + _STATE + " FROM member m" + _JOINS
 )
 _MD_DEFAULTS = {
     "d_email": DEFAULT_CAPS[ChannelGroup.email],
