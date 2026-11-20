@@ -30,6 +30,7 @@ from cedesk.helpdesk.api import articles as articles_api
 from cedesk.helpdesk.api import attachments as attachments_api
 from cedesk.helpdesk.api import audit as audit_api
 from cedesk.helpdesk.api import auth as auth_api
+from cedesk.helpdesk.api import auto_close as auto_close_api
 from cedesk.helpdesk.api import catalog as catalog_api
 from cedesk.helpdesk.api import cevanos as cevanos_api
 from cedesk.helpdesk.api import demo as demo_api
@@ -37,6 +38,7 @@ from cedesk.helpdesk.api import email as email_api
 from cedesk.helpdesk.api import email_in as email_in_api
 from cedesk.helpdesk.api import imports as imports_api
 from cedesk.helpdesk.api import inbound_api as inbound_api_api
+from cedesk.helpdesk.api import inbox as inbox_api
 from cedesk.helpdesk.api import jira as jira_api
 from cedesk.helpdesk.api import limits as limits_api
 from cedesk.helpdesk.api import macros as macros_api
@@ -64,8 +66,11 @@ from cedesk.helpdesk.api import ticket_tools as ticket_tools_api
 from cedesk.helpdesk.api import tickets as tickets_api
 from cedesk.helpdesk.api import triage as triage_api
 from cedesk.helpdesk.api import two_factor as two_factor_api
+from cedesk.helpdesk.api import views as views_api
 from cedesk.helpdesk.api import webhooks as webhooks_api
+from cedesk.helpdesk.domain import bulk as bulk_rules
 from cedesk.helpdesk.domain import limits as limit_rules
+from cedesk.helpdesk.domain import transcript as transcript_rules
 from cedesk.helpdesk.service import apps as apps_service
 from cedesk.helpdesk.service import jira as jira_service
 from cedesk.helpdesk.service import limits as limits_service
@@ -190,6 +195,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     # Requests with API keys, per workspace (md PL2).
     app.state.api_key_requests = SlidingWindowLimiter(settings.api_key_limit, 60)
+    # Inbox tools (feature-gap plan 1.3, 1.6): bulk changes per person; transcripts per
+    # person and per workspace (each one is an email out of the help desk).
+    app.state.bulk_requests = SlidingWindowLimiter(bulk_rules.PER_MINUTE, 60)
+    app.state.transcript_requests = SlidingWindowLimiter(transcript_rules.PER_HOUR, 3600)
+    app.state.transcript_workspace = SlidingWindowLimiter(transcript_rules.PER_HOUR_WORKSPACE, 3600)
     # Outgoing webhooks: checks a URL's host when it is saved, sends the test ping (md PL3).
     app.state.webhook_client = WebhookClient()
     # Marketplace apps: how the Shopify and Stripe cards reach the provider (md PL7, C12).
@@ -337,7 +347,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(two_factor_api.router, prefix="/api/v1")
     # Before tickets: `/tickets/from-conversation/{id}` must not be read as a ticket id.
     app.include_router(cevanos_api.router, prefix="/api/v1")
+    app.include_router(inbox_api.router, prefix="/api/v1")  # before /tickets/{id}
     app.include_router(tickets_api.router, prefix="/api/v1")
+    app.include_router(views_api.router, prefix="/api/v1")
+    app.include_router(auto_close_api.router, prefix="/api/v1")
     app.include_router(ticket_tools_api.router, prefix="/api/v1")
     app.include_router(catalog_api.router, prefix="/api/v1")
     app.include_router(messages_api.router, prefix="/api/v1")

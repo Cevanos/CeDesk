@@ -23,7 +23,7 @@ _COLUMNS = """
            c.vip AS contact_vip, c.customer_since AS contact_since,
            t.first_reply_at, t.resolved_at, t.reopen_count, t.created_at, t.updated_at,
            t.accepted, t.conversation_id, t.handover, t.topic, t.sentiment, t.language,
-           t.source, t.source_id, t.parent_id, t.merged_into_id,
+           t.source, t.source_id, t.parent_id, t.merged_into_id, t.snoozed_until,
            (SELECT count(*) FROM hd_ticket ch WHERE ch.parent_id = t.id) AS child_count,
            ARRAY(SELECT j.issue_key FROM hd_jira_issue j WHERE j.ticket_id = t.id
                  ORDER BY j.workspace_id, j.ticket_id, j.issue_key) AS jira_keys
@@ -106,6 +106,8 @@ _FILTERS = """
       AND (CAST(:vt AS uuid) IS NULL OR t.team_id = CAST(:vt AS uuid))
       AND (CAST(:contact AS uuid) IS NULL OR t.contact_id = CAST(:contact AS uuid))
       AND (CAST(:imported AS text[]) IS NULL OR t.source = ANY(CAST(:imported AS text[])))
+      AND (CAST(:snoozed AS boolean) IS NULL
+           OR (t.snoozed_until IS NOT NULL) = CAST(:snoozed AS boolean))
       AND (CAST(:scope AS text) = 'everyone'
            OR (CAST(:scope AS text) = 'mine' AND t.assignee_id = CAST(:me AS uuid))
            OR (CAST(:scope AS text) = 'unassigned' AND t.assignee_id IS NULL))
@@ -225,7 +227,7 @@ async def lock_ticket(session: AsyncSession, ticket_id: UUID) -> Row | None:
         text(
             "SELECT id, number, subject, status, priority, channel, type_id, team_id, "
             "assignee_id, fields, tags, resolved_at, reopen_count, updated_at, parent_id, "
-            "merged_into_id FROM hd_ticket WHERE id = :id FOR UPDATE"
+            "merged_into_id, snoozed_until FROM hd_ticket WHERE id = :id FOR UPDATE"
         ),
         {"id": ticket_id},
     )
@@ -244,6 +246,14 @@ async def update_ticket(session: AsyncSession, ticket_id: UUID, values: Mapping[
             "reopen_count = :reopen_count, updated_at = now() WHERE id = :id"
         ),
         {**params, "id": ticket_id},
+    )
+
+
+async def set_snooze(session: AsyncSession, ticket_id: UUID, until: datetime | None) -> None:
+    """Only on a Pending ticket (the table's CHECK); a status change clears it (trigger)."""
+    await session.execute(
+        text("UPDATE hd_ticket SET snoozed_until = :u, updated_at = now() WHERE id = :id"),
+        {"id": ticket_id, "u": until},
     )
 
 
@@ -268,6 +278,7 @@ async def list_tickets(
     team: UUID | None,
     contact: UUID | None = None,
     imported: Sequence[str] | None = None,
+    snoozed: bool | None = None,
     visible_team: UUID | None = None,
     scope: str,
     q_like: str | None,
@@ -289,6 +300,7 @@ async def list_tickets(
             "team": team,
             "contact": contact,
             "imported": list(imported) if imported else None,
+            "snoozed": snoozed,
             "vt": visible_team,
             "scope": scope,
             "q_like": q_like,
@@ -311,6 +323,17 @@ async def counts_by_status(
         {"vt": visible_team},
     )
     return {str(status): int(n) for status, n in result.all()}
+
+
+async def snoozed_count(session: AsyncSession, visible_team: UUID | None = None) -> int:
+    result = await session.execute(
+        text(
+            "SELECT count(*) FROM hd_ticket t WHERE t.snoozed_until IS NOT NULL "
+            "AND (CAST(:vt AS uuid) IS NULL OR t.team_id = CAST(:vt AS uuid))"
+        ),
+        {"vt": visible_team},
+    )
+    return int(result.scalar_one())
 
 
 async def get_contact(session: AsyncSession, contact_id: UUID) -> Row | None:
