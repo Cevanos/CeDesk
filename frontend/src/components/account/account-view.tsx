@@ -10,14 +10,11 @@ import { z } from "zod";
 import { Section } from "@/components/account/section";
 import { TwoFactorCard } from "@/components/account/two-factor-card";
 import { PasswordInput, PasswordStrength } from "@/components/auth/password-input";
-import { useConfirm } from "@/components/ui/confirm";
 import { Button, Field, Skeleton } from "@/components/ui/primitives";
-import { useDevices, useRemoveDevice } from "@/hooks/use-account";
 import { useChangePassword, useCurrentUser, useSignOut } from "@/hooks/use-auth";
 import { ApiError } from "@/lib/api/client";
 import { newPassword, passwordError, PASSWORD_HINT } from "@/lib/password";
 import { ROLE_LABEL } from "@/lib/permissions";
-import { formatDateTime } from "@/lib/utils";
 
 export function AccountView() {
   const params = useSearchParams();
@@ -83,79 +80,13 @@ function SignOutRow() {
 }
 
 function DevicesCard() {
-  const q = useDevices();
-  const remove = useRemoveDevice();
-  const { ask, dialog } = useConfirm();
   return (
     <Section
       icon={<Smartphone className="size-5" />}
       title="My devices"
       description="Phones that get push notifications. Signing out on a phone removes it."
     >
-      {dialog}
-      {q.isPending ? (
-        <Skeleton className="h-12" />
-      ) : q.isError ? (
-        <p role="alert" className="text-sm text-danger">
-          {q.error instanceof ApiError ? q.error.userMessage : "Couldn't load your devices."}
-        </p>
-      ) : (
-        <>
-          {!q.data.push_on && (
-            <p className="mb-3 rounded-lg bg-surface-2 px-3 py-2 text-sm text-muted-foreground">
-              Push notifications are off on this server.
-            </p>
-          )}
-          {q.data.devices.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No phones are registered.</p>
-          ) : (
-            <ul className="divide-y divide-border rounded-lg border border-border">
-              {q.data.devices.map((d) => (
-                <li key={d.id} className="flex items-center gap-3 px-3 py-2.5 text-sm">
-                  <span className="min-w-0 flex-1">
-                    <span className="font-medium capitalize">{d.platform}</span>
-                    {d.token_hint && (
-                      <span className="ml-2 font-mono text-xs text-muted-foreground">
-                        …{d.token_hint}
-                      </span>
-                    )}
-                    <span className="block text-xs text-muted-foreground">
-                      {d.last_seen_at
-                        ? `Last used ${formatDateTime(d.last_seen_at)}`
-                        : d.created_at
-                          ? `Added ${formatDateTime(d.created_at)}`
-                          : ""}
-                    </span>
-                  </span>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    disabled={remove.isPending}
-                    onClick={() =>
-                      ask({
-                        title: "Remove this phone?",
-                        message: "It stops getting notifications.",
-                        detail: `${d.platform}${d.token_hint ? ` …${d.token_hint}` : ""}`,
-                        confirmLabel: "Remove",
-                        run: () =>
-                          remove.mutate(d.id, {
-                            onSuccess: () => toast.success("Device removed"),
-                            onError: (e) =>
-                              toast.error(
-                                e instanceof ApiError ? e.userMessage : "Couldn't remove it",
-                              ),
-                          }),
-                      })
-                    }
-                  >
-                    Remove
-                  </Button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </>
-      )}
+      <p className="rounded-lg bg-surface-2 px-3 py-2 text-sm text-muted-foreground">Coming soon</p>
     </Section>
   );
 }
