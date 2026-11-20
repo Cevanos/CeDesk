@@ -36,6 +36,7 @@ from cedesk.helpdesk.domain.tickets import Status, label
 from cedesk.helpdesk.repo import messages as message_repo
 from cedesk.helpdesk.repo import outbox
 from cedesk.helpdesk.repo import tickets as repo
+from cedesk.helpdesk.service import automation as runs
 from cedesk.helpdesk.service import followers, routing, sla, triage
 from cedesk.helpdesk.service import rules as automation
 from cedesk.helpdesk.service.attachments import IncomingFiles, save_incoming
@@ -142,6 +143,8 @@ async def customer_reply(
         )
         if removed:
             await _line(s, workspace_id, ticket_id, triage.removed_line(removed))
+        # Workflow runs waiting for this customer's reply go on now (plan 5.3).
+        await runs.customer_replied(s, ticket_id)
         # Topic and language from all they wrote; the mood from this message (I4).
         await triage.retriage(s, ticket_id, newest=body, cfg=cfg)
         await save_incoming(

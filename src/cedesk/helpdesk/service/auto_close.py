@@ -30,22 +30,18 @@ from cedesk.helpdesk.domain import events
 from cedesk.helpdesk.domain.audit import Area
 from cedesk.helpdesk.domain.auth import Caller
 from cedesk.helpdesk.domain.permissions import Action
-from cedesk.helpdesk.domain.placeholders import render
 from cedesk.helpdesk.domain.reports import IMPORT_SOURCES
-from cedesk.helpdesk.domain.seeds import DEMO_SOURCE
 from cedesk.helpdesk.domain.tickets import Status, label
 from cedesk.helpdesk.repo import auth as auth_repo
 from cedesk.helpdesk.repo import inbox as repo
 from cedesk.helpdesk.repo import outbox
 from cedesk.helpdesk.repo import tickets as ticket_repo
-from cedesk.helpdesk.service import audit, children, followers, sla
-from cedesk.helpdesk.service import email as email_service
+from cedesk.helpdesk.service import audit, automation, children, followers, sla
 from cedesk.helpdesk.service.auth import Sessionmaker
 from cedesk.helpdesk.service.errors import Invalid
 from cedesk.helpdesk.service.members import require
 
 logger = logging.getLogger("cedesk.auto_close")
-WEB_FORM_SOURCE = "web_form"  # as service/messages.py: web form tickets are emailed
 WHO = "Auto-close"
 
 
@@ -191,32 +187,4 @@ async def _notice(
     s: AsyncSession, workspace_id: UUID, detail: Any, notice: str, sender_name: str
 ) -> None:
     """The notice as a reply from the workspace, sent the way a reply is."""
-    body = render(
-        notice,
-        customer_name=str(detail["contact_name"]),
-        agent_name=sender_name,
-        fields=detail["fields"],
-    )
-    message_id = await ticket_repo.insert_message(
-        s,
-        workspace_id=workspace_id,
-        ticket_id=detail["id"],
-        kind="agent",
-        body=body,
-        author_member_id=None,
-        author_name=sender_name[:120],
-    )
-    emailed = (detail["channel"] == "email" or detail["source"] == WEB_FORM_SOURCE) and detail[
-        "source"
-    ] != DEMO_SOURCE
-    if emailed:
-        await email_service.queue_reply(s, workspace_id, detail, message_id, body, sender_name)
-    await outbox.add(
-        s,
-        workspace_id,
-        events.Event.message_created.value,
-        detail["id"],
-        events.payload(
-            events.Event.message_created, detail, events.message(message_id, "agent", None)
-        ),
-    )
+    await automation.post_workspace_reply(s, workspace_id, detail, notice, sender_name)

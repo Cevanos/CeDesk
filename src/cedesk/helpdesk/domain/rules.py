@@ -6,6 +6,7 @@ A rule runs on one event:
   run rules, so a rule can't undo what an agent just chose.)
 - `sla_breached`: an open ticket's SLA clock ran out (the worker, once a minute; once per
   clock, with the breach alert), e.g. to raise the priority or move it to another team.
+- `snooze_ended`: a snoozed ticket's time came and the worker reopened it (plan 5.1).
 
 Every condition must match (AND); inside one condition, any listed value matches (OR).
 Every enabled rule that matches runs, in order, and later rules see what earlier rules
@@ -21,16 +22,36 @@ Stored as JSON:
 `sla_in` reads the clock the ticket's SLA pill shows (first reply, then resolution):
 on_track, close (under 25% left), breached or met. Not on `created` (the clock only just
 started).
+Plan 5.1 adds (the contact is the ticket's customer):
+                 {"kind": "contact_field", "key": "plan", "op": "equals", "value": "gold"}
+                    op: equals, not_equals, is_set, not_set, contains (text), more_than,
+                    less_than (numbers and dates); the value is checked against the field
+                 {"kind": "contact_vip", "value": true}
+                 {"kind": "contact_in_segment", "segment_ids": ["..."], "negate": false}
+                 {"kind": "time_since", "of": "customer_reply", "op": "more_than",
+                  "minutes": 2880}  (of: customer_reply, agent_reply; none yet counts
+                  from when the ticket was made)
+                 {"kind": "snoozed", "value": true}
+                 {"kind": "has_followers", "value": true}
     actions:    [{"kind": "set_type", "type_id": "...", "only_if_empty": false},
                  {"kind": "set_team", "team_id": "..."},
                  {"kind": "set_priority", "priority": "high", "keep_urgent": true},
                  {"kind": "set_status", "status": "open"},
-                 {"kind": "add_tag", "tag": "upset"}]
+                 {"kind": "add_tag", "tag": "upset"},
+Plan 5.1 adds (each one's side effect is done by the service, in the same transaction):
+                 {"kind": "snooze", "minutes": 1440}  (Pending until then; not on a
+                  resolved ticket)
+                 {"kind": "add_follower", "member_id": "..."}  (active, sees the ticket)
+                 {"kind": "send_email", "body": "Hi {{customer.first_name}}, ..."}  (a
+                  reply from the workspace, sent the way replies are)
+                 {"kind": "call_webhook", "webhook_id": "..."}  (one of the workspace's
+                  webhooks: signed, retried and logged like its other deliveries)]
 """
 
 import re
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
+from datetime import datetime, timedelta
 from enum import StrEnum
 from typing import Any
 from uuid import UUID
@@ -51,6 +72,10 @@ MAX_PARTS = 10  # conditions, and actions, per rule
 MAX_WORDS = 50
 MAX_WORD = 100
 NAME_MAX = 80
+EMAIL_MAX = 5000  # an automatic email's text
+MAX_MINUTES = 525_600  # a year: snooze and time_since
+MAX_SEGMENTS = 10  # in one contact_in_segment condition
+VALUE_MAX = 500  # a contact_field condition's value as text
 
 # md 6.4: a reply that is only a thank-you keeps a resolved ticket resolved. The whole
 # message must be the thank-you: "thanks, but it is still broken" reopens the ticket.
@@ -81,6 +106,7 @@ class Event(StrEnum):
     created = "created"
     customer_replied = "customer_replied"
     sla_breached = "sla_breached"
+    snooze_ended = "snooze_ended"
 
 
 # Conditions
@@ -116,7 +142,81 @@ class SlaIn:
     states: frozenset[SlaState]
 
 
-Condition = TextContainsAny | ChannelIn | ToAddressContains | StatusIn | SentimentIn | SlaIn
+class FieldOp(StrEnum):
+    equals = "equals"
+    not_equals = "not_equals"
+    is_set = "is_set"
+    not_set = "not_set"
+    contains = "contains"  # text: any case
+    more_than = "more_than"  # numbers, and dates (later than)
+    less_than = "less_than"
+
+
+_VALUELESS = frozenset({FieldOp.is_set, FieldOp.not_set})
+
+
+@dataclass(frozen=True)
+class ContactFieldIs:
+    """A contact field's value. The key and value are checked against the workspace's
+    contact fields by the service when the rule is saved."""
+
+    key: str
+    op: FieldOp
+    value: str | int | float | bool | None = None
+
+
+@dataclass(frozen=True)
+class ContactVip:
+    value: bool
+
+
+@dataclass(frozen=True)
+class ContactInSegment:
+    segment_ids: frozenset[UUID]  # in any of them (with negate: in none of them)
+    negate: bool = False
+
+
+class Since(StrEnum):
+    customer_reply = "customer_reply"
+    agent_reply = "agent_reply"
+
+
+class Compare(StrEnum):
+    more_than = "more_than"
+    less_than = "less_than"
+
+
+@dataclass(frozen=True)
+class TimeSince:
+    of: Since
+    op: Compare
+    minutes: int
+
+
+@dataclass(frozen=True)
+class Snoozed:
+    value: bool
+
+
+@dataclass(frozen=True)
+class HasFollowers:
+    value: bool
+
+
+Condition = (
+    TextContainsAny
+    | ChannelIn
+    | ToAddressContains
+    | StatusIn
+    | SentimentIn
+    | SlaIn
+    | ContactFieldIs
+    | ContactVip
+    | ContactInSegment
+    | TimeSince
+    | Snoozed
+    | HasFollowers
+)
 
 
 # Actions
@@ -149,7 +249,36 @@ class AddTag:
     tag: str
 
 
-Action = SetType | SetTeam | SetPriority | SetStatus | AddTag
+Change = SetType | SetTeam | SetPriority | SetStatus | AddTag
+CHANGES = (SetType, SetTeam, SetPriority, SetStatus, AddTag)  # what macros may use too
+
+
+@dataclass(frozen=True)
+class Snooze:
+    minutes: int
+
+
+@dataclass(frozen=True)
+class AddFollower:
+    member_id: UUID
+
+
+@dataclass(frozen=True)
+class SendEmail:
+    body: str  # placeholders filled when it is sent
+
+
+@dataclass(frozen=True)
+class CallWebhook:
+    webhook_id: UUID
+
+
+Action = Change | Snooze | AddFollower | SendEmail | CallWebhook
+REPEATABLE = (AddTag, AddFollower)  # may appear more than once in a rule
+
+# What an action asks the service to do besides changing the ticket's fields.
+Effect = Snooze | AddFollower | SendEmail | CallWebhook
+OUTWARD = (SendEmail, Snooze)  # can make the next event (a customer's answer, a wake-up)
 
 
 @dataclass(frozen=True)
@@ -170,6 +299,35 @@ class Facts:
     to_address: str | None  # the address the customer wrote to (email tickets)
     sentiment: Sentiment | None
     sla: SlaState | None = None  # the pill's clock; only worked out when a rule asks
+    # Plan 5.1. The contact's: VIP, attribute values, and which of the segments the rules
+    # name it is in (only those are worked out).
+    contact_vip: bool = False
+    attributes: Mapping[str, object] = field(default_factory=dict)
+    segments: frozenset[UUID] = frozenset()
+    now: datetime | None = None
+    created_at: datetime | None = None  # the ticket's
+    last_customer_at: datetime | None = None
+    last_agent_at: datetime | None = None
+
+
+@dataclass(frozen=True)
+class Member:
+    """Someone an automation may add as a follower: active. `only_team` is set when their
+    role sees only one team's tickets."""
+
+    name: str
+    only_team: UUID | None = None
+
+
+@dataclass(frozen=True)
+class Targets:
+    """Names of what actions point at (for the lines), and only what exists now: ticket
+    types, teams, active members, turned-on webhooks (by a label that is not the URL)."""
+
+    types: Mapping[UUID, str] = field(default_factory=dict)
+    teams: Mapping[UUID, str] = field(default_factory=dict)
+    members: Mapping[UUID, Member] = field(default_factory=dict)
+    webhooks: Mapping[UUID, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -181,6 +339,9 @@ class State:
     priority: Priority
     status: Status
     tags: tuple[str, ...]
+    snoozed: bool = False
+    followers: frozenset[UUID] = frozenset()
+    effects: tuple[Effect, ...] = ()  # for the service to do, in order
 
 
 @dataclass(frozen=True)
@@ -248,10 +409,83 @@ def parse_condition(raw: Mapping[str, Any]) -> Condition:
         return SentimentIn(_enums(raw, "sentiments", Sentiment))
     if kind == "sla_in":
         return SlaIn(_enums(raw, "states", SlaState))
-    raise RuleError(
-        "A condition kind is text_contains_any, channel_in, to_address_contains, "
-        "status_in, sentiment_in or sla_in."
-    )
+    if kind == "contact_field":
+        return _contact_field(raw)
+    if kind == "contact_vip":
+        return ContactVip(_bool(raw, "value"))
+    if kind == "contact_in_segment":
+        ids = _list(raw, "segment_ids")
+        if len(ids) > MAX_SEGMENTS:
+            raise RuleError(f"At most {MAX_SEGMENTS} segments in one condition.")
+        return ContactInSegment(
+            frozenset(_uuid(v, "Each segment id") for v in ids), _flag(raw, "negate")
+        )
+    if kind == "time_since":
+        try:
+            of = Since(str(raw.get("of")))
+        except ValueError as exc:
+            raise RuleError("`of` is customer_reply or agent_reply.") from exc
+        try:
+            op = Compare(str(raw.get("op")))
+        except ValueError as exc:
+            raise RuleError("`op` is more_than or less_than.") from exc
+        return TimeSince(of, op, _minutes(raw))
+    if kind == "snoozed":
+        return Snoozed(_bool(raw, "value"))
+    if kind == "has_followers":
+        return HasFollowers(_bool(raw, "value"))
+    raise RuleError(f"A condition kind is one of: {', '.join(CONDITION_KINDS)}.")
+
+
+CONDITION_KINDS = (
+    "text_contains_any", "channel_in", "to_address_contains", "status_in", "sentiment_in",
+    "sla_in", "contact_field", "contact_vip", "contact_in_segment", "time_since", "snoozed",
+    "has_followers",
+)  # fmt: skip
+ACTION_KINDS = (
+    "set_type", "set_team", "set_priority", "set_status", "add_tag", "snooze", "add_follower",
+    "send_email", "call_webhook",
+)  # fmt: skip
+
+
+def _bool(raw: Mapping[str, Any], key: str) -> bool:
+    value = raw.get(key)
+    if not isinstance(value, bool):
+        raise RuleError(f"`{key}` is true or false.")
+    return value
+
+
+def _minutes(raw: Mapping[str, Any]) -> int:
+    value = raw.get("minutes")
+    if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= MAX_MINUTES:
+        raise RuleError(f"`minutes` is a whole number from 1 to {MAX_MINUTES}.")
+    return value
+
+
+def _contact_field(raw: Mapping[str, Any]) -> ContactFieldIs:
+    key = raw.get("key")
+    if not isinstance(key, str) or not re.match(r"^[a-z][a-z0-9_]{0,39}$", key):
+        raise RuleError("`key` is a contact field's key.")
+    try:
+        op = FieldOp(str(raw.get("op")))
+    except ValueError as exc:
+        raise RuleError(f"`op` is one of: {', '.join(o.value for o in FieldOp)}.") from exc
+    value = raw.get("value")
+    if op in _VALUELESS:
+        return ContactFieldIs(key, op)
+    if value is None or isinstance(value, list | dict) or value == "":
+        raise RuleError(f"A contact_field condition with {op.value} needs a value.")
+    if isinstance(value, str):
+        value = value.strip()
+        if len(value) > VALUE_MAX:
+            raise RuleError(f"A value is at most {VALUE_MAX} characters.")
+    if op is FieldOp.contains and not isinstance(value, str):
+        raise RuleError("contains takes text.")
+    if op in (FieldOp.more_than, FieldOp.less_than) and (
+        isinstance(value, bool) or not isinstance(value, int | float | str)
+    ):
+        raise RuleError(f"{op.value} takes a number or a date.")
+    return ContactFieldIs(key, op, value)
 
 
 def parse_action(raw: Mapping[str, Any]) -> Action:
@@ -277,7 +511,20 @@ def parse_action(raw: Mapping[str, Any]) -> Action:
         if not TAG.match(tag):
             raise RuleError("A tag is 1-40 letters, digits, - or _.")
         return AddTag(tag)
-    raise RuleError("An action kind is set_type, set_team, set_priority, set_status or add_tag.")
+    if kind == "snooze":
+        return Snooze(_minutes(raw))
+    if kind == "add_follower":
+        return AddFollower(_uuid(raw.get("member_id"), "member_id"))
+    if kind == "send_email":
+        body = raw.get("body")
+        if not isinstance(body, str) or not body.strip():
+            raise RuleError("send_email needs its text (`body`).")
+        if len(body.strip()) > EMAIL_MAX:
+            raise RuleError(f"An automatic email is at most {EMAIL_MAX} characters.")
+        return SendEmail(body.strip())
+    if kind == "call_webhook":
+        return CallWebhook(_uuid(raw.get("webhook_id"), "webhook_id"))
+    raise RuleError(f"An action kind is one of: {', '.join(ACTION_KINDS)}.")
 
 
 def parse_rule(
@@ -290,25 +537,41 @@ def parse_rule(
     try:
         when = Event(event)
     except ValueError as exc:
-        raise RuleError("event is created, customer_replied or sla_breached.") from exc
+        raise RuleError(
+            "event is created, customer_replied, sla_breached or snooze_ended."
+        ) from exc
     if not 1 <= len(conditions) <= MAX_PARTS:
         raise RuleError(f"A rule has 1-{MAX_PARTS} conditions.")
     if not 1 <= len(actions) <= MAX_PARTS:
         raise RuleError(f"A rule has 1-{MAX_PARTS} actions.")
     parsed_actions = tuple(parse_action(a) for a in actions)
-    kinds = [type(a) for a in parsed_actions if not isinstance(a, AddTag)]
+    kinds = [type(a) for a in parsed_actions if not isinstance(a, REPEATABLE)]
     if len(kinds) != len(set(kinds)):
-        raise RuleError("Each action kind appears once per rule (add_tag may repeat).")
+        raise RuleError(
+            "Each action kind appears once per rule (add_tag and add_follower may repeat)."
+        )
     parsed_conditions = tuple(parse_condition(c) for c in conditions)
-    if when is Event.created and any(isinstance(c, SlaIn) for c in parsed_conditions):
+    check_conditions(when, parsed_conditions)
+    return Rule(rule_id, name.strip(), when, parsed_conditions, parsed_actions)
+
+
+def check_conditions(when: Event, conditions: Sequence[Condition]) -> None:
+    """What can't be asked on this event (a flow's condition steps too)."""
+    if when is Event.created and any(isinstance(c, SlaIn) for c in conditions):
         raise RuleError("A new ticket's SLA has only just started: use sla_in on a reply "
                         "or on sla_breached.")  # fmt: skip
-    return Rule(rule_id, name.strip(), when, parsed_conditions, parsed_actions)
 
 
 def needs_sla(rules: Sequence[Rule]) -> bool:
     """Whether any rule reads the SLA (worked out only then)."""
     return any(isinstance(c, SlaIn) for r in rules for c in r.conditions)
+
+
+def segments_named(conditions: Sequence[Condition]) -> frozenset[UUID]:
+    """The segments these conditions ask about (only those are worked out)."""
+    return frozenset(
+        s for c in conditions if isinstance(c, ContactInSegment) for s in c.segment_ids
+    )
 
 
 def stored_condition(c: Condition) -> dict[str, Any]:
@@ -323,6 +586,25 @@ def stored_condition(c: Condition) -> dict[str, Any]:
         return {"kind": "status_in", "statuses": sorted(x.value for x in c.statuses)}
     if isinstance(c, SlaIn):
         return {"kind": "sla_in", "states": sorted(x.value for x in c.states)}
+    if isinstance(c, ContactFieldIs):
+        out: dict[str, Any] = {"kind": "contact_field", "key": c.key, "op": c.op.value}
+        if c.op not in _VALUELESS:
+            out["value"] = c.value
+        return out
+    if isinstance(c, ContactVip):
+        return {"kind": "contact_vip", "value": c.value}
+    if isinstance(c, ContactInSegment):
+        return {
+            "kind": "contact_in_segment",
+            "segment_ids": sorted(str(x) for x in c.segment_ids),
+            "negate": c.negate,
+        }
+    if isinstance(c, TimeSince):
+        return {"kind": "time_since", "of": c.of.value, "op": c.op.value, "minutes": c.minutes}
+    if isinstance(c, Snoozed):
+        return {"kind": "snoozed", "value": c.value}
+    if isinstance(c, HasFollowers):
+        return {"kind": "has_followers", "value": c.value}
     return {"kind": "sentiment_in", "sentiments": sorted(x.value for x in c.sentiments)}
 
 
@@ -335,6 +617,14 @@ def stored_action(a: Action) -> dict[str, Any]:
         return {"kind": "set_priority", "priority": a.priority.value, "keep_urgent": a.keep_urgent}
     if isinstance(a, SetStatus):
         return {"kind": "set_status", "status": a.status.value}
+    if isinstance(a, Snooze):
+        return {"kind": "snooze", "minutes": a.minutes}
+    if isinstance(a, AddFollower):
+        return {"kind": "add_follower", "member_id": str(a.member_id)}
+    if isinstance(a, SendEmail):
+        return {"kind": "send_email", "body": a.body}
+    if isinstance(a, CallWebhook):
+        return {"kind": "call_webhook", "webhook_id": str(a.webhook_id)}
     return {"kind": "add_tag", "tag": a.tag}
 
 
@@ -353,7 +643,75 @@ def matches(condition: Condition, facts: Facts, state: State) -> bool:
         return state.status in condition.statuses
     if isinstance(condition, SlaIn):
         return facts.sla is not None and facts.sla in condition.states
+    if isinstance(condition, ContactFieldIs):
+        return field_matches(condition, facts.attributes.get(condition.key))
+    if isinstance(condition, ContactVip):
+        return facts.contact_vip is condition.value
+    if isinstance(condition, ContactInSegment):
+        inside = bool(condition.segment_ids & facts.segments)
+        return inside is not condition.negate
+    if isinstance(condition, TimeSince):
+        return _since_matches(condition, facts)
+    if isinstance(condition, Snoozed):
+        return state.snoozed is condition.value
+    if isinstance(condition, HasFollowers):
+        return bool(state.followers) is condition.value
     return facts.sentiment is not None and facts.sentiment in condition.sentiments
+
+
+def _number(value: object) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, int | float | str):
+        return None
+    try:
+        return float(value)
+    except ValueError:
+        return None
+
+
+def field_matches(c: ContactFieldIs, value: object) -> bool:
+    """A missing or empty value matches only not_set (and not_equals)."""
+    empty = value is None or value == ""
+    if c.op is FieldOp.is_set:
+        return not empty
+    if c.op is FieldOp.not_set:
+        return empty
+    if c.op is FieldOp.not_equals:
+        return empty or not _same(value, c.value)
+    if empty:
+        return False
+    if c.op is FieldOp.equals:
+        return _same(value, c.value)
+    if c.op is FieldOp.contains:
+        return str(c.value).lower() in str(value).lower()
+    # more_than / less_than: dates (YYYY-MM-DD) compare as text, numbers as numbers.
+    if isinstance(value, str) and isinstance(c.value, str) and _ISO_DAY.match(value):
+        return value > c.value if c.op is FieldOp.more_than else value < c.value
+    mine, theirs = _number(value), _number(c.value)
+    if mine is None or theirs is None:
+        return False
+    return mine > theirs if c.op is FieldOp.more_than else mine < theirs
+
+
+_ISO_DAY = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def _same(value: object, wanted: object) -> bool:
+    if isinstance(value, bool) or isinstance(wanted, bool):
+        return value is wanted
+    if isinstance(value, str) and isinstance(wanted, str):
+        return value.lower() == wanted.lower()
+    mine, theirs = _number(value), _number(wanted)
+    return mine is not None and mine == theirs
+
+
+def _since_matches(c: TimeSince, facts: Facts) -> bool:
+    last = facts.last_customer_at if c.of is Since.customer_reply else facts.last_agent_at
+    last = last or facts.created_at
+    if last is None or facts.now is None:
+        return False
+    gone = facts.now - last
+    limit = timedelta(minutes=c.minutes)
+    return gone > limit if c.op is Compare.more_than else gone < limit
 
 
 def act(
@@ -361,9 +719,13 @@ def act(
     state: State,
     types: Mapping[UUID, str],
     teams: Mapping[UUID, str],
+    targets: Targets | None = None,
 ) -> tuple[State, str | None]:
     """The new state and what to say about it; None when the action could not run or
-    changed nothing (the ticket already had that value)."""
+    changed nothing (the ticket already had that value). The plan 5.1 actions add an
+    effect for the service to carry out."""
+    if isinstance(action, Snooze | AddFollower | SendEmail | CallWebhook):
+        return _effect(action, state, targets or Targets())
     if isinstance(action, SetType):
         if action.type_id not in types or action.type_id == state.type_id:
             return state, None
@@ -389,6 +751,88 @@ def act(
     return replace(state, tags=(*state.tags, action.tag)), f"Tag {action.tag}"
 
 
+def minutes_text(minutes: int) -> str:
+    """`90` -> `1 h 30 min`, `2880` -> `2 days`."""
+    days, rest = divmod(minutes, 1440)
+    hours, mins = divmod(rest, 60)
+    parts = []
+    if days:
+        parts.append(f"{days} day" + ("s" if days != 1 else ""))
+    if hours:
+        parts.append(f"{hours} h")
+    if mins:
+        parts.append(f"{mins} min")
+    return " ".join(parts)
+
+
+def _effect(
+    action: Snooze | AddFollower | SendEmail | CallWebhook, state: State, targets: Targets
+) -> tuple[State, str | None]:
+    if isinstance(action, Snooze):
+        if state.status is Status.resolved:
+            return state, None  # a resolved ticket can't be snoozed
+        changed = replace(
+            state, status=Status.pending, snoozed=True, effects=(*state.effects, action)
+        )
+        return changed, f"Snoozed for {minutes_text(action.minutes)}"
+    if isinstance(action, AddFollower):
+        member = targets.members.get(action.member_id)
+        if member is None or action.member_id in state.followers:
+            return state, None
+        if member.only_team is not None and member.only_team != state.team_id:
+            return state, None  # their role can't see this ticket
+        changed = replace(
+            state,
+            followers=state.followers | {action.member_id},
+            effects=(*state.effects, action),
+        )
+        return changed, f"Follower {member.name}"
+    if isinstance(action, SendEmail):
+        return replace(state, effects=(*state.effects, action)), "Email to the customer"
+    label = targets.webhooks.get(action.webhook_id)
+    if label is None:
+        return state, None  # deleted or turned off
+    return replace(state, effects=(*state.effects, action)), f"Webhook {label}"
+
+
+def matched(rule: Rule, facts: Facts, state: State) -> bool:
+    return all(matches(c, facts, state) for c in rule.conditions)
+
+
+def apply_actions(
+    actions: Sequence[Action], state: State, targets: Targets
+) -> tuple[State, list[str]]:
+    """Every action in order; what each one that did something says."""
+    done: list[str] = []
+    for action in actions:
+        state, said = act(action, state, targets.types, targets.teams, targets)
+        if said:
+            done.append(said)
+    return state, done
+
+
+@dataclass(frozen=True)
+class Explained:
+    """Test mode (plan 5.5): each condition and whether it matched, then what each action
+    would say (None: it would change nothing)."""
+
+    conditions: list[tuple[dict[str, Any], bool]]
+    matched: bool
+    actions: list[tuple[dict[str, Any], str | None]]
+    state: State
+
+
+def explain(rule: Rule, facts: Facts, state: State, targets: Targets) -> Explained:
+    checks = [(stored_condition(c), matches(c, facts, state)) for c in rule.conditions]
+    ok = all(m for _, m in checks)
+    would: list[tuple[dict[str, Any], str | None]] = []
+    if ok:
+        for action in rule.actions:
+            state, said = act(action, state, targets.types, targets.teams, targets)
+            would.append((stored_action(action), said))
+    return Explained(checks, ok, would, state)
+
+
 def run(
     rules: Sequence[Rule],
     event: Event,
@@ -397,21 +841,20 @@ def run(
     *,
     types: Mapping[UUID, str],
     teams: Mapping[UUID, str],
+    targets: Targets | None = None,
 ) -> tuple[State, list[Applied]]:
     """Runs the enabled rules (pass them in order) for one event. A rule whose type or
     team was deleted still runs its other actions. Returns the final state and, per rule
-    that changed something, what it did."""
+    that changed something, what it did. (The service runs rules one by one, with the
+    safeguards between them; the sandbox uses this.)"""
+    targets = targets or Targets(types, teams)
     applied: list[Applied] = []
     for rule in rules:
         if rule.event is not event:
             continue
-        if not all(matches(c, facts, state) for c in rule.conditions):
+        if not matched(rule, facts, state):
             continue
-        done: list[str] = []
-        for action in rule.actions:
-            state, said = act(action, state, types, teams)
-            if said:
-                done.append(said)
+        state, done = apply_actions(rule.actions, state, targets)
         if done:  # a rule that matched but found nothing to change writes no line
             applied.append(Applied(rule, tuple(done)))
     return state, applied
@@ -423,12 +866,58 @@ def line(applied: Applied) -> str:
     return f"Rule applied: {applied.rule.name} → {what}"
 
 
-def problems(rule: Rule, types: Mapping[UUID, str], teams: Mapping[UUID, str]) -> list[str]:
-    """What an Admin should fix: actions that point at a deleted type or team."""
+def problems(
+    rule: Rule,
+    types: Mapping[UUID, str],
+    teams: Mapping[UUID, str],
+    known: "Known | None" = None,
+) -> list[str]:
+    """What an Admin should fix: actions that point at a deleted type or team (and,
+    given `known`, a member, webhook, segment or contact field that is gone)."""
+    return action_problems(rule.actions, types, teams, known) + (
+        condition_problems(rule.conditions, known) if known else []
+    )
+
+
+@dataclass(frozen=True)
+class Known:
+    """What exists now, for `problems`: active members, webhooks (on or off: an Admin
+    may turn one off for a while), segments and contact fields by key."""
+
+    members: frozenset[UUID] = frozenset()
+    webhooks: frozenset[UUID] = frozenset()
+    segments: frozenset[UUID] = frozenset()
+    fields: frozenset[str] = frozenset()
+
+
+def action_problems(
+    actions: Sequence[Action],
+    types: Mapping[UUID, str],
+    teams: Mapping[UUID, str],
+    known: Known | None = None,
+) -> list[str]:
     found = []
-    for action in rule.actions:
+    for action in actions:
         if isinstance(action, SetType) and action.type_id not in types:
             found.append("Its ticket type was deleted.")
         if isinstance(action, SetTeam) and action.team_id not in teams:
             found.append("Its team was deleted.")
+        if known is None:
+            continue
+        if isinstance(action, AddFollower) and action.member_id not in known.members:
+            found.append("The follower it adds was removed or deactivated.")
+        if isinstance(action, CallWebhook) and action.webhook_id not in known.webhooks:
+            found.append("Its webhook was deleted.")
+    return found
+
+
+def condition_problems(conditions: Sequence[Condition], known: Known | None) -> list[str]:
+    if known is None:
+        return []
+    found = []
+    for c in conditions:
+        if isinstance(c, ContactInSegment) and not c.segment_ids <= known.segments:
+            found.append("A segment it checks was deleted.")
+        if isinstance(c, ContactFieldIs) and c.key not in known.fields:
+            found.append(f"The contact field {c.key} was deleted.")
     return found
