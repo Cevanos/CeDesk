@@ -90,6 +90,31 @@ class Settings(BaseSettings):
         "rating page and the help center (votes and the web form have their own).",
     )
     public_window_seconds: int = Field(default=600, ge=1)
+    # Email campaigns (feature-gap plan phase 6). The caps are the same for every workspace.
+    campaign_max_recipients: int = Field(
+        default=5000, ge=1, le=1_000_000, description="The most recipients one campaign has."
+    )
+    campaign_daily_cap: int = Field(
+        default=10_000,
+        ge=1,
+        description="Campaign emails one workspace may send in 24 hours, all campaigns "
+        "together (test emails and ticket replies are not counted).",
+    )
+    campaign_per_minute: int = Field(
+        default=60,
+        ge=1,
+        le=10_000,
+        description="Campaign emails one workspace sends a minute at most (stay under the "
+        "mail provider's rate; ticket replies go first).",
+    )
+    unsubscribe_limit: int = Field(
+        default=600,
+        ge=1,
+        description="Unsubscribe and open-image requests per IP per window. High on "
+        "purpose: mail providers send many people's one-click unsubscribes and image "
+        "fetches from a few addresses.",
+    )
+    unsubscribe_window_seconds: int = Field(default=600, ge=1)
     plans: str = Field(
         default="",
         description="Cloud plan limits as JSON (md O4), e.g. "

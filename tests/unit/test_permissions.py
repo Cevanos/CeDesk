@@ -38,6 +38,7 @@ EXPECTED: dict[Action, set[Role]] = {
     Action.merge_contacts: {A, S},
     Action.export_contacts: {A},
     Action.manage_segments: {A, S},
+    Action.manage_campaigns: {A},
 }
 
 
@@ -105,6 +106,7 @@ def test_no_custom_role_can_manage_access() -> None:
     every = _custom(**dict.fromkeys(RIGHT_ADDS, True))
     assert not every.can(Action.manage_access)
     assert not every.can(Action.export_contacts)  # the whole customer list: Admins only
+    assert not every.can(Action.manage_campaigns)  # bulk email to customers: Admins only
     assert every.takes_tickets
 
 
