@@ -31,6 +31,7 @@ from cedesk.helpdesk.api import attachments as attachments_api
 from cedesk.helpdesk.api import audit as audit_api
 from cedesk.helpdesk.api import auth as auth_api
 from cedesk.helpdesk.api import auto_close as auto_close_api
+from cedesk.helpdesk.api import campaigns as campaigns_api
 from cedesk.helpdesk.api import catalog as catalog_api
 from cedesk.helpdesk.api import cevanos as cevanos_api
 from cedesk.helpdesk.api import contact_fields as contact_fields_api
@@ -199,6 +200,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     # Requests with API keys, per workspace (md PL2).
     app.state.api_key_requests = SlidingWindowLimiter(settings.api_key_limit, 60)
+    # Campaigns (plan phase 6): one-click unsubscribes and open images come from mail
+    # providers' few addresses, so they get their own, larger budget; test emails per Admin.
+    app.state.unsubscribe_attempts = SlidingWindowLimiter(
+        settings.unsubscribe_limit, settings.unsubscribe_window_seconds
+    )
+    app.state.campaign_tests = SlidingWindowLimiter(campaigns_api.TESTS_PER_HOUR, 3600)
     # Inbox tools (feature-gap plan 1.3, 1.6): bulk changes per person; transcripts per
     # person and per workspace (each one is an email out of the help desk).
     app.state.bulk_requests = SlidingWindowLimiter(bulk_rules.PER_MINUTE, 60)
@@ -357,6 +364,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(contacts_api.router, prefix="/api/v1")
     app.include_router(contact_fields_api.router, prefix="/api/v1")
     app.include_router(segments_api.router, prefix="/api/v1")
+    app.include_router(campaigns_api.router, prefix="/api/v1")
+    app.include_router(campaigns_api.public, prefix="/api/v1")  # before /public/{workspace}
     app.include_router(auto_close_api.router, prefix="/api/v1")
     app.include_router(ticket_tools_api.router, prefix="/api/v1")
     app.include_router(catalog_api.router, prefix="/api/v1")

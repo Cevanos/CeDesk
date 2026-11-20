@@ -114,6 +114,16 @@ async def count_contacts(session: AsyncSession, *, filters: Mapping[str, Any]) -
     return int(result.scalar_one())
 
 
+def segment_from() -> str:
+    """`FROM hd_contact c ... WHERE <the list's filters>`, for SQL that works on a
+    segment's contacts (campaign recipients). Use with `segment_params`."""
+    return f"FROM hd_contact c {_STATS} {_FILTERS}"
+
+
+def segment_params(filters: Mapping[str, Any]) -> dict[str, Any]:
+    return _params(filters)
+
+
 async def contact_matches(
     session: AsyncSession, contact_id: UUID, *, filters: Mapping[str, Any]
 ) -> bool:

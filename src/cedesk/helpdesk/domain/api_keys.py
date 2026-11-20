@@ -75,7 +75,9 @@ def hint(last: str) -> str:
 
 # What each level may do at most; the creator's own rights limit it further.
 _READ = frozenset({Action.read_ticket, Action.list_members, Action.reports})
-_NEVER = frozenset({Action.manage_access, Action.approve, Action.export_contacts})
+_NEVER = frozenset(
+    {Action.manage_access, Action.approve, Action.export_contacts, Action.manage_campaigns}
+)
 _CAP: dict[KeyAccess, frozenset[Action]] = {
     KeyAccess.read: _READ,
     # Contact import and merge change many customers at once: admin keys only.
