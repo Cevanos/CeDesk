@@ -6,9 +6,12 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
+from typing import Any
+from uuid import UUID
 
 from cedesk.helpdesk.domain import paging
 from cedesk.helpdesk.domain.paging import CursorError
+from cedesk.helpdesk.domain.reports import IMPORT_SOURCES
 
 
 class Status(StrEnum):
@@ -291,3 +294,108 @@ def parse_if_match(header: str) -> datetime | None:
     if parsed.tzinfo is None:
         raise FieldError("If-Match must include the time zone, as the ETag does.")
     return parsed
+
+
+# The ticket list's filters (`GET /tickets`), checked in one place: the list route and
+# saved views (plan 1.2) both use `list_filters`, so a view can only hold what the list
+# accepts.
+
+SCOPES = ("everyone", "mine", "unassigned")
+Q_MAX = 200
+FILTER_KEYS = ("status", "scope", "priority", "team", "q", "sort", "imported", "snoozed")
+
+
+@dataclass(frozen=True)
+class ListFilters:
+    status: Status | None = None
+    scope: str = "everyone"
+    priority: Priority | None = None
+    team: UUID | None = None
+    q: str | None = None
+    sort: Sort = Sort.priority
+    imported: str | None = None  # `any` or one source
+    snoozed: bool | None = None  # True: only snoozed tickets; False: none of them
+
+    @property
+    def sources(self) -> list[str] | None:
+        """The `hd_ticket.source` values `imported` stands for (None: no filter)."""
+        if self.imported is None:
+            return None
+        return list(IMPORT_SOURCES) if self.imported == "any" else [self.imported]
+
+    def stored(self) -> dict[str, Any]:
+        """As a saved view keeps them: only the filters that are set, as JSON values."""
+        out: dict[str, Any] = {}
+        defaults = ListFilters()
+        for key in FILTER_KEYS:
+            value = getattr(self, key)
+            if value is None or value == getattr(defaults, key):
+                continue
+            out[key] = str(value) if isinstance(value, UUID | StrEnum) else value
+        return out
+
+
+def list_filters(
+    *,
+    status: Status | None = None,
+    scope: str = "everyone",
+    priority: Priority | None = None,
+    team: UUID | None = None,
+    q: str | None = None,
+    sort: Sort = Sort.priority,
+    imported: str | None = None,
+    snoozed: bool | None = None,
+) -> ListFilters:
+    """Checks what the list route was given (raises FieldError)."""
+    if scope not in SCOPES:
+        raise FieldError("scope is everyone, mine or unassigned.")
+    q = (q or "").strip() or None
+    if q is not None and len(q) > Q_MAX:
+        raise FieldError(f"q is at most {Q_MAX} characters.")
+    if imported is not None and imported != "any" and imported not in IMPORT_SOURCES:
+        raise FieldError("imported is any, or one of: " + ", ".join(IMPORT_SOURCES) + ".")
+    return ListFilters(status, scope, priority, team, q, sort, imported, snoozed)
+
+
+def _enum[E: StrEnum](kind: type[E], key: str, value: object) -> E:
+    if not isinstance(value, str) or value not in {m.value for m in kind}:
+        allowed = ", ".join(m.value for m in kind)
+        raise FieldError(f"{key} is one of: {allowed}.")
+    return kind(value)
+
+
+def filters_from_json(raw: Mapping[str, object]) -> ListFilters:
+    """A saved view's filters: an object with only the list's keys (FILTER_KEYS), each a
+    value the list route would take. Unknown keys, wrong types and bad values raise
+    FieldError naming the key."""
+    unknown = sorted(set(raw) - set(FILTER_KEYS))
+    if unknown:
+        raise FieldError(
+            f"A view can't filter on {', '.join(unknown)}. Use: {', '.join(FILTER_KEYS)}."
+        )
+    args: dict[str, Any] = {}
+    for key, value in raw.items():
+        if value is None:
+            continue
+        if key == "status":
+            args[key] = _enum(Status, key, value)
+        elif key == "priority":
+            args[key] = _enum(Priority, key, value)
+        elif key == "sort":
+            args[key] = _enum(Sort, key, value)
+        elif key == "team":
+            try:
+                args[key] = UUID(str(value)) if isinstance(value, str) else None
+            except ValueError:
+                args[key] = None
+            if args[key] is None:
+                raise FieldError("team is a team id.")
+        elif key == "snoozed":
+            if not isinstance(value, bool):
+                raise FieldError("snoozed is true or false.")
+            args[key] = value
+        else:  # scope, q, imported: text
+            if not isinstance(value, str):
+                raise FieldError(f"{key} is text.")
+            args[key] = value
+    return list_filters(**args)

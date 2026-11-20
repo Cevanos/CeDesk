@@ -2276,6 +2276,409 @@
         }
       }
     },
+    "/api/v1/tickets/{ticket_id}/snooze": {
+      "post": {
+        "tags": [
+          "tickets"
+        ],
+        "summary": "Snooze a ticket until a time (it waits in Pending, then reopens)",
+        "description": "Sets the status to Pending and `snoozed_until`. At that time the ticket goes back to Open and the assignee and followers are told; a customer reply wakes it sooner. Snoozing again moves the time. Same rights as changing the ticket. 409 on a resolved ticket.",
+        "operationId": "snooze_api_v1_tickets__ticket_id__snooze_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "ticket_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Ticket Id"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 100
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The ETag from reading the ticket. 409 if the ticket changed since.",
+              "title": "If-Match"
+            },
+            "description": "The ETag from reading the ticket. 409 if the ticket changed since."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SnoozeIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TicketOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Resolved, or changed since read (If-Match)"
+          },
+          "422": {
+            "description": "Time in the past, under a minute ahead, or over a year"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "tickets"
+        ],
+        "summary": "End a snooze now (the ticket reopens)",
+        "description": "A snoozed ticket goes back to Open at once. A ticket that isn't snoozed is left as it is.",
+        "operationId": "unsnooze_api_v1_tickets__ticket_id__snooze_delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "ticket_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Ticket Id"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 100
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The ETag from reading the ticket. 409 if the ticket changed since.",
+              "title": "If-Match"
+            },
+            "description": "The ETag from reading the ticket. 409 if the ticket changed since."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TicketOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tickets/bulk": {
+      "post": {
+        "tags": [
+          "tickets"
+        ],
+        "summary": "One change on up to 100 tickets, each checked on its own",
+        "description": "Each ticket is changed exactly as `PATCH /tickets/{id}` would change it (same rights, team scope, rules, SLA, events and history lines), in its own transaction: a ticket that fails is listed with its error and never stops or undoes the others. The answer is 200 even when some (or all) failed: read `results`. At most 10 bulk requests a minute per person (429).",
+        "operationId": "bulk_change_api_v1_tickets_bulk_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BulkIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BulkOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The role can't make bulk changes"
+          },
+          "422": {
+            "description": "No tickets, too many, or the action's value is missing"
+          },
+          "429": {
+            "description": "Too many bulk requests; see Retry-After"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/tickets/{ticket_id}/followers": {
+      "get": {
+        "tags": [
+          "tickets"
+        ],
+        "summary": "Who follows the ticket",
+        "operationId": "list_followers_api_v1_tickets__ticket_id__followers_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "ticket_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Ticket Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FollowersOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "tickets"
+        ],
+        "summary": "Follow the ticket, or add a colleague as a follower (audited)",
+        "description": "Followers are told about public replies and status changes. Adding someone already following changes nothing. Adding someone else needs the right to change the ticket; they must be active and able to see it.",
+        "operationId": "add_follower_api_v1_tickets__ticket_id__followers_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "ticket_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Ticket Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FollowIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FollowersOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Not a member, deactivated, or can't see the ticket"
+          }
+        }
+      }
+    },
+    "/api/v1/tickets/{ticket_id}/followers/{member_id}": {
+      "delete": {
+        "tags": [
+          "tickets"
+        ],
+        "summary": "Unfollow, or remove a colleague as a follower (audited)",
+        "operationId": "remove_follower_api_v1_tickets__ticket_id__followers__member_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "ticket_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Ticket Id"
+            }
+          },
+          {
+            "name": "member_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Member Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FollowersOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such ticket, or that person isn't following it"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tickets/{ticket_id}/transcript": {
+      "post": {
+        "tags": [
+          "tickets"
+        ],
+        "summary": "Email the conversation (public messages only) to the customer or an address",
+        "description": "Customer messages, replies and the AI agent's lines, oldest first, with files listed by name. Never private notes, system lines or side conversations. Sent from the default support address; queued, like replies. A line on the ticket and an audit entry record it (never the text). Needs the right to send transcripts and to change the ticket. At most 10 an hour per person and 100 per workspace (429).",
+        "operationId": "send_transcript_api_v1_tickets__ticket_id__transcript_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "ticket_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Ticket Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TranscriptIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TranscriptOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "No support address, or nothing the customer saw yet"
+          },
+          "422": {
+            "description": "A chat or demo customer with no address, or a support address"
+          },
+          "429": {
+            "description": "Too many transcripts; see Retry-After"
+          }
+        }
+      }
+    },
     "/api/v1/tickets": {
       "post": {
         "tags": [
@@ -2464,6 +2867,24 @@
               "title": "Imported"
             },
             "description": "Only tickets brought from another help desk: `any`, or one source (intercom, zendesk, freshdesk, gorgias, helpscout, hubspot, zoho, csv). Each also has the tag `imported-<source>`."
+          },
+          {
+            "name": "snoozed",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "true: only snoozed tickets; false: leave snoozed tickets out. Not sent: both.",
+              "title": "Snoozed"
+            },
+            "description": "true: only snoozed tickets; false: leave snoozed tickets out. Not sent: both."
           },
           {
             "name": "cursor",
@@ -2907,6 +3328,301 @@
             }
           }
         }
+      }
+    },
+    "/api/v1/views": {
+      "get": {
+        "tags": [
+          "views"
+        ],
+        "summary": "Your personal views and the workspace's shared ones (shared first, by name)",
+        "operationId": "list_views_api_v1_views_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ViewOut"
+                  },
+                  "type": "array",
+                  "title": "Response List Views Api V1 Views Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "views"
+        ],
+        "summary": "Save a view (audited)",
+        "description": "At most 50 personal views per person and 100 shared views per workspace.",
+        "operationId": "create_view_api_v1_views_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ViewIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ViewOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "shared: true without the right to share views"
+          },
+          "409": {
+            "description": "You (or the shared views) already have one with that name"
+          },
+          "422": {
+            "description": "A filter the ticket list doesn't take, or a bad value"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/views/{view_id}": {
+      "get": {
+        "tags": [
+          "views"
+        ],
+        "summary": "One view",
+        "operationId": "get_view_api_v1_views__view_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "view_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "View Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ViewOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "views"
+        ],
+        "summary": "Rename a view, change its filters, or share or unshare it (audited)",
+        "description": "Your own personal views; shared views need the right to share views. Unsharing makes it its owner's personal view again.",
+        "operationId": "change_view_api_v1_views__view_id__patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "view_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "View Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ViewPatch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ViewOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such view, or someone else's personal view"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "views"
+        ],
+        "summary": "Delete a view (audited)",
+        "operationId": "delete_view_api_v1_views__view_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "view_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "View Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "No such view, or someone else's personal view"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auto-close": {
+      "get": {
+        "tags": [
+          "auto-close"
+        ],
+        "summary": "The auto-close setting (Settings)",
+        "operationId": "get_setting_api_v1_auto_close_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AutoCloseOut"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "auto-close"
+        ],
+        "summary": "Turn auto-close on or off, set its days and notice (Settings; audited)",
+        "description": "Once a day, every Pending ticket with no reply from the customer (and no other change) for `after_days` is resolved, with a line on the ticket and an audit entry; the notice goes out first if set, and the usual CSAT survey after. Never closed: snoozed tickets, chat handovers waiting for Accept, tickets with an approval waiting, an open child ticket, merged and imported tickets. Off by default.",
+        "operationId": "set_setting_api_v1_auto_close_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AutoCloseIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AutoCloseOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
       }
     },
     "/api/v1/tickets/{ticket_id}/merge": {
@@ -12284,7 +13000,10 @@
           "reports",
           "settings",
           "list_members",
-          "manage_access"
+          "manage_access",
+          "bulk_edit",
+          "share_views",
+          "send_transcript"
         ],
         "title": "Action"
       },
@@ -14180,7 +14899,10 @@
           "plan",
           "demo",
           "archive",
-          "workspace"
+          "workspace",
+          "tickets",
+          "views",
+          "auto_close"
         ],
         "title": "Area",
         "description": "Filter on the audit page. Other teams' features add their own (api_keys,\nwebhooks, apps, retention): the column takes any lower-case name."
@@ -14850,6 +15572,287 @@
           "areas"
         ],
         "title": "AuditPageOut"
+      },
+      "AutoCloseIn": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled"
+          },
+          "after_days": {
+            "type": "integer",
+            "maximum": 365.0,
+            "minimum": 1.0,
+            "title": "After Days",
+            "description": "Days a Pending ticket waits with no reply from the customer."
+          },
+          "notice": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 5000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notice",
+            "description": "Optional message to the customer, sent as a reply from the workspace just before the ticket is resolved (placeholders such as {{customer.first_name}} work). Empty or null: none."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "enabled",
+          "after_days"
+        ],
+        "title": "AutoCloseIn"
+      },
+      "AutoCloseOut": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled"
+          },
+          "after_days": {
+            "type": "integer",
+            "title": "After Days"
+          },
+          "notice": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notice",
+            "description": "Sent to the customer as a reply before closing."
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "updated_by_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated By Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "enabled",
+          "after_days",
+          "notice",
+          "updated_at",
+          "updated_by_name"
+        ],
+        "title": "AutoCloseOut"
+      },
+      "BulkAction": {
+        "type": "string",
+        "enum": [
+          "assign",
+          "set_team",
+          "set_status",
+          "set_priority",
+          "add_tags",
+          "remove_tags",
+          "snooze",
+          "unsnooze"
+        ],
+        "title": "BulkAction"
+      },
+      "BulkError": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "title": "Code",
+            "description": "As the error envelope: NotFound, Forbidden, Conflict, ..."
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "BulkError"
+      },
+      "BulkIn": {
+        "properties": {
+          "ticket_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Ticket Ids",
+            "description": "1-100 tickets; repeats count once."
+          },
+          "action": {
+            "$ref": "#/components/schemas/BulkAction",
+            "description": "assign (assignee_id), set_team (team_id), set_status (status), set_priority (priority), add_tags / remove_tags (tags), snooze (until), unsnooze."
+          },
+          "assignee_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assignee Id",
+            "description": "assign: null unassigns."
+          },
+          "team_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Team Id",
+            "description": "set_team: null clears the team."
+          },
+          "status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Status"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "priority": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Priority"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "tags": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string",
+                  "maxLength": 60
+                },
+                "type": "array",
+                "maxItems": 20
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tags"
+          },
+          "until": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Until",
+            "description": "snooze: as POST .../snooze."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "ticket_ids",
+          "action"
+        ],
+        "title": "BulkIn"
+      },
+      "BulkOut": {
+        "properties": {
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/BulkResultOut"
+            },
+            "type": "array",
+            "title": "Results",
+            "description": "One per ticket, in the order sent."
+          },
+          "succeeded": {
+            "type": "integer",
+            "title": "Succeeded"
+          },
+          "failed": {
+            "type": "integer",
+            "title": "Failed"
+          }
+        },
+        "type": "object",
+        "required": [
+          "results",
+          "succeeded",
+          "failed"
+        ],
+        "title": "BulkOut"
+      },
+      "BulkResultOut": {
+        "properties": {
+          "ticket_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Ticket Id"
+          },
+          "ok": {
+            "type": "boolean",
+            "title": "Ok"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BulkError"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "ticket_id",
+          "ok"
+        ],
+        "title": "BulkResultOut"
       },
       "CalendarIn": {
         "properties": {
@@ -15664,6 +16667,12 @@
           "resolved": {
             "type": "integer",
             "title": "Resolved"
+          },
+          "snoozed": {
+            "type": "integer",
+            "title": "Snoozed",
+            "description": "Of the Pending ones, how many are snoozed.",
+            "default": 0
           }
         },
         "type": "object",
@@ -17194,6 +18203,105 @@
           "select"
         ],
         "title": "FieldKind"
+      },
+      "FollowIn": {
+        "properties": {
+          "member_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Member Id",
+            "description": "Yourself, or (with the right to change the ticket) a colleague."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "member_id"
+        ],
+        "title": "FollowIn"
+      },
+      "FollowerOut": {
+        "properties": {
+          "member_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Member Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "email": {
+            "type": "string",
+            "title": "Email"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active"
+          },
+          "added_by": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Added By",
+            "description": "null: they followed it themselves or by being assigned or @mentioned."
+          },
+          "added_by_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Added By Name"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "member_id",
+          "name",
+          "email",
+          "is_active",
+          "added_by",
+          "added_by_name",
+          "created_at"
+        ],
+        "title": "FollowerOut"
+      },
+      "FollowersOut": {
+        "properties": {
+          "followers": {
+            "items": {
+              "$ref": "#/components/schemas/FollowerOut"
+            },
+            "type": "array",
+            "title": "Followers"
+          },
+          "following": {
+            "type": "boolean",
+            "title": "Following",
+            "description": "Whether the signed-in member follows it."
+          }
+        },
+        "type": "object",
+        "required": [
+          "followers",
+          "following"
+        ],
+        "title": "FollowersOut"
       },
       "ForgotPasswordBody": {
         "properties": {
@@ -22845,6 +23953,22 @@
         ],
         "title": "SlackStartIn"
       },
+      "SnoozeIn": {
+        "properties": {
+          "until": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Until",
+            "description": "When the ticket reopens by itself, with a time zone (2026-11-21T09:00:00Z). At least a minute ahead, at most a year."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "until"
+        ],
+        "title": "SnoozeIn"
+      },
       "Sort": {
         "type": "string",
         "enum": [
@@ -24156,6 +25280,19 @@
             "title": "Jira Keys",
             "description": "The Jira issues linked to the ticket (ABC-123), by key; [] for none."
           },
+          "snoozed_until": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Snoozed Until",
+            "description": "Snoozed: the ticket is Pending until then, when it reopens by itself (a customer reply wakes it sooner). null: not snoozed."
+          },
           "sla": {
             "anyOf": [
               {
@@ -24661,6 +25798,19 @@
             "title": "Jira Keys",
             "description": "The Jira issues linked to the ticket (ABC-123), by key; [] for none."
           },
+          "snoozed_until": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Snoozed Until",
+            "description": "Snoozed: the ticket is Pending until then, when it reopens by itself (a customer reply wakes it sooner). null: not snoozed."
+          },
           "sla": {
             "anyOf": [
               {
@@ -25031,6 +26181,52 @@
         ],
         "title": "TopicOut"
       },
+      "TranscriptIn": {
+        "properties": {
+          "to": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 254,
+                "minLength": 3,
+                "pattern": "^[^@\\s]+@[^@\\s]+$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "To",
+            "description": "Another address; leave out (or null) for the customer."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "TranscriptIn"
+      },
+      "TranscriptOut": {
+        "properties": {
+          "to": {
+            "type": "string",
+            "title": "To"
+          },
+          "to_customer": {
+            "type": "boolean",
+            "title": "To Customer"
+          },
+          "messages": {
+            "type": "integer",
+            "title": "Messages",
+            "description": "How many messages the transcript holds."
+          }
+        },
+        "type": "object",
+        "required": [
+          "to",
+          "to_customer",
+          "messages"
+        ],
+        "title": "TranscriptOut"
+      },
       "TranslateIn": {
         "properties": {
           "text": {
@@ -25377,6 +26573,142 @@
           "message"
         ],
         "title": "VerifyOut"
+      },
+      "ViewIn": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "filters": {
+            "additionalProperties": true,
+            "type": "object",
+            "maxProperties": 8,
+            "title": "Filters",
+            "description": "The ticket list's own query parameters, as an object: status, scope, priority, team, q, sort, imported, snoozed (for example {\"status\": \"pending\", \"scope\": \"mine\", \"sort\": \"sla\"}). Any other key, or a value `GET /tickets` would refuse, is 422. Open the view by sending these to `GET /tickets`."
+          },
+          "shared": {
+            "type": "boolean",
+            "title": "Shared",
+            "description": "Shared with everyone in the workspace (Admins and Supervisors). false: only you see it.",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "filters"
+        ],
+        "title": "ViewIn"
+      },
+      "ViewOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "filters": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Filters",
+            "description": "Only the filters that are set."
+          },
+          "shared": {
+            "type": "boolean",
+            "title": "Shared"
+          },
+          "owner_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Owner Id"
+          },
+          "owner_name": {
+            "type": "string",
+            "title": "Owner Name"
+          },
+          "can_edit": {
+            "type": "boolean",
+            "title": "Can Edit",
+            "description": "Whether you may change or delete it."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "filters",
+          "shared",
+          "owner_id",
+          "owner_name",
+          "can_edit",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ViewOut"
+      },
+      "ViewPatch": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "filters": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object",
+                "maxProperties": 8
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Filters",
+            "description": "The whole new set."
+          },
+          "shared": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shared"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ViewPatch",
+        "description": "Send only what changes."
       },
       "VoteIn": {
         "properties": {

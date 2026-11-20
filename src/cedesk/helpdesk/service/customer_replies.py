@@ -9,6 +9,10 @@ There is no signed-in member here, so this takes the workspace id directly.
 - Resolved, anything else: the ticket reopens (`reopen_count` + 1) and the assignee is told.
 - Open or Pending: the `customer_replied` rules run (the default "Reopen when the customer
   replies" rule turns Pending into Open), then the assignee is told.
+- Snoozed (plan 1.1): the reply wakes it first: Open again, with the line "Customer
+  replied · snooze ended"; then as for Open.
+- The ticket's followers hear of the reply too (plan 1.5), except the assignee, who was
+  just told.
 - Pass the channel's message id when there is one: a retried delivery of the same message
   is then ignored (outcome `duplicate`), so nothing is saved or counted twice.
 """
@@ -23,6 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from cedesk.db import workspace_session
 from cedesk.helpdesk.domain import events
+from cedesk.helpdesk.domain import snooze as snooze_rules
 from cedesk.helpdesk.domain.auth import Caller
 from cedesk.helpdesk.domain.permissions import Action
 from cedesk.helpdesk.domain.rules import Event as RuleEvent
@@ -31,7 +36,7 @@ from cedesk.helpdesk.domain.tickets import Status, label
 from cedesk.helpdesk.repo import messages as message_repo
 from cedesk.helpdesk.repo import outbox
 from cedesk.helpdesk.repo import tickets as repo
-from cedesk.helpdesk.service import routing, sla, triage
+from cedesk.helpdesk.service import followers, routing, sla, triage
 from cedesk.helpdesk.service import rules as automation
 from cedesk.helpdesk.service.attachments import IncomingFiles, save_incoming
 from cedesk.helpdesk.service.auth import Sessionmaker
@@ -122,6 +127,8 @@ async def customer_reply(
         body = cleaned.text
         email, email_numbers = triage.clean_email(cfg, email)
         removed = len(cleaned.numbers | email_numbers)
+        if before["snoozed_until"] is not None:
+            before = await _wake(s, workspace_id, before)
         message_id = await repo.insert_message(
             s,
             workspace_id=workspace_id,
@@ -210,8 +217,8 @@ async def customer_reply(
             await sla.refresh(s, ticket_ids=[ticket_id])  # reopened, or a rule changed it
             for event, extra in events.after_change(before, after, None):
                 await _emit(s, workspace_id, ticket_id, event, extra)
+        subject = (after or before)["subject"]
         if tell is not None:
-            subject = (after or before)["subject"]
             await message_repo.notify(
                 s,
                 workspace_id=workspace_id,
@@ -220,7 +227,34 @@ async def customer_reply(
                 kind="customer_reply",
                 body=f"{reply_note}: {subject}"[:500],
             )
+        await followers.tell(s, workspace_id, ticket_id, f"{reply_note}: {subject}",
+                             exclude=[tell])  # fmt: skip
     return CustomerReply(message_id, outcome)
+
+
+async def _wake(s: AsyncSession, workspace_id: UUID, before: Any) -> Any:
+    """A snoozed ticket the customer wrote on: Open again (the database clears the snooze
+    with the status), a line, `ticket.updated`. Returns the ticket as it is now."""
+    after = {
+        k: before[k]
+        for k in (
+            "subject",
+            "priority",
+            "type_id",
+            "team_id",
+            "assignee_id",
+            "tags",
+            "reopen_count",
+        )
+    } | {"status": Status.open.value, "fields": dict(before["fields"]), "snoozed_until": None}
+    await repo.update_ticket(s, before["id"], after)
+    await sla.refresh(s, ticket_ids=[before["id"]])
+    await _line(s, workspace_id, before["id"], snooze_rules.CUSTOMER_WOKE_LINE)
+    for event, extra in events.after_change(before, after, None):
+        await _emit(s, workspace_id, before["id"], event, extra)
+    now = await repo.lock_ticket(s, before["id"])
+    assert now is not None
+    return now
 
 
 async def simulate(

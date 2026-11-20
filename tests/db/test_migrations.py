@@ -346,3 +346,37 @@ async def test_0059_adds_contact_details_and_recipients_and_goes_back_down(
         assert [r[0] for r in (await conn.execute(text(cols))).all()] == [
             "hd_contact.organization", "hd_contact.phone", "hd_message.recipients"
         ]  # fmt: skip
+
+
+async def test_0061_to_0064_add_the_inbox_tools_and_go_back_down(owner_engine: Any) -> None:
+    """Snooze column and trigger, saved views, auto-close setting and followers; going
+    below 0061 removes them all (and the two new notification kinds)."""
+    import asyncio
+
+    from sqlalchemy import text
+
+    tables = ("hd_saved_view", "hd_auto_close", "hd_ticket_follower")
+    column = (
+        "SELECT count(*) FROM information_schema.columns "
+        "WHERE table_name = 'hd_ticket' AND column_name = 'snoozed_until'"
+    )
+    kinds = (
+        "SELECT pg_get_constraintdef(oid) FROM pg_constraint "
+        "WHERE conname = 'hd_notification_kind_check'"
+    )
+    cfg = alembic_config()
+    await asyncio.to_thread(command.downgrade, cfg, "0060")
+    async with owner_engine.connect() as conn:
+        for table in tables:
+            assert await conn.scalar(text(f"SELECT to_regclass('{table}')")) is None
+        assert await conn.scalar(text(column)) == 0
+        assert "snooze_ended" not in await conn.scalar(text(kinds))
+    await asyncio.to_thread(command.upgrade, cfg, "head")
+    async with owner_engine.connect() as conn:
+        for table in tables:
+            forced = await conn.scalar(
+                text("SELECT relforcerowsecurity FROM pg_class WHERE relname = :t"), {"t": table}
+            )
+            assert forced is True
+        assert await conn.scalar(text(column)) == 1
+        assert "following" in await conn.scalar(text(kinds))
