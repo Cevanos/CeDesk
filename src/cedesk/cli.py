@@ -231,10 +231,11 @@ def _prune_sessions() -> int:
 def _worker(once: bool) -> int:
     """Every few seconds: reads new emails from the IMAP mailbox (when one is set), reads
     connected Cevanos chats for new customer messages, sends queued emails, delivers
-    outbox events (Cevanos take-overs and replies), alerts SLA breaches and overdue tasks
-    and wakes snoozed tickets (once a minute), auto-closes inactive tickets (daily, before
-    the archive pass), and drops expired idempotency keys. Run one next to the API (sending
-    and delivering are safe with several; reading a mailbox is meant for one)."""
+    outbox events (Cevanos take-overs and replies), alerts SLA breaches and overdue tasks,
+    wakes snoozed tickets and resumes waiting workflow runs (once a minute), auto-closes
+    inactive tickets (daily, before the archive pass), and drops expired idempotency keys.
+    Run one next to the API (sending and delivering are safe with several; reading a
+    mailbox is meant for one)."""
     import contextlib
     import logging
 
@@ -248,6 +249,8 @@ def _worker(once: bool) -> int:
     from cedesk.helpdesk.service.apps import slack_bound
     from cedesk.helpdesk.service.archive import run_archive
     from cedesk.helpdesk.service.auto_close import run_auto_close
+    from cedesk.helpdesk.service.automation import prune_everywhere as prune_runs
+    from cedesk.helpdesk.service.automation import resume_due
     from cedesk.helpdesk.service.backlog import prune_everywhere as prune_backlog
     from cedesk.helpdesk.service.backlog import run_snapshots
     from cedesk.helpdesk.service.cevanos import CevanosHandler, ChatPoller
@@ -487,6 +490,14 @@ def _worker(once: bool) -> int:
                         logger.exception("Scheduled reports failed")
                     if sent:
                         logger.info(f"Report emails queued: {sent}", extra={"event": "reports"})
+                    try:  # workflow runs whose wait is over (feature-gap plan 5.3)
+                        resumed = await resume_due(sm)
+                    except Exception:
+                        resumed = 0
+                        logger.exception("Resuming workflow runs failed")
+                    if resumed:
+                        logger.info(f"Workflow runs resumed: {resumed}",
+                                    extra={"event": "automation"})  # fmt: skip
                     alerted_at = time.monotonic()
                 if time.monotonic() - swept_at > SWEEP_EVERY_SECONDS:
                     await sweep_everywhere(sm)
@@ -513,6 +524,10 @@ def _worker(once: bool) -> int:
                         await prune_backlog(sm)
                     except Exception:
                         logger.exception("Backlog snapshots failed")
+                    try:  # automation runs past their 30 days (plan 5.5)
+                        await prune_runs(sm)
+                    except Exception:
+                        logger.exception("Pruning the automation run log failed")
                     swept_at = time.monotonic()
                 if time.monotonic() - retained_at > RETENTION_EVERY_SECONDS:
                     try:  # resolved tickets past the archive age to the archive (md O3)

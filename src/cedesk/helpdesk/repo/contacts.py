@@ -114,6 +114,19 @@ async def count_contacts(session: AsyncSession, *, filters: Mapping[str, Any]) -
     return int(result.scalar_one())
 
 
+async def contact_matches(
+    session: AsyncSession, contact_id: UUID, *, filters: Mapping[str, Any]
+) -> bool:
+    """Whether one contact passes the list's filters (a segment's, for automation rules):
+    the same SQL as the list, so a rule and the segment page always agree."""
+    sql = (
+        f"SELECT EXISTS (SELECT 1 FROM hd_contact c {_STATS} {_FILTERS} "  # noqa: S608
+        "AND c.id = CAST(:contact_id AS uuid))"
+    )
+    result = await session.execute(text(sql), _params(filters) | {"contact_id": contact_id})
+    return bool(result.scalar_one())
+
+
 async def get(session: AsyncSession, contact_id: UUID, *, lock: bool = False) -> Row | None:
     result = await session.execute(
         text(

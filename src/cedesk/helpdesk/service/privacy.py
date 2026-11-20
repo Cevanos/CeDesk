@@ -35,6 +35,7 @@ from cedesk.helpdesk.domain.exports import ExportFile, archived_export, export_t
 from cedesk.helpdesk.domain.permissions import Action
 from cedesk.helpdesk.repo import archive as archive_repo
 from cedesk.helpdesk.repo import auth as auth_repo
+from cedesk.helpdesk.repo import automation as automation_repo
 from cedesk.helpdesk.repo import contact_fields as field_repo
 from cedesk.helpdesk.repo import contacts as contact_repo
 from cedesk.helpdesk.repo import limits as limits_repo
@@ -166,6 +167,14 @@ async def export(
         )
         archived = await archive_repo.for_contact(s, contact["id"])
         data["tickets"] += [archived_export(a) for a in archived]  # md O3
+        # What automation did on their tickets (plan 5.5): names and results only.
+        data["automation_runs"] = [
+            {
+                "ticket": r["ticket_number"], "automation": r["name"], "trigger": r["trigger"],
+                "state": r["state"], "result": r["result"], "at": when(r["created_at"]),
+            }
+            for r in await automation_repo.runs_for_tickets(s, ids)
+        ]  # fmt: skip
         n_tickets = len(tickets) + len(archived)
         n_messages = len(messages) + sum(len(a["messages"]) for a in archived)
         body = json.dumps(data, ensure_ascii=False, indent=2).encode()
@@ -247,6 +256,11 @@ async def erase(
             for key, n in (await repo.erase_contact(s, contact_id, address)).items():
                 counts[key] += n
         counts |= await contact_repo.erase(s, contact_id)  # notes, attributes (phase 2)
+        # Workflow runs waiting to email them stop (plan 5.3); the run log holds no
+        # personal data and stays with the tickets.
+        counts["automation_runs_cancelled"] = await automation_repo.cancel_waiting(
+            s, ticket_ids=ids, reason="The customer's data was erased."
+        )
         counts["exports"] = await repo.forget_exports(s, contact_id)
         for r in retained:
             await limits_repo.forget_export(s, r["id"])

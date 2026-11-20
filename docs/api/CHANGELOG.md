@@ -42,6 +42,69 @@ an Admin (`settings`) also sees and changes every schedule. New audit areas: `re
   day, to up to 10 members (never free addresses), one plain-text email each. The worker
   checks every recipient and the owner at every send and sends once after an outage.
 
+## 2026-11-20: Automation: richer rules, workflows with waits, safeguards, test mode, run log
+
+Additive only: new routes and fields; nothing existing changed shape (rules saved before
+keep their format and run as before). Migrations 0069-0070. Feature-gap plan phase 5
+(5.1, 5.2, 5.3, 5.5; the bot inbox, 5.4, is not in it). Everything here needs the
+`settings` right (Admin; a custom role with the settings right). A rule or workflow that
+calls a webhook can only be saved or changed by an Admin signed in (not an API key), as
+webhooks themselves. New audit area `flows` (created, changed, enabled, disabled, deleted,
+run_cancelled); rules stay under `rules`.
+
+- **Rules: new event and conditions.** Event `snooze_ended` (the worker reopened a snoozed
+  ticket). Conditions `contact_field {key, op, value}` (op: equals, not_equals, is_set,
+  not_set, contains, more_than, less_than; checked against the field's kind),
+  `contact_vip {value}`, `contact_in_segment {segment_ids, negate}`, `time_since {of:
+  customer_reply|agent_reply, op: more_than|less_than, minutes}` (no reply yet: since the
+  ticket was created), `snoozed {value}`, `has_followers {value}`.
+- **Rules: new actions.** `snooze {minutes}` (only when the ticket ends Pending),
+  `add_follower {member_id}`, `send_email {body}` (a message from the workspace with
+  `{{customer.first_name}}`-style placeholders; emailed on email and web-form tickets;
+  skipped for an erased customer; does not stop the first-reply SLA clock),
+  `call_webhook {webhook_id}` (queues one delivery to an existing webhook, event
+  `automation.webhook`, signed, retried and SSRF-checked like every webhook; body:
+  `automation {kind, id, name, run_id}` and the ticket brief; never on demo tickets).
+- **Rules: limits.** `max_runs_per_hour` (1-100000, default 1000) and `max_runs_per_day`
+  (1-1000000, default 10000, not below the hourly one) on `POST|PUT|PATCH /rules` and in
+  `RuleOut`.
+- **Safeguards.** A run is blocked (logged, nothing changed) past 5 levels of automations
+  answering each other on a ticket (an automatic email or snooze causing the next event
+  within 10 minutes), after 20 runs of one rule or workflow on one ticket in 24 hours, or
+  past its hourly or daily limit. Blocked runs don't count toward the limits.
+- **Test mode.** `POST /rules/{id}/test {ticket_id}` and `POST /rules/test {ticket_id,
+  rule: {event, conditions, actions}}`: each condition matched or not, what each action
+  would write, `ticket_after`, and (saved rules) the safeguard that would block it.
+  `POST /flows/{id}/test {ticket_id}` and `POST /flows/test {ticket_id, graph}`: the
+  `steps` it would take until its first wait, `would_wait`, `ticket_after`, `blocked`.
+  Nothing is changed, sent or logged.
+- **Workflows.** `GET|POST /flows`, `GET|PATCH|DELETE /flows/{id}`,
+  `GET /flows/{id}/versions`, `POST /flows/validate {graph}` (200 `{valid, trigger,
+  error}`; shape only). A graph is `{nodes, edges}`: one `trigger` node (`event`),
+  `condition` nodes (`conditions`, out by `yes`/`no`), `action` nodes (one rule `action`),
+  `wait` nodes (`minutes` 1-43200, optional `until: "customer_replied"`, out by `next`, or
+  `replied`/`timeout`). Edges `{from, to, when}`. Every node reachable, one edge per way
+  out, loops only through a wait, at most 50 nodes and 100 edges, 50 workflows. Nodes may
+  carry `position` and `label`. 422 with the first problem; 409 for a name in use.
+  Workflows start turned off. A changed graph is a new `version`; waiting runs finish on
+  the version they started on. Turning one off or deleting it cancels its waiting runs.
+  Workflows run after the rules on the same events, in one save.
+- **Waits.** The worker moves due runs on once a minute (each run once). A customer
+  reply moves runs waiting `until: customer_replied` on by `replied`; otherwise `timeout`
+  when the minutes pass. A run waiting on a ticket that was resolved (and no reply), merged
+  or whose workflow is off is cancelled when it comes due.
+- **Catalog.** `GET /automation/catalog`: triggers, conditions, actions (each with a JSON
+  schema of its parameters), node types and their ways out, and the limits.
+- **Run log.** `GET /automation/runs?rule_id=&flow_id=&ticket_id=&state=&trigger=&cursor=
+  &limit=` (newest first, cursor paging), `GET /automation/runs/{id}`,
+  `POST /automation/runs/{id}/cancel` (a waiting run; 409 otherwise). A run: kind (rule or
+  flow), name, ticket, trigger, state (done, waiting, cancelled, blocked, failed), result,
+  steps, depth, resume time. No message text, email body, webhook URL or secret. Finished
+  runs are kept 30 days.
+- **Privacy.** The export has `automation_runs` (per ticket: automation, trigger, state,
+  result, time). Erase cancels the customer's waiting runs (`automation_runs_cancelled` in
+  the counts).
+
 ## 2026-11-20: Contacts: list and search, notes, custom attributes, merge, CSV, segments, timeline
 
 Additive only: new routes and fields; nothing existing changed shape. Migrations 0065-0068.
