@@ -292,7 +292,14 @@ export function normalizeMetricsReport(raw: unknown): MetricsReport {
   const of = (n: number | null, m: number | null) =>
     n !== null && m !== null ? `${n} of ${m}` : undefined;
   const tiles: MetricTile[] = [
-    { key: "open", label: "Open", value: num(s, "open"), unit: "count" },
+    {
+      key: "open",
+      label: "Open now",
+      value: num(s, "open"),
+      unit: "count",
+      // The API counts open tickets as of now, whatever dates are picked.
+      hint: "As of now, not the date range",
+    },
     {
       key: "one_touch",
       label: "One-touch",
