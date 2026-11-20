@@ -3,6 +3,14 @@
 `openapi.json` next to this file is the API as served (`uv run cedesk openapi`). Every
 route is under `/api/v1`. Breaking changes only come in v2 (md 2B). Newest first.
 
+## 2026-11-20: Translate: an order number or a single word isn't "not translated"
+
+No route or field changed. Found retesting against the now-fixed Cevanos: "ORD-1042" to
+Hindi rightly comes back as it was, but Cevanos labels it English, which the rule below
+read as a failed translation (503 "Cevanos didn't translate this."). A text of fewer than
+two words (an order number, a code, a single name) sent back as it was now gets the note
+"Cevanos found nothing to translate in this text." instead.
+
 ## 2026-11-19: AI improve and translate say when Cevanos changed nothing
 
 Additive: one new field on each answer. No migration. Found testing the AI features
