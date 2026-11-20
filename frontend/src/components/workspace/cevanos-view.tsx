@@ -6,6 +6,7 @@ import { toast } from "sonner";
 
 import { PasswordInput } from "@/components/auth/password-input";
 import { useConfirm } from "@/components/ui/confirm";
+import { copyText } from "@/components/ui/copy-button";
 import { Badge, Button, Card, Field, Select, Skeleton } from "@/components/ui/primitives";
 import { FormError, fieldErrors, LoadError } from "@/components/workspace/list-shared";
 import {
@@ -204,12 +205,11 @@ function CevanosBody({ conn }: { conn: CevanosConnection }) {
             variant="outline"
             size="icon"
             aria-label="Copy webhook address"
-            onClick={() =>
-              navigator.clipboard
-                ?.writeText(url)
-                .then(() => toast.success("Copied"))
-                .catch(() => toast.error("Couldn't copy. Select the address and copy it."))
-            }
+            onClick={async () => {
+              // copyText also works on plain-http pages, where navigator.clipboard is missing.
+              if (await copyText(url)) toast.success("Copied");
+              else toast.error("Couldn't copy. Select the address and copy it.");
+            }}
           >
             <Copy className="size-4" />
           </Button>
