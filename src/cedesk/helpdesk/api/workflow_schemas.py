@@ -50,11 +50,30 @@ class SavedReplyOut(BaseModel):
 
 RuleName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=80)]
 RuleEvent = Annotated[
-    Literal["created", "customer_replied", "sla_breached"],
+    Literal["created", "customer_replied", "sla_breached", "snooze_ended"],
     Field(
         description="created: a new ticket. customer_replied: the customer wrote on an "
         "Open or Pending ticket. sla_breached: an open ticket's SLA clock ran out (checked "
-        "once a minute; once per clock). Agent edits never run rules."
+        "once a minute; once per clock). snooze_ended: a snoozed ticket's time came and the "
+        "worker reopened it. Agent edits never run rules."
+    ),
+]
+PerHour = Annotated[
+    int,
+    Field(
+        ge=1,
+        le=100_000,
+        description="At most this many runs in any hour, all tickets together (blocked runs "
+        "are logged, not counted). Default 1000.",
+    ),
+]
+PerDay = Annotated[
+    int,
+    Field(
+        ge=1,
+        le=1_000_000,
+        description="At most this many runs in any 24 hours. Default 10000; not below the "
+        "hourly limit.",
     ),
 ]
 Conditions = Annotated[
@@ -69,7 +88,15 @@ Conditions = Annotated[
         '{"kind": "status_in", "statuses": ["pending"]}; '
         '{"kind": "sentiment_in", "sentiments": ["negative"]}; '
         '{"kind": "sla_in", "states": ["breached"]} (the SLA pill\'s clock: on_track, '
-        "close, breached, met; not on created).",
+        "close, breached, met; not on created); "
+        '{"kind": "contact_field", "key": "plan", "op": "equals", "value": "gold"} (op: '
+        "equals, not_equals, is_set, not_set, contains, more_than, less_than); "
+        '{"kind": "contact_vip", "value": true}; '
+        '{"kind": "contact_in_segment", "segment_ids": ["..."], "negate": false}; '
+        '{"kind": "time_since", "of": "customer_reply", "op": "more_than", "minutes": 2880} '
+        "(of: customer_reply or agent_reply); "
+        '{"kind": "snoozed", "value": true}; {"kind": "has_followers", "value": true}. '
+        "GET /automation/catalog has each one's parameters.",
     ),
 ]
 Actions = Annotated[
@@ -81,7 +108,10 @@ Actions = Annotated[
         '{"kind": "set_type", "type_id": "...", "only_if_empty": false}; '
         '{"kind": "set_team", "team_id": "..."}; '
         '{"kind": "set_priority", "priority": "high", "keep_urgent": true}; '
-        '{"kind": "set_status", "status": "open"}; {"kind": "add_tag", "tag": "upset"}.',
+        '{"kind": "set_status", "status": "open"}; {"kind": "add_tag", "tag": "upset"}; '
+        '{"kind": "snooze", "minutes": 1440}; {"kind": "add_follower", "member_id": "..."}; '
+        '{"kind": "send_email", "body": "Hi {{customer.first_name}}, ..."}; '
+        '{"kind": "call_webhook", "webhook_id": "..."} (Admins only).',
     ),
 ]
 
@@ -92,6 +122,8 @@ class RuleIn(Body):
     event: RuleEvent
     conditions: Conditions
     actions: Actions
+    max_runs_per_hour: PerHour = 1000
+    max_runs_per_day: PerDay = 10000
 
 
 class RulePatch(Body):
@@ -100,6 +132,8 @@ class RulePatch(Body):
     event: RuleEvent | None = None
     conditions: Conditions | None = None
     actions: Actions | None = None
+    max_runs_per_hour: PerHour | None = None
+    max_runs_per_day: PerDay | None = None
 
 
 class RuleOut(BaseModel):
@@ -113,6 +147,8 @@ class RuleOut(BaseModel):
     problems: list[str] = Field(
         description="What to fix, e.g. the team it sets was deleted. Empty when fine."
     )
+    max_runs_per_hour: int
+    max_runs_per_day: int
     created_at: datetime
     updated_at: datetime
 

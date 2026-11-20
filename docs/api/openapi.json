@@ -7438,6 +7438,110 @@
         ]
       }
     },
+    "/api/v1/rules/test": {
+      "post": {
+        "tags": [
+          "rules"
+        ],
+        "summary": "Test mode: try an unsaved rule on a ticket; changes and sends nothing (Admin)",
+        "operationId": "test_draft_api_v1_rules_test_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuleTestBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuleTestOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/rules/{rule_id}/test": {
+      "post": {
+        "tags": [
+          "rules"
+        ],
+        "summary": "Test mode: try a saved rule on a ticket; changes and sends nothing (Admin)",
+        "operationId": "test_saved_api_v1_rules__rule_id__test_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "rule_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Rule Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuleTestBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuleTestOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/rules/order": {
       "put": {
         "tags": [
@@ -7571,6 +7675,707 @@
         "responses": {
           "204": {
             "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/automation/catalog": {
+      "get": {
+        "tags": [
+          "automation"
+        ],
+        "summary": "The builder's palette: triggers, conditions, actions, node types (Admin)",
+        "operationId": "catalog_api_v1_automation_catalog_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Catalog Api V1 Automation Catalog Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/flows": {
+      "get": {
+        "tags": [
+          "automation"
+        ],
+        "summary": "Every workflow, by name (Admin)",
+        "operationId": "list_flows_api_v1_flows_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/FlowOut"
+                  },
+                  "type": "array",
+                  "title": "Response List Flows Api V1 Flows Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "automation"
+        ],
+        "summary": "Save a new workflow; it starts turned off unless enabled is sent (Admin)",
+        "operationId": "create_flow_api_v1_flows_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FlowIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FlowOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/flows/validate": {
+      "post": {
+        "tags": [
+          "automation"
+        ],
+        "summary": "Check a graph while it is drawn (shape only; nothing saved) (Admin)",
+        "operationId": "validate_api_v1_flows_validate_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ValidateBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidateOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/flows/test": {
+      "post": {
+        "tags": [
+          "automation"
+        ],
+        "summary": "Test mode: try an unsaved graph on a ticket; changes and sends nothing (Admin)",
+        "operationId": "test_draft_api_v1_flows_test_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FlowTestBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FlowTestOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/flows/{flow_id}": {
+      "get": {
+        "tags": [
+          "automation"
+        ],
+        "summary": "One workflow (Admin)",
+        "operationId": "get_flow_api_v1_flows__flow_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "flow_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Flow Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FlowOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "automation"
+        ],
+        "summary": "Rename, turn on or off, change the graph (a new version) or the limits (Admin)",
+        "operationId": "change_flow_api_v1_flows__flow_id__patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "flow_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Flow Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FlowPatch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FlowOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "automation"
+        ],
+        "summary": "Delete a workflow; its waiting runs are cancelled (Admin)",
+        "operationId": "delete_flow_api_v1_flows__flow_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "flow_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Flow Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/flows/{flow_id}/versions": {
+      "get": {
+        "tags": [
+          "automation"
+        ],
+        "summary": "Every graph the workflow has had, newest first (Admin)",
+        "operationId": "versions_api_v1_flows__flow_id__versions_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "flow_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Flow Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/FlowVersionOut"
+                  },
+                  "title": "Response Versions Api V1 Flows  Flow Id  Versions Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/flows/{flow_id}/test": {
+      "post": {
+        "tags": [
+          "automation"
+        ],
+        "summary": "Test mode: try a saved workflow on a ticket; changes and sends nothing (Admin)",
+        "operationId": "test_saved_api_v1_flows__flow_id__test_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "flow_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Flow Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FlowTestBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FlowTestOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/automation/runs": {
+      "get": {
+        "tags": [
+          "automation"
+        ],
+        "summary": "The run log, newest first; kept 30 days (Admin)",
+        "operationId": "list_runs_api_v1_automation_runs_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "rule_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Rule Id"
+            }
+          },
+          {
+            "name": "flow_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Flow Id"
+            }
+          },
+          {
+            "name": "ticket_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ticket Id"
+            }
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "done",
+                    "waiting",
+                    "cancelled",
+                    "blocked",
+                    "failed"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "State"
+            }
+          },
+          {
+            "name": "trigger",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 40
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Trigger"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 500
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunPageOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/automation/runs/{run_id}": {
+      "get": {
+        "tags": [
+          "automation"
+        ],
+        "summary": "One run (Admin)",
+        "operationId": "get_run_api_v1_automation_runs__run_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Run Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/cedesk__helpdesk__api__flows__RunOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/automation/runs/{run_id}/cancel": {
+      "post": {
+        "tags": [
+          "automation"
+        ],
+        "summary": "Stop a waiting workflow run (Admin)",
+        "operationId": "cancel_run_api_v1_automation_runs__run_id__cancel_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Run Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/cedesk__helpdesk__api__flows__RunOut"
+                }
+              }
+            }
           },
           "422": {
             "description": "Validation Error",
@@ -12293,7 +13098,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/RunOut"
+                  "$ref": "#/components/schemas/cedesk__helpdesk__api__imports__RunOut"
                 }
               }
             }
@@ -12442,7 +13247,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/RunOut"
+                  "$ref": "#/components/schemas/cedesk__helpdesk__api__imports__RunOut"
                 }
               }
             }
@@ -12509,7 +13314,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/RunOut"
+                  "$ref": "#/components/schemas/cedesk__helpdesk__api__imports__RunOut"
                 }
               }
             }
@@ -12697,7 +13502,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/RunOut"
+                  "$ref": "#/components/schemas/cedesk__helpdesk__api__imports__RunOut"
                 }
               }
             }
@@ -12746,7 +13551,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/RunOut"
+                  "$ref": "#/components/schemas/cedesk__helpdesk__api__imports__RunOut"
                 }
               }
             }
@@ -15712,6 +16517,33 @@
         ],
         "title": "Action"
       },
+      "ActionCheck": {
+        "properties": {
+          "action": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Action"
+          },
+          "would": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Would",
+            "description": "What it would write, e.g. \"Tag vip\"; null: it would change nothing."
+          }
+        },
+        "type": "object",
+        "required": [
+          "action",
+          "would"
+        ],
+        "title": "ActionCheck"
+      },
       "AddMemberBody": {
         "properties": {
           "email": {
@@ -17641,7 +18473,8 @@
           "segments",
           "reports",
           "dashboards",
-          "report_schedules"
+          "report_schedules",
+          "flows"
         ],
         "title": "Area",
         "description": "Filter on the audit page. Other teams' features add their own (api_keys,\nwebhooks, apps, retention): the column takes any lower-case name."
@@ -19155,6 +19988,25 @@
           "same"
         ],
         "title": "CompareOut"
+      },
+      "ConditionCheck": {
+        "properties": {
+          "condition": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Condition"
+          },
+          "matched": {
+            "type": "boolean",
+            "title": "Matched"
+          }
+        },
+        "type": "object",
+        "required": [
+          "condition",
+          "matched"
+        ],
+        "title": "ConditionCheck"
       },
       "ConnectIn": {
         "properties": {
@@ -22210,6 +23062,361 @@
           "select"
         ],
         "title": "FieldKind"
+      },
+      "FlowIn": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "graph": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Graph",
+            "description": "The builder's graph: {\"nodes\": [...], \"edges\": [...]}. Node types: trigger ({\"id\", \"type\": \"trigger\", \"event\"}), condition ({\"conditions\": [...]}, leaves by yes or no), action ({\"action\": {...}}, one rule action), wait ({\"minutes\": 1-43200, \"until\": \"customer_replied\"?}: next; with until: replied or timeout). Edges: {\"from\", \"to\", \"when\"}. One trigger, every node reachable, at most one edge per way out, no loop without a wait, at most 50 nodes and 100 edges. A node may carry position and label for the canvas. GET /automation/catalog lists every kind with its parameters."
+          },
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "description": "Workflows start turned off.",
+            "default": false
+          },
+          "max_runs_per_hour": {
+            "type": "integer",
+            "maximum": 100000.0,
+            "minimum": 1.0,
+            "title": "Max Runs Per Hour",
+            "description": "At most this many runs in any hour, all tickets together (blocked runs are logged, not counted). Default 1000.",
+            "default": 1000
+          },
+          "max_runs_per_day": {
+            "type": "integer",
+            "maximum": 1000000.0,
+            "minimum": 1.0,
+            "title": "Max Runs Per Day",
+            "description": "At most this many runs in any 24 hours. Default 10000; not below the hourly limit.",
+            "default": 10000
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "graph"
+        ],
+        "title": "FlowIn"
+      },
+      "FlowOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled"
+          },
+          "trigger": {
+            "type": "string",
+            "title": "Trigger",
+            "description": "The trigger node's event."
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "description": "Goes up by one each time the graph changes."
+          },
+          "graph": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Graph",
+            "description": "As stored: checked, edges always with `when`."
+          },
+          "max_runs_per_hour": {
+            "type": "integer",
+            "title": "Max Runs Per Hour"
+          },
+          "max_runs_per_day": {
+            "type": "integer",
+            "title": "Max Runs Per Day"
+          },
+          "waiting_runs": {
+            "type": "integer",
+            "title": "Waiting Runs",
+            "description": "Runs of this workflow waiting on a wait step now."
+          },
+          "problems": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Problems",
+            "description": "What to fix, e.g. its team was deleted."
+          },
+          "created_by": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By"
+          },
+          "created_by_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By Name"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "enabled",
+          "trigger",
+          "version",
+          "graph",
+          "max_runs_per_hour",
+          "max_runs_per_day",
+          "waiting_runs",
+          "problems",
+          "created_by",
+          "created_by_name",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "FlowOut"
+      },
+      "FlowPatch": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "graph": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object",
+                "description": "The builder's graph: {\"nodes\": [...], \"edges\": [...]}. Node types: trigger ({\"id\", \"type\": \"trigger\", \"event\"}), condition ({\"conditions\": [...]}, leaves by yes or no), action ({\"action\": {...}}, one rule action), wait ({\"minutes\": 1-43200, \"until\": \"customer_replied\"?}: next; with until: replied or timeout). Edges: {\"from\", \"to\", \"when\"}. One trigger, every node reachable, at most one edge per way out, no loop without a wait, at most 50 nodes and 100 edges. A node may carry position and label for the canvas. GET /automation/catalog lists every kind with its parameters."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Graph"
+          },
+          "enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enabled"
+          },
+          "max_runs_per_hour": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 100000.0,
+                "minimum": 1.0,
+                "description": "At most this many runs in any hour, all tickets together (blocked runs are logged, not counted). Default 1000."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Runs Per Hour"
+          },
+          "max_runs_per_day": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 1000000.0,
+                "minimum": 1.0,
+                "description": "At most this many runs in any 24 hours. Default 10000; not below the hourly limit."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Runs Per Day"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "FlowPatch",
+        "description": "Send only what changes. A new graph is a new version; turning it off cancels its\nwaiting runs."
+      },
+      "FlowTestBody": {
+        "properties": {
+          "ticket_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Ticket Id",
+            "description": "The ticket to try it on. Nothing on it changes."
+          },
+          "graph": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object",
+                "description": "The builder's graph: {\"nodes\": [...], \"edges\": [...]}. Node types: trigger ({\"id\", \"type\": \"trigger\", \"event\"}), condition ({\"conditions\": [...]}, leaves by yes or no), action ({\"action\": {...}}, one rule action), wait ({\"minutes\": 1-43200, \"until\": \"customer_replied\"?}: next; with until: replied or timeout). Edges: {\"from\", \"to\", \"when\"}. One trigger, every node reachable, at most one edge per way out, no loop without a wait, at most 50 nodes and 100 edges. A node may carry position and label for the canvas. GET /automation/catalog lists every kind with its parameters."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Graph",
+            "description": "An unsaved graph (POST /flows/test only)."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "ticket_id"
+        ],
+        "title": "FlowTestBody"
+      },
+      "FlowTestOut": {
+        "properties": {
+          "trigger": {
+            "type": "string",
+            "title": "Trigger"
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/StepOut"
+            },
+            "type": "array",
+            "title": "Steps",
+            "description": "The path it would take, until its first wait."
+          },
+          "would_wait": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WaitOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "stopped": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stopped",
+            "description": "Too many steps or waits; null when fine."
+          },
+          "blocked": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Blocked",
+            "description": "A saved workflow only: the safeguard that would stop it now, else null."
+          },
+          "ticket_after": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Ticket After"
+          }
+        },
+        "type": "object",
+        "required": [
+          "trigger",
+          "steps",
+          "would_wait",
+          "stopped",
+          "blocked",
+          "ticket_after"
+        ],
+        "title": "FlowTestOut"
+      },
+      "FlowVersionOut": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          },
+          "graph": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Graph"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "created_by_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "version",
+          "graph",
+          "created_at",
+          "created_by_name"
+        ],
+        "title": "FlowVersionOut"
       },
       "FollowIn": {
         "properties": {
@@ -26681,6 +27888,58 @@
         "type": "object",
         "title": "RoutingPatch"
       },
+      "RuleDraft": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Name",
+            "default": "Test"
+          },
+          "event": {
+            "type": "string",
+            "enum": [
+              "created",
+              "customer_replied",
+              "sla_breached",
+              "snooze_ended"
+            ],
+            "title": "Event",
+            "description": "created: a new ticket. customer_replied: the customer wrote on an Open or Pending ticket. sla_breached: an open ticket's SLA clock ran out (checked once a minute; once per clock). snooze_ended: a snoozed ticket's time came and the worker reopened it. Agent edits never run rules."
+          },
+          "conditions": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "maxItems": 10,
+            "minItems": 1,
+            "title": "Conditions",
+            "description": "All must match. Each is one of: {\"kind\": \"text_contains_any\", \"words\": [\"refund\"]} (subject and customer messages, any case); {\"kind\": \"channel_in\", \"channels\": [\"email\"]}; {\"kind\": \"to_address_contains\", \"text\": \"billing@\"}; {\"kind\": \"status_in\", \"statuses\": [\"pending\"]}; {\"kind\": \"sentiment_in\", \"sentiments\": [\"negative\"]}; {\"kind\": \"sla_in\", \"states\": [\"breached\"]} (the SLA pill's clock: on_track, close, breached, met; not on created); {\"kind\": \"contact_field\", \"key\": \"plan\", \"op\": \"equals\", \"value\": \"gold\"} (op: equals, not_equals, is_set, not_set, contains, more_than, less_than); {\"kind\": \"contact_vip\", \"value\": true}; {\"kind\": \"contact_in_segment\", \"segment_ids\": [\"...\"], \"negate\": false}; {\"kind\": \"time_since\", \"of\": \"customer_reply\", \"op\": \"more_than\", \"minutes\": 2880} (of: customer_reply or agent_reply); {\"kind\": \"snoozed\", \"value\": true}; {\"kind\": \"has_followers\", \"value\": true}. GET /automation/catalog has each one's parameters."
+          },
+          "actions": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "maxItems": 10,
+            "minItems": 1,
+            "title": "Actions",
+            "description": "Run in order. Each is one of: {\"kind\": \"set_type\", \"type_id\": \"...\", \"only_if_empty\": false}; {\"kind\": \"set_team\", \"team_id\": \"...\"}; {\"kind\": \"set_priority\", \"priority\": \"high\", \"keep_urgent\": true}; {\"kind\": \"set_status\", \"status\": \"open\"}; {\"kind\": \"add_tag\", \"tag\": \"upset\"}; {\"kind\": \"snooze\", \"minutes\": 1440}; {\"kind\": \"add_follower\", \"member_id\": \"...\"}; {\"kind\": \"send_email\", \"body\": \"Hi {{customer.first_name}}, ...\"}; {\"kind\": \"call_webhook\", \"webhook_id\": \"...\"} (Admins only)."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "event",
+          "conditions",
+          "actions"
+        ],
+        "title": "RuleDraft"
+      },
       "RuleIn": {
         "properties": {
           "name": {
@@ -26699,10 +27958,11 @@
             "enum": [
               "created",
               "customer_replied",
-              "sla_breached"
+              "sla_breached",
+              "snooze_ended"
             ],
             "title": "Event",
-            "description": "created: a new ticket. customer_replied: the customer wrote on an Open or Pending ticket. sla_breached: an open ticket's SLA clock ran out (checked once a minute; once per clock). Agent edits never run rules."
+            "description": "created: a new ticket. customer_replied: the customer wrote on an Open or Pending ticket. sla_breached: an open ticket's SLA clock ran out (checked once a minute; once per clock). snooze_ended: a snoozed ticket's time came and the worker reopened it. Agent edits never run rules."
           },
           "conditions": {
             "items": {
@@ -26713,7 +27973,7 @@
             "maxItems": 10,
             "minItems": 1,
             "title": "Conditions",
-            "description": "All must match. Each is one of: {\"kind\": \"text_contains_any\", \"words\": [\"refund\"]} (subject and customer messages, any case); {\"kind\": \"channel_in\", \"channels\": [\"email\"]}; {\"kind\": \"to_address_contains\", \"text\": \"billing@\"}; {\"kind\": \"status_in\", \"statuses\": [\"pending\"]}; {\"kind\": \"sentiment_in\", \"sentiments\": [\"negative\"]}; {\"kind\": \"sla_in\", \"states\": [\"breached\"]} (the SLA pill's clock: on_track, close, breached, met; not on created)."
+            "description": "All must match. Each is one of: {\"kind\": \"text_contains_any\", \"words\": [\"refund\"]} (subject and customer messages, any case); {\"kind\": \"channel_in\", \"channels\": [\"email\"]}; {\"kind\": \"to_address_contains\", \"text\": \"billing@\"}; {\"kind\": \"status_in\", \"statuses\": [\"pending\"]}; {\"kind\": \"sentiment_in\", \"sentiments\": [\"negative\"]}; {\"kind\": \"sla_in\", \"states\": [\"breached\"]} (the SLA pill's clock: on_track, close, breached, met; not on created); {\"kind\": \"contact_field\", \"key\": \"plan\", \"op\": \"equals\", \"value\": \"gold\"} (op: equals, not_equals, is_set, not_set, contains, more_than, less_than); {\"kind\": \"contact_vip\", \"value\": true}; {\"kind\": \"contact_in_segment\", \"segment_ids\": [\"...\"], \"negate\": false}; {\"kind\": \"time_since\", \"of\": \"customer_reply\", \"op\": \"more_than\", \"minutes\": 2880} (of: customer_reply or agent_reply); {\"kind\": \"snoozed\", \"value\": true}; {\"kind\": \"has_followers\", \"value\": true}. GET /automation/catalog has each one's parameters."
           },
           "actions": {
             "items": {
@@ -26724,7 +27984,23 @@
             "maxItems": 10,
             "minItems": 1,
             "title": "Actions",
-            "description": "Run in order. Each is one of: {\"kind\": \"set_type\", \"type_id\": \"...\", \"only_if_empty\": false}; {\"kind\": \"set_team\", \"team_id\": \"...\"}; {\"kind\": \"set_priority\", \"priority\": \"high\", \"keep_urgent\": true}; {\"kind\": \"set_status\", \"status\": \"open\"}; {\"kind\": \"add_tag\", \"tag\": \"upset\"}."
+            "description": "Run in order. Each is one of: {\"kind\": \"set_type\", \"type_id\": \"...\", \"only_if_empty\": false}; {\"kind\": \"set_team\", \"team_id\": \"...\"}; {\"kind\": \"set_priority\", \"priority\": \"high\", \"keep_urgent\": true}; {\"kind\": \"set_status\", \"status\": \"open\"}; {\"kind\": \"add_tag\", \"tag\": \"upset\"}; {\"kind\": \"snooze\", \"minutes\": 1440}; {\"kind\": \"add_follower\", \"member_id\": \"...\"}; {\"kind\": \"send_email\", \"body\": \"Hi {{customer.first_name}}, ...\"}; {\"kind\": \"call_webhook\", \"webhook_id\": \"...\"} (Admins only)."
+          },
+          "max_runs_per_hour": {
+            "type": "integer",
+            "maximum": 100000.0,
+            "minimum": 1.0,
+            "title": "Max Runs Per Hour",
+            "description": "At most this many runs in any hour, all tickets together (blocked runs are logged, not counted). Default 1000.",
+            "default": 1000
+          },
+          "max_runs_per_day": {
+            "type": "integer",
+            "maximum": 1000000.0,
+            "minimum": 1.0,
+            "title": "Max Runs Per Day",
+            "description": "At most this many runs in any 24 hours. Default 10000; not below the hourly limit.",
+            "default": 10000
           }
         },
         "additionalProperties": false,
@@ -26805,6 +28081,14 @@
             "title": "Problems",
             "description": "What to fix, e.g. the team it sets was deleted. Empty when fine."
           },
+          "max_runs_per_hour": {
+            "type": "integer",
+            "title": "Max Runs Per Hour"
+          },
+          "max_runs_per_day": {
+            "type": "integer",
+            "title": "Max Runs Per Day"
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -26826,6 +28110,8 @@
           "conditions",
           "actions",
           "problems",
+          "max_runs_per_hour",
+          "max_runs_per_day",
           "created_at",
           "updated_at"
         ],
@@ -26864,9 +28150,10 @@
                 "enum": [
                   "created",
                   "customer_replied",
-                  "sla_breached"
+                  "sla_breached",
+                  "snooze_ended"
                 ],
-                "description": "created: a new ticket. customer_replied: the customer wrote on an Open or Pending ticket. sla_breached: an open ticket's SLA clock ran out (checked once a minute; once per clock). Agent edits never run rules."
+                "description": "created: a new ticket. customer_replied: the customer wrote on an Open or Pending ticket. sla_breached: an open ticket's SLA clock ran out (checked once a minute; once per clock). snooze_ended: a snoozed ticket's time came and the worker reopened it. Agent edits never run rules."
               },
               {
                 "type": "null"
@@ -26884,7 +28171,7 @@
                 "type": "array",
                 "maxItems": 10,
                 "minItems": 1,
-                "description": "All must match. Each is one of: {\"kind\": \"text_contains_any\", \"words\": [\"refund\"]} (subject and customer messages, any case); {\"kind\": \"channel_in\", \"channels\": [\"email\"]}; {\"kind\": \"to_address_contains\", \"text\": \"billing@\"}; {\"kind\": \"status_in\", \"statuses\": [\"pending\"]}; {\"kind\": \"sentiment_in\", \"sentiments\": [\"negative\"]}; {\"kind\": \"sla_in\", \"states\": [\"breached\"]} (the SLA pill's clock: on_track, close, breached, met; not on created)."
+                "description": "All must match. Each is one of: {\"kind\": \"text_contains_any\", \"words\": [\"refund\"]} (subject and customer messages, any case); {\"kind\": \"channel_in\", \"channels\": [\"email\"]}; {\"kind\": \"to_address_contains\", \"text\": \"billing@\"}; {\"kind\": \"status_in\", \"statuses\": [\"pending\"]}; {\"kind\": \"sentiment_in\", \"sentiments\": [\"negative\"]}; {\"kind\": \"sla_in\", \"states\": [\"breached\"]} (the SLA pill's clock: on_track, close, breached, met; not on created); {\"kind\": \"contact_field\", \"key\": \"plan\", \"op\": \"equals\", \"value\": \"gold\"} (op: equals, not_equals, is_set, not_set, contains, more_than, less_than); {\"kind\": \"contact_vip\", \"value\": true}; {\"kind\": \"contact_in_segment\", \"segment_ids\": [\"...\"], \"negate\": false}; {\"kind\": \"time_since\", \"of\": \"customer_reply\", \"op\": \"more_than\", \"minutes\": 2880} (of: customer_reply or agent_reply); {\"kind\": \"snoozed\", \"value\": true}; {\"kind\": \"has_followers\", \"value\": true}. GET /automation/catalog has each one's parameters."
               },
               {
                 "type": "null"
@@ -26902,18 +28189,134 @@
                 "type": "array",
                 "maxItems": 10,
                 "minItems": 1,
-                "description": "Run in order. Each is one of: {\"kind\": \"set_type\", \"type_id\": \"...\", \"only_if_empty\": false}; {\"kind\": \"set_team\", \"team_id\": \"...\"}; {\"kind\": \"set_priority\", \"priority\": \"high\", \"keep_urgent\": true}; {\"kind\": \"set_status\", \"status\": \"open\"}; {\"kind\": \"add_tag\", \"tag\": \"upset\"}."
+                "description": "Run in order. Each is one of: {\"kind\": \"set_type\", \"type_id\": \"...\", \"only_if_empty\": false}; {\"kind\": \"set_team\", \"team_id\": \"...\"}; {\"kind\": \"set_priority\", \"priority\": \"high\", \"keep_urgent\": true}; {\"kind\": \"set_status\", \"status\": \"open\"}; {\"kind\": \"add_tag\", \"tag\": \"upset\"}; {\"kind\": \"snooze\", \"minutes\": 1440}; {\"kind\": \"add_follower\", \"member_id\": \"...\"}; {\"kind\": \"send_email\", \"body\": \"Hi {{customer.first_name}}, ...\"}; {\"kind\": \"call_webhook\", \"webhook_id\": \"...\"} (Admins only)."
               },
               {
                 "type": "null"
               }
             ],
             "title": "Actions"
+          },
+          "max_runs_per_hour": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 100000.0,
+                "minimum": 1.0,
+                "description": "At most this many runs in any hour, all tickets together (blocked runs are logged, not counted). Default 1000."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Runs Per Hour"
+          },
+          "max_runs_per_day": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 1000000.0,
+                "minimum": 1.0,
+                "description": "At most this many runs in any 24 hours. Default 10000; not below the hourly limit."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Runs Per Day"
           }
         },
         "additionalProperties": false,
         "type": "object",
         "title": "RulePatch"
+      },
+      "RuleTestBody": {
+        "properties": {
+          "ticket_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Ticket Id",
+            "description": "The ticket to try it on. Nothing on it changes."
+          },
+          "rule": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RuleDraft"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "An unsaved rule (POST /rules/test only): what the editor holds now."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "ticket_id"
+        ],
+        "title": "RuleTestBody"
+      },
+      "RuleTestOut": {
+        "properties": {
+          "rule_name": {
+            "type": "string",
+            "title": "Rule Name"
+          },
+          "event": {
+            "type": "string",
+            "title": "Event"
+          },
+          "matched": {
+            "type": "boolean",
+            "title": "Matched",
+            "description": "Every condition matched, so the actions would run."
+          },
+          "conditions": {
+            "items": {
+              "$ref": "#/components/schemas/ConditionCheck"
+            },
+            "type": "array",
+            "title": "Conditions"
+          },
+          "actions": {
+            "items": {
+              "$ref": "#/components/schemas/ActionCheck"
+            },
+            "type": "array",
+            "title": "Actions",
+            "description": "Empty when it did not match."
+          },
+          "blocked": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Blocked",
+            "description": "A saved rule only: the safeguard that would stop it now (loop, per ticket, hourly or daily limit), else null."
+          },
+          "ticket_after": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Ticket After",
+            "description": "The ticket as the actions would leave it: status, priority, type_id, team_id, tags, snoozed, followers."
+          }
+        },
+        "type": "object",
+        "required": [
+          "rule_name",
+          "event",
+          "matched",
+          "conditions",
+          "actions",
+          "blocked",
+          "ticket_after"
+        ],
+        "title": "RuleTestOut"
       },
       "RunCardIn": {
         "properties": {
@@ -26993,67 +28396,16 @@
         "type": "object",
         "title": "RunIn"
       },
-      "RunOut": {
+      "RunPageOut": {
         "properties": {
-          "id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Id"
-          },
-          "connection_id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Connection Id"
-          },
-          "source": {
-            "type": "string",
-            "title": "Source"
-          },
-          "state": {
-            "type": "string",
-            "enum": [
-              "queued",
-              "running",
-              "done",
-              "failed"
-            ],
-            "title": "State"
-          },
-          "kinds": {
+          "runs": {
             "items": {
-              "type": "string"
+              "$ref": "#/components/schemas/cedesk__helpdesk__api__flows__RunOut"
             },
             "type": "array",
-            "title": "Kinds"
+            "title": "Runs"
           },
-          "counts": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Counts",
-            "description": "Per kind: created and skipped (and, for tickets, unknown_agent_messages); failed: records left out because the source could not give them (listed by GET /imports/runs/{id}/failures); rows_left_out for a CSV."
-          },
-          "sync_on": {
-            "type": "boolean",
-            "title": "Sync On"
-          },
-          "started_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Started At"
-          },
-          "finished_at": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Finished At"
-          },
-          "last_error": {
+          "next_cursor": {
             "anyOf": [
               {
                 "type": "string"
@@ -27062,58 +28414,15 @@
                 "type": "null"
               }
             ],
-            "title": "Last Error",
-            "description": "Why it paused or failed, in words."
-          },
-          "last_sync_at": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Last Sync At",
-            "description": "When the source was last asked for changes (sync on)."
-          },
-          "retry_attempts": {
-            "type": "integer",
-            "title": "Retry Attempts",
-            "description": "Failed tries of the page the run is on (a temporary error at the source). Back to 0 when a page is saved.",
-            "default": 0
-          },
-          "outcome": {
-            "type": "string",
-            "enum": [
-              "in_progress",
-              "complete",
-              "complete_with_exceptions",
-              "failed"
-            ],
-            "title": "Outcome",
-            "description": "complete: nothing was left out, cut, linked or noted. complete_with_exceptions: it ended, but see `report` (open failures, losses, a difference against the source's own counts). failed: it stopped; see last_error (a failed run can be resumed).",
-            "default": "in_progress"
-          },
-          "report": {
-            "$ref": "#/components/schemas/RunReportOut"
+            "title": "Next Cursor"
           }
         },
         "type": "object",
         "required": [
-          "id",
-          "connection_id",
-          "source",
-          "state",
-          "kinds",
-          "counts",
-          "sync_on",
-          "started_at",
-          "finished_at",
-          "last_error"
+          "runs",
+          "next_cursor"
         ],
-        "title": "RunOut"
+        "title": "RunPageOut"
       },
       "RunReportOut": {
         "properties": {
@@ -29260,6 +30569,41 @@
           "recovery_codes_left"
         ],
         "title": "StatusOut"
+      },
+      "StepOut": {
+        "properties": {
+          "node": {
+            "type": "string",
+            "title": "Node"
+          },
+          "type": {
+            "type": "string",
+            "title": "Type"
+          },
+          "outcome": {
+            "type": "string",
+            "title": "Outcome",
+            "description": "condition: yes or no; action: done or no change; wait: waiting (in the run log also next, replied or timeout when it went on)."
+          },
+          "said": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Said"
+          }
+        },
+        "type": "object",
+        "required": [
+          "node",
+          "type",
+          "outcome"
+        ],
+        "title": "StepOut"
       },
       "StreamTicketOut": {
         "properties": {
@@ -31495,6 +32839,60 @@
         ],
         "title": "UsageOut"
       },
+      "ValidateBody": {
+        "properties": {
+          "graph": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Graph",
+            "description": "The builder's graph: {\"nodes\": [...], \"edges\": [...]}. Node types: trigger ({\"id\", \"type\": \"trigger\", \"event\"}), condition ({\"conditions\": [...]}, leaves by yes or no), action ({\"action\": {...}}, one rule action), wait ({\"minutes\": 1-43200, \"until\": \"customer_replied\"?}: next; with until: replied or timeout). Edges: {\"from\", \"to\", \"when\"}. One trigger, every node reachable, at most one edge per way out, no loop without a wait, at most 50 nodes and 100 edges. A node may carry position and label for the canvas. GET /automation/catalog lists every kind with its parameters."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "graph"
+        ],
+        "title": "ValidateBody"
+      },
+      "ValidateOut": {
+        "properties": {
+          "valid": {
+            "type": "boolean",
+            "title": "Valid"
+          },
+          "trigger": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trigger"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error",
+            "description": "The first problem found, for the canvas to show."
+          }
+        },
+        "type": "object",
+        "required": [
+          "valid",
+          "trigger",
+          "error"
+        ],
+        "title": "ValidateOut"
+      },
       "ValidationError": {
         "properties": {
           "loc": {
@@ -31744,6 +33142,35 @@
           "visitor"
         ],
         "title": "VoteIn"
+      },
+      "WaitOut": {
+        "properties": {
+          "node": {
+            "type": "string",
+            "title": "Node"
+          },
+          "minutes": {
+            "type": "integer",
+            "title": "Minutes"
+          },
+          "until_reply": {
+            "type": "boolean",
+            "title": "Until Reply"
+          },
+          "resume_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Resume At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "node",
+          "minutes",
+          "until_reply",
+          "resume_at"
+        ],
+        "title": "WaitOut"
       },
       "WaitingOut": {
         "properties": {
@@ -32164,6 +33591,182 @@
         ],
         "title": "ConnectionOut"
       },
+      "cedesk__helpdesk__api__flows__RunOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind",
+            "description": "rule or flow."
+          },
+          "rule_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rule Id",
+            "description": "Null for a flow, or once the rule was deleted."
+          },
+          "flow_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Flow Id"
+          },
+          "flow_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Flow Version"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "The rule's or workflow's name when it ran."
+          },
+          "ticket_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Ticket Id"
+          },
+          "ticket_number": {
+            "type": "integer",
+            "title": "Ticket Number"
+          },
+          "trigger": {
+            "type": "string",
+            "title": "Trigger"
+          },
+          "state": {
+            "type": "string",
+            "title": "State",
+            "description": "done, waiting, cancelled, blocked or failed."
+          },
+          "result": {
+            "type": "string",
+            "title": "Result",
+            "description": "What it did, why it was blocked or stopped."
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/StepOut"
+            },
+            "type": "array",
+            "title": "Steps"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "depth": {
+            "type": "integer",
+            "title": "Depth",
+            "description": "Loop depth: 1, or more when an automation's email or snooze led to this event."
+          },
+          "node_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Node Id",
+            "description": "Waiting runs: the wait node."
+          },
+          "until_reply": {
+            "type": "boolean",
+            "title": "Until Reply"
+          },
+          "resume_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resume At",
+            "description": "Waiting runs: when it goes on at the latest."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "rule_id",
+          "flow_id",
+          "flow_version",
+          "name",
+          "ticket_id",
+          "ticket_number",
+          "trigger",
+          "state",
+          "result",
+          "steps",
+          "error",
+          "depth",
+          "node_id",
+          "until_reply",
+          "resume_at",
+          "created_at",
+          "updated_at",
+          "finished_at"
+        ],
+        "title": "RunOut"
+      },
       "cedesk__helpdesk__api__imports__ConnectionOut": {
         "properties": {
           "id": {
@@ -32260,6 +33863,128 @@
           "suggested_team"
         ],
         "title": "GroupOut"
+      },
+      "cedesk__helpdesk__api__imports__RunOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "connection_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Connection Id"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "running",
+              "done",
+              "failed"
+            ],
+            "title": "State"
+          },
+          "kinds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Kinds"
+          },
+          "counts": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Counts",
+            "description": "Per kind: created and skipped (and, for tickets, unknown_agent_messages); failed: records left out because the source could not give them (listed by GET /imports/runs/{id}/failures); rows_left_out for a CSV."
+          },
+          "sync_on": {
+            "type": "boolean",
+            "title": "Sync On"
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Started At"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "last_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error",
+            "description": "Why it paused or failed, in words."
+          },
+          "last_sync_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Sync At",
+            "description": "When the source was last asked for changes (sync on)."
+          },
+          "retry_attempts": {
+            "type": "integer",
+            "title": "Retry Attempts",
+            "description": "Failed tries of the page the run is on (a temporary error at the source). Back to 0 when a page is saved.",
+            "default": 0
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "in_progress",
+              "complete",
+              "complete_with_exceptions",
+              "failed"
+            ],
+            "title": "Outcome",
+            "description": "complete: nothing was left out, cut, linked or noted. complete_with_exceptions: it ended, but see `report` (open failures, losses, a difference against the source's own counts). failed: it stopped; see last_error (a failed run can be resumed).",
+            "default": "in_progress"
+          },
+          "report": {
+            "$ref": "#/components/schemas/RunReportOut"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "connection_id",
+          "source",
+          "state",
+          "kinds",
+          "counts",
+          "sync_on",
+          "started_at",
+          "finished_at",
+          "last_error"
+        ],
+        "title": "RunOut"
       },
       "cedesk__helpdesk__api__portal__CodeBody": {
         "properties": {

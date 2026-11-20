@@ -70,6 +70,9 @@ class Area(StrEnum):
     reports = "reports"
     dashboards = "dashboards"
     report_schedules = "report_schedules"
+    # Automation (feature-gap plan phase 5): workflows, and waiting runs stopped by hand.
+    # Rules stay under `rules`.
+    flows = "flows"
 
 
 @dataclass(frozen=True)
