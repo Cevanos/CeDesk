@@ -380,3 +380,35 @@ async def test_0061_to_0064_add_the_inbox_tools_and_go_back_down(owner_engine: A
             assert forced is True
         assert await conn.scalar(text(column)) == 1
         assert "following" in await conn.scalar(text(kinds))
+
+
+async def test_0065_to_0068_add_the_contact_tables_and_go_back_down(owner_engine: Any) -> None:
+    """Contact notes, fields and values, merge (other addresses, history) and segments;
+    going below 0065 removes them all and the contact's attributes column."""
+    import asyncio
+
+    from sqlalchemy import text
+
+    tables = (
+        "hd_contact_note", "hd_contact_field", "hd_contact_alias", "hd_contact_merge",
+        "hd_segment",
+    )  # fmt: skip
+    column = (
+        "SELECT count(*) FROM information_schema.columns "
+        "WHERE table_name = 'hd_contact' AND column_name = 'attributes'"
+    )
+    cfg = alembic_config()
+    await asyncio.to_thread(command.downgrade, cfg, "0064")
+    async with owner_engine.connect() as conn:
+        for table in tables:
+            assert await conn.scalar(text(f"SELECT to_regclass('{table}')")) is None
+        assert await conn.scalar(text(column)) == 0
+        assert await conn.scalar(text("SELECT to_regclass('hd_contact_name')")) is None
+    await asyncio.to_thread(command.upgrade, cfg, "head")
+    async with owner_engine.connect() as conn:
+        for table in tables:
+            forced = await conn.scalar(
+                text("SELECT relforcerowsecurity FROM pg_class WHERE relname = :t"), {"t": table}
+            )
+            assert forced is True
+        assert await conn.scalar(text(column)) == 1

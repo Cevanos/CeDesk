@@ -35,7 +35,7 @@ async def contact(
     result = await session.execute(
         text(
             "SELECT id, email, name, vip, phone, organization, customer_since, created_at, "
-            "erased_at "
+            "erased_at, attributes "
             "FROM hd_contact WHERE id = :id" + (" FOR UPDATE" if lock else "")
         ),
         {"id": contact_id},
@@ -44,8 +44,13 @@ async def contact(
 
 
 async def contact_by_email(session: AsyncSession, email: str) -> RowMapping | None:
+    """By the contact's own address, or another one merged into it (plan 2.4)."""
     result = await session.execute(
-        text("SELECT id FROM hd_contact WHERE email = :email"), {"email": email}
+        text(
+            "SELECT id FROM hd_contact WHERE email = :email "
+            "UNION ALL SELECT contact_id AS id FROM hd_contact_alias WHERE email = :email LIMIT 1"
+        ),
+        {"email": email},
     )
     return result.mappings().first()
 

@@ -3554,6 +3554,1497 @@
         }
       }
     },
+    "/api/v1/contacts": {
+      "get": {
+        "tags": [
+          "contacts"
+        ],
+        "summary": "Find customers: search, filter and sort, a page at a time",
+        "description": "Erased customers are left out. Send `next_cursor` back as `cursor` with the same filters and sort for the next page.",
+        "operationId": "list_contacts_api_v1_contacts_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Part of a name, email (also merged-in ones), phone or organization, any case.",
+              "title": "Q"
+            },
+            "description": "Part of a name, email (also merged-in ones), phone or organization, any case."
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/ContactSort",
+              "description": "`name` (A-Z), `recent` (latest ticket activity first), `tickets` (most tickets first).",
+              "default": "name"
+            },
+            "description": "`name` (A-Z), `recent` (latest ticket activity first), `tickets` (most tickets first)."
+          },
+          {
+            "name": "vip",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only VIP customers (true) or none (false).",
+              "title": "Vip"
+            },
+            "description": "Only VIP customers (true) or none (false)."
+          },
+          {
+            "name": "has_open",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only customers with a ticket that isn't resolved (true), or with none (false).",
+              "title": "Has Open"
+            },
+            "description": "Only customers with a ticket that isn't resolved (true), or with none (false)."
+          },
+          {
+            "name": "created_from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Contact made on or after this day (UTC).",
+              "title": "Created From"
+            },
+            "description": "Contact made on or after this day (UTC)."
+          },
+          {
+            "name": "created_to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Contact made on or before this day (UTC).",
+              "title": "Created To"
+            },
+            "description": "Contact made on or before this day (UTC)."
+          },
+          {
+            "name": "attr",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 10,
+              "description": "A contact field's value, as `key:value` (`attr=plan:pro&attr=trial:true`); the contact's value must equal it. Dates as YYYY-MM-DD, checkboxes true/false.",
+              "default": [],
+              "title": "Attr"
+            },
+            "description": "A contact field's value, as `key:value` (`attr=plan:pro&attr=trial:true`); the contact's value must equal it. Dates as YYYY-MM-DD, checkboxes true/false."
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 400
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "`next_cursor` from the previous page.",
+              "title": "Cursor"
+            },
+            "description": "`next_cursor` from the previous page."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContactListOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "A bad filter or cursor, or an unknown field in attr"
+          }
+        }
+      }
+    },
+    "/api/v1/contacts/export": {
+      "get": {
+        "tags": [
+          "contacts"
+        ],
+        "summary": "Download customers as a CSV file (Admin; audited)",
+        "description": "The same filters as `GET /contacts` (erased customers never). One row per customer: id, email, name, phone, organization, vip, customer_since, created_at, tickets, open_tickets, other_emails (`;` between) and `attr.<key>` per contact field. UTF-8 with a byte order mark; a value a spreadsheet would run as a formula starts with `'`. At most 50000 rows (413: add filters). Not for API keys.",
+        "operationId": "export_contacts_api_v1_contacts_export_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Part of a name, email (also merged-in ones), phone or organization, any case.",
+              "title": "Q"
+            },
+            "description": "Part of a name, email (also merged-in ones), phone or organization, any case."
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/ContactSort",
+              "description": "`name` (A-Z), `recent` (latest ticket activity first), `tickets` (most tickets first).",
+              "default": "name"
+            },
+            "description": "`name` (A-Z), `recent` (latest ticket activity first), `tickets` (most tickets first)."
+          },
+          {
+            "name": "vip",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only VIP customers (true) or none (false).",
+              "title": "Vip"
+            },
+            "description": "Only VIP customers (true) or none (false)."
+          },
+          {
+            "name": "has_open",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only customers with a ticket that isn't resolved (true), or with none (false).",
+              "title": "Has Open"
+            },
+            "description": "Only customers with a ticket that isn't resolved (true), or with none (false)."
+          },
+          {
+            "name": "created_from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Contact made on or after this day (UTC).",
+              "title": "Created From"
+            },
+            "description": "Contact made on or after this day (UTC)."
+          },
+          {
+            "name": "created_to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Contact made on or before this day (UTC).",
+              "title": "Created To"
+            },
+            "description": "Contact made on or before this day (UTC)."
+          },
+          {
+            "name": "attr",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 10,
+              "description": "A contact field's value, as `key:value` (`attr=plan:pro&attr=trial:true`); the contact's value must equal it. Dates as YYYY-MM-DD, checkboxes true/false.",
+              "default": [],
+              "title": "Attr"
+            },
+            "description": "A contact field's value, as `key:value` (`attr=plan:pro&attr=trial:true`); the contact's value must equal it. Dates as YYYY-MM-DD, checkboxes true/false."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an Admin"
+          },
+          "413": {
+            "description": "Too many contacts match"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/contacts/import": {
+      "post": {
+        "tags": [
+          "contacts"
+        ],
+        "summary": "Import customers from a CSV file: dry run, then run (Admin; audited)",
+        "description": "The request body is the file itself (UTF-8 CSV with a header row), not a form. At most 2 MB (413) and 5000 rows. `mapping` (JSON) says which column holds what: `email` (required), `name`, `phone`, `organization`, `vip` (true/false, yes/no, 1/0) and `attributes` (field key to column). Without it, columns are matched by name; the answer shows the mapping used. Matched by email (also merged-in addresses): a new address makes a customer; an existing one is changed by `on_existing`. A row that can't be read is listed by line and left out. `dry_run=true` (the default) writes nothing: send the same file with `dry_run=false` to import. The whole file is written in one go or not at all.",
+        "operationId": "import_contacts_api_v1_contacts_import_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "dry_run",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "true: check only, write nothing.",
+              "default": true,
+              "title": "Dry Run"
+            },
+            "description": "true: check only, write nothing."
+          },
+          {
+            "name": "on_existing",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "fill_blanks",
+                "overwrite",
+                "skip"
+              ],
+              "type": "string",
+              "description": "An existing customer: `fill_blanks` sets only what it has no value for; `overwrite` sets every value the row has (an empty cell never clears one); `skip` leaves it.",
+              "default": "fill_blanks",
+              "title": "On Existing"
+            },
+            "description": "An existing customer: `fill_blanks` sets only what it has no value for; `overwrite` sets every value the row has (an empty cell never clears one); `skip` leaves it."
+          },
+          {
+            "name": "mapping",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 4000
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "JSON, e.g. {\"email\": \"E-mail\", \"name\": \"Full name\", \"attributes\": {\"plan\": \"Plan\"}}.",
+              "title": "Mapping"
+            },
+            "description": "JSON, e.g. {\"email\": \"E-mail\", \"name\": \"Full name\", \"attributes\": {\"plan\": \"Plan\"}}."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContactImportOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "A contact was added meanwhile: run it again"
+          },
+          "413": {
+            "description": "The file is too big"
+          },
+          "422": {
+            "description": "Not a CSV, no email column, or a bad mapping"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "text/csv": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/contacts/{contact_id}": {
+      "get": {
+        "tags": [
+          "contacts"
+        ],
+        "summary": "One customer: profile, attributes, counts and newest notes",
+        "description": "For the customer page and a ticket's Customer tab (the ticket's `contact.id`). An erased customer is still found (with `erased_at`).",
+        "operationId": "get_contact_api_v1_contacts__contact_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "contact_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Contact Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContactDetailOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/contacts/{contact_id}/attributes": {
+      "put": {
+        "tags": [
+          "contacts"
+        ],
+        "summary": "Set a customer's custom attribute values (audited)",
+        "description": "Each value is checked by its field's kind: text (up to 2000), number, date (YYYY-MM-DD), select (one of its options), checkbox (true/false). Needs the right to change ticket fields. The audit entry names the fields, never the values.",
+        "operationId": "set_attributes_api_v1_contacts__contact_id__attributes_put",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "contact_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Contact Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContactAttributesIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContactDetailOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "No such field, a wrong value, or an erased customer"
+          }
+        }
+      }
+    },
+    "/api/v1/contacts/{contact_id}/notes": {
+      "get": {
+        "tags": [
+          "contacts"
+        ],
+        "summary": "A customer's private notes, newest first",
+        "operationId": "list_notes_api_v1_contacts__contact_id__notes_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "contact_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Contact Id"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 400
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "`next_cursor` from the previous page.",
+              "title": "Cursor"
+            },
+            "description": "`next_cursor` from the previous page."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContactNotesOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "contacts"
+        ],
+        "summary": "Add a private note about a customer (audited; customers never see it)",
+        "description": "Anyone who may add notes on tickets (a Light agent too). The audit entry holds the note's id, not its words.",
+        "operationId": "add_note_api_v1_contacts__contact_id__notes_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "contact_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Contact Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContactNoteIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContactNoteOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/contacts/{contact_id}/notes/{note_id}": {
+      "patch": {
+        "tags": [
+          "contacts"
+        ],
+        "summary": "Change a note (its author, or an Admin; audited)",
+        "operationId": "change_note_api_v1_contacts__contact_id__notes__note_id__patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "contact_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Contact Id"
+            }
+          },
+          {
+            "name": "note_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Note Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContactNoteIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContactNoteOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Someone else's note"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "contacts"
+        ],
+        "summary": "Delete a note (its author, or an Admin; audited)",
+        "operationId": "delete_note_api_v1_contacts__contact_id__notes__note_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "contact_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Contact Id"
+            }
+          },
+          {
+            "name": "note_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Note Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Someone else's note"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/contacts/{contact_id}/timeline": {
+      "get": {
+        "tags": [
+          "contacts"
+        ],
+        "summary": "Everything that happened with a customer, newest first",
+        "description": "Tickets created and resolved (archived ones too), public messages (customer, agent, AI; never notes or system lines), ratings, notes and merges. A team-only role sees only its team's tickets here. `kind` (repeat it) narrows it.",
+        "operationId": "timeline_api_v1_contacts__contact_id__timeline_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "contact_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Contact Id"
+            }
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 6,
+              "default": [],
+              "title": "Kind"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 400
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "`next_cursor` from the previous page.",
+              "title": "Cursor"
+            },
+            "description": "`next_cursor` from the previous page."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContactTimelineOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/contacts/{contact_id}/merge-preview": {
+      "post": {
+        "tags": [
+          "contacts"
+        ],
+        "summary": "What merging a duplicate into this customer would do (changes nothing)",
+        "description": "`contact_id` is the survivor. Needs the right to merge customers.",
+        "operationId": "merge_preview_api_v1_contacts__contact_id__merge_preview_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "contact_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Contact Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContactMergePreviewIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MergePreviewOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Either customer doesn't exist"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/contacts/{contact_id}/merge": {
+      "post": {
+        "tags": [
+          "contacts"
+        ],
+        "summary": "Merge a duplicate into this customer (can't be undone; audited)",
+        "description": "`contact_id` is the survivor; it keeps its name and email. The duplicate's tickets, ratings, notes and addresses move to it, it takes values it has none of, and the duplicate is deleted. Show `merge-preview` first; send `confirm: true`.",
+        "operationId": "merge_api_v1_contacts__contact_id__merge_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "contact_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Contact Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContactMergeIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContactMergeOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Either customer doesn't exist"
+          },
+          "409": {
+            "description": "An erased customer, or a duplicate with privacy requests"
+          },
+          "422": {
+            "description": "confirm isn't true, or the same customer twice"
+          }
+        }
+      }
+    },
+    "/api/v1/contact-fields": {
+      "get": {
+        "tags": [
+          "contacts"
+        ],
+        "summary": "The workspace's contact fields, in order",
+        "operationId": "list_fields_api_v1_contact_fields_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ContactFieldOut"
+                  },
+                  "type": "array",
+                  "title": "Response List Fields Api V1 Contact Fields Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "contacts"
+        ],
+        "summary": "Add a contact field (Admin; audited)",
+        "description": "At most 50 per workspace.",
+        "operationId": "create_field_api_v1_contact_fields_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContactFieldIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContactFieldOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "That key is taken"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/contact-fields/{field_id}": {
+      "patch": {
+        "tags": [
+          "contacts"
+        ],
+        "summary": "Rename a contact field, change its options or position (Admin; audited)",
+        "operationId": "change_field_api_v1_contact_fields__field_id__patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "field_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Field Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContactFieldPatch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContactFieldOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "contacts"
+        ],
+        "summary": "Delete a contact field and every customer's value of it (Admin; audited)",
+        "operationId": "delete_field_api_v1_contact_fields__field_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "field_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Field Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "409": {
+            "description": "A segment filters on it"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/segments": {
+      "get": {
+        "tags": [
+          "contacts"
+        ],
+        "summary": "The workspace's segments, by name",
+        "operationId": "list_segments_api_v1_segments_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SegmentOut"
+                  },
+                  "type": "array",
+                  "title": "Response List Segments Api V1 Segments Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "contacts"
+        ],
+        "summary": "Save a segment (Admins and Supervisors; audited)",
+        "description": "At most 200 per workspace.",
+        "operationId": "create_segment_api_v1_segments_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SegmentIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SegmentOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "That name is taken"
+          },
+          "422": {
+            "description": "Bad filters"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/segments/{segment_id}": {
+      "get": {
+        "tags": [
+          "contacts"
+        ],
+        "summary": "One segment, with its count",
+        "operationId": "get_segment_api_v1_segments__segment_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "segment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Segment Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SegmentDetailOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "contacts"
+        ],
+        "summary": "Rename a segment or change its filters (Admins and Supervisors; audited)",
+        "operationId": "change_segment_api_v1_segments__segment_id__patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "segment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Segment Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SegmentPatch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SegmentOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "contacts"
+        ],
+        "summary": "Delete a segment (Admins and Supervisors; audited)",
+        "operationId": "delete_segment_api_v1_segments__segment_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "segment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Segment Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/segments/{segment_id}/contacts": {
+      "get": {
+        "tags": [
+          "contacts"
+        ],
+        "summary": "The customers in a segment now, a page at a time (a recipient list)",
+        "description": "Worked out when asked: erased customers are never in it. Same rows and paging as `GET /contacts`.",
+        "operationId": "segment_contacts_api_v1_segments__segment_id__contacts_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "segment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Segment Id"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 400
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "`next_cursor` from the previous page.",
+              "title": "Cursor"
+            },
+            "description": "`next_cursor` from the previous page."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SegmentContactsOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/auto-close": {
       "get": {
         "tags": [
@@ -13003,7 +14494,11 @@
           "manage_access",
           "bulk_edit",
           "share_views",
-          "send_transcript"
+          "send_transcript",
+          "manage_contacts",
+          "merge_contacts",
+          "export_contacts",
+          "manage_segments"
         ],
         "title": "Action"
       },
@@ -14902,7 +16397,10 @@
           "workspace",
           "tickets",
           "views",
-          "auto_close"
+          "auto_close",
+          "contacts",
+          "contact_fields",
+          "segments"
         ],
         "title": "Area",
         "description": "Filter on the audit page. Other teams' features add their own (api_keys,\nwebhooks, apps, retention): the column takes any lower-case name."
@@ -16360,6 +17858,47 @@
         "type": "object",
         "title": "ConnectionIn"
       },
+      "ContactAttributesIn": {
+        "properties": {
+          "attributes": {
+            "additionalProperties": true,
+            "type": "object",
+            "maxProperties": 50,
+            "title": "Attributes",
+            "description": "Field key to its new value; null or \"\" clears it. Keys not sent stay."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "attributes"
+        ],
+        "title": "ContactAttributesIn"
+      },
+      "ContactBriefOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "email": {
+            "type": "string",
+            "title": "Email"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "email"
+        ],
+        "title": "ContactBriefOut"
+      },
       "ContactCard": {
         "properties": {
           "id": {
@@ -16441,6 +17980,432 @@
         ],
         "title": "ContactCard"
       },
+      "ContactDetailOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "email": {
+            "type": "string",
+            "title": "Email"
+          },
+          "phone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone"
+          },
+          "organization": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Organization"
+          },
+          "vip": {
+            "type": "boolean",
+            "title": "Vip"
+          },
+          "customer_since": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Customer Since"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "ticket_count": {
+            "type": "integer",
+            "title": "Ticket Count",
+            "description": "Live tickets (not archived)."
+          },
+          "open_ticket_count": {
+            "type": "integer",
+            "title": "Open Ticket Count",
+            "description": "Tickets that aren't resolved."
+          },
+          "last_activity_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Last Activity At",
+            "description": "When one of their tickets last changed, or the contact was made."
+          },
+          "other_emails": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Other Emails",
+            "description": "Addresses merged in from duplicates."
+          },
+          "attributes": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Attributes",
+            "description": "Contact field values, by field key."
+          },
+          "erased_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Erased At",
+            "description": "Set when the customer was erased (S11)."
+          },
+          "csat_average": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Csat Average",
+            "description": "Average rating 1-5; null: none yet."
+          },
+          "csat_count": {
+            "type": "integer",
+            "title": "Csat Count"
+          },
+          "note_count": {
+            "type": "integer",
+            "title": "Note Count"
+          },
+          "notes": {
+            "items": {
+              "$ref": "#/components/schemas/ContactNoteOut"
+            },
+            "type": "array",
+            "title": "Notes",
+            "description": "The newest 5 notes; all: GET .../notes."
+          },
+          "fields": {
+            "items": {
+              "$ref": "#/components/schemas/ContactFieldBrief"
+            },
+            "type": "array",
+            "title": "Fields",
+            "description": "The workspace's contact fields, in order: show `attributes` with these."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "email",
+          "phone",
+          "organization",
+          "vip",
+          "customer_since",
+          "created_at",
+          "ticket_count",
+          "open_ticket_count",
+          "last_activity_at",
+          "other_emails",
+          "attributes",
+          "erased_at",
+          "csat_average",
+          "csat_count",
+          "note_count",
+          "notes",
+          "fields"
+        ],
+        "title": "ContactDetailOut"
+      },
+      "ContactFieldBrief": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "options": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Options"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "label",
+          "kind",
+          "options"
+        ],
+        "title": "ContactFieldBrief"
+      },
+      "ContactFieldIn": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Key",
+            "description": "a-z, 0-9 and _, starting with a letter. Never changes."
+          },
+          "label": {
+            "type": "string",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Label"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ContactFieldKind",
+            "description": "Never changes."
+          },
+          "options": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 50,
+            "title": "Options",
+            "description": "select only: 1-50 choices."
+          },
+          "position": {
+            "type": "integer",
+            "maximum": 10000.0,
+            "minimum": 0.0,
+            "title": "Position",
+            "default": 0
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "key",
+          "label",
+          "kind"
+        ],
+        "title": "ContactFieldIn"
+      },
+      "ContactFieldKind": {
+        "type": "string",
+        "enum": [
+          "text",
+          "number",
+          "date",
+          "select",
+          "checkbox"
+        ],
+        "title": "ContactFieldKind"
+      },
+      "ContactFieldOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ContactFieldKind"
+          },
+          "options": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Options"
+          },
+          "position": {
+            "type": "integer",
+            "title": "Position"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "key",
+          "label",
+          "kind",
+          "options",
+          "position",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ContactFieldOut"
+      },
+      "ContactFieldPatch": {
+        "properties": {
+          "label": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "options": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array",
+                "maxItems": 50
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Options",
+            "description": "The whole new list. Values already set stay as they are."
+          },
+          "position": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 10000.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Position"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ContactFieldPatch",
+        "description": "Send only what changes; the key and kind can't."
+      },
+      "ContactImportErrorOut": {
+        "properties": {
+          "line": {
+            "type": "integer",
+            "title": "Line"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "line",
+          "reason"
+        ],
+        "title": "ContactImportErrorOut"
+      },
+      "ContactImportOut": {
+        "properties": {
+          "dry_run": {
+            "type": "boolean",
+            "title": "Dry Run"
+          },
+          "headers": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Headers",
+            "description": "The file's columns."
+          },
+          "mapping": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Mapping",
+            "description": "What was used: property to column, and attributes: field key to column."
+          },
+          "rows": {
+            "type": "integer",
+            "title": "Rows"
+          },
+          "created": {
+            "type": "integer",
+            "title": "Created"
+          },
+          "updated": {
+            "type": "integer",
+            "title": "Updated"
+          },
+          "unchanged": {
+            "type": "integer",
+            "title": "Unchanged"
+          },
+          "error_count": {
+            "type": "integer",
+            "title": "Error Count"
+          },
+          "errors": {
+            "items": {
+              "$ref": "#/components/schemas/ContactImportErrorOut"
+            },
+            "type": "array",
+            "title": "Errors",
+            "description": "By line; the first 200."
+          }
+        },
+        "type": "object",
+        "required": [
+          "dry_run",
+          "headers",
+          "mapping",
+          "rows",
+          "created",
+          "updated",
+          "unchanged",
+          "error_count",
+          "errors"
+        ],
+        "title": "ContactImportOut"
+      },
       "ContactIn": {
         "properties": {
           "email": {
@@ -16464,6 +18429,192 @@
           "name"
         ],
         "title": "ContactIn"
+      },
+      "ContactListOut": {
+        "properties": {
+          "contacts": {
+            "items": {
+              "$ref": "#/components/schemas/ContactRowOut"
+            },
+            "type": "array",
+            "title": "Contacts"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "contacts",
+          "next_cursor"
+        ],
+        "title": "ContactListOut"
+      },
+      "ContactMergeIn": {
+        "properties": {
+          "duplicate_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Duplicate Id",
+            "description": "The customer merged in, then deleted."
+          },
+          "confirm": {
+            "type": "boolean",
+            "title": "Confirm",
+            "description": "Must be true: a merge can't be undone (422 otherwise).",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "duplicate_id"
+        ],
+        "title": "ContactMergeIn"
+      },
+      "ContactMergeOut": {
+        "properties": {
+          "contact": {
+            "$ref": "#/components/schemas/ContactRowOut"
+          },
+          "moved": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Moved"
+          }
+        },
+        "type": "object",
+        "required": [
+          "contact",
+          "moved"
+        ],
+        "title": "ContactMergeOut"
+      },
+      "ContactMergePreviewIn": {
+        "properties": {
+          "duplicate_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Duplicate Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "duplicate_id"
+        ],
+        "title": "ContactMergePreviewIn"
+      },
+      "ContactNoteIn": {
+        "properties": {
+          "body": {
+            "type": "string",
+            "maxLength": 5000,
+            "minLength": 1,
+            "title": "Body"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "body"
+        ],
+        "title": "ContactNoteIn"
+      },
+      "ContactNoteOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "author_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author Id",
+            "description": "null: the author was removed."
+          },
+          "author_name": {
+            "type": "string",
+            "title": "Author Name"
+          },
+          "body": {
+            "type": "string",
+            "title": "Body"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "can_edit": {
+            "type": "boolean",
+            "title": "Can Edit",
+            "description": "Whether you may change or delete it."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "author_id",
+          "author_name",
+          "body",
+          "created_at",
+          "updated_at",
+          "can_edit"
+        ],
+        "title": "ContactNoteOut"
+      },
+      "ContactNotesOut": {
+        "properties": {
+          "notes": {
+            "items": {
+              "$ref": "#/components/schemas/ContactNoteOut"
+            },
+            "type": "array",
+            "title": "Notes",
+            "description": "Newest first."
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "notes",
+          "next_cursor"
+        ],
+        "title": "ContactNotesOut"
       },
       "ContactOut": {
         "properties": {
@@ -16583,6 +18734,116 @@
         ],
         "title": "ContactProfileOut"
       },
+      "ContactRowOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "email": {
+            "type": "string",
+            "title": "Email"
+          },
+          "phone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone"
+          },
+          "organization": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Organization"
+          },
+          "vip": {
+            "type": "boolean",
+            "title": "Vip"
+          },
+          "customer_since": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Customer Since"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "ticket_count": {
+            "type": "integer",
+            "title": "Ticket Count",
+            "description": "Live tickets (not archived)."
+          },
+          "open_ticket_count": {
+            "type": "integer",
+            "title": "Open Ticket Count",
+            "description": "Tickets that aren't resolved."
+          },
+          "last_activity_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Last Activity At",
+            "description": "When one of their tickets last changed, or the contact was made."
+          },
+          "other_emails": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Other Emails",
+            "description": "Addresses merged in from duplicates."
+          },
+          "attributes": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Attributes",
+            "description": "Contact field values, by field key."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "email",
+          "phone",
+          "organization",
+          "vip",
+          "customer_since",
+          "created_at",
+          "ticket_count",
+          "open_ticket_count",
+          "last_activity_at",
+          "other_emails",
+          "attributes"
+        ],
+        "title": "ContactRowOut"
+      },
+      "ContactSort": {
+        "type": "string",
+        "enum": [
+          "name",
+          "recent",
+          "tickets"
+        ],
+        "title": "ContactSort",
+        "description": "`name`: A to Z. `recent`: latest activity first (a ticket changed, or the contact\nwas made). `tickets`: most tickets first."
+      },
       "ContactTicketsOut": {
         "properties": {
           "contact": {
@@ -16615,6 +18876,151 @@
           "next_cursor"
         ],
         "title": "ContactTicketsOut"
+      },
+      "ContactTimelineItemOut": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "title": "Kind",
+            "description": "ticket_created, ticket_resolved, message, csat, note, merge"
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "At"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id",
+            "description": "The ticket, message, rating, note or merge."
+          },
+          "ticket_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ticket Id"
+          },
+          "ticket_number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ticket Number"
+          },
+          "ticket_subject": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ticket Subject"
+          },
+          "author": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author",
+            "description": "message: who wrote it; note, merge: the agent."
+          },
+          "text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text",
+            "description": "message, note: its start (up to 1000 characters); csat: the comment; merge: the duplicate's name."
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score",
+            "description": "csat: 1-5."
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail",
+            "description": "ticket_created: the channel; message: customer, agent or ai; merge: the duplicate's address."
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "at",
+          "id",
+          "ticket_id",
+          "ticket_number",
+          "ticket_subject",
+          "author",
+          "text",
+          "score",
+          "detail"
+        ],
+        "title": "ContactTimelineItemOut"
+      },
+      "ContactTimelineOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ContactTimelineItemOut"
+            },
+            "type": "array",
+            "title": "Items",
+            "description": "Newest first."
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "ContactTimelineOut"
       },
       "CountRowOut": {
         "properties": {
@@ -19637,6 +22043,30 @@
         ],
         "title": "MemberPage"
       },
+      "MergeConflictOut": {
+        "properties": {
+          "field": {
+            "type": "string",
+            "title": "Field",
+            "description": "name, phone, organization or attributes.<key>"
+          },
+          "kept": {
+            "title": "Kept",
+            "description": "The survivor's value, kept."
+          },
+          "dropped": {
+            "title": "Dropped",
+            "description": "The duplicate's value, dropped."
+          }
+        },
+        "type": "object",
+        "required": [
+          "field",
+          "kept",
+          "dropped"
+        ],
+        "title": "MergeConflictOut"
+      },
       "MergeIn": {
         "properties": {
           "into": {
@@ -19652,6 +22082,81 @@
           "into"
         ],
         "title": "MergeIn"
+      },
+      "MergePreviewOut": {
+        "properties": {
+          "survivor": {
+            "$ref": "#/components/schemas/ContactBriefOut"
+          },
+          "duplicate": {
+            "$ref": "#/components/schemas/ContactBriefOut"
+          },
+          "moves": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Moves",
+            "description": "tickets, archived_tickets, ratings, notes, other_emails (with its own address), portal_sessions (ended, not moved), privacy_requests (blocks the merge)."
+          },
+          "taken": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Taken",
+            "description": "Values the survivor takes from the duplicate."
+          },
+          "conflicts": {
+            "items": {
+              "$ref": "#/components/schemas/MergeConflictOut"
+            },
+            "type": "array",
+            "title": "Conflicts"
+          },
+          "result": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Result",
+            "description": "The survivor after the merge: phone, organization, vip, customer_since, attributes."
+          },
+          "can_merge": {
+            "type": "boolean",
+            "title": "Can Merge"
+          },
+          "blocked": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Blocked",
+            "description": "Why it can't be merged, when it can't."
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          }
+        },
+        "type": "object",
+        "required": [
+          "survivor",
+          "duplicate",
+          "moves",
+          "taken",
+          "conflicts",
+          "result",
+          "can_merge",
+          "blocked",
+          "warnings"
+        ],
+        "title": "MergePreviewOut"
       },
       "MessageFileOut": {
         "properties": {
@@ -23282,6 +25787,229 @@
           "require_2fa"
         ],
         "title": "SecuritySettingsOut"
+      },
+      "SegmentContactsOut": {
+        "properties": {
+          "contacts": {
+            "items": {
+              "$ref": "#/components/schemas/ContactRowOut"
+            },
+            "type": "array",
+            "title": "Contacts"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          },
+          "segment": {
+            "$ref": "#/components/schemas/SegmentOut"
+          }
+        },
+        "type": "object",
+        "required": [
+          "contacts",
+          "next_cursor",
+          "segment"
+        ],
+        "title": "SegmentContactsOut"
+      },
+      "SegmentDetailOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "filters": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Filters",
+            "description": "Only the filters that are set."
+          },
+          "created_by": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By"
+          },
+          "created_by_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By Name"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "contact_count": {
+            "type": "integer",
+            "title": "Contact Count",
+            "description": "How many customers are in it now."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "filters",
+          "created_by",
+          "created_by_name",
+          "created_at",
+          "updated_at",
+          "contact_count"
+        ],
+        "title": "SegmentDetailOut"
+      },
+      "SegmentIn": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "filters": {
+            "additionalProperties": true,
+            "type": "object",
+            "maxProperties": 7,
+            "title": "Filters",
+            "description": "`GET /contacts`' own filters, as an object: q, sort, vip, has_open, created_from, created_to, attributes (for example {\"vip\": true, \"has_open\": true, \"attributes\": {\"plan\": \"pro\"}, \"sort\": \"recent\"}). Dates as YYYY-MM-DD. Any other key or a value the list would refuse is 422."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "filters"
+        ],
+        "title": "SegmentIn"
+      },
+      "SegmentOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "filters": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Filters",
+            "description": "Only the filters that are set."
+          },
+          "created_by": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By"
+          },
+          "created_by_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By Name"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "filters",
+          "created_by",
+          "created_by_name",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "SegmentOut"
+      },
+      "SegmentPatch": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "filters": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object",
+                "maxProperties": 7
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Filters",
+            "description": "The whole new set."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "SegmentPatch",
+        "description": "Send only what changes."
       },
       "Sentiment": {
         "type": "string",

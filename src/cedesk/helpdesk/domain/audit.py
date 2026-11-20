@@ -61,6 +61,11 @@ class Area(StrEnum):
     tickets = "tickets"
     views = "views"
     auto_close = "auto_close"
+    # Contacts (feature-gap plan phase 2): notes, attribute values, merges, CSV import and
+    # export; the contact fields; segments.
+    contacts = "contacts"
+    contact_fields = "contact_fields"
+    segments = "segments"
 
 
 @dataclass(frozen=True)
