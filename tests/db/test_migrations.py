@@ -412,3 +412,31 @@ async def test_0065_to_0068_add_the_contact_tables_and_go_back_down(owner_engine
             )
             assert forced is True
         assert await conn.scalar(text(column)) == 1
+
+
+async def test_0071_to_0075_add_the_reporting_tables_and_go_back_down(owner_engine: Any) -> None:
+    """Backlog snapshots, report indexes, saved reports, dashboards and schedules; going
+    below 0071 removes them all, and coming back up leaves row-level security forced."""
+    import asyncio
+
+    from sqlalchemy import text
+
+    tables = (
+        "hd_backlog_snapshot", "hd_saved_report", "hd_dashboard", "hd_dashboard_card",
+        "hd_report_schedule", "hd_report_schedule_recipient",
+    )  # fmt: skip
+    indexes = ("hd_ticket_created_range",)
+    cfg = alembic_config()
+    await asyncio.to_thread(command.downgrade, cfg, "0070")
+    async with owner_engine.connect() as conn:
+        for name in (*tables, *indexes):
+            assert await conn.scalar(text(f"SELECT to_regclass('{name}')")) is None
+    await asyncio.to_thread(command.upgrade, cfg, "head")
+    async with owner_engine.connect() as conn:
+        for name in indexes:
+            assert await conn.scalar(text(f"SELECT to_regclass('{name}')")) is not None
+        for table in tables:
+            forced = await conn.scalar(
+                text("SELECT relforcerowsecurity FROM pg_class WHERE relname = :t"), {"t": table}
+            )
+            assert forced is True

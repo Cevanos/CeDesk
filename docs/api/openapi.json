@@ -10783,6 +10783,1200 @@
         }
       }
     },
+    "/api/v1/reports/backlog": {
+      "get": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "Open tickets at the end of each past day (Supervisor, Admin)",
+        "description": "From daily snapshots the worker takes, so history starts the day this feature shipped and a day the worker was down is missing. The days a period touches are the workspace's local days (its SLA calendar's time zone). `breaching`: open or pending and past their SLA time at that moment; imported tickets never count. Tickets merged into another are left out.",
+        "operationId": "backlog_report_api_v1_reports_backlog_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Default: 30 days before `to`. With a time zone.",
+              "title": "From"
+            },
+            "description": "Default: 30 days before `to`. With a time zone."
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Default: now.",
+              "title": "To"
+            },
+            "description": "Default: now."
+          },
+          {
+            "name": "team_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only this team's tickets.",
+              "title": "Team Id"
+            },
+            "description": "Only this team's tickets."
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "json",
+                "csv"
+              ],
+              "type": "string",
+              "description": "`csv`: the same report as a CSV file (md R7).",
+              "default": "json",
+              "title": "Format"
+            },
+            "description": "`csv`: the same report as a CSV file (md R7)."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The report; with `format=csv`, a CSV file (UTF-8 with a byte order mark, one section per table) sent as an attachment.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BacklogReportOut"
+                }
+              },
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed to see reports"
+          },
+          "422": {
+            "description": "from after to, no time zone, or over 366 days"
+          },
+          "404": {
+            "description": "No such team"
+          }
+        }
+      }
+    },
+    "/api/v1/reports/options": {
+      "get": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "What a report builder can offer: metrics, groupings, filters, ranges, built-ins",
+        "operationId": "report_options_api_v1_reports_options_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OptionsOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed to see reports"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/reports/run": {
+      "post": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "Run a built-in report or a custom definition (Supervisor, Admin)",
+        "description": "A time series is zero-filled and bucketed in the workspace's time zone (weeks start on Monday). Imported tickets stay out of the time metrics, merged tickets out of everything, as in the other reports. A role limited to one team is held to it. A run longer than the server's limit is 422; too many at once is 429 with Retry-After.",
+        "operationId": "run_report_api_v1_reports_run_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "json",
+                "csv"
+              ],
+              "type": "string",
+              "description": "`csv`: the same report as a CSV file (md R7).",
+              "default": "json",
+              "title": "Format"
+            },
+            "description": "`csv`: the same report as a CSV file (md R7)."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The report; with `format=csv`, a CSV file (UTF-8 with a byte order mark, one section per table) sent as an attachment.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/cedesk__helpdesk__api__report_engine__ResultOut"
+                }
+              },
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed to see reports"
+          },
+          "422": {
+            "description": "from after to, no time zone, or over 366 days"
+          },
+          "404": {
+            "description": "No such built-in report, or no such team"
+          },
+          "429": {
+            "description": "Too many reports are running at once"
+          }
+        }
+      }
+    },
+    "/api/v1/reports/saved": {
+      "get": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "Your personal reports and the workspace's shared ones (shared first, by name)",
+        "operationId": "list_reports_api_v1_reports_saved_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SavedOut"
+                  },
+                  "type": "array",
+                  "title": "Response List Reports Api V1 Reports Saved Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "Save a report (audited)",
+        "description": "At most 50 personal reports per person and 100 shared reports per workspace.",
+        "operationId": "create_report_api_v1_reports_saved_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SavedIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "shared: true without the right to share, or no reports right"
+          },
+          "409": {
+            "description": "You (or the shared reports) already have one with that name"
+          },
+          "422": {
+            "description": "A definition the report engine refuses, or a fixed range"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/reports/saved/{report_id}": {
+      "get": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "One saved report",
+        "operationId": "get_report_api_v1_reports_saved__report_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "report_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Report Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "Rename a report, change its definition, or share or unshare it (audited)",
+        "description": "Your own personal reports; shared reports need the right to share. Unsharing makes it its owner's personal report again.",
+        "operationId": "change_report_api_v1_reports_saved__report_id__patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "report_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Report Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SavedPatch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such report, or someone else's personal report"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "Delete a saved report (audited; dashboard cards and schedules using it go too)",
+        "operationId": "delete_report_api_v1_reports_saved__report_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "report_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Report Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "No such report, or someone else's personal report"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/reports/saved/{report_id}/run": {
+      "post": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "Run a saved report now",
+        "description": "Worked out afresh from its preset range, under *your* scope: a role limited to one team sees that team's numbers whoever saved the report.",
+        "operationId": "run_report_api_v1_reports_saved__report_id__run_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "report_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Report Id"
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "json",
+                "csv"
+              ],
+              "type": "string",
+              "description": "`csv`: the same report as a CSV file (md R7).",
+              "default": "json",
+              "title": "Format"
+            },
+            "description": "`csv`: the same report as a CSV file (md R7)."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The report; with `format=csv`, a CSV file (UTF-8 with a byte order mark, one section per table) sent as an attachment.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/cedesk__helpdesk__api__report_engine__ResultOut"
+                }
+              },
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed to see reports"
+          },
+          "422": {
+            "description": "from after to, no time zone, or over 366 days"
+          },
+          "404": {
+            "description": "No such report, or someone else's personal report"
+          },
+          "429": {
+            "description": "Too many reports are running at once"
+          }
+        }
+      }
+    },
+    "/api/v1/dashboards": {
+      "get": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "Your personal dashboards and the workspace's shared ones (shared first, by name)",
+        "operationId": "list_dashboards_api_v1_dashboards_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/DashboardOut"
+                  },
+                  "type": "array",
+                  "title": "Response List Dashboards Api V1 Dashboards Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "Make a dashboard (audited)",
+        "description": "At most 20 personal dashboards per person and 50 shared dashboards per workspace.",
+        "operationId": "create_dashboard_api_v1_dashboards_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DashboardIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DashboardOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "shared: true without the right to share, or no reports right"
+          },
+          "409": {
+            "description": "You (or the shared dashboards) already have one with that name"
+          },
+          "422": {
+            "description": "A bad card, or a personal report on a shared dashboard"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/dashboards/{dashboard_id}": {
+      "get": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "One dashboard",
+        "operationId": "get_dashboard_api_v1_dashboards__dashboard_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "dashboard_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Dashboard Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DashboardOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "Rename a dashboard, change its cards, or share or unshare it (audited)",
+        "operationId": "change_dashboard_api_v1_dashboards__dashboard_id__patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "dashboard_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Dashboard Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DashboardPatch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DashboardOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such dashboard, or someone else's personal one"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "Delete a dashboard (audited)",
+        "operationId": "delete_dashboard_api_v1_dashboards__dashboard_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "dashboard_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Dashboard Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "No such dashboard, or someone else's personal one"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/dashboards/{dashboard_id}/cards/{card_id}/run": {
+      "post": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "Run one card of a dashboard",
+        "description": "Each card is run on its own, under *your* scope. Send `range` and `team_id` to apply the dashboard page's pickers to the card.",
+        "operationId": "run_card_api_v1_dashboards__dashboard_id__cards__card_id__run_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "dashboard_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Dashboard Id"
+            }
+          },
+          {
+            "name": "card_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Card Id"
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "json",
+                "csv"
+              ],
+              "type": "string",
+              "description": "`csv`: the same report as a CSV file (md R7).",
+              "default": "json",
+              "title": "Format"
+            },
+            "description": "`csv`: the same report as a CSV file (md R7)."
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/RunCardIn"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The report; with `format=csv`, a CSV file (UTF-8 with a byte order mark, one section per table) sent as an attachment.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/cedesk__helpdesk__api__report_engine__ResultOut"
+                }
+              },
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed to see reports"
+          },
+          "422": {
+            "description": "from after to, no time zone, or over 366 days"
+          },
+          "404": {
+            "description": "No such dashboard or card, or no report you may see"
+          },
+          "429": {
+            "description": "Too many reports are running at once"
+          }
+        }
+      }
+    },
+    "/api/v1/reports/live": {
+      "get": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "The queue right now: open, waiting, SLA due soon, agents (Supervisor, Admin)",
+        "description": "Refreshed by the page on the live stream's ticket events and every 30 s; many viewers of the same scope share one answer for about 5 seconds. A role limited to one team gets that team's queue. Imported tickets never count as waiting, at risk or breached; merged tickets are left out.",
+        "operationId": "live_view_api_v1_reports_live_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "team_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only this team's tickets.",
+              "title": "Team Id"
+            },
+            "description": "Only this team's tickets."
+          },
+          {
+            "name": "window_minutes",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1440,
+              "minimum": 5,
+              "description": "'SLA due soon' means within this many minutes.",
+              "default": 60,
+              "title": "Window Minutes"
+            },
+            "description": "'SLA due soon' means within this many minutes."
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "json",
+                "csv"
+              ],
+              "type": "string",
+              "description": "`csv`: the same report as a CSV file (md R7).",
+              "default": "json",
+              "title": "Format"
+            },
+            "description": "`csv`: the same report as a CSV file (md R7)."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The report; with `format=csv`, a CSV file (UTF-8 with a byte order mark, one section per table) sent as an attachment.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LiveOut"
+                }
+              },
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed to see reports"
+          },
+          "422": {
+            "description": "from after to, no time zone, or over 366 days"
+          },
+          "404": {
+            "description": "No such team"
+          }
+        }
+      }
+    },
+    "/api/v1/report-schedules": {
+      "get": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "Schedules you made or receive (Admins see all)",
+        "operationId": "list_schedules_api_v1_report_schedules_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ScheduleOut"
+                  },
+                  "type": "array",
+                  "title": "Response List Schedules Api V1 Report Schedules Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "Schedule a report by email (audited)",
+        "description": "At most 20 schedules per workspace and 10 recipients each. The worker works the report out under *your* rights each time and checks every recipient again, so someone who lost the right gets nothing; if you lose it, the schedule switches off.",
+        "operationId": "create_schedule_api_v1_report_schedules_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScheduleIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScheduleOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "No reports right"
+          },
+          "422": {
+            "description": "A bad timing, a report you can't see, or a recipient who can't receive it"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/report-schedules/{schedule_id}": {
+      "get": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "One schedule",
+        "operationId": "get_schedule_api_v1_report_schedules__schedule_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "schedule_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Schedule Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScheduleOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "Change a schedule (its owner or an Admin; audited)",
+        "operationId": "change_schedule_api_v1_report_schedules__schedule_id__patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "schedule_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Schedule Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SchedulePatch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScheduleOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not its owner or an Admin"
+          },
+          "404": {
+            "description": "No such schedule, or not one you make or receive"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "Delete a schedule (its owner or an Admin; audited)",
+        "operationId": "delete_schedule_api_v1_report_schedules__schedule_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "schedule_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Schedule Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Not its owner or an Admin"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/report-schedules/{schedule_id}/leave": {
+      "post": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "Stop getting this schedule's emails (any recipient; audited)",
+        "operationId": "leave_schedule_api_v1_report_schedules__schedule_id__leave_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "schedule_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Schedule Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "You are not a recipient of this schedule"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/imports/connections": {
       "post": {
         "tags": [
@@ -14342,6 +15536,22 @@
               "title": "To"
             },
             "description": "Default: now."
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "json",
+                "csv"
+              ],
+              "type": "string",
+              "description": "`csv`: the same report as a CSV file (md R7).",
+              "default": "json",
+              "title": "Format"
+            },
+            "description": "`csv`: the same report as a CSV file (md R7)."
           }
         ],
         "responses": {
@@ -14591,6 +15801,34 @@
           "open"
         ],
         "title": "AgeRowOut"
+      },
+      "AgentCountsOut": {
+        "properties": {
+          "available": {
+            "type": "integer",
+            "title": "Available"
+          },
+          "on_break": {
+            "type": "integer",
+            "title": "On Break"
+          },
+          "transfers_only": {
+            "type": "integer",
+            "title": "Transfers Only"
+          },
+          "offline": {
+            "type": "integer",
+            "title": "Offline"
+          }
+        },
+        "type": "object",
+        "required": [
+          "available",
+          "on_break",
+          "transfers_only",
+          "offline"
+        ],
+        "title": "AgentCountsOut"
       },
       "AgentOut": {
         "properties": {
@@ -16400,7 +17638,10 @@
           "auto_close",
           "contacts",
           "contact_fields",
-          "segments"
+          "segments",
+          "reports",
+          "dashboards",
+          "report_schedules"
         ],
         "title": "Area",
         "description": "Filter on the audit page. Other teams' features add their own (api_keys,\nwebhooks, apps, retention): the column takes any lower-case name."
@@ -17162,6 +18403,105 @@
         ],
         "title": "AutoCloseOut"
       },
+      "BacklogDayOut": {
+        "properties": {
+          "day": {
+            "type": "string",
+            "format": "date",
+            "title": "Day",
+            "description": "The local day these numbers are about (about its end)."
+          },
+          "open": {
+            "type": "integer",
+            "title": "Open"
+          },
+          "pending": {
+            "type": "integer",
+            "title": "Pending"
+          },
+          "breaching": {
+            "type": "integer",
+            "title": "Breaching",
+            "description": "Open or Pending and past their SLA time."
+          },
+          "taken_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Taken At",
+            "description": "When the snapshot was really taken: the first worker pass after the day ended, which can be hours later if the worker was down at midnight."
+          }
+        },
+        "type": "object",
+        "required": [
+          "day",
+          "open",
+          "pending",
+          "breaching",
+          "taken_at"
+        ],
+        "title": "BacklogDayOut"
+      },
+      "BacklogReportOut": {
+        "properties": {
+          "from": {
+            "type": "string",
+            "format": "date-time",
+            "title": "From"
+          },
+          "to": {
+            "type": "string",
+            "format": "date-time",
+            "title": "To"
+          },
+          "team_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Team Id"
+          },
+          "timezone": {
+            "type": "string",
+            "title": "Timezone",
+            "description": "The workspace's time zone: what a `day` means."
+          },
+          "first_day": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Day",
+            "description": "Where this workspace's history starts; null: no snapshot yet. Days before it, and days the worker was down, are not in `days`."
+          },
+          "days": {
+            "items": {
+              "$ref": "#/components/schemas/BacklogDayOut"
+            },
+            "type": "array",
+            "title": "Days",
+            "description": "Oldest first; only days with a snapshot."
+          }
+        },
+        "type": "object",
+        "required": [
+          "from",
+          "to",
+          "timezone",
+          "first_day",
+          "days"
+        ],
+        "title": "BacklogReportOut"
+      },
       "BulkAction": {
         "type": "string",
         "enum": [
@@ -17449,6 +18789,58 @@
           "is_default"
         ],
         "title": "CalendarOut"
+      },
+      "CardOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "position": {
+            "type": "integer",
+            "title": "Position"
+          },
+          "report_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Report Id",
+            "description": "A saved report; null for a built-in one."
+          },
+          "preset": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Preset",
+            "description": "A built-in report's key; null for a saved one."
+          },
+          "label": {
+            "type": "string",
+            "title": "Label",
+            "description": "The report's name."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "position",
+          "report_id",
+          "preset",
+          "label"
+        ],
+        "title": "CardOut"
       },
       "CategoryIn": {
         "properties": {
@@ -19266,6 +20658,149 @@
         ],
         "title": "CustomerReplyBody"
       },
+      "DashboardIn": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "shared": {
+            "type": "boolean",
+            "title": "Shared",
+            "description": "Shared with everyone who holds the reports right.",
+            "default": false
+          },
+          "cards": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Cards",
+            "description": "Up to 20 cards in order; each is `{report_id}` (a saved report you may see) or `{preset}` (a built-in report from `GET /reports/options`). A shared dashboard may only hold built-in and shared reports.",
+            "default": []
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "DashboardIn"
+      },
+      "DashboardOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "shared": {
+            "type": "boolean",
+            "title": "Shared"
+          },
+          "owner_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Owner Id"
+          },
+          "owner_name": {
+            "type": "string",
+            "title": "Owner Name"
+          },
+          "can_edit": {
+            "type": "boolean",
+            "title": "Can Edit",
+            "description": "Whether you may change or delete it."
+          },
+          "cards": {
+            "items": {
+              "$ref": "#/components/schemas/CardOut"
+            },
+            "type": "array",
+            "title": "Cards"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "shared",
+          "owner_id",
+          "owner_name",
+          "can_edit",
+          "cards",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "DashboardOut"
+      },
+      "DashboardPatch": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "shared": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shared"
+          },
+          "cards": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array",
+                "maxItems": 20
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cards",
+            "description": "The whole new list of cards."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "DashboardPatch",
+        "description": "Send only what changes."
+      },
       "Decision": {
         "type": "string",
         "enum": [
@@ -19674,7 +21209,7 @@
           },
           "groups": {
             "items": {
-              "$ref": "#/components/schemas/GroupOut"
+              "$ref": "#/components/schemas/cedesk__helpdesk__api__imports__GroupOut"
             },
             "type": "array",
             "title": "Groups"
@@ -19848,6 +21383,72 @@
         ],
         "title": "DueIn",
         "description": "The quick due times on a new task (X8); any other time is sent as `due_at`."
+      },
+      "DueOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "subject": {
+            "type": "string",
+            "title": "Subject"
+          },
+          "priority": {
+            "type": "string",
+            "title": "Priority"
+          },
+          "team_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Team Id"
+          },
+          "assignee_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assignee Id"
+          },
+          "sla_due_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Sla Due At"
+          },
+          "minutes_left": {
+            "type": "integer",
+            "title": "Minutes Left"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "label",
+          "subject",
+          "priority",
+          "team_id",
+          "assignee_id",
+          "sla_due_at",
+          "minutes_left"
+        ],
+        "title": "DueOut"
       },
       "EmailAddressIn": {
         "properties": {
@@ -20866,50 +22467,6 @@
         ],
         "title": "FormTypeOut"
       },
-      "GroupOut": {
-        "properties": {
-          "external_id": {
-            "type": "string",
-            "title": "External Id"
-          },
-          "name": {
-            "type": "string",
-            "title": "Name"
-          },
-          "suggested_team_id": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "uuid"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Suggested Team Id",
-            "description": "A team picked from the group's name."
-          },
-          "suggested_team": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Suggested Team"
-          }
-        },
-        "type": "object",
-        "required": [
-          "external_id",
-          "name",
-          "suggested_team_id",
-          "suggested_team"
-        ],
-        "title": "GroupOut"
-      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -21739,6 +23296,74 @@
         ],
         "title": "LinkIssueIn"
       },
+      "LiveOut": {
+        "properties": {
+          "generated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Generated At",
+            "description": "Shared for a few seconds by everyone watching."
+          },
+          "team_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Team Id"
+          },
+          "window_minutes": {
+            "type": "integer",
+            "title": "Window Minutes"
+          },
+          "total": {
+            "$ref": "#/components/schemas/TeamCountsOut"
+          },
+          "teams": {
+            "items": {
+              "$ref": "#/components/schemas/TeamCountsOut"
+            },
+            "type": "array",
+            "title": "Teams"
+          },
+          "waiting": {
+            "items": {
+              "$ref": "#/components/schemas/WaitingOut"
+            },
+            "type": "array",
+            "title": "Waiting",
+            "description": "Open, not snoozed, no agent reply yet: the oldest 50."
+          },
+          "due_soon": {
+            "items": {
+              "$ref": "#/components/schemas/DueOut"
+            },
+            "type": "array",
+            "title": "Due Soon",
+            "description": "SLA time within the window: the soonest 20."
+          },
+          "agents": {
+            "$ref": "#/components/schemas/AgentCountsOut",
+            "description": "By the status each agent set (there is no heartbeat)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "generated_at",
+          "team_id",
+          "window_minutes",
+          "total",
+          "teams",
+          "waiting",
+          "due_soon",
+          "agents"
+        ],
+        "title": "LiveOut"
+      },
       "LossOut": {
         "properties": {
           "key": {
@@ -22408,6 +24033,35 @@
         ],
         "title": "MessagePageOut"
       },
+      "MetricOut": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "unit": {
+            "type": "string",
+            "title": "Unit"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind",
+            "description": "period, now (as of now: no time grouping) or backlog"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "label",
+          "unit",
+          "kind"
+        ],
+        "title": "MetricOut"
+      },
       "MetricsReportOut": {
         "properties": {
           "from": {
@@ -22909,6 +24563,59 @@
         "additionalProperties": false,
         "type": "object",
         "title": "OptionsIn"
+      },
+      "OptionsOut": {
+        "properties": {
+          "metrics": {
+            "items": {
+              "$ref": "#/components/schemas/MetricOut"
+            },
+            "type": "array",
+            "title": "Metrics"
+          },
+          "group_by": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Group By"
+          },
+          "filters": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Filters"
+          },
+          "ranges": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Ranges"
+          },
+          "max_groups": {
+            "type": "integer",
+            "title": "Max Groups"
+          },
+          "presets": {
+            "items": {
+              "$ref": "#/components/schemas/PresetOut"
+            },
+            "type": "array",
+            "title": "Presets"
+          }
+        },
+        "type": "object",
+        "required": [
+          "metrics",
+          "group_by",
+          "filters",
+          "ranges",
+          "max_groups",
+          "presets"
+        ],
+        "title": "OptionsOut"
       },
       "OrderOut": {
         "properties": {
@@ -23834,6 +25541,30 @@
         ],
         "title": "PortalTypeOut"
       },
+      "PresetOut": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "definition": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Definition"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "label",
+          "definition"
+        ],
+        "title": "PresetOut"
+      },
       "Priority": {
         "type": "string",
         "enum": [
@@ -24296,6 +26027,25 @@
         ],
         "title": "ReceivedOut"
       },
+      "RecipientOut": {
+        "properties": {
+          "member_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Member Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "member_id",
+          "name"
+        ],
+        "title": "RecipientOut"
+      },
       "ReconciledOut": {
         "properties": {
           "in_source": {
@@ -24524,65 +26274,6 @@
           "new_password"
         ],
         "title": "ResetWithLinkBody"
-      },
-      "ResultOut": {
-        "properties": {
-          "lines": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Lines",
-            "description": "\"Rule applied: Refunds → Team Billing\", one per rule."
-          },
-          "type": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Type"
-          },
-          "team": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Team"
-          },
-          "priority": {
-            "type": "string",
-            "title": "Priority"
-          },
-          "status": {
-            "type": "string",
-            "title": "Status"
-          },
-          "tags": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Tags"
-          }
-        },
-        "type": "object",
-        "required": [
-          "lines",
-          "type",
-          "team",
-          "priority",
-          "status",
-          "tags"
-        ],
-        "title": "ResultOut"
       },
       "RetentionExportOut": {
         "properties": {
@@ -25224,6 +26915,84 @@
         "type": "object",
         "title": "RulePatch"
       },
+      "RunCardIn": {
+        "properties": {
+          "range": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Range",
+            "description": "Replaces the card's range: `{preset}` or `{from, to}`."
+          },
+          "team_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Team Id",
+            "description": "Replaces the card's team filter."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "RunCardIn"
+      },
+      "RunIn": {
+        "properties": {
+          "preset": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Preset",
+            "description": "A built-in report from `GET /reports/options`."
+          },
+          "definition": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Definition",
+            "description": "`metric` (created, resolved, avg_first_response, avg_resolution, csat_average, csat_count, reopen_rate, time_logged, open_now, backlog), `group_by` (none, day, week, month, team, assignee, priority, type, channel, tag, topic, sentiment), `filters` (team, assignee, priority, type, channel, tag, topic, sentiment, imported) and `range` (`{preset}`: last_7d, last_30d, last_90d, last_365d, this_month, last_month; or `{from, to}` with a time zone). Anything else is 422."
+          },
+          "range": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Range",
+            "description": "With `preset`: another range than the report's own."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "RunIn"
+      },
       "RunOut": {
         "properties": {
           "id": {
@@ -25442,6 +27211,139 @@
         ],
         "title": "SandboxOut"
       },
+      "SavedIn": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "definition": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Definition",
+            "description": "`metric` (created, resolved, avg_first_response, avg_resolution, csat_average, csat_count, reopen_rate, time_logged, open_now, backlog), `group_by` (none, day, week, month, team, assignee, priority, type, channel, tag, topic, sentiment), `filters` (team, assignee, priority, type, channel, tag, topic, sentiment, imported) and `range` (`{preset}`: last_7d, last_30d, last_90d, last_365d, this_month, last_month; or `{from, to}` with a time zone). Anything else is 422. A saved report's range must be a preset, so it stays current."
+          },
+          "shared": {
+            "type": "boolean",
+            "title": "Shared",
+            "description": "Shared with everyone who holds the reports right (Admins and Supervisors may share). false: only you see it.",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "definition"
+        ],
+        "title": "SavedIn"
+      },
+      "SavedOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "definition": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Definition"
+          },
+          "shared": {
+            "type": "boolean",
+            "title": "Shared"
+          },
+          "owner_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Owner Id"
+          },
+          "owner_name": {
+            "type": "string",
+            "title": "Owner Name"
+          },
+          "can_edit": {
+            "type": "boolean",
+            "title": "Can Edit",
+            "description": "Whether you may change or delete it."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "definition",
+          "shared",
+          "owner_id",
+          "owner_name",
+          "can_edit",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "SavedOut"
+      },
+      "SavedPatch": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "definition": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Definition",
+            "description": "The whole new one."
+          },
+          "shared": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shared"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "SavedPatch",
+        "description": "Send only what changes."
+      },
       "SavedReplyIn": {
         "properties": {
           "shortcut": {
@@ -25544,6 +27446,376 @@
         "additionalProperties": false,
         "type": "object",
         "title": "SavedReplyPatch"
+      },
+      "ScheduleIn": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "report_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Report Id",
+            "description": "A saved report you may see."
+          },
+          "preset": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Preset",
+            "description": "Or a built-in report from `GET /reports/options`."
+          },
+          "range": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Range",
+            "description": "The period each email covers, one of: last_7d, last_30d, last_90d, last_365d, this_month, last_month. Default: last_7d (last_month for monthly)."
+          },
+          "cadence": {
+            "type": "string",
+            "title": "Cadence",
+            "description": "`cadence` daily, weekly (with `weekday`, 1 Monday to 7 Sunday) or monthly (with `day_of_month`, 1-28); `hour` in the workspace's time zone (its SLA calendar's)."
+          },
+          "weekday": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Weekday"
+          },
+          "day_of_month": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Day Of Month"
+          },
+          "hour": {
+            "type": "integer",
+            "maximum": 23.0,
+            "minimum": 0.0,
+            "title": "Hour",
+            "description": "Hour of the workspace's day (0-23)."
+          },
+          "recipient_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "maxItems": 10,
+            "minItems": 1,
+            "title": "Recipient Ids",
+            "description": "Members who hold the reports right and see at least as many teams' tickets as you do."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "cadence",
+          "hour",
+          "recipient_ids"
+        ],
+        "title": "ScheduleIn"
+      },
+      "ScheduleOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "target": {
+            "$ref": "#/components/schemas/cedesk__helpdesk__api__report_schedules__TargetOut"
+          },
+          "range": {
+            "type": "string",
+            "title": "Range"
+          },
+          "cadence": {
+            "type": "string",
+            "title": "Cadence"
+          },
+          "weekday": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Weekday"
+          },
+          "day_of_month": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Day Of Month"
+          },
+          "hour": {
+            "type": "integer",
+            "title": "Hour"
+          },
+          "timezone": {
+            "type": "string",
+            "title": "Timezone",
+            "description": "What `hour` is in: the workspace's time zone."
+          },
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "description": "The worker switches it off if its owner loses the right."
+          },
+          "next_run_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Next Run At"
+          },
+          "last_sent_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Sent At"
+          },
+          "last_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error",
+            "description": "Why the last run sent nothing, if it didn't."
+          },
+          "owner_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Owner Id"
+          },
+          "owner_name": {
+            "type": "string",
+            "title": "Owner Name"
+          },
+          "recipients": {
+            "items": {
+              "$ref": "#/components/schemas/RecipientOut"
+            },
+            "type": "array",
+            "title": "Recipients"
+          },
+          "can_edit": {
+            "type": "boolean",
+            "title": "Can Edit",
+            "description": "Its owner, or an Admin."
+          },
+          "is_recipient": {
+            "type": "boolean",
+            "title": "Is Recipient",
+            "description": "You get it; `POST .../leave` stops that."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "target",
+          "range",
+          "cadence",
+          "weekday",
+          "day_of_month",
+          "hour",
+          "timezone",
+          "enabled",
+          "next_run_at",
+          "last_sent_at",
+          "last_error",
+          "owner_id",
+          "owner_name",
+          "recipients",
+          "can_edit",
+          "is_recipient"
+        ],
+        "title": "ScheduleOut"
+      },
+      "SchedulePatch": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "report_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Report Id"
+          },
+          "preset": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Preset"
+          },
+          "range": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Range"
+          },
+          "cadence": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cadence"
+          },
+          "weekday": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Weekday"
+          },
+          "day_of_month": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Day Of Month"
+          },
+          "hour": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 23.0,
+                "minimum": 0.0,
+                "description": "Hour of the workspace's day (0-23)."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hour"
+          },
+          "enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enabled",
+            "description": "Turning it on re-times it from now."
+          },
+          "recipient_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "type": "array",
+                "maxItems": 10,
+                "minItems": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recipient Ids",
+            "description": "The whole list."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "SchedulePatch",
+        "description": "Send only what changes. A new `report_id` or `preset` replaces the old target."
       },
       "Scope": {
         "type": "string",
@@ -26628,7 +28900,7 @@
         "properties": {
           "targets": {
             "items": {
-              "$ref": "#/components/schemas/TargetOut"
+              "$ref": "#/components/schemas/cedesk__helpdesk__api__sla__TargetOut"
             },
             "type": "array",
             "title": "Targets"
@@ -27043,47 +29315,6 @@
         ],
         "title": "TargetIn"
       },
-      "TargetOut": {
-        "properties": {
-          "priority": {
-            "type": "string",
-            "enum": [
-              "urgent",
-              "high",
-              "medium",
-              "low"
-            ],
-            "title": "Priority"
-          },
-          "first_reply_minutes": {
-            "type": "integer",
-            "title": "First Reply Minutes"
-          },
-          "resolve_minutes": {
-            "type": "integer",
-            "title": "Resolve Minutes"
-          },
-          "reads_as": {
-            "type": "string",
-            "title": "Reads As",
-            "description": "The sentence under the row, e.g. 'Urgent tickets get ...'"
-          },
-          "is_default": {
-            "type": "boolean",
-            "title": "Is Default",
-            "description": "true: never changed by an Admin."
-          }
-        },
-        "type": "object",
-        "required": [
-          "priority",
-          "first_reply_minutes",
-          "resolve_minutes",
-          "reads_as",
-          "is_default"
-        ],
-        "title": "TargetOut"
-      },
       "TargetsIn": {
         "properties": {
           "targets": {
@@ -27309,6 +29540,60 @@
         "additionalProperties": false,
         "type": "object",
         "title": "TaskPatch"
+      },
+      "TeamCountsOut": {
+        "properties": {
+          "team_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Team Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "open": {
+            "type": "integer",
+            "title": "Open"
+          },
+          "pending": {
+            "type": "integer",
+            "title": "Pending",
+            "description": "Pending and not snoozed."
+          },
+          "snoozed": {
+            "type": "integer",
+            "title": "Snoozed"
+          },
+          "breached": {
+            "type": "integer",
+            "title": "Breached",
+            "description": "Past their SLA time now."
+          },
+          "at_risk": {
+            "type": "integer",
+            "title": "At Risk",
+            "description": "Their SLA time falls within `window_minutes`."
+          }
+        },
+        "type": "object",
+        "required": [
+          "team_id",
+          "name",
+          "open",
+          "pending",
+          "snoozed",
+          "breached",
+          "at_risk"
+        ],
+        "title": "TeamCountsOut"
       },
       "TeamIn": {
         "properties": {
@@ -29121,10 +31406,10 @@
             "title": "Channel"
           },
           "live": {
-            "$ref": "#/components/schemas/ResultOut"
+            "$ref": "#/components/schemas/cedesk__helpdesk__api__sandbox__ResultOut"
           },
           "sandbox": {
-            "$ref": "#/components/schemas/ResultOut"
+            "$ref": "#/components/schemas/cedesk__helpdesk__api__sandbox__ResultOut"
           },
           "same": {
             "type": "boolean",
@@ -29459,6 +31744,72 @@
           "visitor"
         ],
         "title": "VoteIn"
+      },
+      "WaitingOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "subject": {
+            "type": "string",
+            "title": "Subject"
+          },
+          "priority": {
+            "type": "string",
+            "title": "Priority"
+          },
+          "team_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Team Id"
+          },
+          "assignee_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assignee Id"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "waiting_minutes": {
+            "type": "integer",
+            "title": "Waiting Minutes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "label",
+          "subject",
+          "priority",
+          "team_id",
+          "assignee_id",
+          "created_at",
+          "waiting_minutes"
+        ],
+        "title": "WaitingOut"
       },
       "WebhookIn": {
         "properties": {
@@ -29866,6 +32217,50 @@
         ],
         "title": "ConnectionOut"
       },
+      "cedesk__helpdesk__api__imports__GroupOut": {
+        "properties": {
+          "external_id": {
+            "type": "string",
+            "title": "External Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "suggested_team_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suggested Team Id",
+            "description": "A team picked from the group's name."
+          },
+          "suggested_team": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suggested Team"
+          }
+        },
+        "type": "object",
+        "required": [
+          "external_id",
+          "name",
+          "suggested_team_id",
+          "suggested_team"
+        ],
+        "title": "GroupOut"
+      },
       "cedesk__helpdesk__api__portal__CodeBody": {
         "properties": {
           "email": {
@@ -29882,6 +32277,231 @@
           "email"
         ],
         "title": "CodeBody"
+      },
+      "cedesk__helpdesk__api__report_engine__GroupOut": {
+        "properties": {
+          "key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Key",
+            "description": "A day (YYYY-MM-DD), an id or a name; null: not set."
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value",
+            "description": "Null: nothing to measure there."
+          },
+          "n": {
+            "type": "integer",
+            "title": "N",
+            "description": "Tickets, ratings or log entries the value rests on."
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "label",
+          "value",
+          "n"
+        ],
+        "title": "GroupOut"
+      },
+      "cedesk__helpdesk__api__report_engine__ResultOut": {
+        "properties": {
+          "metric": {
+            "type": "string",
+            "title": "Metric"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "unit": {
+            "type": "string",
+            "title": "Unit",
+            "description": "count, minutes, percent or score"
+          },
+          "group_by": {
+            "type": "string",
+            "title": "Group By"
+          },
+          "from": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "From",
+            "description": "Null: an as-of-now metric."
+          },
+          "to": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "To"
+          },
+          "timezone": {
+            "type": "string",
+            "title": "Timezone",
+            "description": "The workspace's time zone: what a day or week means."
+          },
+          "total": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total",
+            "description": "The whole range, ungrouped."
+          },
+          "total_n": {
+            "type": "integer",
+            "title": "Total N"
+          },
+          "groups": {
+            "items": {
+              "$ref": "#/components/schemas/cedesk__helpdesk__api__report_engine__GroupOut"
+            },
+            "type": "array",
+            "title": "Groups",
+            "description": "A time series is oldest first and zero-filled; other groupings are biggest first, at most 50."
+          },
+          "truncated": {
+            "type": "boolean",
+            "title": "Truncated",
+            "description": "More groups than the 50 shown."
+          },
+          "incomplete": {
+            "type": "boolean",
+            "title": "Incomplete",
+            "description": "The range reaches back past the archive age: older numbers can be low."
+          },
+          "complete_from": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Complete From"
+          },
+          "first_day": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Day",
+            "description": "Backlog: where the snapshots start."
+          },
+          "notes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Notes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "metric",
+          "label",
+          "unit",
+          "group_by",
+          "from",
+          "to",
+          "timezone",
+          "total",
+          "total_n",
+          "groups",
+          "truncated",
+          "incomplete",
+          "complete_from",
+          "first_day",
+          "notes"
+        ],
+        "title": "ResultOut"
+      },
+      "cedesk__helpdesk__api__report_schedules__TargetOut": {
+        "properties": {
+          "report_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Report Id"
+          },
+          "preset": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Preset"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          }
+        },
+        "type": "object",
+        "required": [
+          "report_id",
+          "preset",
+          "label"
+        ],
+        "title": "TargetOut"
       },
       "cedesk__helpdesk__api__reports__SummaryOut": {
         "properties": {
@@ -29961,6 +32581,106 @@
           "csat"
         ],
         "title": "SummaryOut"
+      },
+      "cedesk__helpdesk__api__sandbox__ResultOut": {
+        "properties": {
+          "lines": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Lines",
+            "description": "\"Rule applied: Refunds → Team Billing\", one per rule."
+          },
+          "type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Type"
+          },
+          "team": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Team"
+          },
+          "priority": {
+            "type": "string",
+            "title": "Priority"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Tags"
+          }
+        },
+        "type": "object",
+        "required": [
+          "lines",
+          "type",
+          "team",
+          "priority",
+          "status",
+          "tags"
+        ],
+        "title": "ResultOut"
+      },
+      "cedesk__helpdesk__api__sla__TargetOut": {
+        "properties": {
+          "priority": {
+            "type": "string",
+            "enum": [
+              "urgent",
+              "high",
+              "medium",
+              "low"
+            ],
+            "title": "Priority"
+          },
+          "first_reply_minutes": {
+            "type": "integer",
+            "title": "First Reply Minutes"
+          },
+          "resolve_minutes": {
+            "type": "integer",
+            "title": "Resolve Minutes"
+          },
+          "reads_as": {
+            "type": "string",
+            "title": "Reads As",
+            "description": "The sentence under the row, e.g. 'Urgent tickets get ...'"
+          },
+          "is_default": {
+            "type": "boolean",
+            "title": "Is Default",
+            "description": "true: never changed by an Admin."
+          }
+        },
+        "type": "object",
+        "required": [
+          "priority",
+          "first_reply_minutes",
+          "resolve_minutes",
+          "reads_as",
+          "is_default"
+        ],
+        "title": "TargetOut"
       },
       "cedesk__helpdesk__api__two_factor__CodeBody": {
         "properties": {

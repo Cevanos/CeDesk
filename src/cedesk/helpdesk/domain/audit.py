@@ -66,6 +66,10 @@ class Area(StrEnum):
     contacts = "contacts"
     contact_fields = "contact_fields"
     segments = "segments"
+    # Reporting (feature-gap plan phase 3): saved reports, dashboards, scheduled emails.
+    reports = "reports"
+    dashboards = "dashboards"
+    report_schedules = "report_schedules"
 
 
 @dataclass(frozen=True)

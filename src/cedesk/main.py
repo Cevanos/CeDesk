@@ -31,10 +31,12 @@ from cedesk.helpdesk.api import attachments as attachments_api
 from cedesk.helpdesk.api import audit as audit_api
 from cedesk.helpdesk.api import auth as auth_api
 from cedesk.helpdesk.api import auto_close as auto_close_api
+from cedesk.helpdesk.api import backlog as backlog_api
 from cedesk.helpdesk.api import catalog as catalog_api
 from cedesk.helpdesk.api import cevanos as cevanos_api
 from cedesk.helpdesk.api import contact_fields as contact_fields_api
 from cedesk.helpdesk.api import contacts as contacts_api
+from cedesk.helpdesk.api import dashboards as dashboards_api
 from cedesk.helpdesk.api import demo as demo_api
 from cedesk.helpdesk.api import email as email_api
 from cedesk.helpdesk.api import email_in as email_in_api
@@ -43,6 +45,7 @@ from cedesk.helpdesk.api import inbound_api as inbound_api_api
 from cedesk.helpdesk.api import inbox as inbox_api
 from cedesk.helpdesk.api import jira as jira_api
 from cedesk.helpdesk.api import limits as limits_api
+from cedesk.helpdesk.api import live as live_api
 from cedesk.helpdesk.api import macros as macros_api
 from cedesk.helpdesk.api import members as members_api
 from cedesk.helpdesk.api import messages as messages_api
@@ -52,12 +55,15 @@ from cedesk.helpdesk.api import portal as portal_api
 from cedesk.helpdesk.api import privacy as privacy_api
 from cedesk.helpdesk.api import public as public_api
 from cedesk.helpdesk.api import push as push_api
+from cedesk.helpdesk.api import report_engine as report_engine_api
+from cedesk.helpdesk.api import report_schedules as report_schedules_api
 from cedesk.helpdesk.api import reports as reports_api
 from cedesk.helpdesk.api import roles as roles_api
 from cedesk.helpdesk.api import routing as routing_api
 from cedesk.helpdesk.api import rules as rules_api
 from cedesk.helpdesk.api import sandbox as sandbox_api
 from cedesk.helpdesk.api import saved_replies as saved_replies_api
+from cedesk.helpdesk.api import saved_reports as saved_reports_api
 from cedesk.helpdesk.api import security as security_api
 from cedesk.helpdesk.api import segments as segments_api
 from cedesk.helpdesk.api import side_conversations as side_conversations_api
@@ -79,6 +85,8 @@ from cedesk.helpdesk.service import jira as jira_service
 from cedesk.helpdesk.service import limits as limits_service
 from cedesk.helpdesk.service.errors import ServiceError, TooManyAttempts
 from cedesk.helpdesk.service.imports.framework import make_importers, retry_policy
+from cedesk.helpdesk.service.live import LiveCache
+from cedesk.helpdesk.service.report_engine import ReportSlots
 from cedesk.helpdesk.service.stream import Slots
 from cedesk.ratelimit import SlidingWindowLimiter
 from cedesk.settings import Edition, Settings, get_settings
@@ -179,6 +187,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.cevanos = make_cevanos(settings)  # the connector; each workspace's key is in the db
     app.state.dns = DnsLookup()  # the support address DNS check (md C10)
     app.state.stream_slots = Slots()  # open live streams per person (md C11)
+    # Report queries run at once in this process (plan 3.2); more wait, then answer 429.
+    app.state.report_slots = ReportSlots(settings.report_concurrency)
+    app.state.live_cache = LiveCache()  # the live view's answer, shared for a few seconds
     # Imports from other help desks (md section 8); tests replace `build` with a fake source.
     app.state.importers = make_importers(
         settings.secret_key.get_secret_value(), app.state.store, retry=retry_policy(settings)
@@ -374,6 +385,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(articles_api.router, prefix="/api/v1")
     app.include_router(triage_api.router, prefix="/api/v1")
     app.include_router(reports_api.router, prefix="/api/v1")
+    app.include_router(backlog_api.router, prefix="/api/v1")
+    app.include_router(report_engine_api.router, prefix="/api/v1")
+    app.include_router(saved_reports_api.router, prefix="/api/v1")
+    app.include_router(dashboards_api.router, prefix="/api/v1")
+    app.include_router(live_api.router, prefix="/api/v1")
+    app.include_router(report_schedules_api.router, prefix="/api/v1")
     app.include_router(imports_api.router, prefix="/api/v1")
     app.include_router(stream_api.router, prefix="/api/v1")
     app.include_router(mobile_api.router, prefix="/api/v1")
