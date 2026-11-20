@@ -30,21 +30,21 @@ StartQuery = Annotated[
 EndQuery = Annotated[datetime | None, Query(alias="to", description="Default: now.")]
 TeamQuery = Annotated[UUID | None, Query(description="Only this team's tickets.")]
 
-_CSV: dict[int | str, dict[str, Any]] = {
+CSV_OK: dict[int | str, dict[str, Any]] = {
     200: {
         "description": "The report; with `format=csv`, a CSV file (UTF-8 with a byte order "
         "mark, one section per table) sent as an attachment.",
         "content": {"text/csv": {"schema": {"type": "string"}}},
     }
 }
-_ERRORS: dict[int | str, dict[str, Any]] = {
+REPORT_ERRORS: dict[int | str, dict[str, Any]] = {
     403: {"description": "Not allowed to see reports"},
     422: {"description": "from after to, no time zone, or over 366 days"},
 }
-_TEAM_ERRORS: dict[int | str, dict[str, Any]] = {404: {"description": "No such team"}}
+TEAM_ERRORS: dict[int | str, dict[str, Any]] = {404: {"description": "No such team"}}
 
 
-def _csv(
+def csv_response(
     report: str, title: str, start: datetime, end: datetime, team_id: UUID | None,
     tables: list[Table],
 ) -> Response:  # fmt: skip
@@ -52,7 +52,7 @@ def _csv(
         ("From", start.isoformat()),
         ("To", end.isoformat()),
     ]
-    if report != "articles":
+    if report not in ("articles", "ai"):
         about.append(("Team", str(team_id) if team_id else "All teams"))
     body = report_csv.render(title, about, tables)
     name = report_csv.filename(report, start, end)
@@ -171,7 +171,7 @@ def _team_tables(found: reports.TeamReport) -> list[Table]:
     description="Created, resolved and CSAT count within [from, to); open and breaching "
     "are as of now. Imported tickets are left out of the time metrics; their CSAT counts. "
     "Times are wall-clock minutes. Tickets merged into another are left out.",
-    responses=_CSV | _ERRORS | _TEAM_ERRORS,
+    responses=CSV_OK | REPORT_ERRORS | TEAM_ERRORS,
 )
 async def team_report(
     caller: CallerDep,
@@ -183,7 +183,7 @@ async def team_report(
 ) -> TeamReportOut | Response:
     found = await reports.team_report(sm, caller, start=start, end=end, team_id=team_id)
     if fmt == "csv":
-        return _csv(
+        return csv_response(
             "team", "CeDesk team report", found.start, found.end, found.team_id,
             _team_tables(found),
         )  # fmt: skip
@@ -319,7 +319,7 @@ def _metrics_tables(found: reports.MetricsReport) -> list[Table]:
     "Governance report when connected. Created and resolved count within [from, to); the "
     "backlog, open counts and open tasks are as of now. Merged tickets are left out; "
     "imported tickets are left out of one-touch and reopen.",
-    responses=_CSV | _ERRORS | _TEAM_ERRORS,
+    responses=CSV_OK | REPORT_ERRORS | TEAM_ERRORS,
 )
 async def metrics_report(
     caller: CallerDep,
@@ -335,7 +335,7 @@ async def metrics_report(
         cevanos_app_url=settings.cevanos_app_url,
     )  # fmt: skip
     if fmt == "csv":
-        return _csv(
+        return csv_response(
             "metrics", "CeDesk more metrics", found.start, found.end, found.team_id,
             _metrics_tables(found),
         )  # fmt: skip
@@ -413,7 +413,7 @@ def _article_tables(found: reports.ArticleReport) -> list[Table]:
     summary="Help-article votes (Supervisor, Admin)",
     description='"Was this helpful?" answers given (or changed) within [from, to). A visitor '
     "has one vote per article: their latest answer counts.",
-    responses=_CSV | _ERRORS,
+    responses=CSV_OK | REPORT_ERRORS,
 )
 async def article_report(
     caller: CallerDep,
@@ -424,7 +424,7 @@ async def article_report(
 ) -> ArticleReportOut | Response:
     found = await reports.article_report(sm, caller, start=start, end=end)
     if fmt == "csv":
-        return _csv(
+        return csv_response(
             "articles", "CeDesk help-article votes", found.start, found.end, None,
             _article_tables(found),
         )  # fmt: skip
