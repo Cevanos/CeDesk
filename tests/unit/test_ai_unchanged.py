@@ -28,6 +28,12 @@ def test_a_text_that_needed_no_translation_gets_a_note(
     assert ai.untranslated("Where is my order?", "Where is my order? ", source, to) == note
 
 
+@pytest.mark.parametrize("text", ["ORD-1042", "Priya", "#1042 ✓", "3.1.7", "OK!"])
+def test_a_code_or_a_single_word_needs_no_translation(text: str) -> None:
+    """Live retest: "ORD-1042" to Hindi came back as it was, with from: en (rightly)."""
+    assert ai.untranslated(text, text, "en", "hi") == ai.NOTHING_TO_TRANSLATE
+
+
 def test_another_language_sent_back_untranslated_is_refused() -> None:
     """Live retest: "mera paisa wapas karo" came back as it was, with from: hi."""
     with pytest.raises(ai.BadAnswer, match="Cevanos didn't translate this"):

@@ -171,7 +171,15 @@ def untranslated(text: str, found: str, source: str | None, to: str) -> str | No
     if _base(source) == _base(to):
         name = LANGUAGES.get(_base(to))
         return f"This is already in {name}." if name else "This is already in that language."
+    if len(_WORD.findall(text)) < 2:
+        # An order number, a code or a single name comes back as it was, rightly (live
+        # retest: "ORD-1042" to Hindi, with from: en), so it isn't Cevanos failing.
+        return NOTHING_TO_TRANSLATE
     raise BadAnswer(NOT_TRANSLATED)
+
+
+_WORD = re.compile(r"[^\W\d_]{2,}")
+"""A word worth translating: two or more letters, in any script."""
 
 
 # AI6: the chat's contact
