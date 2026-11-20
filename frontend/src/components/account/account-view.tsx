@@ -13,7 +13,7 @@ import { PasswordInput, PasswordStrength } from "@/components/auth/password-inpu
 import { Button, Field, Skeleton } from "@/components/ui/primitives";
 import { useChangePassword, useCurrentUser, useSignOut } from "@/hooks/use-auth";
 import { ApiError } from "@/lib/api/client";
-import { newPassword, passwordError, PASSWORD_HINT } from "@/lib/password";
+import { isWrongCurrentPassword, newPassword, passwordError, PASSWORD_HINT } from "@/lib/password";
 import { ROLE_LABEL } from "@/lib/permissions";
 
 export function AccountView() {
@@ -138,9 +138,16 @@ function PasswordCard({ expired }: { expired: boolean }) {
             for (const d of fields) {
               setError(d.field as "current_password" | "new_password", { message: d.message });
             }
-            // The workspace's own minimum length comes back without a field.
-            const pw = fields.length === 0 ? passwordError(e, "new_password") : null;
-            if (pw) setError("new_password", { message: pw });
+            // These come back with no field: a wrong current password belongs to that box,
+            // the workspace's minimum length (and "choose a different one") to the new one.
+            if (fields.length === 0) {
+              if (isWrongCurrentPassword(e)) {
+                setError("current_password", { message: e.message });
+              } else {
+                const pw = passwordError(e, "new_password", { anyMessage: true });
+                if (pw) setError("new_password", { message: pw });
+              }
+            }
             // 403 is "old password is wrong".
             if (e.status === 403 && fields.length === 0) {
               setError("current_password", { message: e.message });

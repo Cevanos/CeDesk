@@ -15,7 +15,7 @@ import { Button, Field } from "@/components/ui/primitives";
 import { useChangePassword, useCurrentUser, useSetMyStatus, useSignOut } from "@/hooks/use-auth";
 import { ApiError } from "@/lib/api/client";
 import type { AgentStatus } from "@/lib/api/types";
-import { newPassword, passwordError, PASSWORD_HINT } from "@/lib/password";
+import { isWrongCurrentPassword, newPassword, passwordError, PASSWORD_HINT } from "@/lib/password";
 import { ROLE_LABEL } from "@/lib/permissions";
 import { cn, initials } from "@/lib/utils";
 
@@ -178,9 +178,16 @@ function ChangePasswordDialog({ open, onClose }: { open: boolean; onClose: () =>
                 setError(d.field, { message: d.message });
               }
             }
-            // The workspace's own minimum length comes back without a field.
-            const pw = passwordError(e, "new_password");
-            if (pw && e.details.length === 0) setError("new_password", { message: pw });
+            // These come back with no field: a wrong current password belongs to that box,
+            // the workspace's minimum length (and "choose a different one") to the new one.
+            if (e.details.length === 0) {
+              if (isWrongCurrentPassword(e)) {
+                setError("current_password", { message: e.message });
+              } else {
+                const pw = passwordError(e, "new_password", { anyMessage: true });
+                if (pw) setError("new_password", { message: pw });
+              }
+            }
           }
         },
       },
