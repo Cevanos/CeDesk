@@ -5,13 +5,15 @@ from datetime import datetime
 from typing import Annotated, Any
 from uuid import UUID
 
-from fastapi import APIRouter, Query, Request
+from fastapi import APIRouter, Query, Request, Response
 from pydantic import BaseModel, Field
 
 from cedesk.cevanos_client import Cevanos
 from cedesk.helpdesk.api.deps import CallerDep, SessionmakerDep
+from cedesk.helpdesk.api.reports import FormatQuery, csv_response
 from cedesk.helpdesk.api.schemas import Body
 from cedesk.helpdesk.domain import ai as rules
+from cedesk.helpdesk.domain.report_csv import Table
 from cedesk.helpdesk.service import ai
 
 router = APIRouter(tags=["ai"])
@@ -183,6 +185,23 @@ async def ai_report(
         Query(alias="from", description="Default: 30 days before `to`. With a time zone."),
     ] = None,
     end: Annotated[datetime | None, Query(alias="to", description="Default: now.")] = None,
-) -> AiReportOut:
+    fmt: FormatQuery = "json",
+) -> AiReportOut | Response:
     found = await ai.numbers(sm, _cevanos(request), caller, start=start, end=end)
+    if fmt == "csv":
+        n = found.numbers
+        table = Table(
+            "AI",
+            ("Metric", "Value"),
+            [
+                ("Cevanos chats", n.conversations),
+                ("Handed over to a person", n.handed_over),
+                ("Handover rate (0-1)", n.handover_rate),
+                ("Resolved by the AI alone", n.ai_resolved),
+                ("AI resolved rate (0-1)", n.ai_resolved_rate),
+                ("CSAT of AI answers (1-5)", n.ai_csat),
+                ("CSAT responses", n.ai_csat_responses),
+            ],
+        )
+        return csv_response("ai", "CeDesk AI report", found.start, found.end, None, [table])
     return AiReportOut(from_=found.start, to=found.end, ai=AiNumbersOut(**found.numbers.__dict__))
