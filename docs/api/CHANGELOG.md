@@ -3,6 +3,65 @@
 `openapi.json` next to this file is the API as served (`uv run cedesk openapi`). Every
 route is under `/api/v1`. Breaking changes only come in v2 (md 2B). Newest first.
 
+## 2026-11-20: Contacts: list and search, notes, custom attributes, merge, CSV, segments, timeline
+
+Additive only: new routes and fields; nothing existing changed shape. Migrations 0065-0068.
+Feature-gap plan phase 2. New permissions (`GET /me` lists them in `actions`):
+`manage_contacts` (Admin; a custom role with the settings right), `merge_contacts` and
+`manage_segments` (Admin, Supervisor; a custom role with the settings right),
+`export_contacts` (Admin only: never a custom role or an API key). Reading contacts and
+notes uses `read_ticket` (a Light agent too), adding a note `private_note`, setting
+attribute values `change_fields`. New audit areas: `contacts`, `contact_fields`,
+`segments`; contact entries name the customer by id only and never hold a note's words, an
+attribute's value or an address.
+
+- **Contact list.** `GET /contacts?q=&sort=name|recent|tickets&vip=&has_open=&created_from=
+  &created_to=&attr=key:value&cursor=&limit=`. `q` matches name, email (also merged-in
+  addresses), phone and organization. Rows: profile, `ticket_count`, `open_ticket_count`,
+  `last_activity_at`, `other_emails`, `attributes`. Cursor paging as the ticket list.
+  Erased customers are left out. `GET /contacts/{id}`: the same plus `erased_at`, CSAT,
+  `note_count`, the newest 5 `notes` and the workspace's contact `fields` (for the
+  customer page and a ticket's Customer tab, via the ticket's `contact.id`).
+- **Notes.** `GET|POST /contacts/{id}/notes`, `PATCH|DELETE /contacts/{id}/notes/{note_id}`.
+  Private (customers never see them), 1-5000 characters. Author or `manage_contacts` to
+  change or delete (403 otherwise); `can_edit` says which. Audited by note id.
+- **Contact fields and values.** `GET|POST /contact-fields`, `PATCH|DELETE
+  /contact-fields/{id}` (`manage_contacts`). Kinds: text, number, date (YYYY-MM-DD), select
+  (with options), checkbox. Key and kind never change. Deleting one removes every value;
+  409 while a segment filters on it. `PUT /contacts/{id}/attributes {attributes}` sets
+  values (null or "" clears one), checked by kind (422).
+- **Merge.** `POST /contacts/{id}/merge-preview {duplicate_id}` (changes nothing): moves,
+  conflicts (survivor wins), the result, `can_merge`, `blocked`, `warnings`.
+  `POST /contacts/{id}/merge {duplicate_id, confirm: true}`: tickets (archived too),
+  ratings, notes and addresses move to `{id}`; it takes a phone, organization or attribute
+  value it lacks, VIP if either is, and the earlier "customer since"; the duplicate is
+  deleted and its portal sign-ins end. Its address becomes an `other_emails` entry: new
+  mail, tickets, imports and portal sign-ins from it find the survivor. 409 for an erased
+  customer or a duplicate with privacy requests; 422 without `confirm`. Can't be undone.
+- **CSV import.** `POST /contacts/import?dry_run=true|false&on_existing=fill_blanks|
+  overwrite|skip&mapping={json}`; the body is the CSV file (UTF-8), at most 2 MB (413) and
+  5,000 rows. Matched by email; per-row errors by line; one transaction. Answer:
+  `headers`, `mapping` used, `rows`, `created`, `updated`, `unchanged`, `errors`.
+- **CSV export.** `GET /contacts/export` with the list's filters: a CSV file (BOM,
+  formula-safe cells), at most 50,000 rows (413). `export_contacts`; audited with the row
+  count (a search only as `search: true`).
+- **Segments.** `GET|POST /segments`, `GET|PATCH|DELETE /segments/{id}` (`GET` adds
+  `contact_count`), `GET /segments/{id}/contacts` (rows and paging as `GET /contacts`).
+  Filters are `GET /contacts`' own (q, sort, vip, has_open, created_from, created_to,
+  attributes), checked with its rules. Who is in one is worked out when read.
+- **Timeline.** `GET /contacts/{id}/timeline?kind=&cursor=&limit=`: ticket_created,
+  ticket_resolved, message (public only), csat, note, merge; newest first; ticket items
+  follow a team-only role's scope.
+- **Privacy.** `POST /privacy/export` also finds a customer by a merged-in address, and the
+  file adds `customer.other_emails`, `customer.attributes`, `contact_notes` and
+  `merged_customers`. `POST /privacy/erase` also deletes their contact notes, attribute
+  values and merged-in addresses (each scrubbed like their own address) and blanks the
+  names and addresses in their merge history; new `counts` keys `contact_notes`,
+  `other_emails`, `attributes`, `merge_history`.
+- **API keys.** `/contacts/*` was already a read-write key area: a read-write key lists,
+  reads, notes and sets values; importing and merging need an admin key; the export never
+  works with a key. `contact-fields` and `segments` are not open to keys.
+
 ## 2026-11-20: Agent inbox tools: snooze, saved views, bulk changes, auto-close, followers, transcript
 
 Additive only: new routes and fields; nothing existing changed shape. Migrations 0061-0064.

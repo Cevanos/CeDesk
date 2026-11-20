@@ -46,6 +46,17 @@ class Action(StrEnum):
     share_views = "share_views"
     # Email a ticket's public messages to the customer or another address (plan 1.6).
     send_transcript = "send_transcript"
+    # Contacts (plan phase 2). Reading contacts and their notes is `read_ticket`, adding a
+    # note `private_note`, setting attribute values `change_fields`, as on tickets.
+    # Define contact fields, import contacts by CSV, and change or delete anyone's note.
+    manage_contacts = "manage_contacts"
+    # Merge a duplicate customer into another (can't be undone).
+    merge_contacts = "merge_contacts"
+    # Download every contact as a CSV file: Admins only, never given to a custom role or
+    # an API key (it is the whole customer list).
+    export_contacts = "export_contacts"
+    # Make, change and delete segments (saved contact filters shared by the workspace).
+    manage_segments = "manage_segments"
 
 
 class Scope(StrEnum):
@@ -74,13 +85,16 @@ _SUPERVISOR = _AGENT | {
     Action.approve,
     Action.reports,
     Action.share_views,
+    Action.merge_contacts,
+    Action.manage_segments,
 }
 
 ROLE_ACTIONS: dict[Role, frozenset[Action]] = {
     Role.light_agent: frozenset({Action.read_ticket, Action.private_note, Action.list_members}),
     Role.agent: _AGENT,
     Role.supervisor: _SUPERVISOR,
-    Role.admin: _SUPERVISOR | {Action.settings, Action.manage_access},
+    Role.admin: _SUPERVISOR
+    | {Action.settings, Action.manage_access, Action.manage_contacts, Action.export_contacts},
 }
 
 # Every custom role reads, adds notes and changes fields (within its scope), so it may
@@ -101,7 +115,15 @@ RIGHTS: dict[str, frozenset[Action]] = {
     ),
     "assign_any": frozenset({Action.assign_self, Action.assign_others}),
     "reports": frozenset({Action.reports}),
-    "settings": frozenset({Action.settings, Action.share_views}),
+    "settings": frozenset(
+        {
+            Action.settings,
+            Action.share_views,
+            Action.manage_contacts,
+            Action.merge_contacts,
+            Action.manage_segments,
+        }
+    ),
     "approve": frozenset({Action.approve}),
 }
 

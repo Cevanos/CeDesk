@@ -33,6 +33,8 @@ from cedesk.helpdesk.api import auth as auth_api
 from cedesk.helpdesk.api import auto_close as auto_close_api
 from cedesk.helpdesk.api import catalog as catalog_api
 from cedesk.helpdesk.api import cevanos as cevanos_api
+from cedesk.helpdesk.api import contact_fields as contact_fields_api
+from cedesk.helpdesk.api import contacts as contacts_api
 from cedesk.helpdesk.api import demo as demo_api
 from cedesk.helpdesk.api import email as email_api
 from cedesk.helpdesk.api import email_in as email_in_api
@@ -57,6 +59,7 @@ from cedesk.helpdesk.api import rules as rules_api
 from cedesk.helpdesk.api import sandbox as sandbox_api
 from cedesk.helpdesk.api import saved_replies as saved_replies_api
 from cedesk.helpdesk.api import security as security_api
+from cedesk.helpdesk.api import segments as segments_api
 from cedesk.helpdesk.api import side_conversations as side_conversations_api
 from cedesk.helpdesk.api import signup as signup_api
 from cedesk.helpdesk.api import sla as sla_api
@@ -350,6 +353,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(inbox_api.router, prefix="/api/v1")  # before /tickets/{id}
     app.include_router(tickets_api.router, prefix="/api/v1")
     app.include_router(views_api.router, prefix="/api/v1")
+    app.include_router(contacts_api.router, prefix="/api/v1")
+    app.include_router(contact_fields_api.router, prefix="/api/v1")
+    app.include_router(segments_api.router, prefix="/api/v1")
     app.include_router(auto_close_api.router, prefix="/api/v1")
     app.include_router(ticket_tools_api.router, prefix="/api/v1")
     app.include_router(catalog_api.router, prefix="/api/v1")
