@@ -238,14 +238,42 @@ Show them as they are in the editor.
 ### 2.10 Reports
 
 - Supervisors and Admins (`reports`). Team report, more metrics and help-article votes, for a period (`from`, `to`) and a team (`team_id`; not for articles). Each one downloads as CSV with `format=csv`.
-- AI card (`GET /reports/ai`, only with `ai: true`): handover rate, resolved by the AI, CSAT of AI answers, from Cevanos for the whole workspace.
+- AI card (`GET /reports/ai`, only with `ai: true`): handover rate, resolved by the AI, CSAT of AI answers, from Cevanos for the whole workspace. It downloads as CSV too.
+- **Trends and breakdowns, custom reports** (`reports` right): `GET /reports/options` lists everything the builder can offer (metrics with their `unit` and `kind`, groupings, filters, ranges, and the built-in reports). `POST /reports/run` takes `{preset: "created_per_day"}` (optionally with `range`) or a `definition` `{metric, group_by, filters, range}` and answers `{groups: [{key, label, value, n}], total, timezone, ...}`; `?format=csv` downloads it. A time series (`group_by` day, week or month) is zero-filled and oldest first, bucketed in the workspace's time zone (`timezone`; weeks start Monday): draw it as a line or bars. Other groupings are biggest first, at most 50 (`truncated`). A `tag` grouping counts a ticket in each of its tags (see `notes`). `open_now` is "open now" and can't be grouped by time; `backlog` (open and pending at the end of each day, from snapshots) is grouped by day only. Show `notes`, and a warning when `incomplete` is true (the range reaches back past the archive age: older numbers can be low). 422 = bad definition or "took too long: narrow the range"; 429 with `Retry-After` = too many running (retry).
+- **Backlog over time:** `GET /reports/backlog` (`from`, `to`, `team_id`) lists `{day, open, pending, breaching}` per local day. History starts the day it shipped (`first_day`); a day with no snapshot is missing, not zero: leave a gap.
+- **Saved reports and dashboards:** `/reports/saved` (name, `definition`, `shared`; a saved report's range must be a preset such as `last_30d` so it stays current; show `can_edit`; sharing needs the share right, 403 otherwise). A dashboard is an ordered list of cards (`{report_id}` or `{preset}`, up to 20); fetch each card separately with `POST /dashboards/{id}/cards/{card_id}/run`, sending the page's `range` and `team_id` to apply them to every card. A shared dashboard may only hold built-in and shared reports (422 otherwise); unsharing a report that is on a shared dashboard is 409. Shared items are visible to everyone with the reports right; numbers always follow the viewer's own team scope.
+- **Live view:** `GET /reports/live` (`team_id`, `window_minutes` default 60). Refetch when the live stream reports a ticket event (wait about 1.5 s so a burst makes one call) and every 30 s; many viewers share one answer for about 5 s (`generated_at`). "Waiting" is open tickets with no agent reply yet, oldest first; "at risk" is SLA time within `window_minutes` (not the SLA pill's "close" state); agent counts are the status each agent set, not live presence.
+- **Scheduled emails:** `/report-schedules`: a report (saved or built-in) emailed daily, weekly (`weekday` 1-7) or monthly (`day_of_month` 1-28) at `hour` of the workspace's day to up to 10 members (never free addresses; they need the reports right and to see at least as many teams as you; 422 names who can't). Plain-text email with the numbers and a link; no attachment. Show `last_error` (why the last run sent nothing: no sender address, no recipients left, ...) and `next_run_at`. The owner or an Admin changes or deletes; any recipient can `POST .../leave`. A schedule switches itself off (`enabled: false`) if its owner loses the reports right.
+- **Team-limited roles** (`access.scope` = `team_only`) get their own team's numbers from every report route; asking for another team is 404.
 
 | | Route | What it does |
 |---|---|---|
 | `GET` | `/reports/ai` | The AI card: handover rate, AI-resolved, CSAT of AI answers (Cevanos) |
 | `GET` | `/reports/articles` | Help-article votes (Supervisor, Admin) |
+| `GET` | `/reports/backlog` | Open tickets at the end of each past day, from daily snapshots (Supervisor, Admin) |
+| `GET` | `/reports/live` | The queue right now: open, waiting, SLA due soon, agents (Supervisor, Admin) |
 | `GET` | `/reports/metrics` | More metrics (Supervisor, Admin) |
+| `GET` | `/reports/options` | What the report builder offers: metrics, groupings, filters, ranges, built-in reports |
+| `POST` | `/reports/run` | Run a built-in report (`preset`) or a custom `definition` |
+| `GET` | `/reports/saved` | Your saved reports and the shared ones |
+| `POST` | `/reports/saved` | Save a report (personal, or shared with the right to share) |
+| `GET` | `/reports/saved/{report_id}` | One saved report |
+| `PATCH` | `/reports/saved/{report_id}` | Rename, change the definition, share or unshare |
+| `DELETE` | `/reports/saved/{report_id}` | Delete a saved report |
+| `POST` | `/reports/saved/{report_id}/run` | Run a saved report now, under your own scope |
 | `GET` | `/reports/team` | Team report (Supervisor, Admin) |
+| `GET` | `/dashboards` | Your dashboards and the shared ones, with their cards |
+| `POST` | `/dashboards` | Make a dashboard |
+| `GET` | `/dashboards/{dashboard_id}` | One dashboard |
+| `PATCH` | `/dashboards/{dashboard_id}` | Rename, change the cards, share or unshare |
+| `DELETE` | `/dashboards/{dashboard_id}` | Delete a dashboard |
+| `POST` | `/dashboards/{dashboard_id}/cards/{card_id}/run` | Run one card (optionally with the page's range and team) |
+| `GET` | `/report-schedules` | Scheduled report emails you made or receive |
+| `POST` | `/report-schedules` | Schedule a report by email to team members |
+| `GET` | `/report-schedules/{schedule_id}` | One schedule |
+| `PATCH` | `/report-schedules/{schedule_id}` | Change it (owner or Admin) |
+| `DELETE` | `/report-schedules/{schedule_id}` | Delete it (owner or Admin) |
+| `POST` | `/report-schedules/{schedule_id}/leave` | A recipient stops getting it |
 
 ### 2.11 Settings: members, roles, teams and routing
 
