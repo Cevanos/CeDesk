@@ -25,7 +25,7 @@ from cedesk.helpdesk.domain.tickets import label
 from cedesk.helpdesk.repo import catalog, outbox, tickets
 from cedesk.helpdesk.repo import messages as repo
 from cedesk.helpdesk.repo.messages import Row
-from cedesk.helpdesk.service import attachments, email, idempotency, scope, sla
+from cedesk.helpdesk.service import attachments, email, followers, idempotency, scope, sla
 from cedesk.helpdesk.service.auth import Sessionmaker
 from cedesk.helpdesk.service.errors import Conflict, Invalid, NotFound
 from cedesk.helpdesk.service.idempotency import Idempotency
@@ -115,11 +115,19 @@ async def add_message(
         await sla.refresh(s, ticket_ids=[ticket_id])  # the first-reply clock may stop
         if emailed:
             await email.queue_reply(s, caller.workspace_id, detail, message_id, body, who)
+        # Followers hear of every public reply (plan 1.5), not the one who wrote it.
+        await followers.tell(
+            s, caller.workspace_id, ticket_id,
+            f"{who} replied on {label(detail['number'])}: {detail['subject']}",
+            exclude=[caller.member_id],
+        )  # fmt: skip
     else:
         await repo.ticket_touched(s, ticket_id)
 
     if mentions:
         await repo.add_mentions(s, caller.workspace_id, message_id, mentions)
+        # Whoever is @mentioned follows the ticket from now on (plan 1.5).
+        await followers.follow(s, caller.workspace_id, ticket_id, mentions)
         others = [m for m in mentions if m != caller.member_id]
         if others:
             text = f"{who} mentioned you on {label(detail['number'])}: {detail['subject']}"

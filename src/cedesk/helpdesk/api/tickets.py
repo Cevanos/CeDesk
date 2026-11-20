@@ -199,6 +199,13 @@ async def list_tickets(
             "the tag `imported-<source>`.",
         ),
     ] = None,
+    snoozed: Annotated[
+        bool | None,
+        Query(
+            description="true: only snoozed tickets; false: leave snoozed tickets out. "
+            "Not sent: both."
+        ),
+    ] = None,
     cursor: Cursor = None,
     limit: Limit = 50,
 ) -> TicketListOut:
@@ -214,6 +221,7 @@ async def list_tickets(
         cursor=cursor,
         limit=limit,
         imported=imported,
+        snoozed=snoozed,
     )
     return TicketListOut(
         tickets=[TicketRowOut.model_validate(_row(r, page.sla.get(r["id"]))) for r in page.tickets],

@@ -237,6 +237,11 @@ class TicketRowOut(BaseModel):
         default_factory=list,
         description="The Jira issues linked to the ticket (ABC-123), by key; [] for none.",
     )
+    snoozed_until: datetime | None = Field(
+        default=None,
+        description="Snoozed: the ticket is Pending until then, when it reopens by itself "
+        "(a customer reply wakes it sooner). null: not snoozed.",
+    )
     sla: SlaOut | None = None
 
 
@@ -312,6 +317,7 @@ class Counts(BaseModel):
     open: int
     pending: int
     resolved: int
+    snoozed: int = Field(default=0, description="Of the Pending ones, how many are snoozed.")
 
 
 class TicketListOut(BaseModel):

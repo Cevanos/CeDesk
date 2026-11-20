@@ -285,7 +285,7 @@ async def test_list_tabs_filters_search_and_order(
 
     async def subjects(query: str) -> list[str]:
         page = ok(await client.get(f"{T}?{query}", headers=h))
-        assert page["counts"] == {"open": 3, "pending": 1, "resolved": 2}
+        assert page["counts"] == {"open": 3, "pending": 1, "resolved": 2, "snoozed": 0}
         return [t["subject"] for t in page["tickets"]]
 
     assert await subjects("status=open") == ["Urgent one", "Mine", "Low one"]

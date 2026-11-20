@@ -3,6 +3,53 @@
 `openapi.json` next to this file is the API as served (`uv run cedesk openapi`). Every
 route is under `/api/v1`. Breaking changes only come in v2 (md 2B). Newest first.
 
+## 2026-11-20: Agent inbox tools: snooze, saved views, bulk changes, auto-close, followers, transcript
+
+Additive only: new routes and fields; nothing existing changed shape. Migrations 0061-0064.
+Feature-gap plan phase 1. New permissions (`GET /me` lists them in `actions`):
+`bulk_edit` (Admin, Supervisor, Agent; every custom role), `share_views` (Admin,
+Supervisor; a custom role with the settings right), `send_transcript` (Admin, Supervisor,
+Agent; a custom role with the reply right). New audit areas: `tickets`, `views`,
+`auto_close`. New notification kinds: `snooze_ended`, `following`.
+
+- **Snooze.** `POST /tickets/{id}/snooze` `{until}` puts the ticket in Pending until then
+  (1 minute to 1 year ahead, with a time zone); `DELETE /tickets/{id}/snooze` reopens it
+  now. Same rights and `If-Match` as `PATCH /tickets/{id}`; 409 on a resolved ticket. The
+  worker reopens it at the time (once a minute) and tells the assignee (`snooze_ended`)
+  and followers; a customer reply wakes it early; any other status change ends it.
+  - Tickets (list and detail) have `snoozed_until` (null: not snoozed).
+  - `GET /tickets?snoozed=true|false` (only snoozed / none of them); `counts.snoozed`.
+  - `ticket.updated` lists `snoozed_until` in `changes` when it changed.
+- **Saved views.** `GET /views`, `POST /views`, `GET|PATCH|DELETE /views/{id}`. A view
+  is `{name, filters, shared}`; `filters` holds only `GET /tickets` parameters (status,
+  scope, priority, team, q, sort, imported, snoozed), checked with the list's own rules
+  (422 otherwise). Personal views: owner only (404 for anyone else, Admins too). Shared
+  views: everyone sees them; `share_views` to make, change, delete, share or unshare.
+  Audited (area `views`). API keys can't use `/views`.
+- **Bulk changes.** `POST /tickets/bulk` `{ticket_ids (1-100), action, value}`; actions
+  assign, set_team, set_status, set_priority, add_tags, remove_tags, snooze, unsnooze.
+  Each ticket goes through the single-edit path with its own checks and transaction;
+  answer 200 with a result per ticket (`ok`, `error {code, message}`), `succeeded`,
+  `failed`. Needs `bulk_edit`; 10 requests a minute per person (429). One audit entry per
+  request (area `tickets`).
+- **Auto-close.** `GET|PUT /auto-close` `{enabled, after_days (1-365), notice}` (Settings
+  right; audited, area `auto_close`); off by default. Daily, Pending tickets with no
+  customer reply and no change for `after_days` are resolved (notice first, as a reply
+  from the workspace); never snoozed, handover-waiting, approval-waiting, open-child,
+  merged or imported tickets. Each close: a line, `ticket.resolved` (so the CSAT survey),
+  followers told, an audit entry (area `tickets`, by "Auto-close").
+- **Followers.** `GET /tickets/{id}/followers`, `POST /tickets/{id}/followers`
+  `{member_id}`, `DELETE /tickets/{id}/followers/{member_id}`; answers `{followers,
+  following}`. Yourself: read right; someone else: the right to change the ticket.
+  Assigned and @mentioned members follow automatically. Followers get `following`
+  notifications for public replies and status changes (not their own). Audited.
+- **Email transcript.** `POST /tickets/{id}/transcript` `{to?}` (202): the public
+  conversation (customer, agent and AI messages; never notes, system lines or side
+  conversations) emailed from the default support address to the customer or `to`. Needs
+  `send_transcript` and the right to change the ticket. 409 without a support address or
+  public messages; 422 for a chat/demo customer or a support address; 10 an hour per
+  person, 100 per workspace (429). A line on the ticket; the audit entry holds no text.
+
 ## 2026-11-20: Translate: an order number or a single word isn't "not translated"
 
 No route or field changed. Found retesting against the now-fixed Cevanos: "ORD-1042" to

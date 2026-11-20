@@ -8,6 +8,7 @@ auto-assigned (W8): on create, and when it moves to another team without a chose
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
+from datetime import UTC, datetime
 from typing import Any, Protocol
 from uuid import UUID
 
@@ -16,13 +17,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from cedesk.db import workspace_session
 from cedesk.helpdesk.domain import events, paging
+from cedesk.helpdesk.domain import snooze as snooze_rules
 from cedesk.helpdesk.domain import tickets as rules
 from cedesk.helpdesk.domain.auth import Caller, normalise_email
 from cedesk.helpdesk.domain.limits import Kind as LimitKind
 from cedesk.helpdesk.domain.paging import CursorError
 from cedesk.helpdesk.domain.permissions import Action, Scope
 from cedesk.helpdesk.domain.portal import subject_from
-from cedesk.helpdesk.domain.reports import IMPORT_SOURCES
 from cedesk.helpdesk.domain.rules import Event as RuleEvent
 from cedesk.helpdesk.domain.sla import TicketSla
 from cedesk.helpdesk.domain.tickets import (
@@ -39,7 +40,7 @@ from cedesk.helpdesk.repo import catalog, outbox
 from cedesk.helpdesk.repo import messages as message_repo
 from cedesk.helpdesk.repo import tickets as repo
 from cedesk.helpdesk.repo.tickets import Row
-from cedesk.helpdesk.service import children, idempotency, limits, routing, sla, triage
+from cedesk.helpdesk.service import children, followers, idempotency, limits, routing, sla, triage
 from cedesk.helpdesk.service import email as email_service
 from cedesk.helpdesk.service import rules as automation
 from cedesk.helpdesk.service import scope as scope_rules
@@ -50,7 +51,7 @@ from cedesk.helpdesk.service.errors import Conflict, Invalid, NotFound
 from cedesk.helpdesk.service.idempotency import Idempotency
 from cedesk.helpdesk.service.members import require
 
-SCOPES = ("everyone", "mine", "unassigned")
+SCOPES = rules.SCOPES
 REDACTED_KINDS = ("customer", "ai")  # card numbers are removed from these chat lines
 
 
@@ -265,7 +266,9 @@ async def _tell_assignee(
     by: str | None = None,
 ) -> None:
     """The bell for whoever now holds the ticket. `by` names the person who handed it over
-    by hand; without it, routing chose them. Nobody is told about their own choice."""
+    by hand; without it, routing chose them. Nobody is told about their own choice. Whoever
+    gets the ticket follows it from now on (plan 1.5), their own choice too."""
+    await followers.follow(s, caller.workspace_id, ticket_id, [member_id])
     if member_id == caller.member_id:
         return
     what = f"{by} assigned you" if by else "You were auto-assigned"
@@ -590,6 +593,7 @@ async def _page(
     cursor: str | None,
     limit: int,
     imported: Sequence[str] | None = None,
+    snoozed: bool | None = None,
 ) -> tuple[Sequence[Row], str | None]:
     try:
         after = rules.decode_cursor(cursor, sort) if cursor else None
@@ -603,6 +607,7 @@ async def _page(
         team=team_id,
         contact=contact_id,
         imported=imported,
+        snoozed=snoozed,
         visible_team=scope_rules.visible_team(caller),
         scope=scope,
         q_like=_like(q) if q else None,
@@ -637,46 +642,48 @@ async def list_tickets(
     cursor: str | None = None,
     limit: int = 50,
     imported: str | None = None,
+    snoozed: bool | None = None,
 ) -> TicketPage:
     """A page of tickets in `sort` order; pass `next_cursor` back as `cursor` for the
     next page (the same filters and sort must be sent again).
 
     `imported`: only tickets brought from another help desk (M10): `any`, or one source.
+    `snoozed`: True only snoozed tickets, False none of them (plan 1.1).
 
-    `counts` is per status and ignores the other filters, for the tabs.
+    `counts` is per status (and how many are snoozed) and ignores the other filters, for
+    the tabs.
     """
     require(caller, Action.read_ticket)
-    if scope not in SCOPES:
-        raise Invalid("scope is everyone, mine or unassigned.")
-    q = (q or "").strip() or None
-    sources: list[str] | None = None
-    if imported is not None:
-        if imported == "any":
-            sources = list(IMPORT_SOURCES)
-        elif imported in IMPORT_SOURCES:
-            sources = [imported]
-        else:
-            raise Invalid("imported is any, or one of: " + ", ".join(IMPORT_SOURCES) + ".")
+    try:
+        # The same checks a saved view's filters pass (plan 1.2).
+        f = rules.list_filters(
+            status=status, scope=scope, priority=priority, team=team_id, q=q, sort=sort,
+            imported=imported, snoozed=snoozed,
+        )  # fmt: skip
+    except FieldError as exc:
+        raise _invalid(exc) from exc
     async with workspace_session(sm, caller.workspace_id) as s:
         rows, next_cursor = await _page(
             s,
             caller,
-            status=status,
-            scope=scope,
-            priority=priority,
-            team_id=team_id,
+            status=f.status,
+            scope=f.scope,
+            priority=f.priority,
+            team_id=f.team,
             contact_id=None,
-            q=q,
-            sort=sort,
+            q=f.q,
+            sort=f.sort,
             cursor=cursor,
             limit=limit,
-            imported=sources,
+            imported=f.sources,
+            snoozed=f.snoozed,
         )
         counts = await repo.counts_by_status(s, scope_rules.visible_team(caller))
+        snoozed_count = await repo.snoozed_count(s, scope_rules.visible_team(caller))
         cfg = await sla.config(s)
     return TicketPage(
         tickets=rows,
-        counts={st.value: counts.get(st.value, 0) for st in Status},
+        counts={st.value: counts.get(st.value, 0) for st in Status} | {"snoozed": snoozed_count},
         next_cursor=next_cursor,
         sla={r["id"]: sla.state(r, cfg) for r in rows},
     )
@@ -774,7 +781,10 @@ async def change_ticket(
 ) -> TicketView:
     """Applies only the keys present in `changes`:
     subject, status, priority, type_id, team_id, assignee_id,
-    fields (a value of None clears that field), add_tags, remove_tags.
+    fields (a value of None clears that field), add_tags, remove_tags,
+    snooze_until (plan 1.1: a time puts the ticket in Pending until then; None ends a
+    snooze and reopens it). Bulk changes (plan 1.3) come through here too, one ticket at
+    a time.
 
     With `if_match` (the ETag from reading the ticket), the change is refused with
     Conflict if anyone changed the ticket since (md 2B)."""
@@ -795,6 +805,7 @@ async def change_ticket(
         new |= {"assignee_id": current["assignee_id"], "reopen_count": current["reopen_count"]}
         new["fields"] = dict(current["fields"])
         new["tags"] = list(current["tags"])
+        new["snoozed_until"] = current["snoozed_until"]
         lines: list[str] = []
         who = await _who(s, caller)
 
@@ -813,6 +824,28 @@ async def change_ticket(
                 new["reopen_count"] += 1
             new["status"] = status.value
             lines.append(f"Status set to {rules.title(status.value)} by {who}")
+
+        if "snooze_until" in changes:
+            if "status" in changes:
+                raise Invalid("Snoozing sets the status itself: send a status or a snooze.")
+            until = changes["snooze_until"]
+            if until is not None:
+                if current["status"] == Status.resolved.value:
+                    raise Conflict(RESOLVED_CANT_SNOOZE)
+                try:
+                    until = snooze_rules.check_until(until, datetime.now(UTC))
+                except snooze_rules.SnoozeError as exc:
+                    raise Invalid(str(exc)) from exc
+                new["status"] = Status.pending.value
+                new["snoozed_until"] = until
+                lines.append(snooze_rules.snoozed_line(until, who))
+            elif current["snoozed_until"] is not None:
+                new["status"] = Status.open.value
+                new["snoozed_until"] = None
+                lines.append(snooze_rules.unsnoozed_line(who))
+        elif new["status"] != Status.pending.value and current["snoozed_until"] is not None:
+            new["snoozed_until"] = None  # the database clears it with the status
+            lines.append(snooze_rules.CLEARED_LINE)
 
         if "priority" in changes and changes["priority"] != current["priority"]:
             new["priority"] = Priority(changes["priority"]).value
@@ -920,9 +953,20 @@ async def change_ticket(
 
         if lines:
             await repo.update_ticket(s, ticket_id, new)
+            if (
+                new["snoozed_until"] is not None
+                and new["snoozed_until"] != current["snoozed_until"]
+            ):
+                await repo.set_snooze(s, ticket_id, new["snoozed_until"])
             await sla.refresh(s, ticket_ids=[ticket_id])
             for body in lines:
                 await _line(s, caller, ticket_id, body)
+        if new["status"] != current["status"]:  # followers hear of status changes (1.5)
+            await followers.tell(
+                s, caller.workspace_id, ticket_id,
+                status_note(current["number"], new["status"], who, new["subject"]),
+                exclude=[caller.member_id],
+            )  # fmt: skip
         if routed_to is not None:
             await _tell_assignee(s, caller, ticket_id, routed_to, current["number"], new["subject"])
         elif (  # handed to someone by hand: routing did not run, so tell them here (B-24)
@@ -945,6 +989,12 @@ async def change_ticket(
 
 
 NOT_WAITING = "This ticket isn't waiting to be accepted."
+RESOLVED_CANT_SNOOZE = "A resolved ticket can't be snoozed. Reopen it first."
+
+
+def status_note(number: int, status: str, who: str, subject: str) -> str:
+    """A follower's notification when the status changed (plan 1.5)."""
+    return f"{rules.label(number)} is now {rules.title(status)} ({who}): {subject}"[:500]
 
 
 async def accept_ticket(
@@ -980,6 +1030,7 @@ async def accept_ticket(
             )
             await repo.set_assignee(s, ticket_id, caller.member_id)
             await _line(s, caller, ticket_id, f"Assigned to {who} by {who}")
+        await followers.follow(s, caller.workspace_id, ticket_id, [caller.member_id])
         await repo.set_accepted(s, ticket_id)
         line = f"{who} joined the chat (mobile)" if mobile else f"Chat accepted by {who}"
         await _line(s, caller, ticket_id, line)
