@@ -356,11 +356,13 @@ async def ticket_for_email_ids(
 async def ticket_for_contact_number(
     session: AsyncSession, number: int, contact_email: str
 ) -> UUID | None:
-    """Ticket T-<number>, only if <contact_email> is its customer."""
+    """Ticket T-<number>, only if <contact_email> is its customer (their own address or
+    one merged into them, plan 2.4)."""
     result = await session.execute(
         text(
             "SELECT t.id FROM hd_ticket t JOIN hd_contact c ON c.id = t.contact_id "
-            "WHERE t.number = :n AND c.email = :e"
+            "WHERE t.number = :n AND (c.email = :e OR EXISTS (SELECT 1 FROM hd_contact_alias a "
+            "WHERE a.contact_id = c.id AND a.email = :e))"
         ),
         {"n": number, "e": contact_email},
     )

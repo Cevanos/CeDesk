@@ -177,7 +177,14 @@ async def reserve_numbers(session: AsyncSession, workspace_id: UUID, count: int)
 
 
 async def upsert_contact(session: AsyncSession, workspace_id: UUID, email: str, name: str) -> UUID:
-    """The contact with this email, created on first sight. An existing name is kept."""
+    """The contact with this email, created on first sight. An existing name is kept.
+    An address merged into another contact (plan 2.4) finds that contact."""
+    merged = await session.execute(
+        text("SELECT contact_id FROM hd_contact_alias WHERE email = :email"), {"email": email}
+    )
+    found = merged.scalar_one_or_none()
+    if found is not None:
+        return UUID(str(found))
     result = await session.execute(
         text(
             "INSERT INTO hd_contact (workspace_id, email, name) VALUES (:ws, :email, :name) "
