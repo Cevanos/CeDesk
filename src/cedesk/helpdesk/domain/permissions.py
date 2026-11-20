@@ -38,6 +38,14 @@ class Action(StrEnum):
     # Members, roles and security settings: Admins only, never given to a custom role,
     # so a role with `settings` can't make anyone (or itself) an Admin.
     manage_access = "manage_access"
+    # One change on many tickets at once (plan 1.3). Each ticket is still checked as a
+    # single edit (`change_fields`, `assign_*`, the role's team scope).
+    bulk_edit = "bulk_edit"
+    # Make, change and delete the workspace's shared ticket views (plan 1.2). Everyone who
+    # reads tickets keeps personal views of their own.
+    share_views = "share_views"
+    # Email a ticket's public messages to the customer or another address (plan 1.6).
+    send_transcript = "send_transcript"
 
 
 class Scope(StrEnum):
@@ -57,9 +65,16 @@ _AGENT = frozenset(
         Action.change_fields,
         Action.assign_self,
         Action.list_members,
+        Action.bulk_edit,
+        Action.send_transcript,
     }
 )
-_SUPERVISOR = _AGENT | {Action.assign_others, Action.approve, Action.reports}
+_SUPERVISOR = _AGENT | {
+    Action.assign_others,
+    Action.approve,
+    Action.reports,
+    Action.share_views,
+}
 
 ROLE_ACTIONS: dict[Role, frozenset[Action]] = {
     Role.light_agent: frozenset({Action.read_ticket, Action.private_note, Action.list_members}),
@@ -68,16 +83,25 @@ ROLE_ACTIONS: dict[Role, frozenset[Action]] = {
     Role.admin: _SUPERVISOR | {Action.settings, Action.manage_access},
 }
 
-# Every custom role reads, adds notes and changes fields (within its scope).
+# Every custom role reads, adds notes and changes fields (within its scope), so it may
+# also change many at once: each ticket is checked as a single edit.
 _CUSTOM_BASE = frozenset(
-    {Action.read_ticket, Action.private_note, Action.change_fields, Action.list_members}
+    {
+        Action.read_ticket,
+        Action.private_note,
+        Action.change_fields,
+        Action.list_members,
+        Action.bulk_edit,
+    }
 )
 # The five rights an Admin ticks (md A3), and what each one allows.
 RIGHTS: dict[str, frozenset[Action]] = {
-    "reply": frozenset({Action.reply, Action.create_ticket, Action.assign_self}),
+    "reply": frozenset(
+        {Action.reply, Action.create_ticket, Action.assign_self, Action.send_transcript}
+    ),
     "assign_any": frozenset({Action.assign_self, Action.assign_others}),
     "reports": frozenset({Action.reports}),
-    "settings": frozenset({Action.settings}),
+    "settings": frozenset({Action.settings, Action.share_views}),
     "approve": frozenset({Action.approve}),
 }
 

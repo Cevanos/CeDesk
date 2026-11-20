@@ -31,6 +31,9 @@ EXPECTED: dict[Action, set[Role]] = {
     Action.settings: {A},
     Action.list_members: {A, S, G, L},
     Action.manage_access: {A},
+    Action.bulk_edit: {A, S, G},
+    Action.share_views: {A, S},
+    Action.send_transcript: {A, S, G},
 }
 
 
@@ -61,12 +64,18 @@ def _custom(**rights: object) -> Access:
 
 
 # Custom roles (md 6.6 last column, A3): each right adds exactly its actions.
-CUSTOM_BASE = {Action.read_ticket, Action.private_note, Action.change_fields, Action.list_members}
+CUSTOM_BASE = {
+    Action.read_ticket,
+    Action.private_note,
+    Action.change_fields,
+    Action.list_members,
+    Action.bulk_edit,
+}
 RIGHT_ADDS = {
-    "reply": {Action.reply, Action.create_ticket, Action.assign_self},
+    "reply": {Action.reply, Action.create_ticket, Action.assign_self, Action.send_transcript},
     "assign_any": {Action.assign_self, Action.assign_others},
     "reports": {Action.reports},
-    "settings": {Action.settings},
+    "settings": {Action.settings, Action.share_views},
     "approve": {Action.approve},
 }
 

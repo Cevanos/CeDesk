@@ -26,6 +26,8 @@ class Event(StrEnum):
 # Changes that make a `ticket.updated` (PL4): status (other than resolving), priority,
 # team, assignee, type. Also subject, fields and tags, so integrations stay in sync.
 WATCHED = ("subject", "status", "priority", "type_id", "team_id", "assignee_id", "fields", "tags")
+# Compared only when both sides carry it: older callers build their rows without it.
+WATCHED_IF_GIVEN = ("snoozed_until",)
 
 
 def ticket_brief(ticket: Mapping[Any, Any]) -> dict[str, Any]:
@@ -42,7 +44,12 @@ def ticket_brief(ticket: Mapping[Any, Any]) -> dict[str, Any]:
 
 
 def changed(before: Mapping[Any, Any], after: Mapping[Any, Any]) -> list[str]:
-    return [key for key in WATCHED if before.get(key) != after.get(key)]
+    keys = [key for key in WATCHED if before.get(key) != after.get(key)]
+    return keys + [
+        key
+        for key in WATCHED_IF_GIVEN
+        if key in before and key in after and before[key] != after[key]
+    ]
 
 
 def after_change(

@@ -232,7 +232,8 @@ def _worker(once: bool) -> int:
     """Every few seconds: reads new emails from the IMAP mailbox (when one is set), reads
     connected Cevanos chats for new customer messages, sends queued emails, delivers
     outbox events (Cevanos take-overs and replies), alerts SLA breaches and overdue tasks
-    (once a minute), and drops expired idempotency keys. Run one next to the API (sending
+    and wakes snoozed tickets (once a minute), auto-closes inactive tickets (daily, before
+    the archive pass), and drops expired idempotency keys. Run one next to the API (sending
     and delivering are safe with several; reading a mailbox is meant for one)."""
     import contextlib
     import logging
@@ -246,6 +247,7 @@ def _worker(once: bool) -> int:
     from cedesk.helpdesk.service import limits as plan_limits
     from cedesk.helpdesk.service.apps import slack_bound
     from cedesk.helpdesk.service.archive import run_archive
+    from cedesk.helpdesk.service.auto_close import run_auto_close
     from cedesk.helpdesk.service.cevanos import CevanosHandler, ChatPoller
     from cedesk.helpdesk.service.csat import CsatHandler
     from cedesk.helpdesk.service.delivery import Handler, deliver_due
@@ -266,6 +268,7 @@ def _worker(once: bool) -> int:
     from cedesk.helpdesk.service.sla import refresh_everywhere
     from cedesk.helpdesk.service.sla_alerts import alert_everywhere
     from cedesk.helpdesk.service.slack_alerts import SlackAlertHandler
+    from cedesk.helpdesk.service.snooze import wake_everywhere
     from cedesk.helpdesk.service.stream import prune_everywhere as prune_stream
     from cedesk.helpdesk.service.task_alerts import alert_everywhere as alert_tasks
     from cedesk.helpdesk.service.webhooks import WebhookFanout
@@ -462,6 +465,13 @@ def _worker(once: bool) -> int:
                         logger.exception("Overdue task alerts failed")
                     if overdue:
                         logger.info(f"Overdue tasks alerted: {overdue}", extra={"event": "tasks"})
+                    try:  # snoozed tickets whose time came (feature-gap plan 1.1)
+                        woke = await wake_everywhere(sm)
+                    except Exception:
+                        woke = 0
+                        logger.exception("Waking snoozed tickets failed")
+                    if woke:
+                        logger.info(f"Snoozed tickets woke: {woke}", extra={"event": "snooze"})
                     alerted_at = time.monotonic()
                 if time.monotonic() - swept_at > SWEEP_EVERY_SECONDS:
                     await sweep_everywhere(sm)
@@ -489,6 +499,13 @@ def _worker(once: bool) -> int:
                             logger.info(f"archive: {moved} tickets", extra={"event": "archive"})
                     except Exception:
                         logger.exception("Archiving failed")
+                    try:  # Pending tickets with no customer reply for too long (plan 1.4)
+                        closed = await run_auto_close(sm)
+                        if closed:
+                            logger.info(f"auto-close: {closed} tickets",
+                                        extra={"event": "auto_close"})  # fmt: skip
+                    except Exception:
+                        logger.exception("Auto-close failed")
                     try:  # resolved tickets past the workspace's retention (md O2)
                         gone = await run_retention(sm, store)
                         if gone:
