@@ -6,11 +6,14 @@ Export: one JSON file (the customer, their tickets, archived ones too (md O3), w
 every message, file names and ratings), kept in storage for 7 days and downloaded signed
 in. Internal notes are included (ticket notes, and the team's notes about the customer,
 plan 2.2): review them before sending the file to the customer. Their contact attributes,
-other (merged-in) addresses and merge history are in it too.
+other (merged-in) addresses and merge history are in it too, and the campaign emails sent
+to them and their suppression list entries.
 
 Erase: the words that could identify the customer are replaced and their files are
 deleted from storage; their contact notes, attribute values and other (merged-in)
-addresses are deleted, and each of those addresses is scrubbed as their own is. Every
+addresses are deleted, and each of those addresses is scrubbed as their own is. Campaign
+emails sent to them lose the address and name, and each of their addresses stays on the
+campaign suppression list as a hash only (so they are never mailed again). Every
 row of their tickets stays, so ticket counts, reply times, ratings and time logged are
 unchanged. The stored files go first (as in core-api's erasure.py): if the
 erase then fails, nothing in the database changed and running it again finds the same
@@ -41,7 +44,7 @@ from cedesk.helpdesk.repo import contacts as contact_repo
 from cedesk.helpdesk.repo import limits as limits_repo
 from cedesk.helpdesk.repo import privacy as repo
 from cedesk.helpdesk.repo.privacy import ERASED, ERASED_NAME
-from cedesk.helpdesk.service import audit
+from cedesk.helpdesk.service import audit, campaigns
 from cedesk.helpdesk.service.auth import Sessionmaker
 from cedesk.helpdesk.service.errors import Conflict, Invalid, NotFound
 from cedesk.helpdesk.service.members import require
@@ -175,6 +178,11 @@ async def export(
             }
             for r in await automation_repo.runs_for_tickets(s, ids)
         ]  # fmt: skip
+        # Campaign emails sent to them and their suppression entries (plan phase 6).
+        data |= await campaigns.export_rows(
+            s, caller.workspace_id, contact["id"],
+            [str(contact["email"]), *data["customer"]["other_emails"]],
+        )  # fmt: skip
         n_tickets = len(tickets) + len(archived)
         n_messages = len(messages) + sum(len(a["messages"]) for a in archived)
         body = json.dumps(data, ensure_ascii=False, indent=2).encode()
@@ -251,6 +259,12 @@ async def erase(
             s, contact_id, erased=ERASED, name=ERASED_NAME
         )
         other_emails = await contact_repo.aliases(s, contact_id)  # merged in (plan 2.4)
+        # Campaigns (plan phase 6): their recipient rows lose the address; each address
+        # stays on the suppression list as a hash, so they are never mailed again.
+        counts |= await campaigns.erase(
+            s, caller.workspace_id, contact_id, [str(contact["email"]), *other_emails],
+            ERASED_NAME,
+        )  # fmt: skip
         counts |= await repo.erase_contact(s, contact_id, str(contact["email"]))
         for address in other_emails:  # the same, for each other address they had
             for key, n in (await repo.erase_contact(s, contact_id, address)).items():

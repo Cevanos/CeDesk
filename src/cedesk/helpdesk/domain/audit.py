@@ -69,6 +69,9 @@ class Area(StrEnum):
     # Automation (feature-gap plan phase 5): workflows, and waiting runs stopped by hand.
     # Rules stay under `rules`.
     flows = "flows"
+    # Email campaigns (feature-gap plan phase 6): campaigns, their settings and the
+    # suppression list. Counts and ids only: never an address or an email's text.
+    campaigns = "campaigns"
 
 
 @dataclass(frozen=True)

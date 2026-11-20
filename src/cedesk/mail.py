@@ -50,6 +50,10 @@ class OutgoingEmail:
     in_reply_to: str | None = None
     references: list[str] = field(default_factory=list)
     attachments: list[MailFile] = field(default_factory=list)
+    # An HTML part next to the text (campaign emails); None: text only, as replies are.
+    html: str | None = None
+    # Extra headers (a campaign's List-Unsubscribe); never From, To, Subject or the ids.
+    headers: tuple[tuple[str, str], ...] = ()
 
 
 class SendError(Exception):
@@ -78,7 +82,11 @@ def build(email: OutgoingEmail) -> EmailMessage:
         msg["In-Reply-To"] = email.in_reply_to
     if email.references:
         msg["References"] = " ".join(email.references)
+    for name, value in email.headers:
+        msg[name] = value
     msg.set_content(email.text)
+    if email.html is not None:
+        msg.add_alternative(email.html, subtype="html")
     for file in email.attachments:
         maintype, _, subtype = file.mime.partition("/")
         msg.add_attachment(
