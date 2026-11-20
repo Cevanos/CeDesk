@@ -249,6 +249,9 @@ async def test_text_sent_back_as_it_was_is_said_so(
                      "note": "This is already in English."}  # fmt: skip
     r = await translate("ORD-1042", "hi", {"text": "ORD-1042", "from": None})
     assert ok(r)["note"] == "Cevanos found nothing to translate in this text."
+    # Live retest: Cevanos labels an order number English and sends it back: not a failure.
+    r = await translate("ORD-1042", "hi", {"text": "ORD-1042", "from": "en"})
+    assert ok(r)["note"] == "Cevanos found nothing to translate in this text."
 
 
 async def test_cevanos_down_is_a_503(cv: AsyncClient, app_sessionmaker: Sm, world: FakeAi) -> None:
