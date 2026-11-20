@@ -36,6 +36,10 @@ describe("normalizeMetricsReport", () => {
       ["time_logged", 0],
       ["billable", 765],
     ]);
+    expect(r.tiles[0]).toMatchObject({
+      label: "Open now",
+      hint: "As of now, not the date range",
+    });
     expect(r.tiles[1]!.hint).toBe("35 of 85 resolved");
     expect(r.backlog).toEqual([{ label: "Under 1 hour", created: null, open: 4 }]);
     expect(r.channels).toEqual([{ label: "email", created: 7, open: 5 }]);
