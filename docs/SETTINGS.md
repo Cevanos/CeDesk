@@ -128,6 +128,23 @@ Over a limit: 429 with `Retry-After`. Counted in each API process.
 | `CEDESK_PUBLIC_LIMIT` | `120` | Other public pages with no sign-in (help center, CSAT rating page) per IP per window. | api | no |
 | `CEDESK_PUBLIC_WINDOW_SECONDS` | `600` | That window. | api | no |
 | `CEDESK_API_KEY_LIMIT` | `700` | Requests a minute per workspace with API keys, all its keys together. | api | no |
+| `CEDESK_UNSUBSCRIBE_LIMIT` | `600` | Public campaign unsubscribe and open-image requests per IP per window (high: mail providers fetch them from shared addresses). | api | no |
+| `CEDESK_UNSUBSCRIBE_WINDOW_SECONDS` | `600` | That window. | api | no |
+
+## Email campaigns
+
+Marketing email to a segment (feature-gap plan phase 6). Only campaigns read the
+suppression list; ticket replies and other transactional email are never blocked by it.
+The unsubscribe link in each email's footer points at `CEDESK_PORTAL_URL` (else
+`CEDESK_APP_URL`), the one-click and open-image links at `CEDESK_API_URL` (else the
+same); outside `dev` they must be https or nothing can be sent. Bounces and spam reports
+come back through email in (IMAP or the inbound webhook) to the sending support address.
+
+| Setting | Default | What it does | Read by | In compose |
+|---|---|---|---|---|
+| `CEDESK_CAMPAIGN_MAX_RECIPIENTS` | `5000` | The most recipients one campaign may have; a bigger one is refused before sending. | api, worker | no |
+| `CEDESK_CAMPAIGN_DAILY_CAP` | `10000` | Campaign emails per workspace per 24 hours (sent plus still queued); a campaign that would go over is refused. | api, worker | no |
+| `CEDESK_CAMPAIGN_PER_MINUTE` | `60` | Campaign emails the worker sends a minute per workspace. | worker | no |
 
 ## Self-service sign-up
 
