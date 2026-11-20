@@ -105,6 +105,7 @@ export function ComposerAi({
   const translate = useTranslate();
   const [before, setBefore] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null);
   if (!enabled) return null;
 
   const busy = draft.isPending || improve.isPending || translate.isPending;
@@ -119,6 +120,10 @@ export function ComposerAi({
   const fail = (e: unknown) => {
     hide(e);
     setError(aiErrorMessage(e));
+  };
+  const start = () => {
+    setError(null);
+    setNote(null);
   };
   const apply = (text: string, old: string) => {
     setBefore(old);
@@ -138,7 +143,7 @@ export function ComposerAi({
           loading={draft.isPending}
           disabled={busy}
           onClick={() => {
-            setError(null);
+            start();
             draft.mutate(undefined, { onSuccess: (t) => apply(t, body), onError: fail });
           }}
         >
@@ -167,11 +172,14 @@ export function ComposerAi({
               key={t.value}
               onClick={() => {
                 close();
-                setError(null);
+                start();
                 const old = body;
                 improve.mutate(
                   { text: old, tone: t.value },
-                  { onSuccess: (text) => apply(text, old), onError: fail },
+                  {
+                    onSuccess: (r) => (r.note ? setNote(r.note) : apply(r.text, old)),
+                    onError: fail,
+                  },
                 );
               }}
             >
@@ -202,11 +210,14 @@ export function ComposerAi({
               key={l.value}
               onClick={() => {
                 close();
-                setError(null);
+                start();
                 const old = body;
                 translate.mutate(
                   { text: old, to: l.value },
-                  { onSuccess: (r) => apply(r.text, old), onError: fail },
+                  {
+                    onSuccess: (r) => (r.note ? setNote(r.note) : apply(r.text, old)),
+                    onError: fail,
+                  },
                 );
               }}
             >
@@ -237,6 +248,11 @@ export function ComposerAi({
           {error}
         </span>
       )}
+      {note && !error && (
+        <span role="status" className="text-xs text-muted-foreground">
+          {note}
+        </span>
+      )}
     </div>
   );
 }
@@ -248,6 +264,7 @@ export function TranslateMessage({ text }: { text: string }) {
   const translate = useTranslate();
   const [result, setResult] = useState<{ text: string; from?: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null);
   if (!enabled || !text.trim() || text.length > AI_MAX_CHARS) return null;
 
   return (
@@ -288,10 +305,11 @@ export function TranslateMessage({ text }: { text: string }) {
                 onClick={() => {
                   close();
                   setError(null);
+                  setNote(null);
                   translate.mutate(
                     { text, to: l.value },
                     {
-                      onSuccess: (r) => setResult(r),
+                      onSuccess: (r) => (r.note ? setNote(r.note) : setResult(r)),
                       onError: (e) => {
                         hide(e);
                         setError(aiErrorMessage(e));
@@ -309,6 +327,11 @@ export function TranslateMessage({ text }: { text: string }) {
       {error && (
         <p role="alert" className="mt-1 text-[11px] text-danger">
           {error}
+        </p>
+      )}
+      {note && !error && (
+        <p role="status" className="mt-1 text-[11px] text-muted-foreground">
+          {note}
         </p>
       )}
     </div>

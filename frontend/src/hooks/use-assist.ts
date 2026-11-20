@@ -56,6 +56,7 @@ export function aiErrorMessage(e: unknown): string {
   if (e.code === "cevanos_scope_missing") {
     return e.message || "The Cevanos key lacks the ai:assist scope. Ask an Admin to add it.";
   }
+  if (e.status === 503 && /didn.t translate/i.test(e.message)) return e.message;
   if (e.status === 503) return "Cevanos didn't answer. Try again.";
   if (e.status === 422) return e.message || "The AI couldn't use that text.";
   return e.userMessage;
@@ -84,7 +85,7 @@ export function useImprove() {
   return useMutation({
     meta,
     mutationFn: (v: { text: string; tone: Tone }) =>
-      api.post<{ text: string }>("assist/improve", v).then((r) => r.text),
+      api.post<{ text: string; note?: string | null }>("assist/improve", v),
   });
 }
 
@@ -92,7 +93,7 @@ export function useTranslate() {
   return useMutation({
     meta,
     mutationFn: (v: { text: string; to: string }) =>
-      api.post<{ text: string; from?: string }>("assist/translate", v),
+      api.post<{ text: string; from?: string; note?: string | null }>("assist/translate", v),
   });
 }
 

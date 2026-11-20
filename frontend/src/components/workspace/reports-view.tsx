@@ -54,7 +54,7 @@ function SupervisorsOnly() {
 function ReportsBody() {
   const [today] = useState(() => new Date());
   const [preset, setPreset] = useState<PresetId>("30");
-  const [custom, setCustom] = useState({ from: daysAgo(today, 30), to: ymd(today) });
+  const [custom, setCustom] = useState({ from: daysAgo(today, 29), to: ymd(today) });
   const [teamId, setTeamId] = useState("");
   const [tab, setTab] = useState<TabId>("team");
   const teams = useTeams();
@@ -62,7 +62,7 @@ function ReportsBody() {
   const range = useMemo(() => {
     if (preset === "custom") return custom;
     const days = PRESETS.find((p) => p.id === preset)?.days ?? 30;
-    return { from: daysAgo(today, days), to: ymd(today) };
+    return { from: daysAgo(today, days - 1), to: ymd(today) };
   }, [preset, custom, today]);
 
   const badRange = !range.from || !range.to || range.from > range.to;

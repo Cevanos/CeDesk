@@ -284,13 +284,17 @@ export function AiPanel({ params }: { params: ReportParams }) {
       <Stat
         label="Handed to a person"
         value={count(d.handed_over)}
-        hint={d.handed_over_percent === null ? undefined : `${d.handed_over_percent}% of AI chats`}
+        hint={
+          d.handed_over_percent === null ? undefined : `${d.handed_over_percent}% of finished chats`
+        }
       />
       <Stat
         label="Resolved by AI"
         value={count(d.resolved_by_ai)}
         hint={
-          d.resolved_by_ai_percent === null ? undefined : `${d.resolved_by_ai_percent}% of AI chats`
+          d.resolved_by_ai_percent === null
+            ? undefined
+            : `${d.resolved_by_ai_percent}% of finished chats`
         }
       />
       <Stat
