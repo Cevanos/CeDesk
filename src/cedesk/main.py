@@ -38,6 +38,7 @@ from cedesk.helpdesk.api import contacts as contacts_api
 from cedesk.helpdesk.api import demo as demo_api
 from cedesk.helpdesk.api import email as email_api
 from cedesk.helpdesk.api import email_in as email_in_api
+from cedesk.helpdesk.api import flows as flows_api
 from cedesk.helpdesk.api import imports as imports_api
 from cedesk.helpdesk.api import inbound_api as inbound_api_api
 from cedesk.helpdesk.api import inbox as inbox_api
@@ -364,6 +365,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(attachments_api.router, prefix="/api/v1")
     app.include_router(saved_replies_api.router, prefix="/api/v1")
     app.include_router(rules_api.router, prefix="/api/v1")
+    app.include_router(flows_api.router, prefix="/api/v1")
     app.include_router(macros_api.router, prefix="/api/v1")
     app.include_router(email_api.router, prefix="/api/v1")
     app.include_router(email_in_api.router, prefix="/api/v1")

@@ -5,7 +5,8 @@ Here is the worker's part: once a minute, in each workspace, every snoozed ticke
 time has come is set back to Open, with a line on the ticket, `ticket.updated`, and a
 notification for the assignee (`snooze_ended`) and the followers (`following`). One
 transaction per workspace pass; tickets another worker has locked are skipped (it wakes
-them). A customer reply wakes a ticket early (service/customer_replies.py).
+them). Each woken ticket then runs the `snooze_ended` rules and workflows (plan 5.1). A
+customer reply wakes a ticket early (service/customer_replies.py; no `snooze_ended`).
 """
 
 import logging
@@ -16,13 +17,14 @@ from uuid import UUID
 from cedesk.db import workspace_session
 from cedesk.helpdesk.domain import events
 from cedesk.helpdesk.domain import snooze as rules
+from cedesk.helpdesk.domain.rules import Event as RuleEvent
 from cedesk.helpdesk.domain.tickets import Status, label
 from cedesk.helpdesk.repo import auth as auth_repo
 from cedesk.helpdesk.repo import catalog, outbox
 from cedesk.helpdesk.repo import inbox as repo
 from cedesk.helpdesk.repo import messages as message_repo
 from cedesk.helpdesk.repo import tickets as ticket_repo
-from cedesk.helpdesk.service import followers, sla
+from cedesk.helpdesk.service import automation, followers, sla
 from cedesk.helpdesk.service.auth import Sessionmaker
 
 logger = logging.getLogger("cedesk.snooze")
@@ -82,6 +84,8 @@ async def _wake(s: Any, workspace_id: UUID, t: Any, active: set[UUID]) -> None:
             body=note,
         )
     await followers.tell(s, workspace_id, t["id"], note, exclude=[assignee])
+    # Then the `snooze_ended` rules and workflows (plan 5.1), as on any ticket event.
+    await automation.run_and_settle(s, workspace_id, t["id"], RuleEvent.snooze_ended)
 
 
 async def wake_everywhere(sm: Sessionmaker, now: datetime | None = None) -> int:
