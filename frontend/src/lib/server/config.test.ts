@@ -51,6 +51,19 @@ describe("proxy path classes", () => {
       expect(ALLOWED_AREAS.has(a)).toBe(true);
   });
 
+  it("allows the Phase 5 automation areas", () => {
+    for (const a of ["rules", "flows", "automation"]) expect(ALLOWED_AREAS.has(a)).toBe(true);
+  });
+
+  it("allows the Phase 2 contacts areas", () => {
+    for (const a of ["contacts", "contact-fields", "segments"])
+      expect(ALLOWED_AREAS.has(a)).toBe(true);
+  });
+
+  it("allows the inbox-tool areas (saved views and auto-close)", () => {
+    for (const a of ["views", "auto-close"]) expect(ALLOWED_AREAS.has(a)).toBe(true);
+  });
+
   it("allows the Phase 3 admin and developer areas the Settings screens call", () => {
     for (const a of [
       "roles",
@@ -68,6 +81,11 @@ describe("proxy path classes", () => {
       "time",
       "side-conversations",
     ])
+      expect(ALLOWED_AREAS.has(a)).toBe(true);
+  });
+
+  it("allows the Phase 6 campaign areas", () => {
+    for (const a of ["campaigns", "suppressions", "public"])
       expect(ALLOWED_AREAS.has(a)).toBe(true);
   });
 

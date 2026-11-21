@@ -123,12 +123,14 @@ export interface TicketSummary {
   child_count?: number;
   merged_into_id?: string | null;
   jira_keys?: string[];
+  /** Agent inbox tools: when a snoozed ticket wakes up (ISO, with zone), null when not snoozed. */
+  snoozed_until?: string | null;
 }
 
 export interface TicketList {
   items: TicketSummary[];
   next_cursor: string | null;
-  counts: Partial<Record<TicketStatus, number>>;
+  counts: Partial<Record<TicketStatus | "snoozed", number>>;
 }
 
 export interface Message {
@@ -188,7 +190,15 @@ export interface Attachment {
 
 export interface NotificationItem {
   id: string;
-  kind: "assigned" | "mention" | "sla_breach" | "handover" | "side_reply" | (string & {});
+  kind:
+    | "assigned"
+    | "mention"
+    | "sla_breach"
+    | "handover"
+    | "side_reply"
+    | "snooze_ended"
+    | "following"
+    | (string & {});
   text: string;
   ticket_id: string | null;
   read: boolean;
@@ -304,7 +314,7 @@ export interface SavedReply {
   source?: string;
 }
 
-export type RuleEvent = "created" | "customer_replied" | "sla_breached";
+export type RuleEvent = "created" | "customer_replied" | "sla_breached" | "snooze_ended";
 export interface Rule {
   id: string;
   name: string;
@@ -314,6 +324,9 @@ export interface Rule {
   conditions: Record<string, unknown>[];
   actions: Record<string, unknown>[];
   problems: string[];
+  /** Phase 5 safeguards. */
+  max_runs_per_hour?: number;
+  max_runs_per_day?: number;
 }
 export interface Macro {
   id: string;
@@ -647,4 +660,183 @@ export interface ImportFailure {
 export interface ImportFailurePage {
   failures: ImportFailure[];
   next_cursor: string | null;
+}
+
+/** A saved ticket-list view (GET /views). `filters` are GET /tickets query params. */
+export interface SavedView {
+  id: string;
+  name: string;
+  filters: Record<string, string>;
+  shared: boolean;
+  owner_id: string;
+  owner_name?: string | null;
+  can_edit: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Follower {
+  member_id: string;
+  name: string;
+  email?: string | null;
+  is_active?: boolean;
+  added_by?: string | null;
+  added_by_name?: string | null;
+  created_at: string;
+}
+
+export interface FollowerList {
+  followers: Follower[];
+  /** Whether the signed-in user follows the ticket. */
+  following: boolean;
+}
+
+export type BulkAction =
+  | { action: "assign"; assignee_id: string | null }
+  | { action: "set_team"; team_id: string | null }
+  | { action: "set_status"; status: TicketStatus }
+  | { action: "set_priority"; priority: Priority }
+  | { action: "add_tags"; tags: string[] }
+  | { action: "remove_tags"; tags: string[] }
+  | { action: "snooze"; until: string }
+  | { action: "unsnooze" };
+
+export interface BulkResultItem {
+  ticket_id: string;
+  ok: boolean;
+  error: { code: string; message: string } | null;
+}
+export interface BulkResult {
+  results: BulkResultItem[];
+  succeeded: number;
+  failed: number;
+}
+
+export interface AutoCloseSettings {
+  enabled: boolean;
+  after_days: number;
+  notice: string | null;
+  updated_at: string | null;
+  updated_by_name: string | null;
+}
+
+export interface TranscriptResult {
+  to: string;
+  to_customer: boolean;
+  messages: number;
+}
+
+/* ---------- Phase 6: email campaigns ---------- */
+
+export type CampaignState =
+  "draft" | "scheduled" | "sending" | "paused" | "sent" | "cancelled" | "failed";
+
+export interface CampaignStats {
+  recipients: number;
+  queued: number;
+  sending: number;
+  sent: number;
+  failed: number;
+  bounced: number;
+  skipped: number;
+  cancelled: number;
+  opened: number;
+  opens: number;
+  unsubscribed: number;
+  complained: number;
+}
+
+export interface Campaign {
+  id: string;
+  name: string;
+  state: CampaignState;
+  segment_id: string | null;
+  segment_name: string | null;
+  subject: string;
+  body: string;
+  from_address_id: string | null;
+  from_address: string | null;
+  from_name: string | null;
+  track_opens: boolean;
+  scheduled_at: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+  last_error: string | null;
+  created_by: string | null;
+  created_by_name: string | null;
+  created_at: string;
+  updated_at: string;
+  stats: CampaignStats;
+  problems: string[];
+}
+
+export interface CampaignSettings {
+  postal_address: string | null;
+  updated_at: string | null;
+  max_recipients: number;
+  daily_cap: number;
+  per_minute: number;
+}
+
+export interface CampaignAudience {
+  in_segment: number;
+  not_mailable: number;
+  suppressed: number;
+  recipients: number;
+  sent_last_24h: number;
+  queued: number;
+  daily_cap: number;
+  max_recipients: number;
+  problem: string | null;
+}
+
+export interface CampaignPreview {
+  subject: string;
+  text: string;
+  html: string;
+  contact_id: string | null;
+  contact_name: string | null;
+}
+
+export type RecipientStatus =
+  "queued" | "sending" | "sent" | "failed" | "bounced" | "skipped" | "cancelled";
+
+export interface CampaignRecipient {
+  id: string;
+  contact_id: string | null;
+  /** Null for an erased customer. */
+  email: string | null;
+  name: string | null;
+  status: RecipientStatus | (string & {});
+  attempts: number;
+  error: string | null;
+  queued_at: string | null;
+  sent_at: string | null;
+  failed_at: string | null;
+  bounced_at: string | null;
+  first_opened_at: string | null;
+  open_count: number;
+  unsubscribed_at: string | null;
+  complained_at: string | null;
+}
+
+export type SuppressionReason = "unsubscribed" | "hard_bounce" | "complaint" | "manual" | "erased";
+
+export interface SuppressionEntry {
+  id: string;
+  /** Null for an erased customer. */
+  email: string | null;
+  reason: SuppressionReason;
+  source: "link" | "one_click" | "bounce" | "complaint" | "admin" | "erase" | (string & {});
+  campaign_id: string | null;
+  campaign_name: string | null;
+  note: string | null;
+  created_by: string | null;
+  created_by_name: string | null;
+  created_at: string;
+}
+
+export interface PublicUnsubscribe {
+  workspace_name: string | null;
+  unsubscribed: boolean;
 }

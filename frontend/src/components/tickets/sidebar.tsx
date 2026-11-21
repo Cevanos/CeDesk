@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
 
+import { ContactPanels } from "@/components/contacts/contact-panels";
 import { ApprovalsCard } from "@/components/tickets/approvals-card";
 import {
   PRIORITIES,
@@ -16,6 +17,7 @@ import {
 import { OrdersCard, PaymentsCard } from "@/components/tickets/commerce-cards";
 import { CsatAverage, CsatCard } from "@/components/tickets/csat";
 import { ImportedCard, importedRows, isImported } from "@/components/tickets/imported-card";
+import { FollowersList } from "@/components/tickets/inbox/followers";
 import { JiraCard } from "@/components/tickets/jira-card";
 import { FileChip } from "@/components/tickets/message-files";
 import { RelatedCard } from "@/components/tickets/related-card";
@@ -354,6 +356,10 @@ export function TicketSidebar({ ticket, etag }: { ticket: Ticket; etag: string |
           )}
         </Section>
 
+        <Section title="Followers">
+          <FollowersList ticketId={ticket.id} canEdit={canEdit} />
+        </Section>
+
         <Section title="SLA">
           <SlaPanel sla={ticket.sla} />
         </Section>
@@ -438,6 +444,7 @@ export function TicketSidebar({ ticket, etag }: { ticket: Ticket; etag: string |
         </Section>
         {tab === "customer" && (
           <>
+            {ticket.contact?.id && <ContactPanels contactId={ticket.contact.id} />}
             <OrdersCard ticketId={ticket.id} />
             <PaymentsCard ticketId={ticket.id} />
           </>

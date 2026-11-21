@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { can } from "@/lib/permissions";
+import { can, canManageCampaigns } from "@/lib/permissions";
 
 describe("can()", () => {
   it("gives light agents notes only", () => {
@@ -30,5 +30,16 @@ describe("can()", () => {
   it("grants nothing while the role is unknown", () => {
     const p = can(undefined);
     expect(Object.values(p).every((v) => v === false)).toBe(true);
+  });
+});
+
+describe("canManageCampaigns", () => {
+  it("follows the manage_campaigns action only", () => {
+    const me = (actions: string[]) => ({ access: { actions } }) as never;
+    expect(canManageCampaigns(me(["manage_campaigns"]))).toBe(true);
+    expect(canManageCampaigns(me(["reply"]))).toBe(false);
+    expect(canManageCampaigns(undefined)).toBe(false);
+    // An Admin role alone is not enough: the action decides.
+    expect(canManageCampaigns({ role: "admin" } as never)).toBe(false);
   });
 });

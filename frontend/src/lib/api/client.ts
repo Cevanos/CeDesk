@@ -50,8 +50,8 @@ export class ApiError extends Error {
           : "Someone else changed this. Reload to see the latest.";
       case 429:
         return this.retryAfter
-          ? `Too many tries. Wait ${this.retryAfter} seconds.`
-          : "Too many tries. Please wait a moment.";
+          ? `Too many requests, try again in ${this.retryAfter} seconds.`
+          : "Too many requests, please wait a moment.";
       case 503:
         return this.message || "This service can't be reached right now. Try again.";
       case 500:
@@ -71,13 +71,15 @@ export interface ApiResult<T> {
   etag: string | null;
 }
 
-export type Query = Record<string, string | number | boolean | null | undefined>;
+/** A list value repeats the key (`attr=a:1&attr=b:2`). */
+export type Query = Record<string, string | number | boolean | null | undefined | string[]>;
 
 export function qs(query?: Query): string {
   if (!query) return "";
   const p = new URLSearchParams();
   for (const [k, v] of Object.entries(query)) {
-    if (v !== undefined && v !== null && v !== "") p.set(k, String(v));
+    if (Array.isArray(v)) v.forEach((x) => p.append(k, x));
+    else if (v !== undefined && v !== null && v !== "") p.set(k, String(v));
   }
   const s = p.toString();
   return s ? `?${s}` : "";

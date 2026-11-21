@@ -3,7 +3,9 @@
 import {
   Archive,
   BarChart3,
+  Contact,
   Inbox,
+  Megaphone,
   Menu,
   Plus,
   Search,
@@ -27,13 +29,15 @@ import { useCurrentUser } from "@/hooks/use-auth";
 import { useEscape } from "@/hooks/use-escape";
 import { useFocusTrap } from "@/hooks/use-focus-trap";
 import { useAgentLiveUpdates } from "@/hooks/use-live-stream";
-import { ROLE_LABEL } from "@/lib/permissions";
+import { ROLE_LABEL, canManageCampaigns } from "@/lib/permissions";
 import { cn, initials } from "@/lib/utils";
 
 const NAV = [
   { href: "/tickets", label: "Tickets", icon: Inbox },
+  { href: "/contacts", label: "Contacts", icon: Contact },
   { href: "/agents", label: "Agents", icon: UsersRound },
   { href: "/archive", label: "Archive", icon: Archive },
+  { href: "/campaigns", label: "Campaigns", icon: Megaphone, campaigns: true },
   { href: "/reports/team", label: "Reports", icon: BarChart3, reports: true, match: "/reports" },
   { href: "/settings/members", label: "Settings", icon: Settings, admin: true, match: "/settings" },
 ] as const;
@@ -62,7 +66,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const items = NAV.filter(
     (n) =>
       (!("admin" in n && n.admin) || perms.manageSettings) &&
-      (!("reports" in n && n.reports) || perms.viewReports),
+      (!("reports" in n && n.reports) || perms.viewReports) &&
+      (!("campaigns" in n && n.campaigns) || canManageCampaigns(user)),
   );
 
   const nav = (

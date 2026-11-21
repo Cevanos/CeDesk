@@ -4,6 +4,17 @@ Notable changes are listed here. The format follows [Keep a Changelog](https://k
 
 ## [Unreleased]
 
+### Added (agent inbox tools)
+
+- Snooze: header button with quick times and a date picker, a "Snoozed until" banner with Unsnooze, a clock chip on list rows, and a Snoozed tab (`snoozed=true`) plus a "Hide snoozed" toggle.
+- Saved views: a Views strip above the ticket list (shared first), Save view, and a menu to rename, update filters, share and delete. Sharing is shown only with the `share_views` right.
+- Bulk changes: row checkboxes and a select-all box, and an action bar to assign, set team, status or priority, add or remove tags, and snooze or unsnooze up to 100 tickets. Failed tickets are listed with the server message. Needs the `bulk_edit` right.
+- Followers: Follow / Following button, a Followers section in the side panel with add and remove.
+- Email transcript: "…" menu on the ticket and a dialog to send it to the customer or another address. Needs the `send_transcript` right.
+- Settings > Auto-close: switch, days and an optional message.
+- The bell shows `snooze_ended` and `following` notifications. A 429 now reads "Too many requests, try again in N seconds".
+- Proxy: `views` and `auto-close` are allowed areas.
+
 ### Added (self-service sign-up)
 
 - Create a workspace from the sign-in page (`/signup`): workspace name and address (suggested from the name), your name, email and password, then a 6 digit emailed code with resend countdown. Ends on `/login?workspace=<address>` with the address filled in. Everything is hidden when the server has sign-up off (or answers an error).

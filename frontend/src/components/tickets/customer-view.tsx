@@ -5,10 +5,14 @@ import {
   CalendarDays,
   CheckCircle2,
   ChevronRight,
+  Building2,
   Clock,
+  GitMerge,
   Inbox,
   Mail,
+  MoreHorizontal,
   Pencil,
+  Phone,
   Smile,
   Star,
   Ticket,
@@ -17,12 +21,19 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
+import { AttributesCard } from "@/components/contacts/attributes-card";
+import { MergeDialog } from "@/components/contacts/merge-dialog";
+import { NotesCard } from "@/components/contacts/notes-card";
+import { Timeline } from "@/components/contacts/timeline";
 import { PriorityBadge, StatusBadge } from "@/components/tickets/badges";
+import { MenuItem, Popover } from "@/components/ui/overlay";
 import { Button, Card, EmptyState, Input, Skeleton } from "@/components/ui/primitives";
 import { useContactArchive } from "@/hooks/use-archive";
 import { useCurrentUser } from "@/hooks/use-auth";
+import { useContact } from "@/hooks/use-contacts";
 import { useContactTickets, useUpdateContact } from "@/hooks/use-tickets";
 import { ApiError } from "@/lib/api/client";
+import { hasAction } from "@/lib/permissions";
 import { cn, formatDateTime, initials, timeAgo } from "@/lib/utils";
 
 function Stat({
@@ -127,8 +138,12 @@ function NameEditor({
 }
 
 export function CustomerView({ id }: { id: string }) {
-  const { perms } = useCurrentUser();
+  const { user, perms } = useCurrentUser();
   const q = useContactTickets(id);
+  // Phone, organization, notes and attributes. Without it (older server) the page is as before.
+  const detail = useContact(id).data;
+  const [tab, setTab] = useState<"tickets" | "activity">("tickets");
+  const [merging, setMerging] = useState(false);
   const update = useUpdateContact(id);
   const archived = useContactArchive(id);
 
@@ -156,6 +171,9 @@ export function CustomerView({ id }: { id: string }) {
   const { contact, items } = q.data;
   const openCount = items.filter((t) => t.status !== "resolved").length;
   const resolvedCount = items.length - openCount;
+  const erased = !!detail?.erased_at;
+  const canEdit = perms.editTicket && !erased;
+  const canMerge = hasAction(user, "merge_contacts") && !erased && !!detail;
 
   return (
     <div className="mx-auto w-full max-w-4xl animate-rise px-3 py-5 sm:px-6 sm:py-7">
@@ -193,7 +211,7 @@ export function CustomerView({ id }: { id: string }) {
               <NameEditor
                 key={contact.name}
                 name={contact.name}
-                canEdit={perms.editTicket}
+                canEdit={canEdit}
                 saving={update.isPending}
                 onSave={(name, done) =>
                   update.mutate(
@@ -207,6 +225,11 @@ export function CustomerView({ id }: { id: string }) {
                   )
                 }
               />
+              {erased && (
+                <span className="rounded-full bg-surface-3 px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
+                  Erased customer
+                </span>
+              )}
               {contact.vip && (
                 <span className="inline-flex items-center gap-1 rounded-full bg-gradient-to-r from-amber-100 to-amber-200 px-2.5 py-0.5 text-xs font-semibold text-amber-900 ring-1 ring-amber-300/60">
                   <Star className="size-3 fill-current" /> VIP
@@ -219,8 +242,28 @@ export function CustomerView({ id }: { id: string }) {
             >
               <Mail className="size-3.5" /> {contact.email}
             </a>
+            {detail && (
+              <div className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5 text-sm text-muted-foreground">
+                {detail.phone && (
+                  <a
+                    href={`tel:${detail.phone}`}
+                    className="inline-flex items-center gap-1.5 hover:text-primary-ink"
+                  >
+                    <Phone className="size-3.5" /> {detail.phone}
+                  </a>
+                )}
+                {detail.organization && (
+                  <span className="inline-flex items-center gap-1.5">
+                    <Building2 className="size-3.5" /> {detail.organization}
+                  </span>
+                )}
+                {detail.other_emails.length > 0 && (
+                  <span>Other emails: {detail.other_emails.join(", ")}</span>
+                )}
+              </div>
+            )}
           </div>
-          {perms.editTicket && (
+          {canEdit && (
             <Button
               variant={contact.vip ? "primary" : "outline"}
               loading={update.isPending}
@@ -231,8 +274,44 @@ export function CustomerView({ id }: { id: string }) {
               {contact.vip ? "VIP customer" : "Mark as VIP"}
             </Button>
           )}
+          {canMerge && (
+            <Popover
+              trigger={({ props }) => (
+                <Button variant="outline" size="icon" aria-label="More actions" {...props}>
+                  <MoreHorizontal className="size-4" />
+                </Button>
+              )}
+            >
+              {(close) => (
+                <MenuItem
+                  role="menuitem"
+                  onClick={() => {
+                    close();
+                    setMerging(true);
+                  }}
+                >
+                  <GitMerge className="size-4" /> Merge a duplicate into this customer
+                </MenuItem>
+              )}
+            </Popover>
+          )}
         </div>
       </Card>
+      {canMerge && (
+        <MergeDialog
+          survivorId={id}
+          survivorName={contact.name}
+          open={merging}
+          onClose={() => setMerging(false)}
+        />
+      )}
+
+      {detail && (
+        <div className="mt-4 grid gap-3 lg:grid-cols-2">
+          <AttributesCard contact={detail} />
+          <NotesCard contact={detail} />
+        </div>
+      )}
 
       <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <Stat
@@ -275,70 +354,105 @@ export function CustomerView({ id }: { id: string }) {
         />
       </div>
 
-      <div className="mt-8 mb-3 flex items-center gap-2">
-        <h2 className="text-base font-semibold tracking-tight">All tickets</h2>
-        <span className="rounded-full bg-surface-3 px-2 py-0.5 text-xs font-medium text-muted-foreground">
-          {items.length}
-        </span>
+      <div role="tablist" aria-label="Customer" className="mt-8 flex gap-1 border-b border-border">
+        {(["tickets", "activity"] as const).map((t) => (
+          <button
+            key={t}
+            type="button"
+            role="tab"
+            id={`ctab-${t}`}
+            aria-selected={tab === t}
+            aria-controls={`cpanel-${t}`}
+            onClick={() => setTab(t)}
+            className={cn(
+              "-mb-px border-b-2 px-3 py-2 text-sm font-medium capitalize transition-colors",
+              tab === t
+                ? "border-primary text-primary-ink"
+                : "border-transparent text-muted-foreground hover:text-foreground",
+            )}
+          >
+            {t}
+          </button>
+        ))}
       </div>
-      <Card className="overflow-hidden rounded-2xl">
-        <ul className="divide-y divide-border">
-          {items.map((t) => (
-            <li key={t.id}>
-              <Link
-                href={`/tickets/${t.id}`}
-                className="group relative flex flex-wrap items-center gap-x-3 gap-y-1.5 px-4 py-3.5 transition-colors before:absolute before:inset-y-2 before:left-0 before:w-[3px] before:rounded-r-full before:bg-primary before:opacity-0 before:transition-opacity hover:bg-primary-soft/40 hover:before:opacity-100 sm:px-5"
-              >
-                <span className="rounded-md bg-surface-2 px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground">
-                  {t.label}
-                </span>
-                <span className="min-w-0 flex-1 basis-48 truncate font-medium">{t.subject}</span>
-                <PriorityBadge priority={t.priority} />
-                <StatusBadge status={t.status} />
-                <span className="inline-flex items-center gap-1 text-xs text-subtle-foreground">
-                  <Clock className="size-3" /> {timeAgo(t.updated_at)}
-                </span>
-                <ChevronRight className="size-4 text-subtle-foreground transition-transform group-hover:translate-x-0.5 group-hover:text-primary-ink" />
-              </Link>
-            </li>
-          ))}
-          {items.length === 0 && (
-            <li className="flex flex-col items-center gap-2 p-10 text-center text-sm text-muted-foreground">
-              <Inbox className="size-8 text-subtle-foreground" />
-              No tickets yet.
-            </li>
-          )}
-        </ul>
-      </Card>
 
-      {archived.data && archived.data.length > 0 && (
-        <>
-          <div className="mt-8 mb-3 flex items-center gap-2">
-            <h2 className="text-base font-semibold tracking-tight">Archived tickets</h2>
-            <span className="rounded-full bg-surface-3 px-2 py-0.5 text-xs font-medium text-muted-foreground">
-              {archived.data.length}
-            </span>
-          </div>
-          <Card className="overflow-hidden rounded-2xl">
-            <ul className="divide-y divide-border">
-              {archived.data.map((t) => (
-                <li key={t.id}>
-                  <Link
-                    href={`/archive/${encodeURIComponent(t.id)}`}
-                    className="flex items-center gap-3 px-4 py-3 hover:bg-surface-2 sm:px-5"
-                  >
-                    <span className="rounded-md bg-surface-2 px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground">
-                      {t.label ?? (t.number != null ? `T-${t.number}` : t.id.slice(0, 8))}
-                    </span>
-                    <span className="min-w-0 flex-1 truncate font-medium">{t.subject}</span>
-                    <span className="text-xs text-muted-foreground">Archived</span>
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </Card>
-        </>
+      {tab === "activity" && (
+        <div role="tabpanel" id="cpanel-activity" aria-labelledby="ctab-activity" className="mt-4">
+          <Timeline contactId={id} />
+        </div>
       )}
+
+      <div
+        role="tabpanel"
+        id="cpanel-tickets"
+        aria-labelledby="ctab-tickets"
+        hidden={tab !== "tickets"}
+      >
+        <div className="mt-6 mb-3 flex items-center gap-2">
+          <h2 className="text-base font-semibold tracking-tight">All tickets</h2>
+          <span className="rounded-full bg-surface-3 px-2 py-0.5 text-xs font-medium text-muted-foreground">
+            {items.length}
+          </span>
+        </div>
+        <Card className="overflow-hidden rounded-2xl">
+          <ul className="divide-y divide-border">
+            {items.map((t) => (
+              <li key={t.id}>
+                <Link
+                  href={`/tickets/${t.id}`}
+                  className="group relative flex flex-wrap items-center gap-x-3 gap-y-1.5 px-4 py-3.5 transition-colors before:absolute before:inset-y-2 before:left-0 before:w-[3px] before:rounded-r-full before:bg-primary before:opacity-0 before:transition-opacity hover:bg-primary-soft/40 hover:before:opacity-100 sm:px-5"
+                >
+                  <span className="rounded-md bg-surface-2 px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground">
+                    {t.label}
+                  </span>
+                  <span className="min-w-0 flex-1 basis-48 truncate font-medium">{t.subject}</span>
+                  <PriorityBadge priority={t.priority} />
+                  <StatusBadge status={t.status} />
+                  <span className="inline-flex items-center gap-1 text-xs text-subtle-foreground">
+                    <Clock className="size-3" /> {timeAgo(t.updated_at)}
+                  </span>
+                  <ChevronRight className="size-4 text-subtle-foreground transition-transform group-hover:translate-x-0.5 group-hover:text-primary-ink" />
+                </Link>
+              </li>
+            ))}
+            {items.length === 0 && (
+              <li className="flex flex-col items-center gap-2 p-10 text-center text-sm text-muted-foreground">
+                <Inbox className="size-8 text-subtle-foreground" />
+                No tickets yet.
+              </li>
+            )}
+          </ul>
+        </Card>
+
+        {archived.data && archived.data.length > 0 && (
+          <>
+            <div className="mt-8 mb-3 flex items-center gap-2">
+              <h2 className="text-base font-semibold tracking-tight">Archived tickets</h2>
+              <span className="rounded-full bg-surface-3 px-2 py-0.5 text-xs font-medium text-muted-foreground">
+                {archived.data.length}
+              </span>
+            </div>
+            <Card className="overflow-hidden rounded-2xl">
+              <ul className="divide-y divide-border">
+                {archived.data.map((t) => (
+                  <li key={t.id}>
+                    <Link
+                      href={`/archive/${encodeURIComponent(t.id)}`}
+                      className="flex items-center gap-3 px-4 py-3 hover:bg-surface-2 sm:px-5"
+                    >
+                      <span className="rounded-md bg-surface-2 px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground">
+                        {t.label ?? (t.number != null ? `T-${t.number}` : t.id.slice(0, 8))}
+                      </span>
+                      <span className="min-w-0 flex-1 truncate font-medium">{t.subject}</span>
+                      <span className="text-xs text-muted-foreground">Archived</span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          </>
+        )}
+      </div>
     </div>
   );
 }

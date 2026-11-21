@@ -14,6 +14,7 @@ describe("filtersFromParams", () => {
       q: "",
       imported: "",
       sort: "priority",
+      snoozed: "",
     });
   });
 
@@ -30,6 +31,7 @@ describe("filtersFromParams", () => {
       q: "refund",
       imported: "",
       sort: "newest",
+      snoozed: "",
     });
   });
 

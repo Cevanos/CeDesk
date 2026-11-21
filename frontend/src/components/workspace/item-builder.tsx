@@ -5,7 +5,20 @@ import { useId, useState } from "react";
 
 import { PRIORITIES, PRIORITY_LABEL, STATUSES, STATUS_LABEL } from "@/components/tickets/badges";
 import { Button, Input, Select, Textarea } from "@/components/ui/primitives";
+import {
+  type CatalogRef,
+  ContactFieldEditor,
+  DurationInput,
+  EmailBodyField,
+  MemberSelect,
+  OP_LABEL,
+  SegmentsPicker,
+  useCatalogEnum,
+  WebhookSelect,
+  YesNo,
+} from "@/components/workspace/automation-fields";
 import { useTeams, useTicketTypes } from "@/hooks/use-workspace";
+import { formatMinutes } from "@/lib/automation/graph";
 
 /**
  * Editor for the small `{kind, ...}` objects that rules (conditions, actions)
@@ -21,8 +34,15 @@ type FieldSpec =
       label: string;
       type: "select" | "multi";
       options: { value: string; label: string }[];
+      /** Prefer the values the server catalog lists for this parameter, when it has loaded. */
+      catalog?: CatalogRef;
     }
-  | { key: string; label: string; type: "types" | "teams" };
+  | { key: string; label: string; type: "types" | "teams" | "members" | "webhooks" | "segments" }
+  | { key: string; label: string; type: "emailbody" }
+  | { key: string; label: string; type: "yesno"; yes?: string; no?: string }
+  | { key: string; label: string; type: "duration"; min: number; max?: number }
+  /** Edits several keys of the item at once (contact_field: key, op, value). */
+  | { key: string; label: string; type: "contactField" };
 
 export interface KindSpec {
   kind: string;
@@ -86,6 +106,102 @@ export const CONDITION_KINDS: KindSpec[] = [
   },
 ];
 
+const TIME_OF_OPTS = [
+  { value: "customer_reply", label: "the last customer reply" },
+  { value: "agent_reply", label: "the last agent reply" },
+];
+const TIME_OP_OPTS = [
+  { value: "more_than", label: "is more than" },
+  { value: "less_than", label: "is less than" },
+];
+
+/** Phase 5 conditions, on top of the original six. */
+const NEW_CONDITION_KINDS: KindSpec[] = [
+  {
+    kind: "contact_field",
+    label: "Contact field",
+    fields: [{ key: "key", label: "Contact field", type: "contactField" }],
+    initial: { key: "", op: "equals", value: "" },
+  },
+  {
+    kind: "contact_vip",
+    label: "Customer is VIP",
+    fields: [{ key: "value", label: "Customer is VIP", type: "yesno" }],
+    initial: { value: true },
+  },
+  {
+    kind: "contact_in_segment",
+    label: "Customer is in segment",
+    fields: [
+      { key: "negate", label: "Customer", type: "yesno", yes: "Is not in", no: "Is in" },
+      { key: "segment_ids", label: "Segments (at most 10)", type: "segments" },
+    ],
+    initial: { segment_ids: [], negate: false },
+  },
+  {
+    kind: "time_since",
+    label: "Time since the last reply",
+    fields: [
+      {
+        key: "of",
+        label: "Time since",
+        type: "select",
+        options: TIME_OF_OPTS,
+        catalog: { group: "conditions", kind: "time_since", key: "of" },
+      },
+      {
+        key: "op",
+        label: "Compared with",
+        type: "select",
+        options: TIME_OP_OPTS,
+        catalog: { group: "conditions", kind: "time_since", key: "op" },
+      },
+      { key: "minutes", label: "Time", type: "duration", min: 1 },
+    ],
+    initial: { of: "customer_reply", op: "more_than", minutes: 1440 },
+  },
+  {
+    kind: "snoozed",
+    label: "Ticket is snoozed",
+    fields: [{ key: "value", label: "Ticket is snoozed", type: "yesno" }],
+    initial: { value: true },
+  },
+  {
+    kind: "has_followers",
+    label: "Ticket has followers",
+    fields: [{ key: "value", label: "Ticket has followers", type: "yesno" }],
+    initial: { value: true },
+  },
+];
+
+/** Phase 5 actions, on top of the original five. `call_webhook` needs `manage_access`. */
+const NEW_ACTION_KINDS: KindSpec[] = [
+  {
+    kind: "snooze",
+    label: "Snooze for",
+    fields: [{ key: "minutes", label: "Snooze for", type: "duration", min: 1, max: 525_600 }],
+    initial: { minutes: 1440 },
+  },
+  {
+    kind: "add_follower",
+    label: "Add follower",
+    fields: [{ key: "member_id", label: "Member", type: "members" }],
+    initial: { member_id: "" },
+  },
+  {
+    kind: "send_email",
+    label: "Send email to the customer",
+    fields: [{ key: "body", label: "Email", type: "emailbody" }],
+    initial: { body: "" },
+  },
+  {
+    kind: "call_webhook",
+    label: "Call a webhook",
+    fields: [{ key: "webhook_id", label: "Webhook", type: "webhooks" }],
+    initial: { webhook_id: "" },
+  },
+];
+
 /**
  * Conditions a rule can use for its event. A new ticket has no SLA state to check yet,
  * so `sla_in` is only offered on the other events.
@@ -132,6 +248,25 @@ export const RULE_ACTION_KINDS: KindSpec[] = [
     initial: { tag: "" },
   },
 ];
+
+/** Every condition rules and workflows know about. */
+export const AUTOMATION_CONDITION_KINDS: KindSpec[] = [...CONDITION_KINDS, ...NEW_CONDITION_KINDS];
+/** Every action rules and workflows know about. */
+export const AUTOMATION_ACTION_KINDS: KindSpec[] = [...RULE_ACTION_KINDS, ...NEW_ACTION_KINDS];
+
+/** Conditions for a trigger. A new ticket has no SLA state to check yet, so `sla_in` is left out. */
+export function automationConditionKinds(event: string): KindSpec[] {
+  return event === "created"
+    ? AUTOMATION_CONDITION_KINDS.filter((k) => k.kind !== "sla_in")
+    : AUTOMATION_CONDITION_KINDS;
+}
+
+/** Actions someone may pick. Calling a webhook is an Admin thing, so it is hidden from others. */
+export function automationActionKinds(canCallWebhook: boolean): KindSpec[] {
+  return canCallWebhook
+    ? AUTOMATION_ACTION_KINDS
+    : AUTOMATION_ACTION_KINDS.filter((k) => k.kind !== "call_webhook");
+}
 
 export const MACRO_STEP_KINDS: KindSpec[] = [
   {
@@ -207,20 +342,52 @@ function WordsInput({
 
 const checkbox = "size-4 accent-[var(--primary)]";
 
-function FieldEditor({
+/** A select whose choices the server catalog may refine (it knows the exact allowed values). */
+function CatalogSelect({
   spec,
   value,
+  label,
   onChange,
+}: {
+  spec: Extract<FieldSpec, { type: "select" | "multi" }>;
+  value: unknown;
+  label: string;
+  onChange: (v: unknown) => void;
+}) {
+  const allowed = useCatalogEnum(spec.catalog);
+  const options = allowed
+    ? allowed.map((v) => ({
+        value: v,
+        label:
+          spec.options.find((o) => o.value === v)?.label ?? OP_LABEL[v] ?? v.replaceAll("_", " "),
+      }))
+    : spec.options;
+  return (
+    <Select
+      aria-label={label}
+      value={String(value ?? "")}
+      options={options}
+      onChange={(e) => onChange(e.target.value)}
+    />
+  );
+}
+
+function FieldEditor({
+  spec,
+  item,
+  patch,
   label,
 }: {
   spec: FieldSpec;
-  value: unknown;
-  onChange: (v: unknown) => void;
+  item: Item;
+  patch: (p: Record<string, unknown>) => void;
   label: string;
 }) {
   const types = useTicketTypes();
   const teams = useTeams();
   const id = useId();
+  const value = item[spec.key];
+  const onChange = (v: unknown) => patch({ [spec.key]: v });
 
   switch (spec.type) {
     case "text":
@@ -255,14 +422,37 @@ function FieldEditor({
         </label>
       );
     case "select":
+      return <CatalogSelect spec={spec} value={value} label={label} onChange={onChange} />;
+    case "yesno":
       return (
-        <Select
-          aria-label={label}
-          value={String(value ?? "")}
-          options={spec.options}
-          onChange={(e) => onChange(e.target.value)}
+        <YesNo
+          label={label}
+          value={value}
+          yes={spec.yes}
+          no={spec.no}
+          onChange={(v) => onChange(v)}
         />
       );
+    case "duration":
+      return (
+        <DurationInput
+          label={label}
+          minutes={value}
+          min={spec.min}
+          max={spec.max}
+          onChange={(m) => onChange(m)}
+        />
+      );
+    case "members":
+      return <MemberSelect label={label} value={value} onChange={onChange} />;
+    case "webhooks":
+      return <WebhookSelect label={label} value={value} onChange={onChange} />;
+    case "segments":
+      return <SegmentsPicker label={label} value={value} onChange={onChange} />;
+    case "emailbody":
+      return <EmailBodyField label={label} value={value} onChange={onChange} />;
+    case "contactField":
+      return <ContactFieldEditor item={item} patch={patch} />;
     case "multi": {
       const current = Array.isArray(value) ? (value as string[]) : [];
       return (
@@ -318,6 +508,7 @@ export function ItemBuilder({
   onChange,
   kinds,
   minItems = 0,
+  maxItems,
 }: {
   title: string;
   addLabel: string;
@@ -325,6 +516,7 @@ export function ItemBuilder({
   onChange: (items: Item[]) => void;
   kinds: KindSpec[];
   minItems?: number;
+  maxItems?: number;
 }) {
   const used = new Set(items.map((i) => i.kind));
   const available = kinds.filter((k) => !(k.single && used.has(k.kind)));
@@ -371,8 +563,8 @@ export function ItemBuilder({
                 key={f.key}
                 spec={f}
                 label={f.label}
-                value={it[f.key]}
-                onChange={(v) => patch(i, { [f.key]: v })}
+                item={it}
+                patch={(p) => patch(i, p)}
               />
             ))}
             {!spec && (
@@ -386,7 +578,7 @@ export function ItemBuilder({
       <Button
         size="sm"
         variant="outline"
-        disabled={available.length === 0}
+        disabled={available.length === 0 || (maxItems !== undefined && items.length >= maxItems)}
         onClick={() => {
           const k = available[0];
           if (k) onChange([...items, { kind: k.kind, ...k.initial }]);
@@ -403,9 +595,10 @@ export function summarize(it: Item, kinds: KindSpec[]): string {
   const spec = kinds.find((k) => k.kind === it.kind);
   const label = spec?.label ?? it.kind;
   const bits = (spec?.fields ?? [])
-    .filter((f) => f.type !== "bool" && f.type !== "types" && f.type !== "teams")
+    .filter((f) => ["text", "textarea", "words", "multi", "select", "duration"].includes(f.type))
     .map((f) => {
       const v = it[f.key];
+      if (f.type === "duration") return typeof v === "number" && v > 0 ? formatMinutes(v) : "";
       if (Array.isArray(v)) return v.join(", ");
       return typeof v === "string" ? v : "";
     })

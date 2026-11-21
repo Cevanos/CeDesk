@@ -1,16 +1,43 @@
-import { CircleCheck, CircleDot, Clock } from "lucide-react";
+import { AlarmClock, CircleCheck, CircleDot, Clock } from "lucide-react";
 
 import { STATUSES, STATUS_LABEL } from "@/components/tickets/badges";
 import { Skeleton } from "@/components/ui/primitives";
 import type { TicketList, TicketStatus } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
 
-const STATUS_META: Record<TicketStatus, { icon: typeof CircleDot; accent: string; hint: string }> =
-  {
-    open: { icon: CircleDot, accent: "text-primary-ink bg-primary-soft", hint: "Needs attention" },
-    pending: { icon: Clock, accent: "text-warning bg-warning-soft", hint: "Waiting on someone" },
-    resolved: { icon: CircleCheck, accent: "text-success bg-success-soft", hint: "All done" },
-  };
+/** The four tabs: the three statuses, and snoozed tickets (a filter, not a status). */
+export type ListTab = TicketStatus | "snoozed";
+const TABS: ListTab[] = [...STATUSES, "snoozed"];
+
+const STATUS_META: Record<
+  ListTab,
+  { icon: typeof CircleDot; accent: string; hint: string; label: string }
+> = {
+  open: {
+    icon: CircleDot,
+    accent: "text-primary-ink bg-primary-soft",
+    hint: "Needs attention",
+    label: STATUS_LABEL.open,
+  },
+  pending: {
+    icon: Clock,
+    accent: "text-warning bg-warning-soft",
+    hint: "Waiting on someone",
+    label: STATUS_LABEL.pending,
+  },
+  resolved: {
+    icon: CircleCheck,
+    accent: "text-success bg-success-soft",
+    hint: "All done",
+    label: STATUS_LABEL.resolved,
+  },
+  snoozed: {
+    icon: AlarmClock,
+    accent: "text-info bg-info-soft",
+    hint: "Hidden until later",
+    label: "Snoozed",
+  },
+};
 
 export function StatusTabs({
   active,
@@ -18,14 +45,14 @@ export function StatusTabs({
   loading,
   onChange,
 }: {
-  active: TicketStatus;
+  active: ListTab;
   counts: TicketList["counts"];
   loading: boolean;
-  onChange: (status: TicketStatus) => void;
+  onChange: (tab: ListTab) => void;
 }) {
   return (
-    <div role="tablist" aria-label="Ticket status" className="mt-5 grid grid-cols-3 gap-2 sm:gap-3">
-      {STATUSES.map((s) => {
+    <div role="tablist" aria-label="Ticket status" className="mt-5 grid grid-cols-4 gap-2 sm:gap-3">
+      {TABS.map((s) => {
         const meta = STATUS_META[s];
         const isActive = active === s;
         return (
@@ -54,7 +81,7 @@ export function StatusTabs({
                 <meta.icon className="size-4" aria-hidden />
               </span>
               <span className="text-[12px] font-medium text-muted-foreground sm:order-first sm:hidden">
-                {STATUS_LABEL[s]}
+                {meta.label}
               </span>
             </div>
             <div className="flex items-baseline gap-2">
@@ -73,7 +100,7 @@ export function StatusTabs({
                   isActive ? "text-foreground" : "text-foreground-2",
                 )}
               >
-                {STATUS_LABEL[s]}
+                {meta.label}
               </div>
               <div className="hidden truncate text-xs text-muted-foreground sm:block">
                 {meta.hint}

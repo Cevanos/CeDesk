@@ -83,8 +83,13 @@ export const ALLOWED_AREAS = new Set([
   "me",
   "notifications",
   "tickets",
+  "views",
+  "auto-close",
   "attachments",
   "contacts",
+  // Phase 2: customer data (custom fields) and saved customer filters.
+  "contact-fields",
+  "segments",
   "agents",
   "routing-defaults",
   "members",
@@ -93,6 +98,9 @@ export const ALLOWED_AREAS = new Set([
   "sla",
   "saved-replies",
   "rules",
+  // Phase 5 automation: workflows (flows), the catalog and the run log.
+  "flows",
+  "automation",
   "macros",
   "email-addresses",
   "email",
@@ -129,6 +137,9 @@ export const ALLOWED_AREAS = new Set([
   "assist",
   "side-conversations",
   "time",
+  // Phase 6: email campaigns and the suppression list (Admin only, enforced by the API).
+  "campaigns",
+  "suppressions",
   // Customer-facing areas (see isPublicPath / the portal cookie in the proxy).
   "portal",
   "public",

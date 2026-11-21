@@ -178,6 +178,8 @@ function rollback(qc: QueryClient, id: string, ctx: OptimisticContext | undefine
 function settle(qc: QueryClient, id: string) {
   qc.invalidateQueries({ queryKey: queryKeys.tickets.detail(id) });
   qc.invalidateQueries({ queryKey: queryKeys.tickets.lists });
+  // Assigning makes the assignee a follower.
+  qc.invalidateQueries({ queryKey: queryKeys.tickets.followers(id) });
 }
 
 /**
@@ -229,6 +231,8 @@ export function useSendMessage(id: string) {
       idem.done();
       qc.invalidateQueries({ queryKey: queryKeys.tickets.detail(id) });
       qc.invalidateQueries({ queryKey: queryKeys.tickets.attachments(id) });
+      // A note that @mentions someone makes them a follower.
+      qc.invalidateQueries({ queryKey: queryKeys.tickets.followers(id) });
     },
     onError: (e) => settleKey(idem, e),
   });

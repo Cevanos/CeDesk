@@ -32,6 +32,17 @@ export const queryKeys = {
     search: (q: string) => ["saved-replies", "search", q] as const,
   },
   rules: { all: ["rules"] as const },
+  flows: {
+    all: ["flows"] as const,
+    detail: (id: string) => ["flows", "detail", id] as const,
+    versions: (id: string) => ["flows", "versions", id] as const,
+    validate: (graph: string) => ["flows", "validate", graph] as const,
+  },
+  automation: {
+    catalog: ["automation", "catalog"] as const,
+    runs: (filters: object) => ["automation", "runs", filters] as const,
+    run: (id: string) => ["automation", "run", id] as const,
+  },
   macros: { all: ["macros"] as const },
   emailAddresses: { all: ["email-addresses"] as const },
   failed: {
@@ -49,6 +60,8 @@ export const queryKeys = {
     discover: (id: string) => ["imports", "discover", id] as const,
     failures: (id: string) => ["imports", "failures", id] as const,
   },
+  views: { all: ["views"] as const },
+  autoClose: { all: ["auto-close"] as const },
   triage: { all: ["triage-settings"] as const },
   portalSettings: { all: ["portal-settings"] as const },
   helpCenter: {
@@ -65,6 +78,7 @@ export const queryKeys = {
   },
   public: {
     csat: (token: string) => ["public", "csat", token] as const,
+    unsubscribe: (token: string) => ["public", "unsubscribe", token] as const,
     form: (ws: string) => ["public", ws, "form"] as const,
     help: (ws: string, q: string) => ["public", ws, "help", q] as const,
     article: (ws: string, id: string) => ["public", ws, "article", id] as const,
@@ -76,9 +90,35 @@ export const queryKeys = {
     list: (filters: TicketFilters) => ["tickets", "list", filters] as const,
     detail: (id: string) => ["tickets", "detail", id] as const,
     attachments: (id: string) => ["tickets", "attachments", id] as const,
+    followers: (id: string) => ["tickets", "followers", id] as const,
   },
 
   contacts: {
+    all: ["contacts"] as const,
     tickets: (id: string) => ["contacts", id, "tickets"] as const,
+    list: (p: object) => ["contacts", "list", p] as const,
+    detail: (id: string) => ["contacts", id, "detail"] as const,
+    notes: (id: string) => ["contacts", id, "notes"] as const,
+    timeline: (id: string, kinds: string[]) => ["contacts", id, "timeline", kinds] as const,
+    search: (q: string) => ["contacts", "search", q] as const,
+  },
+  campaigns: {
+    all: ["campaigns"] as const,
+    settings: ["campaigns", "settings"] as const,
+    list: (state: string) => ["campaigns", "list", state] as const,
+    detail: (id: string) => ["campaigns", id, "detail"] as const,
+    audience: (id: string) => ["campaigns", id, "audience"] as const,
+    stats: (id: string) => ["campaigns", id, "stats"] as const,
+    recipients: (id: string, status: string) => ["campaigns", id, "recipients", status] as const,
+  },
+  suppressions: {
+    all: ["suppressions"] as const,
+    list: (p: object) => ["suppressions", "list", p] as const,
+  },
+  contactFields: { all: ["contact-fields"] as const },
+  segments: {
+    all: ["segments"] as const,
+    detail: (id: string) => ["segments", id, "detail"] as const,
+    contacts: (id: string) => ["segments", id, "contacts"] as const,
   },
 } as const;

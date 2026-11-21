@@ -35,9 +35,27 @@ export function hasAction(me: Me | undefined, action: string, fallback = false):
   return Array.isArray(actions) ? actions.includes(action) : fallback;
 }
 
+/**
+ * The three inbox-tool actions from GET /me `access.actions`. An older answer without `access`
+ * falls back to the role matrix (bulk and transcript: agent and up; share views: supervisor up).
+ */
+export function inboxActions(me: Me | undefined) {
+  const p = can(me?.role);
+  return {
+    bulkEdit: hasAction(me, "bulk_edit", p.editTicket),
+    shareViews: hasAction(me, "share_views", p.assignOthers),
+    sendTranscript: hasAction(me, "send_transcript", p.editTicket),
+  };
+}
+
 export const ROLE_LABEL: Record<Role, string> = {
   light_agent: "Light agent",
   agent: "Agent",
   supervisor: "Supervisor",
   admin: "Admin",
 };
+
+/** Email campaigns and the suppression list: the `manage_campaigns` action, Admin only. */
+export function canManageCampaigns(me: Me | undefined): boolean {
+  return hasAction(me, "manage_campaigns", false);
+}

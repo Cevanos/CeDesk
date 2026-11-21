@@ -7,6 +7,9 @@ import { toast } from "sonner";
 import { AiSummaryCard } from "@/components/tickets/ai-assist";
 import { PriorityBadge, StatusBadge, VipBadge, languageName } from "@/components/tickets/badges";
 import { Composer } from "@/components/tickets/composer";
+import { FollowButton } from "@/components/tickets/inbox/followers";
+import { SnoozeBanner, SnoozeButton } from "@/components/tickets/inbox/snooze";
+import { TicketMoreMenu } from "@/components/tickets/inbox/transcript";
 import { JiraHeaderChip } from "@/components/tickets/jira-card";
 import { MacrosMenu } from "@/components/tickets/macros-menu";
 import { TicketSidebar } from "@/components/tickets/sidebar";
@@ -15,11 +18,15 @@ import { AcceptCard, HandoverCard, Thread } from "@/components/tickets/thread";
 import { Badge, Button, EmptyState, Skeleton } from "@/components/ui/primitives";
 import { useCurrentUser } from "@/hooks/use-auth";
 import { useResolveTicket, useTicket } from "@/hooks/use-tickets";
+import { useAutomationAccess } from "@/hooks/use-workspace";
 import { ApiError } from "@/lib/api/client";
+import { inboxActions } from "@/lib/permissions";
 import { ticketListHref } from "@/lib/ticket-list-memory";
 
 export function TicketDetail({ id }: { id: string }) {
   const { user, perms } = useCurrentUser();
+  const actions = inboxActions(user);
+  const automation = useAutomationAccess();
   const q = useTicket(id);
   const resolve = useResolveTicket(id);
 
@@ -69,6 +76,9 @@ export function TicketDetail({ id }: { id: string }) {
       ? ((ticket as { view_only_reason?: string | null }).view_only_reason ??
         "This ticket is view-only for you.")
       : null;
+
+  // Same rule as the status dropdown in the side panel.
+  const canChange = perms.editTicket && (ticket as { can_edit?: boolean }).can_edit !== false;
 
   return (
     <div className="mx-auto flex min-h-[calc(100svh-3.5rem)] w-full max-w-6xl flex-col px-3 pt-4 sm:px-6 sm:pt-6">
@@ -123,7 +133,7 @@ export function TicketDetail({ id }: { id: string }) {
               </p>
             )}
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Button
               variant="outline"
               size="icon"
@@ -133,8 +143,15 @@ export function TicketDetail({ id }: { id: string }) {
             >
               <RefreshCw className={q.isFetching ? "size-4 animate-spin" : "size-4"} />
             </Button>
+            <FollowButton ticketId={ticket.id} />
             {perms.reply && ticket.accepted !== false && (
               <MacrosMenu ticketId={ticket.id} etag={etag} />
+            )}
+            {canChange && ticket.status !== "resolved" && (
+              <SnoozeButton ticketId={ticket.id} etag={etag} />
+            )}
+            {((actions.sendTranscript && canChange) || automation.settings) && (
+              <TicketMoreMenu ticket={ticket} canTranscript={actions.sendTranscript && canChange} />
             )}
             {perms.resolve && ticket.status !== "resolved" && (
               <Button
@@ -152,6 +169,10 @@ export function TicketDetail({ id }: { id: string }) {
           </div>
         </div>
       </header>
+
+      {ticket.snoozed_until && (
+        <SnoozeBanner ticketId={ticket.id} until={ticket.snoozed_until} canEdit={canChange} />
+      )}
 
       {viewOnlyReason && (
         <div

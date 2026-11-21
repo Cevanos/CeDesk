@@ -9,6 +9,8 @@ export interface TicketFilters {
   /** "" = all tickets, "any" = imported from anywhere, or one import source. */
   imported?: string;
   sort?: "priority" | "newest" | "oldest" | "updated" | "sla";
+  /** "true" = only snoozed tickets, "false" = hide them, "" = all. */
+  snoozed?: "true" | "false" | "";
 }
 
 const STATUS_VALUES: readonly TicketStatus[] = ["open", "pending", "resolved"];
@@ -44,5 +46,41 @@ export function filtersFromParams(sp: Pick<URLSearchParams, "get">): TicketFilte
     q: sp.get("q") ?? "",
     imported: oneOf<string>(IMPORTED_VALUES, sp.get("imported"), ""),
     sort: oneOf(SORT_VALUES, sp.get("sort"), "priority"),
+    snoozed: oneOf<"true" | "false" | "">(["true", "false", ""], sp.get("snoozed"), ""),
   };
+}
+
+/** The `GET /tickets` params a saved view may hold. */
+export const VIEW_FILTER_KEYS = [
+  "status",
+  "scope",
+  "priority",
+  "team",
+  "q",
+  "sort",
+  "imported",
+  "snoozed",
+] as const;
+
+/** Current filters as saved-view `filters`: only set values, without the defaults the server drops. */
+export function filtersToView(f: TicketFilters): Record<string, string> {
+  const out: Record<string, string> = { status: f.status };
+  if (f.scope && f.scope !== "everyone") out.scope = f.scope;
+  if (f.priority) out.priority = f.priority;
+  if (f.team) out.team = f.team;
+  if (f.q) out.q = f.q;
+  if (f.imported) out.imported = f.imported;
+  if (f.sort && f.sort !== "priority") out.sort = f.sort;
+  if (f.snoozed) out.snoozed = f.snoozed;
+  return out;
+}
+
+/** A saved view as a URL patch for the ticket list: every known key set or cleared. */
+export function viewToPatch(filters: Record<string, string>): Record<string, string | null> {
+  const patch: Record<string, string | null> = {};
+  for (const k of VIEW_FILTER_KEYS) {
+    const v = filters[k];
+    patch[k] = v === undefined || v === "" || (k === "status" && v === "open") ? null : String(v);
+  }
+  return patch;
 }

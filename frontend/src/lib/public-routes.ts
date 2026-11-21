@@ -8,6 +8,7 @@ const AGENT_AREAS = new Set([
   "agents",
   "api",
   "archive",
+  "campaigns",
   "customers",
   "dev",
   "forgot-password",
@@ -19,6 +20,7 @@ const AGENT_AREAS = new Set([
   "signup",
   "sso",
   "tickets",
+  "unsubscribe",
 ]);
 
 /**
@@ -30,6 +32,8 @@ const AGENT_AREAS = new Set([
  */
 export function isPublicPage(pathname: string): boolean {
   if (pathname === "/rate" || pathname.startsWith("/rate/")) return true;
+  // The footer link of every campaign email: `/unsubscribe#token=...`.
+  if (pathname === "/unsubscribe" || pathname === "/unsubscribe/") return true;
   // Where the API sends the browser after single sign-on; the page itself reads the token.
   if (pathname === "/sso/callback" || pathname === "/sso/callback/") return true;
   const [, first = ""] = pathname.split("/");

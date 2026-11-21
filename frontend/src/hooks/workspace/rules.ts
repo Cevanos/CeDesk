@@ -15,7 +15,10 @@ export function useRules() {
   });
 }
 
-export type RuleInput = Pick<Rule, "name" | "event" | "conditions" | "actions"> & {
+export type RuleInput = Pick<
+  Rule,
+  "name" | "event" | "conditions" | "actions" | "max_runs_per_hour" | "max_runs_per_day"
+> & {
   enabled?: boolean;
 };
 

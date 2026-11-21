@@ -3,7 +3,7 @@
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { filtersFromParams, type TicketFilters } from "@/lib/api/ticket-filters";
+import { filtersFromParams, viewToPatch, type TicketFilters } from "@/lib/api/ticket-filters";
 import { loadTicketListQuery, saveTicketListQuery } from "@/lib/ticket-list-memory";
 
 const SEARCH_DEBOUNCE_MS = 350;
@@ -83,5 +83,15 @@ export function useTicketFilters() {
     set({ scope: null, priority: null, team: null, q: null, imported: null });
   }, [set]);
 
-  return { filters, set, text, setSearch, clearSearch, clearAll };
+  /** Replace the list filters with a saved view's. Also resets the search box. */
+  const applyView = useCallback(
+    (viewFilters: Record<string, string>) => {
+      clearTimeout(timer.current);
+      setText(viewFilters.q ?? "");
+      set(viewToPatch(viewFilters));
+    },
+    [set],
+  );
+
+  return { filters, set, text, setSearch, clearSearch, clearAll, applyView };
 }

@@ -14,9 +14,15 @@ import type { TicketStatus, TicketSummary } from "@/lib/api/types";
 export function VirtualTicketList({
   rows,
   activeStatus,
+  selectable = false,
+  selected,
+  onToggle,
 }: {
   rows: TicketSummary[];
   activeStatus: TicketStatus;
+  selectable?: boolean;
+  selected?: ReadonlySet<string>;
+  onToggle?: (id: string) => void;
 }) {
   const [list, setList] = useState<HTMLUListElement | null>(null);
   // Distance from the top of the document to the list, so window scroll offsets line up.
@@ -44,7 +50,13 @@ export function VirtualTicketList({
             className="absolute top-0 left-0 w-full border-b border-border"
             style={{ transform: `translateY(${v.start - virtualizer.options.scrollMargin}px)` }}
           >
-            <TicketRow t={t} showStatus={activeStatus !== t.status} />
+            <TicketRow
+              t={t}
+              showStatus={activeStatus !== t.status}
+              selectable={selectable}
+              selected={selected?.has(t.id) ?? false}
+              onToggle={() => onToggle?.(t.id)}
+            />
           </li>
         );
       })}
