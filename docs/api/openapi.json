@@ -5045,6 +5045,1309 @@
         }
       }
     },
+    "/api/v1/campaigns/settings": {
+      "get": {
+        "tags": [
+          "campaigns"
+        ],
+        "summary": "Campaign settings (Admin)",
+        "operationId": "get_settings_api_v1_campaigns_settings_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingsOut"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "campaigns"
+        ],
+        "summary": "Set the postal address campaign emails show (Admin; audited)",
+        "operationId": "save_settings_api_v1_campaigns_settings_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SettingsIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingsOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Too short or too long"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/campaigns": {
+      "get": {
+        "tags": [
+          "campaigns"
+        ],
+        "summary": "The workspace's campaigns (Admin)",
+        "operationId": "list_campaigns_api_v1_campaigns_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "state",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/State"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "State"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CampaignPageOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "campaigns"
+        ],
+        "summary": "Start a draft campaign (Admin; audited)",
+        "operationId": "create_campaign_api_v1_campaigns_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CampaignIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CampaignOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an Admin"
+          },
+          "404": {
+            "description": "Not found in this workspace"
+          },
+          "422": {
+            "description": "Bad field, or segment/address unknown"
+          }
+        }
+      }
+    },
+    "/api/v1/campaigns/{campaign_id}": {
+      "get": {
+        "tags": [
+          "campaigns"
+        ],
+        "summary": "One campaign with its results (Admin)",
+        "operationId": "get_campaign_api_v1_campaigns__campaign_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "campaign_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Campaign Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CampaignOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an Admin"
+          },
+          "404": {
+            "description": "Not found in this workspace"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "campaigns"
+        ],
+        "summary": "Change a draft (Admin; audited: which fields, not the text)",
+        "operationId": "change_campaign_api_v1_campaigns__campaign_id__patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "campaign_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Campaign Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CampaignPatch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CampaignOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an Admin"
+          },
+          "404": {
+            "description": "Not found in this workspace"
+          },
+          "409": {
+            "description": "Not a draft"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "campaigns"
+        ],
+        "summary": "Delete a draft that never started (Admin; audited)",
+        "operationId": "delete_campaign_api_v1_campaigns__campaign_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "campaign_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Campaign Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Not an Admin"
+          },
+          "404": {
+            "description": "Not found in this workspace"
+          },
+          "409": {
+            "description": "It sent (or is sending) emails"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/campaigns/{campaign_id}/audience": {
+      "get": {
+        "tags": [
+          "campaigns"
+        ],
+        "summary": "How many it would go to now, and why the rest won't (Admin)",
+        "operationId": "campaign_audience_api_v1_campaigns__campaign_id__audience_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "campaign_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Campaign Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AudienceOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an Admin"
+          },
+          "404": {
+            "description": "Not found in this workspace"
+          },
+          "422": {
+            "description": "No segment, or it was deleted"
+          }
+        }
+      }
+    },
+    "/api/v1/campaigns/{campaign_id}/preview": {
+      "post": {
+        "tags": [
+          "campaigns"
+        ],
+        "summary": "The email as one customer would get it (Admin)",
+        "operationId": "preview_campaign_api_v1_campaigns__campaign_id__preview_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "campaign_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Campaign Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PreviewIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreviewOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an Admin"
+          },
+          "404": {
+            "description": "Not found in this workspace"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/campaigns/{campaign_id}/test": {
+      "post": {
+        "tags": [
+          "campaigns"
+        ],
+        "summary": "Email it to yourself only (Admin; audited)",
+        "description": "Subject starts with `[Test]`; its unsubscribe link goes nowhere. At most 20 an hour per Admin. Goes out with the next worker pass.",
+        "operationId": "test_campaign_api_v1_campaigns__campaign_id__test_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "campaign_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Campaign Id"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SentToOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an Admin"
+          },
+          "404": {
+            "description": "Not found in this workspace"
+          },
+          "422": {
+            "description": "No address, subject or text yet"
+          },
+          "429": {
+            "description": "Too many test emails"
+          }
+        }
+      }
+    },
+    "/api/v1/campaigns/{campaign_id}/send": {
+      "post": {
+        "tags": [
+          "campaigns"
+        ],
+        "summary": "Send now or schedule (Admin; confirm required; audited)",
+        "description": "Checks first (422 with every problem in the message): subject, text, segment, a verified support address with SPF and DKIM passing, the postal address, the caps, and `confirm: true`. Now: the recipients are copied from the segment and it is `sending`. Later: `scheduled`; checked again when its time comes (it is `failed` then if a check no longer passes).",
+        "operationId": "send_campaign_api_v1_campaigns__campaign_id__send_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "campaign_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Campaign Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SendIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CampaignOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an Admin"
+          },
+          "404": {
+            "description": "Not found in this workspace"
+          },
+          "409": {
+            "description": "Not a draft"
+          },
+          "422": {
+            "description": "Not confirmed, not ready, or over a cap"
+          }
+        }
+      }
+    },
+    "/api/v1/campaigns/{campaign_id}/cancel": {
+      "post": {
+        "tags": [
+          "campaigns"
+        ],
+        "summary": "Cancel: a scheduled one goes back to draft; a sending one stops (Admin; audited)",
+        "operationId": "cancel_campaign_api_v1_campaigns__campaign_id__cancel_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "campaign_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Campaign Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CampaignOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an Admin"
+          },
+          "404": {
+            "description": "Not found in this workspace"
+          },
+          "409": {
+            "description": "Not scheduled, sending or paused"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/campaigns/{campaign_id}/pause": {
+      "post": {
+        "tags": [
+          "campaigns"
+        ],
+        "summary": "Pause a sending campaign (Admin; audited)",
+        "operationId": "pause_campaign_api_v1_campaigns__campaign_id__pause_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "campaign_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Campaign Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CampaignOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an Admin"
+          },
+          "404": {
+            "description": "Not found in this workspace"
+          },
+          "409": {
+            "description": "Not sending"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/campaigns/{campaign_id}/resume": {
+      "post": {
+        "tags": [
+          "campaigns"
+        ],
+        "summary": "Resume a paused campaign (Admin; audited)",
+        "description": "A campaign is also paused by itself when over 5% of 50+ sent emails bounced.",
+        "operationId": "resume_campaign_api_v1_campaigns__campaign_id__resume_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "campaign_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Campaign Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CampaignOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an Admin"
+          },
+          "404": {
+            "description": "Not found in this workspace"
+          },
+          "409": {
+            "description": "Not paused"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/campaigns/{campaign_id}/stats": {
+      "get": {
+        "tags": [
+          "campaigns"
+        ],
+        "summary": "A campaign's totals (Admin)",
+        "operationId": "campaign_stats_api_v1_campaigns__campaign_id__stats_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "campaign_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Campaign Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatsOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an Admin"
+          },
+          "404": {
+            "description": "Not found in this workspace"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/campaigns/{campaign_id}/recipients": {
+      "get": {
+        "tags": [
+          "campaigns"
+        ],
+        "summary": "A campaign's recipients and their results, a page at a time (Admin)",
+        "operationId": "campaign_recipients_api_v1_campaigns__campaign_id__recipients_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "campaign_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Campaign Id"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "queued",
+                    "sending",
+                    "sent",
+                    "failed",
+                    "bounced",
+                    "skipped",
+                    "cancelled",
+                    "opened",
+                    "unsubscribed",
+                    "complained"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A status, or opened / unsubscribed / complained.",
+              "title": "Status"
+            },
+            "description": "A status, or opened / unsubscribed / complained."
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecipientPageOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an Admin"
+          },
+          "404": {
+            "description": "Not found in this workspace"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/campaigns/{campaign_id}/recipients/export": {
+      "get": {
+        "tags": [
+          "campaigns"
+        ],
+        "summary": "Download every recipient's result as CSV (Admin; audited)",
+        "description": "email, name, status, queued_at, sent_at, bounced_at, first_opened_at, open_count, unsubscribed_at, complained_at, error. UTF-8 with a byte order mark; a value a spreadsheet would run as a formula starts with `'`.",
+        "operationId": "export_recipients_api_v1_campaigns__campaign_id__recipients_export_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "campaign_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Campaign Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an Admin"
+          },
+          "404": {
+            "description": "Not found in this workspace"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/suppressions": {
+      "get": {
+        "tags": [
+          "campaigns"
+        ],
+        "summary": "The suppression list (Admin)",
+        "operationId": "list_suppressions_api_v1_suppressions_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "reason",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/Reason"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason"
+            }
+          },
+          {
+            "name": "email",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 320
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Is this one address on it? (exact)",
+              "title": "Email"
+            },
+            "description": "Is this one address on it? (exact)"
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuppressionPageOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "campaigns"
+        ],
+        "summary": "Add an address: campaigns never go to it (Admin; audited)",
+        "operationId": "add_suppression_api_v1_suppressions_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SuppressionIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuppressionOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Already on the list"
+          },
+          "422": {
+            "description": "Bad address"
+          }
+        }
+      }
+    },
+    "/api/v1/suppressions/{suppression_id}/remove": {
+      "post": {
+        "tags": [
+          "campaigns"
+        ],
+        "summary": "Take an address off the list (Admin; audited)",
+        "description": "`manual` and `hard_bounce`: removed. `unsubscribed` and `complaint`: only with `confirm_consent: true` and a `justification` (the person asked to get campaigns again). An erased customer's entry: never (409).",
+        "operationId": "remove_suppression_api_v1_suppressions__suppression_id__remove_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "suppression_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Suppression Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RemoveIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "409": {
+            "description": "Refused; see message"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/public/unsubscribe/{token}": {
+      "get": {
+        "tags": [
+          "public"
+        ],
+        "summary": "The unsubscribe page behind a campaign email's link (no sign-in)",
+        "description": "The page reads the token from its link's `#token=`. Changes nothing (mail scanners open links): the page's button posts.",
+        "operationId": "unsubscribe_page_api_v1_public_unsubscribe__token__get",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 10,
+              "maxLength": 200,
+              "title": "Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnsubscribePageOut"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many requests from this IP"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "public"
+        ],
+        "summary": "Unsubscribe from a workspace's campaigns (no sign-in; RFC 8058 one-click)",
+        "description": "The page's button, and the mail app's one-click unsubscribe (it posts `List-Unsubscribe=One-Click` as a form; any body is accepted). Always 200 with the same answer; doing it again changes nothing. Ticket replies still reach the person.",
+        "operationId": "unsubscribe_api_v1_public_unsubscribe__token__post",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 10,
+              "maxLength": 200,
+              "title": "Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnsubscribedOut"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many requests from this IP"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/public/open/{token}": {
+      "get": {
+        "tags": [
+          "public"
+        ],
+        "summary": "The open-tracking image in a campaign email (no sign-in)",
+        "description": "Always a 1x1 transparent GIF, never an error. Counts the first open and every open (approximate: some mail apps load images for the reader).",
+        "operationId": "open_image_api_v1_public_open__token__get",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "image/gif": {}
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/auto-close": {
       "get": {
         "tags": [
@@ -16513,7 +17816,8 @@
           "manage_contacts",
           "merge_contacts",
           "export_contacts",
-          "manage_segments"
+          "manage_segments",
+          "manage_campaigns"
         ],
         "title": "Action"
       },
@@ -18474,7 +19778,8 @@
           "reports",
           "dashboards",
           "report_schedules",
-          "flows"
+          "flows",
+          "campaigns"
         ],
         "title": "Area",
         "description": "Filter on the audit page. Other teams' features add their own (api_keys,\nwebhooks, apps, retention): the column takes any lower-case name."
@@ -19018,6 +20323,73 @@
           "response"
         ],
         "title": "AttemptOut"
+      },
+      "AudienceOut": {
+        "properties": {
+          "in_segment": {
+            "type": "integer",
+            "title": "In Segment",
+            "description": "Customers in the segment now (erased ones never)."
+          },
+          "not_mailable": {
+            "type": "integer",
+            "title": "Not Mailable",
+            "description": "Left out: a placeholder address (chat), a role address (postmaster@) or one of any workspace's support addresses."
+          },
+          "suppressed": {
+            "type": "integer",
+            "title": "Suppressed",
+            "description": "Left out: on the suppression list."
+          },
+          "recipients": {
+            "type": "integer",
+            "title": "Recipients",
+            "description": "Who it would go to if sent now."
+          },
+          "sent_last_24h": {
+            "type": "integer",
+            "title": "Sent Last 24H",
+            "description": "Campaign emails this workspace sent in 24 hours."
+          },
+          "queued": {
+            "type": "integer",
+            "title": "Queued",
+            "description": "Still to go in campaigns already sending or paused; counted against the daily cap with `sent_last_24h`."
+          },
+          "daily_cap": {
+            "type": "integer",
+            "title": "Daily Cap"
+          },
+          "max_recipients": {
+            "type": "integer",
+            "title": "Max Recipients"
+          },
+          "problem": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Problem",
+            "description": "Why it can't be sent with these numbers."
+          }
+        },
+        "type": "object",
+        "required": [
+          "in_segment",
+          "not_mailable",
+          "suppressed",
+          "recipients",
+          "sent_last_24h",
+          "queued",
+          "daily_cap",
+          "max_recipients",
+          "problem"
+        ],
+        "title": "AudienceOut"
       },
       "AuditEntryOut": {
         "properties": {
@@ -19622,6 +20994,378 @@
           "is_default"
         ],
         "title": "CalendarOut"
+      },
+      "CampaignIn": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "segment_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Segment Id"
+          },
+          "subject": {
+            "type": "string",
+            "maxLength": 200,
+            "title": "Subject",
+            "default": ""
+          },
+          "body": {
+            "type": "string",
+            "maxLength": 50000,
+            "title": "Body",
+            "description": "The email: text as in replies and macros, with the same placeholders ({{customer.first_name}}, {{customer.name}}, {{agent.name}} = the sender's name, {{fields.<key>}} = the customer's contact field), and a little Markdown for the HTML part: paragraphs, line breaks, `#` headings, `-` and `1.` lists, **bold**, *italics*, [links](https://...). Raw HTML shows as text. The footer (sender, postal address, unsubscribe link) is added to every email.",
+            "default": ""
+          },
+          "from_address_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "From Address Id",
+            "description": "One of the workspace's support addresses."
+          },
+          "track_opens": {
+            "type": "boolean",
+            "title": "Track Opens",
+            "description": "Add an open-tracking image. Off by default: opens are approximate (Apple Mail and others load images for the reader), and in some places tracking needs the person's consent.",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "CampaignIn"
+      },
+      "CampaignOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "segment_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Segment Id"
+          },
+          "segment_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Segment Name"
+          },
+          "subject": {
+            "type": "string",
+            "title": "Subject"
+          },
+          "body": {
+            "type": "string",
+            "title": "Body"
+          },
+          "from_address_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "From Address Id"
+          },
+          "from_address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "From Address"
+          },
+          "from_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "From Name"
+          },
+          "track_opens": {
+            "type": "boolean",
+            "title": "Track Opens"
+          },
+          "state": {
+            "$ref": "#/components/schemas/State"
+          },
+          "scheduled_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scheduled At"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "last_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error",
+            "description": "Why it failed to start or was paused."
+          },
+          "created_by": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By"
+          },
+          "created_by_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By Name"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "stats": {
+            "$ref": "#/components/schemas/StatsOut"
+          },
+          "problems": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Problems",
+            "description": "A draft: what must be fixed before it can be sent (empty: ready)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "segment_id",
+          "segment_name",
+          "subject",
+          "body",
+          "from_address_id",
+          "from_address",
+          "from_name",
+          "track_opens",
+          "state",
+          "scheduled_at",
+          "started_at",
+          "finished_at",
+          "last_error",
+          "created_by",
+          "created_by_name",
+          "created_at",
+          "updated_at",
+          "stats",
+          "problems"
+        ],
+        "title": "CampaignOut"
+      },
+      "CampaignPageOut": {
+        "properties": {
+          "campaigns": {
+            "items": {
+              "$ref": "#/components/schemas/CampaignOut"
+            },
+            "type": "array",
+            "title": "Campaigns",
+            "description": "Newest first. `problems` is empty here."
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "campaigns",
+          "next_cursor"
+        ],
+        "title": "CampaignPageOut"
+      },
+      "CampaignPatch": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "segment_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Segment Id"
+          },
+          "subject": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subject"
+          },
+          "body": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 50000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Body",
+            "description": "The email: text as in replies and macros, with the same placeholders ({{customer.first_name}}, {{customer.name}}, {{agent.name}} = the sender's name, {{fields.<key>}} = the customer's contact field), and a little Markdown for the HTML part: paragraphs, line breaks, `#` headings, `-` and `1.` lists, **bold**, *italics*, [links](https://...). Raw HTML shows as text. The footer (sender, postal address, unsubscribe link) is added to every email."
+          },
+          "from_address_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "From Address Id"
+          },
+          "track_opens": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Track Opens"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "CampaignPatch",
+        "description": "Drafts only; send only what changes. `segment_id` and `from_address_id` take null."
       },
       "CardOut": {
         "properties": {
@@ -26772,6 +28516,70 @@
         ],
         "title": "PresetOut"
       },
+      "PreviewIn": {
+        "properties": {
+          "contact_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact Id",
+            "description": "Fill it in for this customer; default: the first it would go to."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "PreviewIn"
+      },
+      "PreviewOut": {
+        "properties": {
+          "subject": {
+            "type": "string",
+            "title": "Subject"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text",
+            "description": "The plain-text part, footer included."
+          },
+          "html": {
+            "type": "string",
+            "title": "Html",
+            "description": "The HTML part, a whole page. Show it in a sandboxed iframe (`sandbox=\"\"`, no scripts). Its links go nowhere."
+          },
+          "contact_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact Id",
+            "description": "null: a made-up customer."
+          },
+          "contact_name": {
+            "type": "string",
+            "title": "Contact Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "subject",
+          "text",
+          "html",
+          "contact_id",
+          "contact_name"
+        ],
+        "title": "PreviewOut"
+      },
       "Priority": {
         "type": "string",
         "enum": [
@@ -27194,6 +29002,17 @@
         ],
         "title": "RatingPageOut"
       },
+      "Reason": {
+        "type": "string",
+        "enum": [
+          "unsubscribed",
+          "hard_bounce",
+          "complaint",
+          "manual",
+          "erased"
+        ],
+        "title": "Reason"
+      },
       "ReceivedOut": {
         "properties": {
           "outcome": {
@@ -27209,10 +29028,11 @@
               "from_us",
               "no_workspace",
               "unreadable",
-              "verification"
+              "verification",
+              "bounce"
             ],
             "title": "Outcome",
-            "description": "created: a new ticket; added / rules_ran / reopened / thanked: on an existing ticket; verification: a support address's forwarding check came back (no ticket); the rest: ignored on purpose."
+            "description": "created: a new ticket; added / rules_ran / reopened / thanked: on an existing ticket; verification: a support address's forwarding check came back (no ticket); bounce: a campaign email's bounce or spam report (recorded, no ticket); the rest: ignored on purpose."
           },
           "ticket_id": {
             "anyOf": [
@@ -27234,24 +29054,34 @@
         ],
         "title": "ReceivedOut"
       },
-      "RecipientOut": {
+      "RecipientPageOut": {
         "properties": {
-          "member_id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Member Id"
+          "recipients": {
+            "items": {
+              "$ref": "#/components/schemas/cedesk__helpdesk__api__campaigns__RecipientOut"
+            },
+            "type": "array",
+            "title": "Recipients",
+            "description": "By address."
           },
-          "name": {
-            "type": "string",
-            "title": "Name"
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
           }
         },
         "type": "object",
         "required": [
-          "member_id",
-          "name"
+          "recipients",
+          "next_cursor"
         ],
-        "title": "RecipientOut"
+        "title": "RecipientPageOut"
       },
       "ReconciledOut": {
         "properties": {
@@ -27419,6 +29249,32 @@
           "team_name"
         ],
         "title": "RelatedTicket"
+      },
+      "RemoveIn": {
+        "properties": {
+          "confirm_consent": {
+            "type": "boolean",
+            "title": "Confirm Consent",
+            "description": "For an `unsubscribed` or `complaint` entry: the person asked to get campaigns again.",
+            "default": false
+          },
+          "justification": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Justification",
+            "description": "For an `unsubscribed` or `complaint` entry: when and how they asked (10+ characters; kept in the audit log, addresses hidden)."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "RemoveIn"
       },
       "ReorderBody": {
         "properties": {
@@ -28955,7 +30811,7 @@
           },
           "recipients": {
             "items": {
-              "$ref": "#/components/schemas/RecipientOut"
+              "$ref": "#/components/schemas/cedesk__helpdesk__api__report_schedules__RecipientOut"
             },
             "type": "array",
             "title": "Recipients"
@@ -29592,6 +31448,48 @@
         "title": "SegmentPatch",
         "description": "Send only what changes."
       },
+      "SendIn": {
+        "properties": {
+          "confirm": {
+            "type": "boolean",
+            "title": "Confirm",
+            "description": "Must be true: the screen asks \"Send to N people?\" first."
+          },
+          "scheduled_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scheduled At",
+            "description": "Later (with its time zone, at most 90 days ahead); null or a past time: now."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "confirm"
+        ],
+        "title": "SendIn"
+      },
+      "SentToOut": {
+        "properties": {
+          "sent_to": {
+            "type": "string",
+            "title": "Sent To",
+            "description": "Your own address."
+          }
+        },
+        "type": "object",
+        "required": [
+          "sent_to"
+        ],
+        "title": "SentToOut"
+      },
       "Sentiment": {
         "type": "string",
         "enum": [
@@ -29709,6 +31607,74 @@
           "updated_by_name"
         ],
         "title": "SettingOut"
+      },
+      "SettingsIn": {
+        "properties": {
+          "postal_address": {
+            "type": "string",
+            "maxLength": 350,
+            "title": "Postal Address",
+            "description": "Your business's postal address, shown in every campaign email's footer (anti-spam laws such as CAN-SPAM ask for one). 10-300 characters; lines kept."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "postal_address"
+        ],
+        "title": "SettingsIn"
+      },
+      "SettingsOut": {
+        "properties": {
+          "postal_address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Postal Address",
+            "description": "null: not set; no campaign can be sent."
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "max_recipients": {
+            "type": "integer",
+            "title": "Max Recipients",
+            "description": "The most recipients one campaign has (server)."
+          },
+          "daily_cap": {
+            "type": "integer",
+            "title": "Daily Cap",
+            "description": "Campaign emails per 24 hours per workspace (server)."
+          },
+          "per_minute": {
+            "type": "integer",
+            "title": "Per Minute",
+            "description": "Campaign emails a minute per workspace (server)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "postal_address",
+          "updated_at",
+          "max_recipients",
+          "daily_cap",
+          "per_minute"
+        ],
+        "title": "SettingsOut"
       },
       "SetupOut": {
         "properties": {
@@ -30524,6 +32490,94 @@
         ],
         "title": "StartIn"
       },
+      "State": {
+        "type": "string",
+        "enum": [
+          "draft",
+          "scheduled",
+          "sending",
+          "paused",
+          "sent",
+          "cancelled",
+          "failed"
+        ],
+        "title": "State"
+      },
+      "StatsOut": {
+        "properties": {
+          "recipients": {
+            "type": "integer",
+            "title": "Recipients",
+            "description": "Copied from the segment when it started."
+          },
+          "queued": {
+            "type": "integer",
+            "title": "Queued"
+          },
+          "sending": {
+            "type": "integer",
+            "title": "Sending"
+          },
+          "sent": {
+            "type": "integer",
+            "title": "Sent",
+            "description": "Accepted by the mail server (bounced ones included)."
+          },
+          "failed": {
+            "type": "integer",
+            "title": "Failed"
+          },
+          "bounced": {
+            "type": "integer",
+            "title": "Bounced",
+            "description": "Hard bounces reported back."
+          },
+          "skipped": {
+            "type": "integer",
+            "title": "Skipped",
+            "description": "Suppressed or erased after they were queued."
+          },
+          "cancelled": {
+            "type": "integer",
+            "title": "Cancelled"
+          },
+          "opened": {
+            "type": "integer",
+            "title": "Opened",
+            "description": "Recipients who opened at least once (if tracked)."
+          },
+          "opens": {
+            "type": "integer",
+            "title": "Opens",
+            "description": "Every open counted."
+          },
+          "unsubscribed": {
+            "type": "integer",
+            "title": "Unsubscribed"
+          },
+          "complained": {
+            "type": "integer",
+            "title": "Complained",
+            "description": "Marked it as spam (a feedback loop report)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "recipients",
+          "queued",
+          "sending",
+          "sent",
+          "failed",
+          "bounced",
+          "skipped",
+          "cancelled",
+          "opened",
+          "opens",
+          "unsubscribed",
+          "complained"
+        ],
+        "title": "StatsOut"
+      },
       "Status": {
         "type": "string",
         "enum": [
@@ -30624,6 +32678,177 @@
           "expires_in"
         ],
         "title": "StreamTicketOut"
+      },
+      "SuppressionIn": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "maxLength": 320,
+            "minLength": 3,
+            "title": "Email"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "email"
+        ],
+        "title": "SuppressionIn"
+      },
+      "SuppressionOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email",
+            "description": "null: the customer was erased; only a hash is kept."
+          },
+          "reason": {
+            "$ref": "#/components/schemas/Reason"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source",
+            "description": "link, one_click, bounce, complaint, admin, erase"
+          },
+          "campaign_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Campaign Id"
+          },
+          "campaign_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Campaign Name"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "created_by": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By"
+          },
+          "created_by_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By Name"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "email",
+          "reason",
+          "source",
+          "campaign_id",
+          "campaign_name",
+          "note",
+          "created_by",
+          "created_by_name",
+          "created_at"
+        ],
+        "title": "SuppressionOut"
+      },
+      "SuppressionPageOut": {
+        "properties": {
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/SuppressionOut"
+            },
+            "type": "array",
+            "title": "Entries",
+            "description": "Newest first."
+          },
+          "counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Counts",
+            "description": "Entries per reason, the whole list."
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "entries",
+          "counts",
+          "next_cursor"
+        ],
+        "title": "SuppressionPageOut"
       },
       "TargetIn": {
         "properties": {
@@ -32771,6 +34996,50 @@
         ],
         "title": "TriedOut"
       },
+      "UnsubscribePageOut": {
+        "properties": {
+          "workspace_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workspace Name",
+            "description": "Who the emails are from; null: the link is not known (show a general page that still offers the button)."
+          },
+          "unsubscribed": {
+            "type": "boolean",
+            "title": "Unsubscribed",
+            "description": "Already done."
+          }
+        },
+        "type": "object",
+        "required": [
+          "workspace_name",
+          "unsubscribed"
+        ],
+        "title": "UnsubscribePageOut"
+      },
+      "UnsubscribedOut": {
+        "properties": {
+          "unsubscribed": {
+            "type": "boolean",
+            "const": true,
+            "title": "Unsubscribed",
+            "default": true
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "default": "You won't get these emails any more."
+          }
+        },
+        "type": "object",
+        "title": "UnsubscribedOut"
+      },
       "UsageOut": {
         "properties": {
           "plan": {
@@ -33501,6 +35770,163 @@
         ],
         "title": "SummaryOut"
       },
+      "cedesk__helpdesk__api__campaigns__RecipientOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "contact_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact Id"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email",
+            "description": "null once the customer was erased."
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "description": "queued, sending, sent, failed, bounced, skipped, cancelled"
+          },
+          "attempts": {
+            "type": "integer",
+            "title": "Attempts"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "queued_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Queued At"
+          },
+          "sent_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sent At"
+          },
+          "failed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failed At"
+          },
+          "bounced_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bounced At"
+          },
+          "first_opened_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Opened At"
+          },
+          "open_count": {
+            "type": "integer",
+            "title": "Open Count"
+          },
+          "unsubscribed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unsubscribed At"
+          },
+          "complained_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Complained At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "contact_id",
+          "email",
+          "name",
+          "status",
+          "attempts",
+          "error",
+          "queued_at",
+          "sent_at",
+          "failed_at",
+          "bounced_at",
+          "first_opened_at",
+          "open_count",
+          "unsubscribed_at",
+          "complained_at"
+        ],
+        "title": "RecipientOut"
+      },
       "cedesk__helpdesk__api__cevanos__ConnectionOut": {
         "properties": {
           "connected": {
@@ -34189,6 +36615,25 @@
           "notes"
         ],
         "title": "ResultOut"
+      },
+      "cedesk__helpdesk__api__report_schedules__RecipientOut": {
+        "properties": {
+          "member_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Member Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "member_id",
+          "name"
+        ],
+        "title": "RecipientOut"
       },
       "cedesk__helpdesk__api__report_schedules__TargetOut": {
         "properties": {

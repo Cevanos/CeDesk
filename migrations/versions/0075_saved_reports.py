@@ -7,8 +7,8 @@
   reports and per workspace among shared ones (ignoring case).
 - The owner's reports go when the member row is deleted.
 
-Revision ID: 0073
-Revises: 0072
+Revision ID: 0075
+Revises: 0074
 """
 
 from collections.abc import Sequence
@@ -17,8 +17,8 @@ from alembic import op
 
 from cedesk.tenancy import tenant_rls_sql
 
-revision: str = "0073"
-down_revision: str | None = "0072"
+revision: str = "0075"
+down_revision: str | None = "0074"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

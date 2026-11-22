@@ -232,6 +232,7 @@ def _worker(once: bool) -> int:
     """Every few seconds: reads new emails from the IMAP mailbox (when one is set), reads
     connected Cevanos chats for new customer messages, sends queued emails, delivers
     outbox events (Cevanos take-overs and replies), alerts SLA breaches and overdue tasks,
+    sends email campaigns within each workspace's limits (after the ticket emails),
     wakes snoozed tickets and resumes waiting workflow runs (once a minute), auto-closes
     inactive tickets (daily, before the archive pass), and drops expired idempotency keys.
     Run one next to the API (sending and delivering are safe with several; reading a
@@ -243,6 +244,7 @@ def _worker(once: bool) -> int:
     from cedesk.cevanos_client import make_cevanos
     from cedesk.crypto import Sealer
     from cedesk.db import make_engine, make_sessionmaker, notifications
+    from cedesk.helpdesk.api.campaigns import config_of as campaign_config
     from cedesk.helpdesk.domain import signup as signup_rules
     from cedesk.helpdesk.domain.limits import parse_plans
     from cedesk.helpdesk.service import limits as plan_limits
@@ -253,6 +255,7 @@ def _worker(once: bool) -> int:
     from cedesk.helpdesk.service.automation import resume_due
     from cedesk.helpdesk.service.backlog import prune_everywhere as prune_backlog
     from cedesk.helpdesk.service.backlog import run_snapshots
+    from cedesk.helpdesk.service.campaigns import run_due as send_campaigns
     from cedesk.helpdesk.service.cevanos import CevanosHandler, ChatPoller
     from cedesk.helpdesk.service.csat import CsatHandler
     from cedesk.helpdesk.service.delivery import Handler, deliver_due
@@ -436,6 +439,20 @@ def _worker(once: bool) -> int:
                         f"{result.failed} failed",
                         extra={"event": "email"},
                     )
+                # Campaign emails (plan phase 6) after the ticket emails, so a reply never
+                # waits behind a campaign; each workspace within its per-minute limit.
+                try:
+                    sent = await send_campaigns(sm, mailer, campaign_config(settings))
+                except Exception:
+                    logger.exception("campaign pass failed")
+                else:
+                    if sent.sent or sent.failed or sent.started or sent.finished:
+                        logger.info(
+                            f"campaigns: {sent.started} started, {sent.sent} sent, "
+                            f"{sent.retrying} retrying, {sent.failed} failed, "
+                            f"{sent.skipped} skipped, {sent.finished} finished",
+                            extra={"event": "campaign"},
+                        )
                 # After the outbox (its handlers make notifications) and the emails: one
                 # pass sends for at most 20 s, the rest waits for the next.
                 try:
@@ -479,17 +496,19 @@ def _worker(once: bool) -> int:
                     if woke:
                         logger.info(f"Snoozed tickets woke: {woke}", extra={"event": "snooze"})
                     try:  # scheduled report emails that are due (feature-gap plan 3.5)
-                        sent = await run_scheduled_reports(
+                        reports_sent = await run_scheduled_reports(
                             sm,
                             base_url=settings.app_url,
                             fallback=fallback,
                             timeout_ms=settings.report_timeout_seconds * 1000,
                         )
                     except Exception:
-                        sent = 0
+                        reports_sent = 0
                         logger.exception("Scheduled reports failed")
-                    if sent:
-                        logger.info(f"Report emails queued: {sent}", extra={"event": "reports"})
+                    if reports_sent:
+                        logger.info(
+                            f"Report emails queued: {reports_sent}", extra={"event": "reports"}
+                        )
                     try:  # workflow runs whose wait is over (feature-gap plan 5.3)
                         resumed = await resume_due(sm)
                     except Exception:

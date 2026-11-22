@@ -5,7 +5,7 @@ route is under `/api/v1`. Breaking changes only come in v2 (md 2B). Newest first
 
 ## 2026-11-21: Reporting: trends and breakdowns, custom and saved reports, dashboards, live view, scheduled email
 
-Additive only: new routes and fields; nothing existing changed shape. Migrations 0071-0075.
+Additive only: new routes and fields; nothing existing changed shape. Migrations 0073-0077.
 Feature-gap plan phase 3. No new permission: everything needs `reports` (Supervisor, Admin, a
 custom role with the reports right); sharing a saved report or dashboard needs `share_views`;
 an Admin (`settings`) also sees and changes every schedule. New audit areas: `reports`,
@@ -41,6 +41,62 @@ an Admin (`settings`) also sees and changes every schedule. New audit areas: `re
   `POST /report-schedules/{id}/leave`. Daily, weekly or monthly at an hour of the workspace's
   day, to up to 10 members (never free addresses), one plain-text email each. The worker
   checks every recipient and the owner at every send and sends once after an outage.
+
+## 2026-11-20: Email campaigns, unsubscribe and the suppression list
+
+Additive only: new routes, one new outcome on `POST /inbound/email` (`bounce`), new
+settings. Migrations 0071-0072. Feature-gap plan phase 6. Every signed-in route needs the
+new right `manage_campaigns` (Admins only; never a custom role, never an API key: 403).
+New audit area `campaigns` (created, changed, deleted, test_sent, scheduled, sent,
+started, finished, failed, cancelled, paused, resumed, results_exported,
+settings_changed, suppression_added, suppression_removed): ids and counts only, never an
+address or the email's text.
+
+- **Settings.** `GET|PUT /campaigns/settings {postal_address}`: the postal address every
+  campaign email's footer shows (10-300 characters). No campaign can be sent without it.
+  The answer also shows the server's caps (`max_recipients`, `daily_cap`, `per_minute`).
+- **Suppression list.** `GET /suppressions?reason=&email=&cursor=&limit=` (newest first,
+  `counts` per reason; `email` looks up one address exactly), `POST /suppressions {email,
+  note}` (reason `manual`; 409 if already on it), `POST /suppressions/{id}/remove
+  {confirm_consent, justification}`. Reasons: `unsubscribed`, `hard_bounce`, `complaint`,
+  `manual`, `erased`. `manual` and `hard_bounce` come off freely; `unsubscribed` and
+  `complaint` only with `confirm_consent: true` and a 10+ character justification (kept in
+  the audit log, addresses hidden); an erased customer's entry (`email` null) never (409).
+  Only campaigns read the list: ticket replies and other transactional email still go.
+- **Campaigns.** `GET /campaigns?state=`, `POST /campaigns {name, segment_id, subject,
+  body, from_address_id, track_opens}`, `GET|PATCH|DELETE /campaigns/{id}` (PATCH and
+  DELETE: drafts only, else 409). `CampaignOut` has `state` (draft, scheduled, sending,
+  paused, sent, cancelled, failed), `stats` and, for a draft, `problems` (what blocks a
+  send). The body is reply/macro text with the same placeholders and a little Markdown
+  (paragraphs, `#` headings, lists, bold, italics, links); raw HTML shows as text.
+- **Before sending.** `GET /campaigns/{id}/audience` (in segment, not mailable,
+  suppressed, recipients, sent in 24 h, queued, caps, `problem`); `POST
+  /campaigns/{id}/preview {contact_id?}` (subject, text, html for one customer); `POST
+  /campaigns/{id}/test` (202: to the signed-in Admin only, `[Test]` subject; 20 an hour).
+- **Sending.** `POST /campaigns/{id}/send {confirm: true, scheduled_at?}`: 422 unless
+  confirmed and ready (subject, body, segment, a support address with the forwarding check
+  passed and SPF and DKIM `ok` in its last DNS check, the postal address, an https public
+  address outside dev) and within the caps (`CEDESK_CAMPAIGN_MAX_RECIPIENTS` per campaign,
+  default 5000; `CEDESK_CAMPAIGN_DAILY_CAP` per workspace per 24 h, default 10000).
+  Recipients are copied from the segment when it starts (erased, placeholder, role and
+  support addresses and suppressed customers left out). The worker sends at most
+  `CEDESK_CAMPAIGN_PER_MINUTE` (default 60) a minute per workspace, each recipient at most
+  once. `POST /campaigns/{id}/cancel` (scheduled: back to draft; sending or paused:
+  `cancelled`), `/pause`, `/resume`. Over 5% hard bounces after 50 sent pauses it.
+- **Results.** `GET /campaigns/{id}/stats`, `GET /campaigns/{id}/recipients?status=`
+  (a status, or `opened`, `unsubscribed`, `complained`; paged by address), `GET
+  /campaigns/{id}/recipients/export` (CSV, audited).
+- **Public, no sign-in.** `GET /public/unsubscribe/{token}` (`workspace_name`, null for an
+  unknown link; `unsubscribed`), `POST /public/unsubscribe/{token}` (always 200, the same
+  answer; also RFC 8058 one-click from the `List-Unsubscribe` header), `GET
+  /public/open/{token}` (always a 1x1 GIF; counts opens when the campaign tracks them).
+  Their own per-IP limit, `CEDESK_UNSUBSCRIBE_LIMIT` (default 600 per 10 minutes).
+- **Email in.** A bounce (RFC 3464) or spam report (ARF) about a campaign email, matched
+  by the original Message-ID, answers `outcome: "bounce"` and makes no ticket; a hard
+  bounce or complaint puts the address on the suppression list.
+- **Privacy.** The export has `campaign_emails` and `suppression_list`; erase clears the
+  address and name on their campaign rows (counts stay) and keeps each of their addresses
+  on the suppression list as a hash only (counts `campaign_emails`, `suppression_kept`).
 
 ## 2026-11-20: Automation: richer rules, workflows with waits, safeguards, test mode, run log
 
