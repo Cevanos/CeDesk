@@ -119,7 +119,15 @@ async def change_report(
     "/{report_id}",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete a saved report (audited; dashboard cards and schedules using it go too)",
-    responses={404: {"description": "No such report, or someone else's personal report"}},
+    description="The report owner's own schedules that send it are deleted with it (each "
+    "audited). Refused while another member's schedule sends it.",
+    responses={
+        404: {"description": "No such report, or someone else's personal report"},
+        409: {
+            "description": "Another member's scheduled report sends this one, or it is on a "
+            "shared dashboard or another member's dashboard"
+        },
+    },
 )
 async def delete_report(report_id: UUID, caller: CallerDep, sm: SessionmakerDep) -> None:
     await saved_reports.delete_report(sm, caller, report_id)
