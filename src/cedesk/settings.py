@@ -312,8 +312,24 @@ class Settings(BaseSettings):
         ge=1,
         le=120,
         description="A custom or built-in report query that runs longer than this is "
-        "cancelled (the answer says to narrow the range). The API and the worker's "
-        "scheduled reports both use it.",
+        "cancelled (the answer says to narrow the range). Scheduled reports use "
+        "`report_schedule_timeout_seconds` instead.",
+    )
+    report_schedule_timeout_seconds: int = Field(
+        default=5,
+        ge=1,
+        le=60,
+        description="A scheduled report's query that runs longer than this is cancelled and "
+        "the schedule says why. Lower than the interactive limit: the worker's one loop also "
+        "sends ticket email, SLA alerts and pushes, and waits for it.",
+    )
+    report_schedule_budget_seconds: int = Field(
+        default=20,
+        ge=1,
+        le=300,
+        description="The most time one worker pass spends on scheduled reports. Once it is "
+        "spent no new schedule is started (one already running finishes); the rest stay due "
+        "and go out on the next pass, a minute later.",
     )
     report_concurrency: int = Field(
         default=4,

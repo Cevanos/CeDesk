@@ -13294,6 +13294,7 @@
           "reports"
         ],
         "summary": "Delete a saved report (audited; dashboard cards and schedules using it go too)",
+        "description": "The report owner's own schedules that send it are deleted with it (each audited). Refused while another member's schedule sends it.",
         "operationId": "delete_report_api_v1_reports_saved__report_id__delete",
         "security": [
           {
@@ -13318,6 +13319,9 @@
           },
           "404": {
             "description": "No such report, or someone else's personal report"
+          },
+          "409": {
+            "description": "Another member's scheduled report sends this one, or it is on a shared dashboard or another member's dashboard"
           },
           "422": {
             "description": "Validation Error",
@@ -21406,7 +21410,7 @@
           "label": {
             "type": "string",
             "title": "Label",
-            "description": "The report's name."
+            "description": "The report's name; `Report not available` when it is a saved report you can no longer see (its owner unshared it), and running the card is then 404."
           }
         },
         "type": "object",

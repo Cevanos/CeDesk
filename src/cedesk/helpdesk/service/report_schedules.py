@@ -8,20 +8,25 @@ People:
   owner, its recipients and Admins; any recipient can leave it (`leave`).
 
 The worker (`run_scheduled_reports`, every minute):
+- shares the worker's one loop, so it is held to a time budget per pass; workspaces take
+  turns one schedule at a time, and what isn't reached stays due for the next pass;
 - claims one due schedule with `FOR UPDATE SKIP LOCKED` and moves `next_run_at` on in the
   same transaction that queues the emails, so two workers or a restart never send twice, and
   after an outage it sends once, not once per missed period;
 - runs the report under the *owner's* current rights, and checks every recipient again:
   one who lost the right, was removed or has a narrower scope than the owner is skipped; an
   owner who lost the reports right (or was deactivated) switches the schedule off;
+- isolates each schedule in a savepoint: one that fails is marked with the reason and moved
+  to its next time, and the next one in the workspace still goes out;
 - sends one plain-text email per recipient from the workspace's default support address, or
   `CEDESK_MAIL_FROM_ADDRESS`; with neither, nothing is sent and the schedule says why.
 """
 
 import logging
+import time
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
@@ -391,8 +396,8 @@ async def _send_one(
         )
     except (defs.DefinitionError, Invalid, NotFound) as exc:
         return await skip(f"The report could not be run: {exc}")
-    except Exception as exc:  # whatever it is, move the schedule on: one bad schedule
-        # must never be claimed first every minute and starve the others
+    except Exception as exc:  # whatever it is, move the schedule on (as `_run_next` does
+        # for anything after the run): one bad schedule must never starve the others
         logger.exception("scheduled report failed", extra={"workspace_id": workspace_id})
         return await skip(f"The report failed ({type(exc).__name__}). It will try again next time.")
 
@@ -430,30 +435,98 @@ async def _send_one(
     return len(eligible)
 
 
+async def _run_next(
+    sm: Sessionmaker,
+    workspace_id: UUID,
+    *,
+    now: datetime,
+    base_url: str,
+    fallback: Sender | None,
+    timeout_ms: int,
+) -> int | None:
+    """Claims the workspace's next due schedule and sends it; None when nothing is due.
+
+    The claim, the queued emails and `finish` commit together, so a success is sent exactly
+    once. Everything the run does sits in a savepoint: if it raises (a database error, a bad
+    row, a bug), only that is rolled back, and the still-locked schedule is moved on to its
+    next time with the reason, so it is neither re-claimed first every minute nor half-sent."""
+    async with workspace_session(sm, workspace_id) as s:
+        row = await repo.claim_due(s, now)
+        if row is None:
+            return None
+        try:
+            async with s.begin_nested():
+                return await _send_one(
+                    sm, s, workspace_id, row, now=now, base_url=base_url, fallback=fallback,
+                    timeout_ms=timeout_ms,
+                )  # fmt: skip
+        except Exception as exc:
+            logger.exception("scheduled report failed", extra={"workspace_id": workspace_id})
+            try:
+                upcoming = _next(row, now, await _timezone(s))
+            except Exception:  # the timing itself can't be worked out: try again in a day
+                upcoming = now + timedelta(days=1)
+            await repo.finish(
+                s, row["id"], next_run_at=upcoming, sent_at=None,
+                error=f"Sending failed ({type(exc).__name__}). It will try again next time.",
+            )  # fmt: skip
+            return 0
+
+
+def _turns(workspace_ids: Sequence[UUID], now: datetime) -> list[UUID]:
+    """The order workspaces take turns in: it starts one further along every minute, so when
+    the budget runs out it isn't always the same workspaces that wait."""
+    ids = list(workspace_ids)
+    if not ids:
+        return ids
+    start = int(now.timestamp() // 60) % len(ids)
+    return ids[start:] + ids[:start]
+
+
 async def run_scheduled_reports(
     sm: Sessionmaker,
     *,
     base_url: str,
     fallback: Sender | None,
     timeout_ms: int,
+    budget_ms: int = 20_000,
     now: datetime | None = None,
+    workspace_ids: Sequence[UUID] | None = None,
 ) -> int:
-    """Every workspace (the worker, every minute). Returns how many emails were queued."""
+    """Every workspace (or just `workspace_ids`), from the worker every minute. Returns how
+    many emails were queued.
+
+    It runs inside the worker's single loop, so it is held to `budget_ms`: workspaces take
+    turns, one schedule each per round (up to `rules.BATCH` rounds), and once the budget is
+    spent no new schedule is claimed. A run already started finishes (each of its queries is
+    held to `timeout_ms`), so a pass can run over by one report. Whatever was not reached is
+    still due and goes out on the next pass; nothing is skipped and nothing is sent twice."""
     now = now or datetime.now(UTC)
-    async with sm() as s, s.begin():
-        workspace_ids = await auth_repo.all_workspace_ids(s)
+    deadline = time.monotonic() + budget_ms / 1000
+    if workspace_ids is None:
+        async with sm() as s, s.begin():
+            workspace_ids = await auth_repo.all_workspace_ids(s)
+    waiting = _turns(workspace_ids, now)
     queued = 0
-    for workspace_id in workspace_ids:
-        try:
-            for _ in range(rules.BATCH):
-                async with workspace_session(sm, workspace_id) as s:
-                    row = await repo.claim_due(s, now)
-                    if row is None:
-                        break
-                    queued += await _send_one(
-                        sm, s, workspace_id, row, now=now, base_url=base_url, fallback=fallback,
-                        timeout_ms=timeout_ms,
-                    )  # fmt: skip
-        except Exception:  # one workspace's problem never stops the others
-            logger.exception("scheduled reports failed", extra={"workspace_id": workspace_id})
+    for _ in range(rules.BATCH):
+        still_due: list[UUID] = []
+        for workspace_id in waiting:
+            if time.monotonic() >= deadline:
+                logger.info("scheduled reports: time budget spent, the rest wait a pass")
+                return queued
+            try:
+                sent = await _run_next(
+                    sm, workspace_id, now=now, base_url=base_url, fallback=fallback,
+                    timeout_ms=timeout_ms,
+                )  # fmt: skip
+            except Exception:  # one workspace's problem never stops the others; it sits out
+                # the rest of this pass so a row that can't even be marked isn't re-claimed
+                logger.exception("scheduled reports failed", extra={"workspace_id": workspace_id})
+                continue
+            if sent is not None:
+                queued += sent
+                still_due.append(workspace_id)
+        if not still_due:
+            break
+        waiting = still_due
     return queued

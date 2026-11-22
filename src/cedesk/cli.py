@@ -500,7 +500,8 @@ def _worker(once: bool) -> int:
                             sm,
                             base_url=settings.app_url,
                             fallback=fallback,
-                            timeout_ms=settings.report_timeout_seconds * 1000,
+                            timeout_ms=settings.report_schedule_timeout_seconds * 1000,
+                            budget_ms=settings.report_schedule_budget_seconds * 1000,
                         )
                     except Exception:
                         reports_sent = 0
