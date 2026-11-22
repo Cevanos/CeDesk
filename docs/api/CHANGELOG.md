@@ -3,6 +3,26 @@
 `openapi.json` next to this file is the API as served (`uv run cedesk openapi`). Every
 route is under `/api/v1`. Breaking changes only come in v2 (md 2B). Newest first.
 
+## 2026-11-22: Reporting follow-ups
+
+No new routes or fields; no migration.
+
+- `DELETE /reports/saved/{id}` is now **409** while another member's scheduled report sends
+  it (as unsharing already was). The report owner's own schedules still go with it; each is
+  audited (area `report_schedules`, action `deleted`, detail the report id), and the report's
+  own `deleted` entry counts them (`schedules`).
+- It is also **409** while the report is a card on a shared dashboard or on another member's
+  dashboard. Cards on the owner's own personal dashboards still go with it; each dashboard is
+  audited (area `dashboards`, action `changed`, detail the report id), and the report's
+  `deleted` entry counts them (`dashboard_cards`).
+- A dashboard card whose saved report you can no longer see (its owner unshared it) is
+  labelled `Report not available` instead of showing the report's name; running it stays 404.
+- Scheduled report emails: the worker holds each pass to `CEDESK_REPORT_SCHEDULE_BUDGET_SECONDS`
+  (20) with workspaces taking turns, and each scheduled query to
+  `CEDESK_REPORT_SCHEDULE_TIMEOUT_SECONDS` (5; `CEDESK_REPORT_TIMEOUT_SECONDS` is now the API's
+  only). A schedule that fails while sending is marked with the reason and moves to its next
+  time; the others in the workspace still go out.
+
 ## 2026-11-21: Reporting: trends and breakdowns, custom and saved reports, dashboards, live view, scheduled email
 
 Additive only: new routes and fields; nothing existing changed shape. Migrations 0073-0077.

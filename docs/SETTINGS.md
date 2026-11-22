@@ -172,7 +172,9 @@ processes.
 
 | Setting | Default | What it does | Read by | In compose |
 |---|---|---|---|---|
-| `CEDESK_REPORT_TIMEOUT_SECONDS` | `10` | A report query (custom reports, built-in trends and breakdowns, the live view, scheduled reports) that runs longer than this many seconds (1 to 120) is cancelled and the answer asks to narrow the range or grouping. | api, worker | api, worker |
+| `CEDESK_REPORT_TIMEOUT_SECONDS` | `10` | A report query (custom reports, built-in trends and breakdowns, the live view, dashboard cards) that runs longer than this many seconds (1 to 120) is cancelled and the answer asks to narrow the range or grouping. Scheduled reports use `CEDESK_REPORT_SCHEDULE_TIMEOUT_SECONDS`. | api | api |
+| `CEDESK_REPORT_SCHEDULE_TIMEOUT_SECONDS` | `5` | A scheduled report's query that runs longer than this many seconds (1 to 60) is cancelled; the schedule shows why and goes out at its next time. Lower than the interactive limit because the worker's single loop (ticket email, SLA alerts, pushes) waits for it. | worker | worker |
+| `CEDESK_REPORT_SCHEDULE_BUDGET_SECONDS` | `20` | The most time (1 to 300 seconds) one worker pass spends on scheduled reports. Once spent, no new schedule starts (one already running finishes, so a pass can run over by one report); the rest stay due and go out on the next pass. Workspaces take turns, one schedule each, so a busy one can't hold up the others. | worker | worker |
 | `CEDESK_REPORT_CONCURRENCY` | `4` | Report queries one API process runs at once (1 to 50); more wait a few seconds, then answer 429. Keeps a burst of reports from taking the whole database. | api | api |
 
 ## Cloud plans and the worker

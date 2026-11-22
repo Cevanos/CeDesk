@@ -90,10 +90,20 @@ def _may_change(caller: Caller, row: Row) -> None:
 can_change = shared_items.can_change  # for the list: whether to show edit and delete
 
 
-def card_label(card: Row) -> str:
+UNAVAILABLE = "Report not available"
+
+
+def card_label(card: Row, viewer_id: UUID) -> str:
+    """What the card is called for this viewer. A saved report they can't see (someone
+    else's that was unshared, or gone) shows a neutral label, never its name: running the
+    card is refused for the same reason (`run_card`)."""
     if card["preset"] is not None:
         found = defs.PRESETS.get(card["preset"])
         return found.label if found else str(card["preset"])
+    if card["report_name"] is None or not (
+        card["report_shared"] or card["report_owner_id"] == viewer_id
+    ):
+        return UNAVAILABLE
     return str(card["report_name"])
 
 

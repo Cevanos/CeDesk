@@ -128,3 +128,17 @@ async def shared_using(session: AsyncSession, report_id: UUID) -> int:
         {"r": report_id},
     )
     return int(result.scalar_one())
+
+
+async def cards_using_report(session: AsyncSession, report_id: UUID) -> Sequence[Row]:
+    """The cards showing this saved report, with their dashboard's owner and whether it is
+    shared, locked: a report being deleted takes them with it (the foreign key cascades)."""
+    result = await session.execute(
+        text(
+            "SELECT c.id, c.dashboard_id, d.owner_id, d.shared FROM hd_dashboard_card c "
+            "JOIN hd_dashboard d ON d.id = c.dashboard_id "
+            "WHERE c.report_id = :r ORDER BY c.id FOR UPDATE OF c"
+        ),
+        {"r": report_id},
+    )
+    return result.mappings().all()

@@ -181,12 +181,39 @@ async def delete_report(sm: Sessionmaker, caller: Caller, report_id: UUID) -> No
     async with workspace_session(sm, caller.workspace_id) as s:
         before = _visible(caller, await repo.get(s, report_id))
         _may_change(caller, before)
+        # The schedules sending it go with it (the foreign key cascades). The report owner's
+        # own may; another member's must not vanish without them knowing, as for unsharing.
+        schedules = await schedules_repo.using_report(s, report_id)
+        if any(r["owner_id"] != before["owner_id"] for r in schedules):
+            raise Conflict(
+                "Another member's scheduled report sends this one. Ask them to change the "
+                "schedule before you delete it."
+            )
+        # The same for dashboard cards: a card on a shared dashboard, or on another member's
+        # own dashboard, must not vanish; the owner's cards on their personal dashboards may.
+        cards = await dashboards_repo.cards_using_report(s, report_id)
+        if any(c["shared"] or c["owner_id"] != before["owner_id"] for c in cards):
+            raise Conflict(
+                "This report is on a shared dashboard or on another member's dashboard. Take "
+                "it off there before you delete it."
+            )
         if not await repo.delete(s, report_id):
             raise NotFound(NOT_FOUND)
         await audit.record(
             s, caller, Area.reports, "deleted", f"Report {before['name']}", target_id=report_id,
-            detail=audit_rules.snapshot(before, list(FIELDS)),
+            detail=audit_rules.snapshot(before, list(FIELDS))
+            | {"schedules": len(schedules), "dashboard_cards": len(cards)},
         )  # fmt: skip
+        for dashboard_id in sorted({c["dashboard_id"] for c in cards}, key=str):
+            await audit.record(
+                s, caller, Area.dashboards, "changed", "Card of a deleted report removed",
+                target_id=dashboard_id, detail={"report_id": str(report_id)},
+            )  # fmt: skip
+        for schedule in schedules:
+            await audit.record(
+                s, caller, Area.report_schedules, "deleted", "Schedule of a deleted report",
+                target_id=schedule["id"], detail={"report_id": str(report_id)},
+            )  # fmt: skip
 
 
 async def run_report(
