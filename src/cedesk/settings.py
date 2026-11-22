@@ -307,6 +307,21 @@ class Settings(BaseSettings):
         description="Sign-up passwords hashed at once per API process (each Argon2 hash "
         "uses about 64 MB of memory).",
     )
+    report_timeout_seconds: int = Field(
+        default=10,
+        ge=1,
+        le=120,
+        description="A custom or built-in report query that runs longer than this is "
+        "cancelled (the answer says to narrow the range). The API and the worker's "
+        "scheduled reports both use it.",
+    )
+    report_concurrency: int = Field(
+        default=4,
+        ge=1,
+        le=50,
+        description="Report queries one API process runs at once; more wait a few seconds, "
+        "then answer 429.",
+    )
 
     def push_on(self) -> bool:
         return bool(self.push_fcm_project_id and self.push_fcm_service_account)

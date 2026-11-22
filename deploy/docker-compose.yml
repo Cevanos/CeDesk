@@ -67,6 +67,9 @@ services:
       CEDESK_SIGNUP_PER_IP_HOUR: ${CEDESK_SIGNUP_PER_IP_HOUR:-5}
       CEDESK_SIGNUP_WORKSPACES_PER_IP_DAY: ${CEDESK_SIGNUP_WORKSPACES_PER_IP_DAY:-3}
       CEDESK_SIGNUP_HASH_SLOTS: ${CEDESK_SIGNUP_HASH_SLOTS:-4}
+      # Reports: longest query, and how many run at once per API process.
+      CEDESK_REPORT_TIMEOUT_SECONDS: ${CEDESK_REPORT_TIMEOUT_SECONDS:-10}
+      CEDESK_REPORT_CONCURRENCY: ${CEDESK_REPORT_CONCURRENCY:-4}
       # Single sign-on: the identity provider sends people back to this API address.
       CEDESK_API_URL: ${CEDESK_API_URL:-}
       CEDESK_MAIL_FROM_ADDRESS: ${CEDESK_MAIL_FROM_ADDRESS:-}
@@ -109,6 +112,7 @@ services:
       # the survey's sender when a workspace has no support address.
       CEDESK_APP_URL: ${CEDESK_APP_URL:-http://localhost:3000}
       CEDESK_PORTAL_URL: ${CEDESK_PORTAL_URL:-}
+      CEDESK_REPORT_TIMEOUT_SECONDS: ${CEDESK_REPORT_TIMEOUT_SECONDS:-10}
       CEDESK_MAIL_FROM_ADDRESS: ${CEDESK_MAIL_FROM_ADDRESS:-}
       # Self-service sign-up: the worker sends its codes on their own lane.
       CEDESK_SIGNUP_ENABLED: ${CEDESK_SIGNUP_ENABLED:-false}

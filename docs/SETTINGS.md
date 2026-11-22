@@ -168,6 +168,13 @@ processes.
 | `CEDESK_SIGNUP_MAIL_CONCURRENCY` | `10` | Code emails the worker sends at once (1 to 50); keep it under the mail provider's rate. | worker | worker |
 | `CEDESK_SIGNUP_HASH_SLOTS` | `4` | Sign-up passwords hashed at once per API process (1 to 64). Each Argon2 hash uses about 64 MB, so this caps the memory a burst of sign-ups can take. | api | api |
 
+## Reports
+
+| Setting | Default | What it does | Read by | In compose |
+|---|---|---|---|---|
+| `CEDESK_REPORT_TIMEOUT_SECONDS` | `10` | A report query (custom reports, built-in trends and breakdowns, the live view, scheduled reports) that runs longer than this many seconds (1 to 120) is cancelled and the answer asks to narrow the range or grouping. | api, worker | api, worker |
+| `CEDESK_REPORT_CONCURRENCY` | `4` | Report queries one API process runs at once (1 to 50); more wait a few seconds, then answer 429. Keeps a burst of reports from taking the whole database. | api | api |
+
 ## Cloud plans and the worker
 
 | Setting | Default | What it does | Read by | In compose |

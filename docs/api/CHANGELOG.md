@@ -3,6 +3,45 @@
 `openapi.json` next to this file is the API as served (`uv run cedesk openapi`). Every
 route is under `/api/v1`. Breaking changes only come in v2 (md 2B). Newest first.
 
+## 2026-11-21: Reporting: trends and breakdowns, custom and saved reports, dashboards, live view, scheduled email
+
+Additive only: new routes and fields; nothing existing changed shape. Migrations 0073-0077.
+Feature-gap plan phase 3. No new permission: everything needs `reports` (Supervisor, Admin, a
+custom role with the reports right); sharing a saved report or dashboard needs `share_views`;
+an Admin (`settings`) also sees and changes every schedule. New audit areas: `reports`,
+`dashboards`, `report_schedules` (ids and counts only). New settings
+`CEDESK_REPORT_TIMEOUT_SECONDS` (10) and `CEDESK_REPORT_CONCURRENCY` (4).
+
+- **Backlog over time.** The worker writes one snapshot per workspace, per team and day
+  (`hd_backlog_snapshot`, at the first pass after the workspace's local day ended; kept 3
+  years). `GET /reports/backlog?from&to&team_id` lists `{day, open, pending, breaching}`;
+  history starts when this ships, and a day the worker was down is missing.
+- **Trends and breakdowns, custom reports.** `GET /reports/options` lists the metrics
+  (created, resolved, avg first response, avg resolution, CSAT average and count, reopen rate,
+  time logged, open_now, backlog), groupings (day, week, month, team, assignee, priority,
+  type, channel, tag, topic, sentiment), filters, preset ranges and 19 built-in reports.
+  `POST /reports/run {preset | definition}` runs one (`?format=csv` too): time series are
+  zero-filled in the workspace's time zone (weeks start Monday), other groupings keep the
+  biggest 50. Definitions use fixed lists only (unknown keys are 422); a run over
+  `CEDESK_REPORT_TIMEOUT_SECONDS` is 422 "narrow the range", more than
+  `CEDESK_REPORT_CONCURRENCY` at once per API process wait about 5 s then answer 429.
+  `incomplete` warns that a range reaches back past the archive age. `GET /reports/ai` and the
+  new routes have `format=csv`.
+- **Saved reports.** `GET|POST /reports/saved`, `GET|PATCH|DELETE /reports/saved/{id}`,
+  `POST /reports/saved/{id}/run`: a name, a definition with a *preset* range, personal or
+  shared (50 each, 100 shared). They run under the viewer's own team scope.
+- **Dashboards.** `GET|POST /dashboards`, `GET|PATCH|DELETE /dashboards/{id}`,
+  `POST /dashboards/{id}/cards/{card_id}/run` (optional `range` and `team_id` for every card).
+  Up to 20 cards, each a saved report or a built-in one. A shared dashboard holds only
+  built-in and shared reports; unsharing a report on one is 409.
+- **Live view.** `GET /reports/live`: open, pending, snoozed, past-SLA and SLA-due-soon counts
+  per team, the 50 tickets waiting longest for a first reply, the 20 soonest due, agents by
+  status. Shared for about 5 s between viewers.
+- **Scheduled email.** `GET|POST /report-schedules`, `GET|PATCH|DELETE /report-schedules/{id}`,
+  `POST /report-schedules/{id}/leave`. Daily, weekly or monthly at an hour of the workspace's
+  day, to up to 10 members (never free addresses), one plain-text email each. The worker
+  checks every recipient and the owner at every send and sends once after an outage.
+
 ## 2026-11-20: Email campaigns, unsubscribe and the suppression list
 
 Additive only: new routes, one new outcome on `POST /inbound/email` (`bounce`), new

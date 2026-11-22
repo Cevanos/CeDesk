@@ -253,6 +253,8 @@ def _worker(once: bool) -> int:
     from cedesk.helpdesk.service.auto_close import run_auto_close
     from cedesk.helpdesk.service.automation import prune_everywhere as prune_runs
     from cedesk.helpdesk.service.automation import resume_due
+    from cedesk.helpdesk.service.backlog import prune_everywhere as prune_backlog
+    from cedesk.helpdesk.service.backlog import run_snapshots
     from cedesk.helpdesk.service.campaigns import run_due as send_campaigns
     from cedesk.helpdesk.service.cevanos import CevanosHandler, ChatPoller
     from cedesk.helpdesk.service.csat import CsatHandler
@@ -268,6 +270,7 @@ def _worker(once: bool) -> int:
     from cedesk.helpdesk.service.portal_notice import PortalNoticeHandler
     from cedesk.helpdesk.service.privacy import remove_expired_exports
     from cedesk.helpdesk.service.push import push_due
+    from cedesk.helpdesk.service.report_schedules import run_scheduled_reports
     from cedesk.helpdesk.service.scanning import scan_due
     from cedesk.helpdesk.service.security_alerts import SecurityAlertHandler
     from cedesk.helpdesk.service.signup_mail import run_lane
@@ -492,6 +495,20 @@ def _worker(once: bool) -> int:
                         logger.exception("Waking snoozed tickets failed")
                     if woke:
                         logger.info(f"Snoozed tickets woke: {woke}", extra={"event": "snooze"})
+                    try:  # scheduled report emails that are due (feature-gap plan 3.5)
+                        reports_sent = await run_scheduled_reports(
+                            sm,
+                            base_url=settings.app_url,
+                            fallback=fallback,
+                            timeout_ms=settings.report_timeout_seconds * 1000,
+                        )
+                    except Exception:
+                        reports_sent = 0
+                        logger.exception("Scheduled reports failed")
+                    if reports_sent:
+                        logger.info(
+                            f"Report emails queued: {reports_sent}", extra={"event": "reports"}
+                        )
                     try:  # workflow runs whose wait is over (feature-gap plan 5.3)
                         resumed = await resume_due(sm)
                     except Exception:
@@ -519,6 +536,13 @@ def _worker(once: bool) -> int:
                         await prune_webhooks(sm)
                     except Exception:
                         logger.exception("Pruning the webhook log failed")
+                    try:  # yesterday's backlog snapshot, once per workspace (plan 3.1)
+                        written = await run_snapshots(sm)
+                        if written:
+                            logger.info(f"backlog snapshots: {written}", extra={"event": "backlog"})
+                        await prune_backlog(sm)
+                    except Exception:
+                        logger.exception("Backlog snapshots failed")
                     try:  # automation runs past their 30 days (plan 5.5)
                         await prune_runs(sm)
                     except Exception:
