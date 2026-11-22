@@ -212,6 +212,22 @@ async def test_reopen_rate_csat_and_time_logged(client: AsyncClient, app_session
     assert by_label(logged) == {"Neha": 60} and logged["unit"] == "minutes"
 
 
+async def test_a_reopen_rate_with_nothing_to_measure_is_empty_not_an_error(
+    client: AsyncClient, app_sessionmaker: Sm
+) -> None:
+    """No resolved or reopened ticket in the range: the rate has no divisor, so it is
+    null (and the built-in report still answers), never a division-by-zero error."""
+    w = await desk(client, app_sessionmaker)
+    quiet = {"from": noon(300).isoformat(), "to": noon(299).isoformat()}
+    out = ok(await run(client, w, definition={"metric": "reopen_rate", "range": quiet}))
+    assert out["total"] is None
+    grouped = ok(await run(
+        client, w, definition={"metric": "reopen_rate", "group_by": "day", "range": quiet},
+    ))  # fmt: skip
+    assert grouped["groups"] and all(g["value"] in (None, 0) for g in grouped["groups"])
+    assert ok(await run(client, w, preset="reopen_rate_over_time", range=quiet))
+
+
 async def test_open_now_is_as_of_now_and_cannot_be_grouped_by_time(
     client: AsyncClient, app_sessionmaker: Sm
 ) -> None:
