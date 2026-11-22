@@ -9,8 +9,8 @@
   true), so everyone who sees the dashboard can run every card.
 - The owner's dashboards go when the member row is deleted.
 
-Revision ID: 0074
-Revises: 0073
+Revision ID: 0076
+Revises: 0075
 """
 
 from collections.abc import Sequence
@@ -19,8 +19,8 @@ from alembic import op
 
 from cedesk.tenancy import tenant_rls_sql
 
-revision: str = "0074"
-down_revision: str | None = "0073"
+revision: str = "0076"
+down_revision: str | None = "0075"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

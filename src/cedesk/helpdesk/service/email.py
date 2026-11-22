@@ -514,6 +514,7 @@ def _outgoing(row: Row, files: Sequence[MailFile] = ()) -> OutgoingEmail:
         in_reply_to=row["in_reply_to"],
         references=list(row["references_ids"]),
         attachments=list(files),
+        html=row.get("body_html"),
     )
 
 

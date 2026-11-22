@@ -449,9 +449,37 @@ async def test_0069_to_0070_add_automation_and_go_back_down(owner_engine: Any) -
         assert "snooze_ended" in await conn.scalar(text(event_check))
 
 
-async def test_0071_to_0075_add_the_reporting_tables_and_go_back_down(owner_engine: Any) -> None:
+async def test_0071_to_0072_add_campaigns_and_go_back_down(owner_engine: Any) -> None:
+    """The suppression list, campaign settings and the test email's HTML part (0071);
+    campaigns and their recipients (0072). Going below 0071 removes them all."""
+    import asyncio
+
+    from sqlalchemy import text
+
+    tables = ("hd_suppression", "hd_campaign_settings", "hd_campaign", "hd_campaign_recipient")
+    html = (
+        "SELECT count(*) FROM information_schema.columns "
+        "WHERE table_name = 'hd_email_out' AND column_name = 'body_html'"
+    )
+    cfg = alembic_config()
+    await asyncio.to_thread(command.downgrade, cfg, "0070")
+    async with owner_engine.connect() as conn:
+        for table in tables:
+            assert await conn.scalar(text(f"SELECT to_regclass('{table}')")) is None
+        assert await conn.scalar(text(html)) == 0
+    await asyncio.to_thread(command.upgrade, cfg, "head")
+    async with owner_engine.connect() as conn:
+        for table in tables:
+            forced = await conn.scalar(
+                text("SELECT relforcerowsecurity FROM pg_class WHERE relname = :t"), {"t": table}
+            )
+            assert forced is True
+        assert await conn.scalar(text(html)) == 1
+
+
+async def test_0073_to_0077_add_the_reporting_tables_and_go_back_down(owner_engine: Any) -> None:
     """Backlog snapshots, report indexes, saved reports, dashboards and schedules; going
-    below 0071 removes them all, and coming back up leaves row-level security forced."""
+    below 0073 removes them all, and coming back up leaves row-level security forced."""
     import asyncio
 
     from sqlalchemy import text
@@ -462,7 +490,7 @@ async def test_0071_to_0075_add_the_reporting_tables_and_go_back_down(owner_engi
     )  # fmt: skip
     indexes = ("hd_ticket_created_range",)
     cfg = alembic_config()
-    await asyncio.to_thread(command.downgrade, cfg, "0070")
+    await asyncio.to_thread(command.downgrade, cfg, "0072")
     async with owner_engine.connect() as conn:
         for name in (*tables, *indexes):
             assert await conn.scalar(text(f"SELECT to_regclass('{name}')")) is None

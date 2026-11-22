@@ -13,16 +13,16 @@ tried and left out: nothing used it, and every ticket insert would pay for it.
 Plain `CREATE INDEX`, like every earlier `hd_ticket` index: the archive keeps the table to
 open tickets and recently resolved ones, so the build is short.
 
-Revision ID: 0072
-Revises: 0071
+Revision ID: 0074
+Revises: 0073
 """
 
 from collections.abc import Sequence
 
 from alembic import op
 
-revision: str = "0072"
-down_revision: str | None = "0071"
+revision: str = "0074"
+down_revision: str | None = "0073"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

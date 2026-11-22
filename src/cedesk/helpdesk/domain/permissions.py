@@ -57,6 +57,11 @@ class Action(StrEnum):
     export_contacts = "export_contacts"
     # Make, change and delete segments (saved contact filters shared by the workspace).
     manage_segments = "manage_segments"
+    # Email campaigns (plan phase 6): write, test, send, cancel and read the results of
+    # bulk email to a segment, and keep the suppression list. Admins only, never given to
+    # a custom role or an API key: one send reaches thousands of customers and a bad one
+    # hurts the sender reputation of the workspace's support email too.
+    manage_campaigns = "manage_campaigns"
 
 
 class Scope(StrEnum):
@@ -94,7 +99,13 @@ ROLE_ACTIONS: dict[Role, frozenset[Action]] = {
     Role.agent: _AGENT,
     Role.supervisor: _SUPERVISOR,
     Role.admin: _SUPERVISOR
-    | {Action.settings, Action.manage_access, Action.manage_contacts, Action.export_contacts},
+    | {
+        Action.settings,
+        Action.manage_access,
+        Action.manage_contacts,
+        Action.export_contacts,
+        Action.manage_campaigns,
+    },
 }
 
 # Every custom role reads, adds notes and changes fields (within its scope), so it may

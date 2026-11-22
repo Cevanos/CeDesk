@@ -14,8 +14,8 @@ schedule.
 - A schedule goes when its owner or its saved report goes; a recipient row goes with the
   member.
 
-Revision ID: 0075
-Revises: 0074
+Revision ID: 0077
+Revises: 0076
 """
 
 from collections.abc import Sequence
@@ -24,8 +24,8 @@ from alembic import op
 
 from cedesk.tenancy import tenant_rls_sql
 
-revision: str = "0075"
-down_revision: str | None = "0074"
+revision: str = "0077"
+down_revision: str | None = "0076"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

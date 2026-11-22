@@ -12,8 +12,8 @@ small row per workspace (and per team) each day.
   tickets). The rows hold counts only, no customer data, so there is nothing to erase.
 - A team's rows go when the team is deleted. Rows are pruned after 3 years by the worker.
 
-Revision ID: 0071
-Revises: 0070
+Revision ID: 0073
+Revises: 0072
 """
 
 from collections.abc import Sequence
@@ -22,8 +22,8 @@ from alembic import op
 
 from cedesk.tenancy import tenant_rls_sql
 
-revision: str = "0071"
-down_revision: str | None = "0070"
+revision: str = "0073"
+down_revision: str | None = "0072"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
