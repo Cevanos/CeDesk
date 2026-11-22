@@ -43,7 +43,8 @@ _METRIC_SQL: dict[str, tuple[str, str | None, str, str, str]] = {
     "csat_count": (_RATINGS, "r.rated_at", "count(*)", "true", "t.assignee_id"),
     "reopen_rate": (
         _TICKETS, "t.created_at",
-        "100.0 * count(*) FILTER (WHERE t.reopen_count > 0) / count(*)",
+        # nullif: a range with nothing to measure is null, not a division by zero
+        "100.0 * count(*) FILTER (WHERE t.reopen_count > 0) / nullif(count(*), 0)",
         f"(t.status = 'resolved' OR t.reopen_count > 0) AND NOT {_IMPORTED}", "t.assignee_id",
     ),
     # Time logged: "assignee" is who logged it.
