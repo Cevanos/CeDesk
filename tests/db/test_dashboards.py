@@ -182,6 +182,67 @@ async def test_names_caps_and_the_cascade_when_a_saved_report_goes(
     ).status_code == 422
 
 
+async def test_a_report_on_a_shared_or_anothers_dashboard_cannot_be_deleted(
+    client: AsyncClient, app_sessionmaker: Sm
+) -> None:
+    """Deleting a saved report takes its cards with it (the foreign key cascades), so it is
+    refused while a card is on a shared dashboard or on another member's own dashboard;
+    the owner's cards on their personal dashboards go with it, and that is audited."""
+    w = await desk(client, app_sessionmaker)
+    saved = await report(client, w, "sam", "Pipeline", shared=True)
+    path = f"{S}/{saved['id']}"
+    theirs = await board(client, w, "admin", "Admin's", [{"report_id": saved["id"]}])
+    refused = await client.delete(path, headers=w["sam"])
+    assert refused.status_code == 409 and "dashboard" in refused.json()["error"]["message"]
+    ok(await client.patch(f"{D}/{theirs['id']}", headers=w["admin"], json={"cards": []}))
+    team = await board(client, w, "sam", "Team board", [{"report_id": saved["id"]}], shared=True)
+    assert (await client.delete(path, headers=w["sam"])).status_code == 409  # shared, own
+    ok(await client.patch(f"{D}/{team['id']}", headers=w["sam"], json={"cards": []}))
+    own = await board(
+        client, w, "sam", "Mine", [{"report_id": saved["id"]}, {"preset": "csat_trend"}]
+    )
+    assert (await client.delete(path, headers=w["sam"])).status_code == 204
+    left = ok(await client.get(f"{D}/{own['id']}", headers=w["sam"]))
+    assert [c["preset"] for c in left["cards"]] == ["csat_trend"]
+    ok(await client.get(f"{D}/{theirs['id']}", headers=w["admin"]))  # emptied, still there
+    ok(await client.get(f"{D}/{team['id']}", headers=w["sam"]))
+    entries = ok(
+        await client.get("/api/v1/audit", headers=w["admin"], params={"area": "dashboards"})
+    )["entries"]
+    removed = [e for e in entries if e["target_id"] == own["id"] and e["action"] == "changed"]
+    assert len(removed) == 1 and removed[0]["detail"] == {"report_id": saved["id"]}
+    reports = ok(await client.get("/api/v1/audit", headers=w["admin"], params={"area": "reports"}))
+    deleted = [e for e in reports["entries"] if e["action"] == "deleted"]
+    assert deleted[0]["detail"]["dashboard_cards"] == 1
+
+
+async def test_a_card_whose_report_was_unshared_keeps_no_name_or_details(
+    client: AsyncClient, app_sessionmaker: Sm
+) -> None:
+    w = await desk(client, app_sessionmaker)
+    theirs = await report(client, w, "sam", "Secret pipeline", shared=True)
+    made = await board(client, w, "admin", "Mine", [{"report_id": theirs["id"]}])
+    assert made["cards"][0]["label"] == "Secret pipeline"  # shared: visible
+    ok(await client.patch(f"{S}/{theirs['id']}", headers=w["sam"], json={"shared": False}))
+    for got in (
+        ok(await client.get(f"{D}/{made['id']}", headers=w["admin"])),
+        ok(await client.get(D, headers=w["admin"]))[0],
+    ):
+        assert [c["label"] for c in got["cards"]] == ["Report not available"]
+        assert "Secret pipeline" not in str(got) and "definition" not in str(got)
+    run = f"{D}/{made['id']}/cards/{made['cards'][0]['id']}/run"
+    assert (await client.post(run, headers=w["admin"])).status_code == 404
+    # Shared again, the name is back; and the owner always sees their own report's name.
+    ok(await client.patch(f"{S}/{theirs['id']}", headers=w["sam"], json={"shared": True}))
+    again = ok(await client.get(f"{D}/{made['id']}", headers=w["admin"]))
+    assert again["cards"][0]["label"] == "Secret pipeline"
+    own = await board(client, w, "sam", "Own", [{"report_id": theirs["id"]}])
+    ok(await client.patch(f"{S}/{theirs['id']}", headers=w["sam"], json={"shared": False}))
+    assert ok(await client.get(f"{D}/{own['id']}", headers=w["sam"]))["cards"][0]["label"] == (
+        "Secret pipeline"
+    )
+
+
 async def test_a_team_only_viewer_runs_a_shared_card_in_their_team_and_isolation(
     client: AsyncClient, app_sessionmaker: Sm
 ) -> None:

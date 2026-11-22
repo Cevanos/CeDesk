@@ -59,7 +59,10 @@ class CardOut(BaseModel):
     position: int
     report_id: UUID | None = Field(description="A saved report; null for a built-in one.")
     preset: str | None = Field(description="A built-in report's key; null for a saved one.")
-    label: str = Field(description="The report's name.")
+    label: str = Field(
+        description="The report's name; `Report not available` when it is a saved report you "
+        "can no longer see (its owner unshared it), and running the card is then 404."
+    )
 
 
 class DashboardOut(BaseModel):
@@ -88,7 +91,7 @@ def _out(caller: Caller, found: dashboards.Dashboard) -> DashboardOut:
         cards=[
             CardOut(
                 id=c["id"], position=c["position"], report_id=c["report_id"],
-                preset=c["preset"], label=dashboards.card_label(c),
+                preset=c["preset"], label=dashboards.card_label(c, caller.member_id),
             )
             for c in found.cards
         ],

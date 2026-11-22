@@ -10,6 +10,7 @@ from uuid import UUID
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import text
 
 from cedesk.helpdesk.service import report_schedules
 from cedesk.helpdesk.service.password_reset import Sender
@@ -43,10 +44,32 @@ async def due_now(sm: Sm, w: dict, schedule_id: str | None = None) -> None:
               **params)  # fmt: skip
 
 
-async def work(sm: Sm, *, fallback: Sender | None = SENDER, at: Any = None) -> int:
+async def work(
+    sm: Sm,
+    *,
+    fallback: Sender | None = SENDER,
+    at: Any = None,
+    budget_ms: int = 600_000,
+    only: list[Any] | None = None,
+) -> int:
     return await report_schedules.run_scheduled_reports(
-        sm, base_url=BASE, fallback=fallback, timeout_ms=10_000, now=at
-    )
+        sm, base_url=BASE, fallback=fallback, timeout_ms=10_000, budget_ms=budget_ms, now=at,
+        workspace_ids=None if only is None else [UUID(str(ws)) for ws in only],
+    )  # fmt: skip
+
+
+def slow_reports(monkeypatch: pytest.MonkeyPatch, seconds: float) -> list[int]:
+    """Every report run takes `seconds` longer; returns the per-query timeouts it was given."""
+    real = report_schedules.report_engine.run_definition
+    timeouts: list[int] = []
+
+    async def slow(*args: Any, **kwargs: Any) -> Any:
+        timeouts.append(kwargs["timeout_ms"])
+        await asyncio.sleep(seconds)
+        return await real(*args, **kwargs)
+
+    monkeypatch.setattr(report_schedules.report_engine, "run_definition", slow)
+    return timeouts
 
 
 async def emails(sm: Sm, w: dict) -> list[Any]:
@@ -498,6 +521,77 @@ async def test_one_failing_schedule_never_starves_the_others(
     assert await work(app_sessionmaker) == 0  # and the bad one isn't retried every minute
 
 
+async def test_a_failure_after_the_run_marks_that_schedule_and_the_next_still_goes(
+    client: AsyncClient, app_sessionmaker: Sm, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    w = await desk(client, app_sessionmaker)
+    sue = await second_supervisor(client, w)
+    doomed = await make(client, w, name="Doomed schedule",
+                        recipient_ids=[w["ids"]["sam"], await sue_id(client, sue)])  # fmt: skip
+    good = await make(client, w, name="Fine schedule")
+    real = report_schedules.email_repo.enqueue
+    calls = {"doomed": 0}
+
+    async def enqueue(s: Any, *args: Any, **kwargs: Any) -> Any:
+        if "Doomed" in kwargs["subject"]:
+            calls["doomed"] += 1
+            if calls["doomed"] == 2:  # the first email is queued, then the database errors
+                await s.execute(text("SELECT 1 / 0"))
+        return await real(s, *args, **kwargs)
+
+    monkeypatch.setattr(report_schedules.email_repo, "enqueue", enqueue)
+    move = (
+        "UPDATE hd_report_schedule SET next_run_at = now() - CAST(:ago AS interval) WHERE id = :id"
+    )
+    await sql(app_sessionmaker, w["ws"], move, ago=timedelta(hours=2), id=UUID(doomed["id"]))
+    await sql(app_sessionmaker, w["ws"], move, ago=timedelta(minutes=1), id=UUID(good["id"]))
+    assert await work(app_sessionmaker, only=[w["ws"]]) == 1  # the next one still went out
+    sent = await emails(app_sessionmaker, w)
+    assert len(sent) == 1 and "Fine" in sent[0]["subject"]  # the doomed one's first email
+    # was rolled back with the rest of its run: nobody got half a schedule
+    bad = await row(app_sessionmaker, w, doomed["id"])
+    assert bad["last_error"].startswith("Sending failed (")
+    assert bad["next_run_at"] > now() and bad["last_sent_at"] is None and bad["enabled"]
+    assert (await row(app_sessionmaker, w, good["id"]))["last_error"] is None
+    assert await work(app_sessionmaker, only=[w["ws"]]) == 0  # not retried every minute
+    assert calls["doomed"] == 2
+
+
+async def test_a_pass_stops_claiming_when_its_time_budget_is_spent_and_loses_nothing(
+    client: AsyncClient, app_sessionmaker: Sm, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    w = await desk(client, app_sessionmaker)
+    made = [await make(client, w, name=f"Schedule {i}") for i in range(3)]
+    await due_now(app_sessionmaker, w)
+    timeouts = slow_reports(monkeypatch, 0.3)
+    passes = [await work(app_sessionmaker, budget_ms=250, only=[w["ws"]]) for _ in range(4)]
+    assert passes == [1, 1, 1, 0]  # one report per pass fits; the rest waited, still due
+    assert len(await emails(app_sessionmaker, w)) == 3  # each once
+    for schedule in made:
+        assert (await row(app_sessionmaker, w, schedule["id"]))["last_sent_at"] is not None
+    assert set(timeouts) == {10_000}  # each run is held to the timeout the worker passes
+
+
+async def test_workspaces_take_turns_so_a_busy_one_cannot_starve_the_others(
+    client: AsyncClient, app_sessionmaker: Sm, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    busy = await desk(client, app_sessionmaker)
+    quiet = await desk(client, app_sessionmaker)
+    for i in range(3):
+        await make(client, busy, name=f"Busy {i}")
+    await make(client, quiet, name="Quiet")
+    await due_now(app_sessionmaker, busy)
+    await due_now(app_sessionmaker, quiet)
+    slow_reports(monkeypatch, 0.3)
+    # Room for two reports: one each, whichever workspace's turn comes first.
+    assert await work(app_sessionmaker, budget_ms=500, only=[busy["ws"], quiet["ws"]]) == 2
+    assert len(await emails(app_sessionmaker, busy)) == 1
+    assert len(await emails(app_sessionmaker, quiet)) == 1
+    # The busy workspace's other two are still due and go out next, each once.
+    assert await work(app_sessionmaker, only=[busy["ws"], quiet["ws"]]) == 2
+    assert len(await emails(app_sessionmaker, busy)) == 3
+
+
 async def test_a_report_the_owner_can_no_longer_see_is_skipped(
     client: AsyncClient, app_sessionmaker: Sm
 ) -> None:
@@ -537,6 +631,40 @@ async def test_a_schedule_goes_with_its_saved_report(
         await client.delete(f"/api/v1/reports/saved/{saved['id']}", headers=w["admin"])
     ).status_code == 204
     assert ok(await client.get(S, headers=w["admin"])) == []
+
+
+async def test_a_shared_report_another_members_schedule_sends_cannot_be_deleted(
+    client: AsyncClient, app_sessionmaker: Sm
+) -> None:
+    w = await desk(client, app_sessionmaker)
+    saved = ok(
+        await client.post(
+            "/api/v1/reports/saved",
+            headers=w["sam"],
+            json={"name": "Team numbers", "shared": True, "definition": {"metric": "created"}},
+        ),
+        201,
+    )
+    path = f"/api/v1/reports/saved/{saved['id']}"
+    own = await make(client, w, "sam", report_id=saved["id"], name="Sam's own")
+    theirs = await make(client, w, "admin", report_id=saved["id"], name="Admin's")
+    refused = await client.delete(path, headers=w["sam"])
+    assert refused.status_code == 409 and "Another member's scheduled report" in refused.text
+    assert {s["id"] for s in ok(await client.get(S, headers=w["admin"]))} == {
+        own["id"], theirs["id"],
+    }  # fmt: skip
+    assert (await client.delete(f"{S}/{theirs['id']}", headers=w["admin"])).status_code == 204
+    # Only the owner's own schedule is left: it goes with the report, and that is audited.
+    assert (await client.delete(path, headers=w["sam"])).status_code == 204
+    assert ok(await client.get(S, headers=w["admin"])) == []
+    entries = ok(
+        await client.get("/api/v1/audit", headers=w["admin"], params={"area": "report_schedules"})
+    )["entries"]
+    gone = [e for e in entries if e["action"] == "deleted" and e["target_id"] == own["id"]]
+    assert len(gone) == 1 and gone[0]["detail"] == {"report_id": saved["id"]}
+    reports = ok(await client.get("/api/v1/audit", headers=w["admin"], params={"area": "reports"}))
+    deleted = [e for e in reports["entries"] if e["action"] == "deleted"]
+    assert deleted[0]["detail"]["schedules"] == 1
 
 
 async def test_a_backlog_and_a_time_series_read_well_in_plain_text(

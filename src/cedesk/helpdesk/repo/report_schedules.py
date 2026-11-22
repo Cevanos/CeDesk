@@ -216,6 +216,19 @@ async def using_report_of_others(session: AsyncSession, report_id: UUID, owner_i
     return int(result.scalar_one())
 
 
+async def using_report(session: AsyncSession, report_id: UUID) -> Sequence[Row]:
+    """The schedules that send this saved report (id and owner), locked: a report being
+    deleted takes them with it (the foreign key cascades)."""
+    result = await session.execute(
+        text(
+            "SELECT id, owner_id FROM hd_report_schedule WHERE report_id = :r "
+            "ORDER BY id FOR UPDATE"
+        ),
+        {"r": report_id},
+    )
+    return result.mappings().all()
+
+
 async def recipient_ids(session: AsyncSession, schedule_id: UUID) -> list[UUID]:
     result = await session.execute(
         text("SELECT member_id FROM hd_report_schedule_recipient WHERE schedule_id = :s"),
