@@ -1,0 +1,79 @@
+# Builds the Docker image and runs the stack exactly as deploy/README.md does on a server
+# (deploy/docker-compose.yml with a fresh .env), then checks it works: migrations, the API
+# through Caddy, the worker, sign-in and a new ticket. Catches a broken Dockerfile, compose
+# file or migration before it reaches a server.
+name: Docker
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  stack:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: deploy
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fill in deploy/.env from env.example
+        run: |
+          cp env.example .env
+          for k in POSTGRES_PASSWORD CEDESK_OWNER_PASSWORD CEDESK_APP_PASSWORD CEDESK_SECRET_KEY; do
+            sed -i "s|^$k=\$|$k=$(openssl rand -hex 32)|" .env
+          done
+          # ClamAV needs 1.5 GB and minutes to download definitions; not what this checks.
+          sed -i "s|^CEDESK_SCAN_BACKEND=.*|CEDESK_SCAN_BACKEND=none|" .env
+
+      - name: Build the image
+        run: docker compose build
+
+      # Every service but clamav; migrate runs first through depends_on.
+      - name: Start the stack
+        run: docker compose up -d db api worker caddy
+
+      - name: Migrations finished cleanly
+        run: |
+          test "$(docker compose ps -a migrate --format '{{.ExitCode}}')" = "0"
+
+      - name: The API answers through Caddy
+        run: |
+          for i in $(seq 1 60); do
+            curl -fsS http://localhost/readyz > /dev/null 2>&1 && break
+            sleep 2
+          done
+          curl -fsS http://localhost/readyz
+
+      - name: Sign in and create a ticket
+        run: |
+          pw="$(openssl rand -hex 12)"
+          printf '%s\n%s\n' "$pw" "$pw" | docker compose exec -T api uv run --no-sync cedesk seed-demo
+          token=$(curl -fsS -X POST http://localhost/api/v1/auth/sign-in \
+            -H 'content-type: application/json' \
+            -d "{\"workspace\":\"acme-store\",\"email\":\"ritesh@acme-store.in\",\"password\":\"$pw\"}" | jq -er .token)
+          curl -fsS http://localhost/api/v1/me -H "authorization: Bearer $token" | jq -e '.member' > /dev/null
+          curl -fsS -X POST http://localhost/api/v1/tickets \
+            -H "authorization: Bearer $token" -H 'content-type: application/json' \
+            -H "idempotency-key: $(cat /proc/sys/kernel/random/uuid)" \
+            -d '{"subject":"Docker check","contact":{"email":"customer@example.com","name":"Customer"}}' \
+            | jq -e '.label'
+
+      - name: API and worker are still running
+        run: |
+          for i in $(seq 1 30); do
+            [ "$(docker compose ps api --format '{{.Health}}')" = "healthy" ] && break
+            sleep 2
+          done
+          test "$(docker compose ps api --format '{{.Health}}')" = "healthy"
+          test "$(docker compose ps worker --format '{{.State}}')" = "running"
+
+      - name: Logs
+        if: failure()
+        run: docker compose logs --no-color
+
+      - name: Stop
+        if: always()
+        run: docker compose down -v
