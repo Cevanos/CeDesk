@@ -182,3 +182,11 @@ migrations/      Alembic (owner role)
 infra/postgres/  database roles for local and CI
 tests/           unit/ (no DB) and db/ (cedesk_test)
 ```
+
+## License
+
+CeDesk is open source under the [MIT License](LICENSE), copyright (c) 2026 Cevanos.
+Contributions are welcome: see [CONTRIBUTING.md](CONTRIBUTING.md).
+
+Cevanos AI, CeDesk Cloud (managed hosting) and enterprise-only features are separate
+commercial products from Cevanos and are not part of this repository.
