@@ -43,6 +43,7 @@ from cedesk.helpdesk.api import demo as demo_api
 from cedesk.helpdesk.api import email as email_api
 from cedesk.helpdesk.api import email_in as email_in_api
 from cedesk.helpdesk.api import flows as flows_api
+from cedesk.helpdesk.api import help_domain as help_domain_api
 from cedesk.helpdesk.api import imports as imports_api
 from cedesk.helpdesk.api import inbound_api as inbound_api_api
 from cedesk.helpdesk.api import inbox as inbox_api
@@ -198,6 +199,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         settings.secret_key.get_secret_value(), app.state.store, retry=retry_policy(settings)
     )
     app.state.attempts = SlidingWindowLimiter(
+        settings.sign_in_limit, settings.sign_in_window_seconds
+    )
+    # Wrong keys on Caddy's TLS check (plan 4.2) have their own budget, so a caller guessing
+    # the key can never use up anyone's sign-ins.
+    app.state.tls_attempts = SlidingWindowLimiter(
         settings.sign_in_limit, settings.sign_in_window_seconds
     )
     # The public web form has its own budget, so form posts never use up sign-ins.
@@ -396,6 +402,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(public_api.router, prefix="/api/v1")
     app.include_router(articles_api.router, prefix="/api/v1")
     app.include_router(article_translations_api.router, prefix="/api/v1")
+    app.include_router(help_domain_api.router, prefix="/api/v1")
+    if settings.tls_ask_key:  # custom help center domains are off until the key is set
+        app.include_router(help_domain_api.internal_router, prefix="/api/v1")
     app.include_router(triage_api.router, prefix="/api/v1")
     app.include_router(reports_api.router, prefix="/api/v1")
     app.include_router(backlog_api.router, prefix="/api/v1")

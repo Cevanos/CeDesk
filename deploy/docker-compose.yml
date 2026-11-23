@@ -57,6 +57,9 @@ services:
       CEDESK_SECRET_KEY: ${CEDESK_SECRET_KEY:?set CEDESK_SECRET_KEY in deploy/.env}
       CEDESK_CORS_ORIGINS: ${CEDESK_CORS_ORIGINS:-}
       CEDESK_APP_URL: ${CEDESK_APP_URL:-http://localhost:3000}
+      # Custom help-center domains (plan 4.2): empty key = off.
+      CEDESK_TLS_ASK_KEY: ${CEDESK_TLS_ASK_KEY:-}
+      CEDESK_HELP_CNAME_TARGET: ${CEDESK_HELP_CNAME_TARGET:-}
       # The demo data routes: off unless true, never on production.
       CEDESK_DEMO_ENABLED: ${CEDESK_DEMO_ENABLED:-false}
       # Self-service sign-up (off unless true) and its CAPTCHA (Cloudflare Turnstile).

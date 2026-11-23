@@ -367,6 +367,19 @@ Show them as they are in the editor.
 
 - Portal settings: who may sign in (allowed email domains), the CSAT survey and the public web form on or off. Saving a domain list signs out, at once, customers signed in with other emails: say so next to the box, e.g. "Customers signed in with other emails are signed out when you save."
 - Help center: categories and articles (draft or published).
+- Help center languages: the article is the *default-language* version (`GET /help-center/settings`).
+  Show a Translations tab on the article: one row per language (`locales` on each article row, and
+  `GET /articles/{id}/translations`), add or edit with `PUT .../translations/{locale}` (a PUT replaces
+  everything, SEO fields too), and a "needs translating" filter with `GET /articles?missing_locale=hi`.
+  Category names are translated with `name_translations`. A translation is public only when the article
+  and the translation are both published. The existing "Translate with AI" button can fill one in.
+- Help center SEO: on the article and on each translation, a slug (offer `suggested_slug`), meta title
+  (120), meta description (320) and an optional canonical address (https). An "Allow search engines"
+  switch is `seo_indexable` in the settings (off by default).
+- Custom domain (Admin): register a domain, show the `dns` records to add (TXT, and a CNAME when the
+  server gives a target), a "Check" button, the `status` (`pending`, `verified`) and `last_error`. A
+  verified domain can go back to pending if its record is missing on 3 daily checks in a row
+  (`failed_checks`); pressing Check shows the problem but is not counted.
 
 | | Route | What it does |
 |---|---|---|
@@ -379,6 +392,17 @@ Show them as they are in the editor.
 | `GET` | `/articles/{article_id}` | One article |
 | `PATCH` | `/articles/{article_id}` | Edit, publish or unpublish an article (Admin) |
 | `DELETE` | `/articles/{article_id}` | Delete an article and its votes (Admin) |
+| `GET` | `/help-center/settings` | The default language and whether search engines may index the help center |
+| `PUT` | `/help-center/settings` | Change the default language or the indexable switch (Admin) |
+| `GET` | `/articles/{article_id}/translations` | An article's translations, drafts included |
+| `PUT` | `/articles/{article_id}/translations/{locale}` | Write an article's translation in one language (Admin) |
+| `DELETE` | `/articles/{article_id}/translations/{locale}` | Delete one translation (Admin) |
+| `PUT` | `/article-categories/{category_id}/translations/{locale}` | A category's name in one language (Admin) |
+| `DELETE` | `/article-categories/{category_id}/translations/{locale}` | Remove a category's name in one language (Admin) |
+| `GET` | `/help-center/domain` | The help center's custom domain, or null (Admin) |
+| `PUT` | `/help-center/domain` | Register the help center's domain (Admin) |
+| `DELETE` | `/help-center/domain` | Remove the help center's domain (Admin) |
+| `POST` | `/help-center/domain/check` | Read the TXT record now (Admin) |
 | `GET` | `/portal-settings` | Portal settings (Admin) |
 | `PUT` | `/portal-settings` | Save the portal settings (Admin) |
 
@@ -495,7 +519,19 @@ Show them as they are in the editor.
 
 ### 2.20 Public pages (no sign-in): help center and web form
 
-- Help center: categories, search, articles, "Was this helpful?".
+- Help center: categories, search, articles, "Was this helpful?". Pass `locale` (from the visitor's language
+  or a switcher) to `GET /public/{workspace}/articles` and `.../{id}`; each row says which `locale` it is in,
+  and the article lists `available_locales` and `alternates` (with slugs) for a language switcher and
+  `hreflang`. Send the same `locale` with the vote.
+- Search engines: only when `indexable` is true on the help-center answer. The pages are client components
+  today and the app serves `noindex` and `robots: disallow /`; to be indexed they must be rendered on the
+  server with `title`/description/canonical/`hreflang` tags (`meta_title`, `meta_description`,
+  `canonical_url`, `alternates`), a `sitemap.xml` built from `GET /public/{workspace}/sitemap`, and a
+  `robots.txt` that allows the help center only when `indexable`. Page addresses are `/help/{id}/{slug}`:
+  the id decides the article, redirect a wrong or missing slug to the right one.
+- Custom domain: when a request's `Host` is not the app's, ask `GET /public-hosts/{host}` on the server
+  (the answer is cacheable for 60 seconds) for the workspace slug and serve `/{slug}/help/...`. The call is made by the server, not the
+  browser, so it needs no entry in the proxy's allowed areas.
 - Web form: the ticket types and fields to show, then send it (rate limited).
 
 | | Route | What it does |
@@ -503,6 +539,8 @@ Show them as they are in the editor.
 | `GET` | `/public/{workspace}/articles` | The help center: categories, articles, search (no sign-in) |
 | `GET` | `/public/{workspace}/articles/{article_id}` | One published article (no sign-in) |
 | `POST` | `/public/{workspace}/articles/{article_id}/vote` | "Was this helpful?" (no sign-in) |
+| `GET` | `/public/{workspace}/sitemap` | The help center's pages for a sitemap.xml (no sign-in) |
+| `GET` | `/public-hosts/{host}` | Which workspace's help center is served on this host (no sign-in) |
 | `GET` | `/public/{workspace}/form` | The web form: ticket types and their fields (no sign-in) |
 | `POST` | `/public/{workspace}/form` | Send the web form: makes a ticket (no sign-in) |
 

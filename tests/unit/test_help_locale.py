@@ -74,6 +74,12 @@ def test_a_long_title_gives_a_slug_that_fits_and_ends_on_a_word() -> None:
     assert h.suggest_slug("x" * 300) == "x" * h.SLUG_MAX
 
 
+def test_a_cut_slug_keeps_a_short_first_word_rather_than_nothing() -> None:
+    slug = h.suggest_slug("ab " + "x" * 120)
+    assert slug is not None and slug.startswith("ab-x") and len(slug) == h.SLUG_MAX
+    assert h.clean_slug(slug) == slug  # and it is a valid slug
+
+
 def test_a_slug_is_checked_and_lower_cased() -> None:
     assert h.clean_slug(" Refund-Policy ") == "refund-policy"
     assert h.clean_slug(None) is None

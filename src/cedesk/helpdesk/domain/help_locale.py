@@ -80,7 +80,9 @@ def suggest_slug(title: str) -> str | None:
     plain = unicodedata.normalize("NFKD", title).encode("ascii", "ignore").decode()
     slug = re.sub(r"[^a-z0-9]+", "-", plain.lower()).strip("-")
     if len(slug) > SLUG_MAX:
-        slug = slug[:SLUG_MAX].rsplit("-", 1)[0] if "-" in slug[:SLUG_MAX] else slug[:SLUG_MAX]
+        cut = slug[:SLUG_MAX]  # end on a whole word when that leaves a usable slug
+        whole = cut.rsplit("-", 1)[0] if "-" in cut else cut
+        slug = whole if len(whole) >= SLUG_MIN else cut.rstrip("-")
     return slug if len(slug) >= SLUG_MIN else None
 
 

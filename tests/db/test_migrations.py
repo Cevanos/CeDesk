@@ -617,3 +617,96 @@ async def test_0079_adds_help_center_seo_columns_and_goes_back_down(owner_engine
     await asyncio.to_thread(command.upgrade, cfg, "head")
     async with owner_engine.connect() as conn:
         assert await conn.scalar(text(columns)) == 8
+
+
+async def test_0080_adds_help_domains_and_a_trigger_keeps_the_directory_in_step(
+    owner_engine: Any,
+) -> None:
+    """One domain per workspace; only a verified one is in the global directory, which the app
+    role can read but not write; two workspaces can both hold a domain as pending, only one can
+    have it verified; going down drops both tables."""
+    import asyncio
+
+    from sqlalchemy import text
+    from sqlalchemy.exc import IntegrityError
+
+    cfg = alembic_config()
+    tables = ("hd_help_domain", "help_domain_directory")
+    async with owner_engine.connect() as conn:
+        forced = "SELECT relforcerowsecurity FROM pg_class WHERE relname = 'hd_help_domain'"
+        assert await conn.scalar(text(forced)) is True
+        for table, right, expected in (
+            ("help_domain_directory", "SELECT", True),
+            ("help_domain_directory", "INSERT", False),
+            ("help_domain_directory", "UPDATE", False),
+            ("help_domain_directory", "DELETE", False),
+            ("hd_help_domain", "INSERT", True),
+        ):
+            query = "SELECT has_table_privilege('cedesk_app', CAST(:t AS text), CAST(:r AS text))"
+            assert await conn.scalar(text(query), {"t": table, "r": right}) is expected
+    token = "t" * 24
+
+    async def directory(conn: Any) -> list[tuple[str, Any]]:
+        rows = await conn.execute(text("SELECT domain, workspace_id FROM help_domain_directory"))
+        return [(r[0], r[1]) for r in rows]
+
+    async with owner_engine.begin() as conn:
+        await conn.execute(text("TRUNCATE hd_help_domain, help_domain_directory"))
+        await conn.execute(text("ALTER TABLE workspace NO FORCE ROW LEVEL SECURITY"))
+        await conn.execute(text("ALTER TABLE hd_help_domain NO FORCE ROW LEVEL SECURITY"))
+        one = await conn.scalar(text("INSERT INTO workspace (name) VALUES ('P4a') RETURNING id"))
+        two = await conn.scalar(text("INSERT INTO workspace (name) VALUES ('P4b') RETURNING id"))
+    insert = (
+        "INSERT INTO hd_help_domain (workspace_id, domain, verify_token) "
+        "VALUES (:ws, 'help.example.com', :t)"
+    )
+    verify = (
+        "UPDATE hd_help_domain SET status = 'verified', verified_at = now() "
+        "WHERE workspace_id = :ws"
+    )
+    try:
+        async with owner_engine.begin() as conn:  # pending: not in the directory
+            await conn.execute(text(insert), {"ws": one, "t": token})
+            await conn.execute(text(insert), {"ws": two, "t": token + "2"})  # a second claim
+            assert await directory(conn) == []
+        async with owner_engine.begin() as conn:  # verified: in it
+            await conn.execute(text(verify), {"ws": one})
+            assert await directory(conn) == [("help.example.com", one)]
+        with pytest.raises(IntegrityError):  # the other cannot verify the same domain
+            async with owner_engine.begin() as conn:
+                await conn.execute(text(verify), {"ws": two})
+        async with owner_engine.begin() as conn:
+            assert await directory(conn) == [("help.example.com", one)]  # nothing changed
+            await conn.execute(  # a domain changed to another and pending: out of it
+                text("UPDATE hd_help_domain SET status = 'pending', verified_at = NULL "
+                     "WHERE workspace_id = :ws"), {"ws": one})  # fmt: skip
+            assert await directory(conn) == []
+            await conn.execute(text(verify), {"ws": two})  # now the other can have it
+            assert await directory(conn) == [("help.example.com", two)]
+            await conn.execute(text("DELETE FROM hd_help_domain WHERE workspace_id = :ws"),
+                               {"ws": two})  # fmt: skip
+            assert await directory(conn) == []
+        with pytest.raises(IntegrityError):  # status and verified_at must agree
+            async with owner_engine.begin() as conn:
+                await conn.execute(
+                    text("UPDATE hd_help_domain SET status = 'verified' WHERE workspace_id = :ws"),
+                    {"ws": one},
+                )
+        with pytest.raises(IntegrityError):  # one domain per workspace
+            async with owner_engine.begin() as conn:
+                await conn.execute(text(insert), {"ws": one, "t": token})
+    finally:
+        async with owner_engine.begin() as conn:
+            await conn.execute(text("DELETE FROM hd_help_domain"))
+            await conn.execute(text("DELETE FROM workspace WHERE id IN (:a, :b)"),
+                               {"a": one, "b": two})  # fmt: skip
+            await conn.execute(text("ALTER TABLE hd_help_domain FORCE ROW LEVEL SECURITY"))
+            await conn.execute(text("ALTER TABLE workspace FORCE ROW LEVEL SECURITY"))
+    await asyncio.to_thread(command.downgrade, cfg, "0079")
+    async with owner_engine.connect() as conn:
+        for table in tables:
+            assert await conn.scalar(text(f"SELECT to_regclass('{table}')")) is None
+    await asyncio.to_thread(command.upgrade, cfg, "head")
+    async with owner_engine.connect() as conn:
+        for table in tables:
+            assert await conn.scalar(text(f"SELECT to_regclass('{table}')")) is not None
