@@ -294,7 +294,10 @@ SCREENS: list[Screen] = [
         "- Custom roles: name, the five rights, scope (all, team edit, team only) and its "
         "team.\n"
         "- Teams: name, auto-assign, max open per agent, members. Agents: status, channels, "
-        "capacity per channel, skills; workspace defaults in Routing defaults.",
+        "capacity per channel, skills; workspace defaults in Routing defaults.\n"
+        "- Every **Assignee picker** lists only agents with `assignable: true` (from "
+        "`GET /agents`: active, and the role replies), and one with `works_on_team_id` set "
+        "only for that team's tickets.",
         either(starts("/members", "/roles", "/teams", "/agents", "/routing-defaults")),
     ),
     Screen(

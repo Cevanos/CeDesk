@@ -15,6 +15,11 @@ GLOBAL_TABLES = {
     # support email address -> workspace id, read when an email arrives (migration 0017).
     # Only addresses; the app can only read it (triggers keep it in step).
     "email_address_directory",
+    # Self-service sign-ups waiting for their email code, and those code emails (0060):
+    # read before any workspace exists. The password is only a hash, the code and the
+    # client IP only HMACs; rows are deleted after two days.
+    "workspace_signup",
+    "auth_email_out",
 }
 
 TABLES = text(

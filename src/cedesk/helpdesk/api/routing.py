@@ -38,6 +38,15 @@ class AgentOut(BaseModel):
     skills: list[str]
     open_tickets: int
     open_by_channel: dict[str, int]
+    assignable: bool = Field(
+        description="Can be given tickets: active, and the role replies to customers (not "
+        "a light agent, nor a custom role without the reply right). An Assignee picker "
+        "lists only these; anyone else is refused with a 422 that says why."
+    )
+    works_on_team_id: UUID | None = Field(
+        description="A custom role limited to one team: only that team's tickets can be "
+        "given to them (a ticket of another team, or of no team, is a 422). null: any team."
+    )
 
 
 class StatusIn(Body):
@@ -74,6 +83,7 @@ def _out(row: Mapping[Any, Any]) -> AgentOut:
             "status": None if light else row["status"],
             "open_tickets": sum(open_by_channel.values()),
             "open_by_channel": open_by_channel,
+            "assignable": bool(row["is_active"]) and not light,
         }
     )
 

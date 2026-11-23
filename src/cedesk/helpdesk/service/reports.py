@@ -122,7 +122,7 @@ def _split(
     return total, by_team, by_agent
 
 
-def _period(
+def check_period(
     start: datetime | None, end: datetime | None, now: datetime
 ) -> tuple[datetime, datetime]:
     try:
@@ -131,7 +131,7 @@ def _period(
         raise Invalid(str(exc)) from exc
 
 
-def _team_filter(caller: Caller, team_id: UUID | None) -> UUID | None:
+def team_filter(caller: Caller, team_id: UUID | None) -> UUID | None:
     """The team a ticket report covers. A `team_only` role reports on its own team
     (md A3); asking for another is a team it can't see."""
     only = scope.visible_team(caller)
@@ -151,9 +151,9 @@ async def team_report(
     team_id: UUID | None = None,
 ) -> TeamReport:
     require(caller, Action.reports)
-    team_id = _team_filter(caller, team_id)
+    team_id = team_filter(caller, team_id)
     now = datetime.now(UTC)
-    start, end = _period(start, end, now)
+    start, end = check_period(start, end, now)
     async with workspace_session(sm, caller.workspace_id) as s:
         if team_id is not None and not await repo.team_exists(s, team_id):
             raise NotFound("Team not found.")
@@ -336,9 +336,9 @@ async def metrics_report(
     """`cevanos_app_url`: the Cevanos web app (a deployment setting). The Governance link
     is given only when this workspace has connected Cevanos."""
     require(caller, Action.reports)
-    team_id = _team_filter(caller, team_id)
+    team_id = team_filter(caller, team_id)
     now = datetime.now(UTC)
-    start, end = _period(start, end, now)
+    start, end = check_period(start, end, now)
     async with workspace_session(sm, caller.workspace_id) as s:
         if team_id is not None and not await repo.team_exists(s, team_id):
             raise NotFound("Team not found.")
@@ -448,7 +448,7 @@ async def article_report(
     their latest answer is the one that counts. Articles aren't per team, so a
     `team_only` role sees them all, as it does in the help center."""
     require(caller, Action.reports)
-    start, end = _period(start, end, datetime.now(UTC))
+    start, end = check_period(start, end, datetime.now(UTC))
     async with workspace_session(sm, caller.workspace_id) as s:
         totals = await repo.vote_totals(s, start, end)
         rows = await repo.votes_by_article(s, start, end, ARTICLE_ROWS)

@@ -103,6 +103,9 @@ from cedesk.helpdesk.domain.imports import (
 from cedesk.helpdesk.service.imports.http import SourceHttp, basic, when
 
 LIMIT = 100  # documented maximum
+TICKET_LIMIT = 10  # tickets per page: each costs its own requests (messages), and a page is read
+# whole before it is saved, so it must fit what a small plan allows in one window (40 requests
+# per 20 seconds) or a 429 would send the run back to the start of the page every time.
 COUNT_PAGES_MAX = 20
 MACRO_PAGES_MAX = 100  # macros are counted one by one (text or not): 10,000 at most
 MESSAGE_PAGES_MAX = 2_000  # 200,000 messages on one ticket: a safety limit, not a real one
@@ -388,7 +391,7 @@ class GorgiasConnector:
         rows, nxt = await self._list(
             "/tickets",
             {
-                "limit": LIMIT,
+                "limit": TICKET_LIMIT,
                 "cursor": after,
                 "order_by": "updated_datetime:asc",
                 "trashed": "false",

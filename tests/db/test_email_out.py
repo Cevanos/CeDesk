@@ -228,6 +228,8 @@ async def test_reply_comes_from_the_address_written_to_keeps_cc_and_threads(
                "to": [billing], "cc": [], "subject": "Re: Re: Damaged T-shirt",
                "references": ["<m0@gmail.com>", "<m1@gmail.com>"]},
     )  # fmt: skip
+    # The reply box can show the CC before the agent sends: same answer as the email.
+    assert (await ticket(client, w["h"], t["id"]))["reply_cc"] == ["rahul@x.com"]
     await reply(client, w["agent"], t["id"], "On it.")
 
     [row] = await queued(app_sessionmaker, w["ws"])
@@ -236,6 +238,15 @@ async def test_reply_comes_from_the_address_written_to_keeps_cc_and_threads(
     assert row["in_reply_to"] == "<m2@gmail.com>"  # her latest email
     assert row["references_ids"] == ["<m0@gmail.com>", "<m1@gmail.com>", "<m2@gmail.com>"]
     assert row["subject"] == f"Re: Re: Damaged T-shirt [{t['label']}]"
+
+
+async def test_a_ticket_with_no_cc_shows_an_empty_reply_cc(
+    client: AsyncClient, app_sessionmaker: Sm
+) -> None:
+    w = await desk(client, app_sessionmaker)
+    await address(client, w, "support")
+    t = await email_ticket(client, w)
+    assert (await ticket(client, w["h"], t["id"]))["reply_cc"] == []
 
 
 async def test_a_macro_reply_is_emailed_too(client: AsyncClient, app_sessionmaker: Sm) -> None:

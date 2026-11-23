@@ -18,6 +18,7 @@ from sqlalchemy.exc import DBAPIError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from cedesk import logs
+from cedesk.captcha import Turnstile
 from cedesk.cevanos_client import make_cevanos
 from cedesk.db import make_engine, make_sessionmaker
 from cedesk.dnscheck import DnsLookup
@@ -29,15 +30,24 @@ from cedesk.helpdesk.api import articles as articles_api
 from cedesk.helpdesk.api import attachments as attachments_api
 from cedesk.helpdesk.api import audit as audit_api
 from cedesk.helpdesk.api import auth as auth_api
+from cedesk.helpdesk.api import auto_close as auto_close_api
+from cedesk.helpdesk.api import backlog as backlog_api
+from cedesk.helpdesk.api import campaigns as campaigns_api
 from cedesk.helpdesk.api import catalog as catalog_api
 from cedesk.helpdesk.api import cevanos as cevanos_api
+from cedesk.helpdesk.api import contact_fields as contact_fields_api
+from cedesk.helpdesk.api import contacts as contacts_api
+from cedesk.helpdesk.api import dashboards as dashboards_api
 from cedesk.helpdesk.api import demo as demo_api
 from cedesk.helpdesk.api import email as email_api
 from cedesk.helpdesk.api import email_in as email_in_api
+from cedesk.helpdesk.api import flows as flows_api
 from cedesk.helpdesk.api import imports as imports_api
 from cedesk.helpdesk.api import inbound_api as inbound_api_api
+from cedesk.helpdesk.api import inbox as inbox_api
 from cedesk.helpdesk.api import jira as jira_api
 from cedesk.helpdesk.api import limits as limits_api
+from cedesk.helpdesk.api import live as live_api
 from cedesk.helpdesk.api import macros as macros_api
 from cedesk.helpdesk.api import members as members_api
 from cedesk.helpdesk.api import messages as messages_api
@@ -47,14 +57,19 @@ from cedesk.helpdesk.api import portal as portal_api
 from cedesk.helpdesk.api import privacy as privacy_api
 from cedesk.helpdesk.api import public as public_api
 from cedesk.helpdesk.api import push as push_api
+from cedesk.helpdesk.api import report_engine as report_engine_api
+from cedesk.helpdesk.api import report_schedules as report_schedules_api
 from cedesk.helpdesk.api import reports as reports_api
 from cedesk.helpdesk.api import roles as roles_api
 from cedesk.helpdesk.api import routing as routing_api
 from cedesk.helpdesk.api import rules as rules_api
 from cedesk.helpdesk.api import sandbox as sandbox_api
 from cedesk.helpdesk.api import saved_replies as saved_replies_api
+from cedesk.helpdesk.api import saved_reports as saved_reports_api
 from cedesk.helpdesk.api import security as security_api
+from cedesk.helpdesk.api import segments as segments_api
 from cedesk.helpdesk.api import side_conversations as side_conversations_api
+from cedesk.helpdesk.api import signup as signup_api
 from cedesk.helpdesk.api import sla as sla_api
 from cedesk.helpdesk.api import sso as sso_api
 from cedesk.helpdesk.api import stream as stream_api
@@ -62,13 +77,18 @@ from cedesk.helpdesk.api import ticket_tools as ticket_tools_api
 from cedesk.helpdesk.api import tickets as tickets_api
 from cedesk.helpdesk.api import triage as triage_api
 from cedesk.helpdesk.api import two_factor as two_factor_api
+from cedesk.helpdesk.api import views as views_api
 from cedesk.helpdesk.api import webhooks as webhooks_api
+from cedesk.helpdesk.domain import bulk as bulk_rules
 from cedesk.helpdesk.domain import limits as limit_rules
+from cedesk.helpdesk.domain import transcript as transcript_rules
 from cedesk.helpdesk.service import apps as apps_service
 from cedesk.helpdesk.service import jira as jira_service
 from cedesk.helpdesk.service import limits as limits_service
 from cedesk.helpdesk.service.errors import ServiceError, TooManyAttempts
 from cedesk.helpdesk.service.imports.framework import make_importers, retry_policy
+from cedesk.helpdesk.service.live import LiveCache
+from cedesk.helpdesk.service.report_engine import ReportSlots
 from cedesk.helpdesk.service.stream import Slots
 from cedesk.ratelimit import SlidingWindowLimiter
 from cedesk.settings import Edition, Settings, get_settings
@@ -124,9 +144,21 @@ def _uuid_or_none(value: object) -> str | None:
         return None
 
 
+_SECURITY_HEADERS = {
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "no-referrer",
+    "Cross-Origin-Opener-Policy": "same-origin",
+    "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=()",
+}
+_API_CSP = "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
+_HSTS = "max-age=31536000; includeSubDomains"
+_DOC_PATHS = ("/docs", "/redoc")
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
-    problems = settings.unsafe()
+    problems = settings.unsafe() + settings.signup_problems()
     if problems:
         raise RuntimeError(
             f"Refusing to start with CEDESK_ENV={settings.env.value}: " + "; ".join(problems)
@@ -157,6 +189,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.cevanos = make_cevanos(settings)  # the connector; each workspace's key is in the db
     app.state.dns = DnsLookup()  # the support address DNS check (md C10)
     app.state.stream_slots = Slots()  # open live streams per person (md C11)
+    # Report queries run at once in this process (plan 3.2); more wait, then answer 429.
+    app.state.report_slots = ReportSlots(settings.report_concurrency)
+    app.state.live_cache = LiveCache()  # the live view's answer, shared for a few seconds
     # Imports from other help desks (md section 8); tests replace `build` with a fake source.
     app.state.importers = make_importers(
         settings.secret_key.get_secret_value(), app.state.store, retry=retry_policy(settings)
@@ -176,6 +211,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     # Requests with API keys, per workspace (md PL2).
     app.state.api_key_requests = SlidingWindowLimiter(settings.api_key_limit, 60)
+    # Campaigns (plan phase 6): one-click unsubscribes and open images come from mail
+    # providers' few addresses, so they get their own, larger budget; test emails per Admin.
+    app.state.unsubscribe_attempts = SlidingWindowLimiter(
+        settings.unsubscribe_limit, settings.unsubscribe_window_seconds
+    )
+    app.state.campaign_tests = SlidingWindowLimiter(campaigns_api.TESTS_PER_HOUR, 3600)
+    # Inbox tools (feature-gap plan 1.3, 1.6): bulk changes per person; transcripts per
+    # person and per workspace (each one is an email out of the help desk).
+    app.state.bulk_requests = SlidingWindowLimiter(bulk_rules.PER_MINUTE, 60)
+    app.state.transcript_requests = SlidingWindowLimiter(transcript_rules.PER_HOUR, 3600)
+    app.state.transcript_workspace = SlidingWindowLimiter(transcript_rules.PER_HOUR_WORKSPACE, 3600)
     # Outgoing webhooks: checks a URL's host when it is saved, sends the test ping (md PL3).
     app.state.webhook_client = WebhookClient()
     # Marketplace apps: how the Shopify and Stripe cards reach the provider (md PL7, C12).
@@ -183,9 +229,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # ...and how Jira issues are made and the Slack test line is sent (md X10, W20).
     app.state.app_post = jira_service.make_post
     # Cloud plan limits (md O4): only on the cloud edition, with the plans from config.
-    limits_service.configure(
-        cloud=settings.edition is Edition.cloud, plans=limit_rules.parse_plans(settings.plans)
-    )
+    plans = limit_rules.parse_plans(settings.plans)
+    limits_service.configure(cloud=settings.edition is Edition.cloud, plans=plans)
+    # Self-service sign-up: a default plan that doesn't exist stops the app here.
+    if (
+        settings.signup_enabled
+        and settings.edition is Edition.cloud
+        and settings.signup_default_plan
+        and settings.signup_default_plan not in plans
+    ):
+        raise RuntimeError(
+            f"CEDESK_SIGNUP_DEFAULT_PLAN={settings.signup_default_plan!r} is not one of the "
+            f"plans: {', '.join(sorted(plans))}"
+        )
+    secret = settings.signup_captcha_secret
+    app.state.captcha = Turnstile(secret.get_secret_value()) if secret else None
+    # Sign-up passwords hashed at once (each Argon2 hash takes about 64 MB).
+    app.state.signup_hash_slots = asyncio.Semaphore(settings.signup_hash_slots)
 
     @app.middleware("http")
     async def request_log(request: Request, call_next: Any) -> Response:
@@ -217,6 +277,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     "ms": round((time.perf_counter() - started) * 1000, 1),
                 },
             )
+
+    @app.middleware("http")
+    async def security_headers(request: Request, call_next: Any) -> Response:
+        """Browser protections on every answer (md S: security headers). The API answers
+        JSON, files and redirects, never pages, so nothing may frame it, run scripts from it
+        or learn where a link came from. A header a route set itself (a file's sandbox CSP)
+        is kept. The interactive docs (/docs, /redoc) load their own scripts, so they get
+        all but the CSP. HSTS only over https: on plain http browsers ignore it anyway."""
+        response: Response = await call_next(request)
+        for name, value in _SECURITY_HEADERS.items():
+            response.headers.setdefault(name, value)
+        if not request.url.path.startswith(_DOC_PATHS):
+            response.headers.setdefault("Content-Security-Policy", _API_CSP)
+        if request.url.scheme == "https":
+            response.headers.setdefault("Strict-Transport-Security", _HSTS)
+        return response
 
     # Every error has one shape (README, "Errors"):
     #   {"error": {"code": "...", "message": "...", "details": [...]}}
@@ -282,6 +358,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
 
     app.include_router(auth_api.router, prefix="/api/v1")
+    app.include_router(signup_api.router, prefix="/api/v1")
     app.include_router(members_api.router, prefix="/api/v1")
     app.include_router(roles_api.router, prefix="/api/v1")
     app.include_router(security_api.router, prefix="/api/v1")
@@ -292,7 +369,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(two_factor_api.router, prefix="/api/v1")
     # Before tickets: `/tickets/from-conversation/{id}` must not be read as a ticket id.
     app.include_router(cevanos_api.router, prefix="/api/v1")
+    app.include_router(inbox_api.router, prefix="/api/v1")  # before /tickets/{id}
     app.include_router(tickets_api.router, prefix="/api/v1")
+    app.include_router(views_api.router, prefix="/api/v1")
+    app.include_router(contacts_api.router, prefix="/api/v1")
+    app.include_router(contact_fields_api.router, prefix="/api/v1")
+    app.include_router(segments_api.router, prefix="/api/v1")
+    app.include_router(campaigns_api.router, prefix="/api/v1")
+    app.include_router(campaigns_api.public, prefix="/api/v1")  # before /public/{workspace}
+    app.include_router(auto_close_api.router, prefix="/api/v1")
     app.include_router(ticket_tools_api.router, prefix="/api/v1")
     app.include_router(catalog_api.router, prefix="/api/v1")
     app.include_router(messages_api.router, prefix="/api/v1")
@@ -300,6 +385,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(attachments_api.router, prefix="/api/v1")
     app.include_router(saved_replies_api.router, prefix="/api/v1")
     app.include_router(rules_api.router, prefix="/api/v1")
+    app.include_router(flows_api.router, prefix="/api/v1")
     app.include_router(macros_api.router, prefix="/api/v1")
     app.include_router(email_api.router, prefix="/api/v1")
     app.include_router(email_in_api.router, prefix="/api/v1")
@@ -310,6 +396,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(articles_api.router, prefix="/api/v1")
     app.include_router(triage_api.router, prefix="/api/v1")
     app.include_router(reports_api.router, prefix="/api/v1")
+    app.include_router(backlog_api.router, prefix="/api/v1")
+    app.include_router(report_engine_api.router, prefix="/api/v1")
+    app.include_router(saved_reports_api.router, prefix="/api/v1")
+    app.include_router(dashboards_api.router, prefix="/api/v1")
+    app.include_router(live_api.router, prefix="/api/v1")
+    app.include_router(report_schedules_api.router, prefix="/api/v1")
     app.include_router(imports_api.router, prefix="/api/v1")
     app.include_router(stream_api.router, prefix="/api/v1")
     app.include_router(mobile_api.router, prefix="/api/v1")

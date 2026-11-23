@@ -384,6 +384,16 @@ def _stored(row: Row) -> rules.Address:
     )
 
 
+async def reply_cc(s: AsyncSession, ticket_id: UUID, customer: str) -> list[str]:
+    """Who a reply on this ticket will copy: the same answer `queue_reply` uses, so the
+    reply box can show it before the agent sends. Empty for a ticket with no email."""
+    _first, first_cc, _last = await repo.customer_emails(s, ticket_id)
+    if not isinstance(first_cc, dict):
+        return []
+    ours = {a.address for a in (_stored(r) for r in await repo.list_addresses(s))}
+    return rules.cc_for_reply(first_cc, ours, customer)
+
+
 async def queue_reply(
     s: AsyncSession,
     workspace_id: UUID,
@@ -504,6 +514,7 @@ def _outgoing(row: Row, files: Sequence[MailFile] = ()) -> OutgoingEmail:
         in_reply_to=row["in_reply_to"],
         references=list(row["references_ids"]),
         attachments=list(files),
+        html=row.get("body_html"),
     )
 
 

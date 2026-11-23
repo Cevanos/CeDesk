@@ -207,9 +207,10 @@ async def _check_by_post(
                 slack_rules.path_of(secret), {"text": SLACK_TEST_LINE}
             )
     except AppCallError as exc:
+        said = slack_rules.webhook_problem(exc.status) if app is App.slack_alerts else None
         if exc.permanent:
-            raise Invalid(str(exc)) from None
-        raise Unavailable(str(exc)) from None
+            raise Invalid(said or str(exc)) from None
+        raise Unavailable(said or str(exc)) from None
 
 
 async def install(

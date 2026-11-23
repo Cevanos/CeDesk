@@ -3,6 +3,7 @@ customer message on the ticket it answers.
 
 1. Read it; drop automatic emails (out-of-office, bounces, mailing lists) and emails sent
    from one of our own support addresses, so two systems never answer each other forever.
+   A bounce or spam report about a campaign email is recorded first (`campaigns`).
 2. Find the workspace from the first To/CC (or delivery) address that is a support address.
 3. Seen before (same Message-ID)? Nothing happens. An answer in a side conversation (md
    X5, by its reply headers) is saved there and goes no further.
@@ -24,6 +25,7 @@ from typing import Protocol
 from uuid import UUID
 
 from cedesk.db import workspace_session
+from cedesk.helpdesk.domain import bounces as bounce_rules
 from cedesk.helpdesk.domain import email_verify as verify
 from cedesk.helpdesk.domain import inbound as rules
 from cedesk.helpdesk.domain.archive import FOLLOW_UP_TAG
@@ -31,7 +33,7 @@ from cedesk.helpdesk.domain.email import normalise_address
 from cedesk.helpdesk.domain.tickets import Channel, label
 from cedesk.helpdesk.repo import archive as archive_repo
 from cedesk.helpdesk.repo import email as repo
-from cedesk.helpdesk.service import side_conversations
+from cedesk.helpdesk.service import campaigns, side_conversations
 from cedesk.helpdesk.service.attachments import IncomingFiles
 from cedesk.helpdesk.service.auth import Sessionmaker
 from cedesk.helpdesk.service.customer_replies import customer_reply
@@ -53,6 +55,7 @@ class Outcome(StrEnum):
     thanked = "thanked"  # a thank-you on a resolved ticket; it stays resolved
     duplicate = "duplicate"  # this email was already received
     automatic = "automatic"  # an auto-reply, bounce or list email: ignored
+    bounce = "bounce"  # a campaign email's bounce or spam report (plan 6.4): no ticket
     from_us = "from_us"  # sent from one of our support addresses: ignored
     no_workspace = "no_workspace"  # not sent to any support address
     verification = "verification"  # a forwarding check (md C10): never a ticket
@@ -129,6 +132,14 @@ async def receive(
             return Received(Outcome.no_workspace)
         await verify_forwarding(sm, found[0], code)
         return Received(Outcome.verification, workspace_id=found[0])
+    # A bounce or spam report about a campaign email (plan 6.4): the address goes on the
+    # suppression list and no ticket is made. Any other report stays an automatic email.
+    report = bounce_rules.read(raw)
+    if report is not None:
+        async with sm() as s, s.begin():
+            found = await repo.workspace_for_addresses(s, [*email.to, *email.cc, *extra])
+        if found is not None and await campaigns.handle_report(sm, found[0], report):
+            return Received(Outcome.bounce, workspace_id=found[0])
     if email.auto:
         return Received(Outcome.automatic)
 

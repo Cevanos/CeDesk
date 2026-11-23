@@ -263,6 +263,20 @@ async def attempts(session: AsyncSession, delivery_ids: Sequence[UUID]) -> Seque
     return result.mappings().all()
 
 
+async def failed_hook_enabled(session: AsyncSession, delivery_id: UUID) -> bool | None:
+    """Whether a failed delivery's webhook is on; None when there is no failed delivery
+    with that id. Locks the delivery, so a retry decided on it is the only one."""
+    result = await session.execute(
+        text(
+            "SELECT w.enabled FROM hd_webhook_delivery d JOIN hd_webhook w "
+            "ON w.id = d.webhook_id WHERE d.id = :id AND d.state = 'failed' FOR UPDATE OF d"
+        ),
+        {"id": delivery_id},
+    )
+    found = result.scalar_one_or_none()
+    return None if found is None else bool(found)
+
+
 async def retry(session: AsyncSession, delivery_id: UUID) -> bool:
     """A failed delivery back in the queue now, with its tries counted from zero."""
     result = await session.execute(

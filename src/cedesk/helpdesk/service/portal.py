@@ -199,6 +199,11 @@ async def resolve(sm: Sessionmaker, token: str) -> Customer:
         row = await repo.live_session(s, auth_rules.token_hash(token))
     if row is None:
         raise NotSignedIn("Sign in again.")
+    # Saving a narrower domain list ends those sessions (save_settings); this also catches
+    # one made at the same moment, so a blocked email never gets through.
+    domains = list(row["allowed_domains"] or [])
+    if not rules.domain_allowed(str(row["email"]), domains):
+        raise NotSignedIn(rules.domains_message(domains))
     return Customer(
         workspace_id, row["contact_id"], row["session_id"], str(row["email"]), str(row["name"])
     )
@@ -251,13 +256,23 @@ async def save_settings(
         await repo.save_settings(
             s, caller.workspace_id, cleaned, csat_survey, web_form, caller.member_id
         )
+        # Customers already signed in with an email the list no longer allows are signed
+        # out now (their open live stream ends too), as a new IP list applies at once.
+        # Before, only new sign-ins were refused (live, Phase 3 retest).
+        ended: list[UUID] = []
+        if cleaned:
+            live = await repo.live_sessions(s)
+            ended = [r["id"] for r in live if not rules.domain_allowed(str(r["email"]), cleaned)]
+            if ended:
+                await repo.revoke_sessions(s, ended)
         changed = audit_rules.changes(
             before or {"allowed_domains": [], "csat_survey": True, "web_form": False},
             await repo.settings_row(s),
             fields=("allowed_domains", "csat_survey", "web_form"),
         )
         if changed:
-            await audit.record(
-                s, caller, Area.portal, "changed", "Customer portal", detail={"changes": changed}
-            )
+            detail: dict[str, object] = {"changes": changed}
+            if ended:
+                detail["portal_sessions_ended"] = len(ended)
+            await audit.record(s, caller, Area.portal, "changed", "Customer portal", detail=detail)
     return await get_settings(sm, caller)

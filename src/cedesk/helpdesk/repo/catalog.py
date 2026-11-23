@@ -13,8 +13,9 @@ Row = RowMapping
 _TEAM = """
     SELECT t.id, t.name, t.auto_assign, t.max_open_per_agent,
            coalesce(array_agg(m.member_id ORDER BY m.position, m.member_id)
-                    FILTER (WHERE m.member_id IS NOT NULL), '{}') AS member_ids
+                    FILTER (WHERE mb.id IS NOT NULL), '{}') AS member_ids
     FROM hd_team t LEFT JOIN hd_team_member m ON m.team_id = t.id
+         LEFT JOIN member mb ON mb.id = m.member_id AND mb.is_active
 """
 
 
@@ -74,6 +75,12 @@ async def set_team_members(
             ),
             {"ws": workspace_id, "t": team_id, "ids": list(member_ids)},
         )
+
+
+async def remove_member_from_teams(session: AsyncSession, member_id: UUID) -> None:
+    """Takes a deactivated member out of every team: a team may only hold active
+    members, so leaving them in makes the team impossible to save."""
+    await session.execute(text("DELETE FROM hd_team_member WHERE member_id = :m"), {"m": member_id})
 
 
 async def delete_team(session: AsyncSession, team_id: UUID) -> bool:

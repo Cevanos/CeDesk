@@ -205,14 +205,16 @@ async def enqueue(
     in_reply_to: str | None,
     references: Sequence[str],
     sensitive: bool = False,
+    body_html: str | None = None,
 ) -> UUID:
+    """`body_html`: an HTML part as well (a campaign's test email); None for the rest."""
     result = await session.execute(
         text(
             "INSERT INTO hd_email_out (workspace_id, ticket_id, message_id, from_address, "
             "from_name, to_addresses, cc_addresses, subject, body_text, header_message_id, "
-            "in_reply_to, references_ids, sensitive) VALUES (:ws, :ticket, :message, "
-            ":from_address, :from_name, :to, :cc, :subject, :body, :mid, :in_reply_to, :refs, "
-            ":sensitive) RETURNING id"
+            "in_reply_to, references_ids, sensitive, body_html) VALUES (:ws, :ticket, "
+            ":message, :from_address, :from_name, :to, :cc, :subject, :body, :mid, "
+            ":in_reply_to, :refs, :sensitive, :html) RETURNING id"
         ),
         {
             "ws": workspace_id,
@@ -228,6 +230,7 @@ async def enqueue(
             "in_reply_to": in_reply_to,
             "refs": list(references),
             "sensitive": sensitive,
+            "html": body_html,
         },
     )
     return UUID(str(result.scalar_one()))
@@ -356,11 +359,13 @@ async def ticket_for_email_ids(
 async def ticket_for_contact_number(
     session: AsyncSession, number: int, contact_email: str
 ) -> UUID | None:
-    """Ticket T-<number>, only if <contact_email> is its customer."""
+    """Ticket T-<number>, only if <contact_email> is its customer (their own address or
+    one merged into them, plan 2.4)."""
     result = await session.execute(
         text(
             "SELECT t.id FROM hd_ticket t JOIN hd_contact c ON c.id = t.contact_id "
-            "WHERE t.number = :n AND c.email = :e"
+            "WHERE t.number = :n AND (c.email = :e OR EXISTS (SELECT 1 FROM hd_contact_alias a "
+            "WHERE a.contact_id = c.id AND a.email = :e))"
         ),
         {"n": number, "e": contact_email},
     )

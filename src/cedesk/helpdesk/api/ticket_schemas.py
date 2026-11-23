@@ -237,6 +237,11 @@ class TicketRowOut(BaseModel):
         default_factory=list,
         description="The Jira issues linked to the ticket (ABC-123), by key; [] for none.",
     )
+    snoozed_until: datetime | None = Field(
+        default=None,
+        description="Snoozed: the ticket is Pending until then, when it reopens by itself "
+        "(a customer reply wakes it sooner). null: not snoozed.",
+    )
     sla: SlaOut | None = None
 
 
@@ -296,6 +301,11 @@ class TicketOut(TicketRowOut):
     handover: dict[str, Any] | None = Field(description="The AI summary and reason.")
     source_id: str | None
     contact: ContactCard
+    reply_cc: list[str] = Field(
+        default=[],
+        description="Who a reply will copy (from the customer's first email that had a CC, "
+        "without our own addresses or the customer). Read-only: the reply box shows it.",
+    )
     messages: list[MessageOut] = Field(description="The latest 50 messages, oldest to newest.")
     older_messages_cursor: str | None = Field(
         description="Send as `cursor` to GET /tickets/{id}/messages for older messages; "
@@ -307,6 +317,7 @@ class Counts(BaseModel):
     open: int
     pending: int
     resolved: int
+    snoozed: int = Field(default=0, description="Of the Pending ones, how many are snoozed.")
 
 
 class TicketListOut(BaseModel):

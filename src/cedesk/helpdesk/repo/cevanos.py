@@ -235,7 +235,14 @@ async def placeholder_contact(session: AsyncSession, ticket_id: UUID, domain: st
 
 
 async def contact_with_email(session: AsyncSession, email: str) -> UUID | None:
-    result = await session.execute(text("SELECT id FROM hd_contact WHERE email = :e"), {"e": email})
+    """By the contact's own address, or one merged into it (plan 2.4)."""
+    result = await session.execute(
+        text(
+            "SELECT id FROM hd_contact WHERE email = :e "
+            "UNION ALL SELECT contact_id FROM hd_contact_alias WHERE email = :e LIMIT 1"
+        ),
+        {"e": email},
+    )
     found = result.scalar()
     return UUID(str(found)) if found is not None else None
 

@@ -72,6 +72,36 @@ class TooManyAttempts(ServiceError):
         self.retry_after = retry_after
 
 
+class SlugTaken(Conflict):
+    """409 `slug_taken`: another workspace has this address (self-service sign-up)."""
+
+    code = "slug_taken"
+
+
+class BadCode(Invalid):
+    """422 `bad_code`: the sign-up code is wrong; the person may try again."""
+
+    code = "bad_code"
+
+
+class CodeExpired(Gone):
+    """410 `code_expired`: the sign-up code ran out of time or tries; resend a new one."""
+
+    code = "code_expired"
+
+
+class SignupExpired(Gone):
+    """410 `signup_expired`: unknown, replaced or over a day old; start the sign-up again."""
+
+    code = "signup_expired"
+
+
+class CaptchaFailed(Forbidden):
+    """403 `captcha_failed`: the sign-up's CAPTCHA answer was missing or not accepted."""
+
+    code = "captcha_failed"
+
+
 class Unavailable(ServiceError):
     """A service we depend on (Cevanos) is down or slow: the caller tries again later."""
 

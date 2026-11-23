@@ -13,3 +13,7 @@ build/
 htmlcov/
 # Uploaded files with CEDESK_STORAGE_DRIVER=local; the leading / keeps src/cedesk/storage/ tracked.
 /storage/
+# Backup settings on a server (deploy/backup.env.example).
+deploy/backup.env
+# Emails written by CEDESK_MAIL_BACKEND=log on a developer's machine.
+mail-outbox/

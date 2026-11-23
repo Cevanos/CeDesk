@@ -36,10 +36,16 @@ services:
   api:
     build: ..
     restart: unless-stopped
-    # Behind Caddy: take the client's address from X-Forwarded-For (Caddy replaces any
-    # value the client sent), so the sign-in limit counts real addresses.
+    # Behind a proxy (Caddy, or the web app's server): take the client's address from
+    # X-Forwarded-For, but only when the request comes from one of these networks (the
+    # proxies: this machine and Docker's private networks). Then uvicorn reads the list
+    # from the right and takes the first address that is not a proxy, so an address a
+    # client wrote into the header itself is ignored. Never "*": with it uvicorn trusts the
+    # left-most address, which the client chooses. The sign-in limit and each workspace's
+    # IP allowlist rely on this.
     command: ["uv", "run", "--no-sync", "uvicorn", "cedesk.main:app", "--host", "0.0.0.0",
-              "--port", "8100", "--proxy-headers", "--forwarded-allow-ips", "*"]
+              "--port", "8100", "--proxy-headers", "--forwarded-allow-ips",
+              "${CEDESK_FORWARDED_ALLOW_IPS:-127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fd00::/8}"]
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -53,6 +59,17 @@ services:
       CEDESK_APP_URL: ${CEDESK_APP_URL:-http://localhost:3000}
       # The demo data routes: off unless true, never on production.
       CEDESK_DEMO_ENABLED: ${CEDESK_DEMO_ENABLED:-false}
+      # Self-service sign-up (off unless true) and its CAPTCHA (Cloudflare Turnstile).
+      CEDESK_SIGNUP_ENABLED: ${CEDESK_SIGNUP_ENABLED:-false}
+      CEDESK_SIGNUP_CAPTCHA_SITE_KEY: ${CEDESK_SIGNUP_CAPTCHA_SITE_KEY:-}
+      CEDESK_SIGNUP_CAPTCHA_SECRET: ${CEDESK_SIGNUP_CAPTCHA_SECRET:-}
+      CEDESK_SIGNUP_DEFAULT_PLAN: ${CEDESK_SIGNUP_DEFAULT_PLAN:-free}
+      CEDESK_SIGNUP_PER_IP_HOUR: ${CEDESK_SIGNUP_PER_IP_HOUR:-5}
+      CEDESK_SIGNUP_WORKSPACES_PER_IP_DAY: ${CEDESK_SIGNUP_WORKSPACES_PER_IP_DAY:-3}
+      CEDESK_SIGNUP_HASH_SLOTS: ${CEDESK_SIGNUP_HASH_SLOTS:-4}
+      # Reports: longest query, and how many run at once per API process.
+      CEDESK_REPORT_TIMEOUT_SECONDS: ${CEDESK_REPORT_TIMEOUT_SECONDS:-10}
+      CEDESK_REPORT_CONCURRENCY: ${CEDESK_REPORT_CONCURRENCY:-4}
       # Single sign-on: the identity provider sends people back to this API address.
       CEDESK_API_URL: ${CEDESK_API_URL:-}
       CEDESK_MAIL_FROM_ADDRESS: ${CEDESK_MAIL_FROM_ADDRESS:-}
@@ -61,8 +78,8 @@ services:
       # service's SPF name the DNS check looks for.
       CEDESK_MAIL_FORWARD_TO: ${CEDESK_MAIL_FORWARD_TO:-}
       CEDESK_MAIL_SPF_INCLUDE: ${CEDESK_MAIL_SPF_INCLUDE:-}
-      # clamd: downloads wait until the worker found the file clean.
-      CEDESK_SCAN_BACKEND: ${CEDESK_SCAN_BACKEND:-none}
+      # clamd (default): downloads wait until the worker found the file clean.
+      CEDESK_SCAN_BACKEND: ${CEDESK_SCAN_BACKEND:-clamd}
       CEDESK_CEVANOS_URL: ${CEDESK_CEVANOS_URL:-https://api.cevanos.ai}
       CEDESK_CEVANOS_APP_URL: ${CEDESK_CEVANOS_APP_URL:-https://cevanos.ai}
       # Push banners to the mobile app: the API only says whether they are on.
@@ -95,8 +112,13 @@ services:
       # the survey's sender when a workspace has no support address.
       CEDESK_APP_URL: ${CEDESK_APP_URL:-http://localhost:3000}
       CEDESK_PORTAL_URL: ${CEDESK_PORTAL_URL:-}
+      CEDESK_REPORT_SCHEDULE_TIMEOUT_SECONDS: ${CEDESK_REPORT_SCHEDULE_TIMEOUT_SECONDS:-5}
+      CEDESK_REPORT_SCHEDULE_BUDGET_SECONDS: ${CEDESK_REPORT_SCHEDULE_BUDGET_SECONDS:-20}
       CEDESK_MAIL_FROM_ADDRESS: ${CEDESK_MAIL_FROM_ADDRESS:-}
-      CEDESK_MAIL_BACKEND: ${CEDESK_MAIL_BACKEND:-log}
+      # Self-service sign-up: the worker sends its codes on their own lane.
+      CEDESK_SIGNUP_ENABLED: ${CEDESK_SIGNUP_ENABLED:-false}
+      CEDESK_SIGNUP_MAIL_CONCURRENCY: ${CEDESK_SIGNUP_MAIL_CONCURRENCY:-10}
+      CEDESK_MAIL_BACKEND: ${CEDESK_MAIL_BACKEND:-none}
       CEDESK_SMTP_HOST: ${CEDESK_SMTP_HOST:-}
       CEDESK_SMTP_PORT: ${CEDESK_SMTP_PORT:-587}
       CEDESK_SMTP_SECURITY: ${CEDESK_SMTP_SECURITY:-starttls}
@@ -107,7 +129,7 @@ services:
       CEDESK_IMAP_USERNAME: ${CEDESK_IMAP_USERNAME:-}
       CEDESK_IMAP_PASSWORD: ${CEDESK_IMAP_PASSWORD:-}
       CEDESK_IMAP_FOLDER: ${CEDESK_IMAP_FOLDER:-INBOX}
-      CEDESK_SCAN_BACKEND: ${CEDESK_SCAN_BACKEND:-none}
+      CEDESK_SCAN_BACKEND: ${CEDESK_SCAN_BACKEND:-clamd}
       CEDESK_CLAMD_HOST: ${CEDESK_CLAMD_HOST:-clamav}
       CEDESK_CLAMD_MAX_BYTES: ${CEDESK_CLAMD_MAX_BYTES:-104857600}
       # Cevanos: take-overs and replies out, customers' chat messages in.
@@ -120,15 +142,23 @@ services:
     volumes:
       - files:/data/storage
 
-  # Virus scan, off by default (it needs about 1.5 GB of memory). To use it:
-  # `docker compose --profile scan up -d` and CEDESK_SCAN_BACKEND=clamd in deploy/.env.
-  # The first start downloads the virus definitions (a few minutes); it updates them itself.
+  # Virus scan, on by default. It needs about 1.5 GB of memory (up to 3 GB for a minute
+  # while it reloads new definitions). The first start downloads the definitions (a few
+  # minutes; files wait as "being checked" until then); it updates them itself. A small
+  # server can turn it off with CEDESK_SCAN_BACKEND=none in deploy/.env and
+  # `docker compose stop clamav`. No other service waits for it: if it is down, files
+  # wait and email still flows.
   clamav:
     image: clamav/clamav:1.4
     restart: unless-stopped
-    profiles: ["scan"]
     volumes:
       - clamav:/var/lib/clamav
+    healthcheck:
+      test: ["CMD", "clamdcheck.sh"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 10m
 
   caddy:
     image: caddy:2.8.4

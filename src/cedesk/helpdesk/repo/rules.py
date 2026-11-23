@@ -12,15 +12,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 Row = RowMapping
 
 _COLUMNS = (
-    "SELECT id, name, enabled, position, event, conditions, actions, created_at, updated_at "
-    "FROM hd_rule"
+    "SELECT id, name, enabled, position, event, conditions, actions, max_runs_per_hour, "
+    "max_runs_per_day, created_at, updated_at FROM hd_rule"
 )
 
 
 _INSERT_SQL = (
     "INSERT INTO hd_rule (workspace_id, name, enabled, event, conditions, actions, created_by, "
-    "position) VALUES (:ws, :name, :enabled, :event, CAST(:conditions AS jsonb), "
-    "CAST(:actions AS jsonb), :by, (SELECT coalesce(max(position), -1) + 1 FROM hd_rule))"
+    "max_runs_per_hour, max_runs_per_day, position) VALUES (:ws, :name, :enabled, :event, "
+    "CAST(:conditions AS jsonb), CAST(:actions AS jsonb), :by, :per_hour, :per_day, "
+    "(SELECT coalesce(max(position), -1) + 1 FROM hd_rule))"
 )
 _INSERT = text(_INSERT_SQL + " RETURNING id")
 _INSERT_SKIP = text(_INSERT_SQL + " ON CONFLICT (workspace_id, name) DO NOTHING RETURNING id")
@@ -60,6 +61,8 @@ async def insert_rule(
     actions: list[dict[str, Any]],
     created_by: UUID | None,
     skip_existing: bool = False,
+    max_runs_per_hour: int = 1000,
+    max_runs_per_day: int = 10000,
 ) -> UUID | None:
     """Added last. With `skip_existing`, a rule with that name is left alone (None)."""
     result = await session.execute(
@@ -72,6 +75,8 @@ async def insert_rule(
             "conditions": json.dumps(conditions),
             "actions": json.dumps(actions),
             "by": created_by,
+            "per_hour": max_runs_per_hour,
+            "per_day": max_runs_per_day,
         },
     )
     value = result.scalar_one_or_none()
@@ -87,16 +92,22 @@ async def update_rule(
     event: str | None,
     conditions: list[dict[str, Any]] | None,
     actions: list[dict[str, Any]] | None,
+    max_runs_per_hour: int | None = None,
+    max_runs_per_day: int | None = None,
 ) -> bool:
     result = await session.execute(
         text(
             "UPDATE hd_rule SET name = coalesce(:name, name), "
             "enabled = coalesce(:enabled, enabled), event = coalesce(:event, event), "
             "conditions = coalesce(CAST(:conditions AS jsonb), conditions), "
-            "actions = coalesce(CAST(:actions AS jsonb), actions), updated_at = now() "
-            "WHERE id = :id RETURNING id"
+            "actions = coalesce(CAST(:actions AS jsonb), actions), "
+            "max_runs_per_hour = coalesce(CAST(:per_hour AS integer), max_runs_per_hour), "
+            "max_runs_per_day = coalesce(CAST(:per_day AS integer), max_runs_per_day), "
+            "updated_at = now() WHERE id = :id RETURNING id"
         ),
         {
+            "per_hour": max_runs_per_hour,
+            "per_day": max_runs_per_day,
             "id": rule_id,
             "name": name,
             "enabled": enabled,

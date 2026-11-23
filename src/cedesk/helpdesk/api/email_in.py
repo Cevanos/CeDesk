@@ -37,10 +37,11 @@ FORM_TYPES = ("multipart/form-data", "application/x-www-form-urlencoded")
 class ReceivedOut(BaseModel):
     outcome: Literal[
         "created", "added", "rules_ran", "reopened", "thanked", "duplicate",
-        "automatic", "from_us", "no_workspace", "unreadable", "verification",
+        "automatic", "from_us", "no_workspace", "unreadable", "verification", "bounce",
     ] = Field(description="created: a new ticket; added / rules_ran / reopened / thanked: on "
               "an existing ticket; verification: a support address's forwarding check came "
-              "back (no ticket); the rest: ignored on purpose.")  # fmt: skip
+              "back (no ticket); bounce: a campaign email's bounce or spam report (recorded, "
+              "no ticket); the rest: ignored on purpose.")  # fmt: skip
     ticket_id: UUID | None
 
 

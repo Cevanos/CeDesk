@@ -68,7 +68,14 @@ class FakeSlack:
             if user == "U0RAVI":
                 return httpx.Response(200, json={"ok": True, "user": {
                     "name": "ravi", "profile": {"display_name": "Ravi (warehouse)"}}})  # fmt: skip
+            if user == "U0MEENA":
+                return httpx.Response(200, json={"ok": True, "user": {
+                    "name": "meena", "profile": {"real_name": "Meena (payments)"}}})  # fmt: skip
             return httpx.Response(200, json={"ok": False, "error": "user_not_found"})
+        if path == "/api/files.info":
+            if parse_qs(request.url.query.decode())["file"][0] == "F0PHOTO":
+                return httpx.Response(200, json={"ok": True, "file": {"name": "photo.png"}})
+            return httpx.Response(200, json={"ok": False, "error": "missing_scope"})
         return httpx.Response(404)
 
 
@@ -330,6 +337,27 @@ async def test_a_photo_reply_keeps_its_text_and_names_the_file(
     assert not any("files.slack.com" in str(r.url) for r in fake.seen)  # never downloaded
 
 
+async def test_mentions_links_and_files_without_a_name_read_well(
+    client: AsyncClient, app_sessionmaker: Sm
+) -> None:
+    """Live retest with a real Slack: a mentioned colleague stayed @U..., Slack's own link
+    label read twice, and a photo Slack sent without its name read "[file: unnamed]"."""
+    fake, w, _, events = await _started(client, app_sessionmaker)
+    bare = {"mode": "file_access", "file_access": "check_file_info"}
+    event = reply_event("1700000000.000001", "1700000050.000200",
+                        text="<@U0MEENA> see <https://example.com/logs|example.com/logs>",
+                        files=[{"id": "F0PHOTO", **bare}, {"id": "F0SECRET", **bare}])  # fmt: skip
+    assert ok(await client.post(events, content=event, headers=signed(event))) == {}
+    rows = await side_rows(app_sessionmaker, w["ws"])
+    assert rows[-1]["author_name"] == "Ravi (warehouse)"
+    assert rows[-1]["body"] == (  # F0SECRET: files.info said missing_scope
+        "@Meena (payments) see https://example.com/logs\n[file: photo.png]\n[file]"
+    )
+    asked = sorted(r.url.path for r in fake.seen if r.url.path.endswith(".info"))
+    assert asked == ["/api/files.info"] * 2 + ["/api/users.info"] * 2
+    assert not any("files.slack.com" in str(r.url) for r in fake.seen)  # never downloaded
+
+
 @pytest.mark.parametrize("trouble", ["slow", "broken"])
 async def test_a_slow_or_failed_name_lookup_keeps_the_reply(
     client: AsyncClient, app_sessionmaker: Sm, monkeypatch: pytest.MonkeyPatch, trouble: str
@@ -364,10 +392,10 @@ async def test_a_crash_after_saving_loses_only_the_name(
     sm = app_sessionmaker
     _, w, t, events = await _started(client, sm)
 
-    async def crash(bot: Any, user: str) -> str | None:
+    async def crash(bot: Any, reply: Any) -> Any:
         raise RuntimeError("the worker died")
 
-    monkeypatch.setattr(sides, "_name_in_time", crash)
+    monkeypatch.setattr(sides, "_details_in_time", crash)
     event = reply_event("1700000000.000001", "1700000050.000200")
     with pytest.raises(RuntimeError):
         await client.post(events, content=event, headers=signed(event))

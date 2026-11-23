@@ -31,6 +31,14 @@ EXPECTED: dict[Action, set[Role]] = {
     Action.settings: {A},
     Action.list_members: {A, S, G, L},
     Action.manage_access: {A},
+    Action.bulk_edit: {A, S, G},
+    Action.share_views: {A, S},
+    Action.send_transcript: {A, S, G},
+    Action.manage_contacts: {A},
+    Action.merge_contacts: {A, S},
+    Action.export_contacts: {A},
+    Action.manage_segments: {A, S},
+    Action.manage_campaigns: {A},
 }
 
 
@@ -61,12 +69,24 @@ def _custom(**rights: object) -> Access:
 
 
 # Custom roles (md 6.6 last column, A3): each right adds exactly its actions.
-CUSTOM_BASE = {Action.read_ticket, Action.private_note, Action.change_fields, Action.list_members}
+CUSTOM_BASE = {
+    Action.read_ticket,
+    Action.private_note,
+    Action.change_fields,
+    Action.list_members,
+    Action.bulk_edit,
+}
 RIGHT_ADDS = {
-    "reply": {Action.reply, Action.create_ticket, Action.assign_self},
+    "reply": {Action.reply, Action.create_ticket, Action.assign_self, Action.send_transcript},
     "assign_any": {Action.assign_self, Action.assign_others},
     "reports": {Action.reports},
-    "settings": {Action.settings},
+    "settings": {
+        Action.settings,
+        Action.share_views,
+        Action.manage_contacts,
+        Action.merge_contacts,
+        Action.manage_segments,
+    },
     "approve": {Action.approve},
 }
 
@@ -85,6 +105,8 @@ def test_each_custom_right_adds_its_actions(right: str) -> None:
 def test_no_custom_role_can_manage_access() -> None:
     every = _custom(**dict.fromkeys(RIGHT_ADDS, True))
     assert not every.can(Action.manage_access)
+    assert not every.can(Action.export_contacts)  # the whole customer list: Admins only
+    assert not every.can(Action.manage_campaigns)  # bulk email to customers: Admins only
     assert every.takes_tickets
 
 

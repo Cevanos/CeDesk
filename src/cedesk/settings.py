@@ -34,7 +34,10 @@ class ScanBackend(StrEnum):
 
 
 class MailBackend(StrEnum):
-    log = "log"  # write emails to the log, send nothing (dev and test servers only)
+    # Send nothing; each email is written as a .eml file to `mail_outbox_dir` (a developer's
+    # machine only: the files hold sign-in codes and reset links). The log gets the file
+    # name, never the email. Refused anywhere but CEDESK_ENV=dev.
+    log = "log"
     smtp = "smtp"  # any SMTP server: Amazon SES, Gmail, Zoho, Mailgun, ...
     none = "none"  # drop every email
 
@@ -87,6 +90,31 @@ class Settings(BaseSettings):
         "rating page and the help center (votes and the web form have their own).",
     )
     public_window_seconds: int = Field(default=600, ge=1)
+    # Email campaigns (feature-gap plan phase 6). The caps are the same for every workspace.
+    campaign_max_recipients: int = Field(
+        default=5000, ge=1, le=1_000_000, description="The most recipients one campaign has."
+    )
+    campaign_daily_cap: int = Field(
+        default=10_000,
+        ge=1,
+        description="Campaign emails one workspace may send in 24 hours, all campaigns "
+        "together (test emails and ticket replies are not counted).",
+    )
+    campaign_per_minute: int = Field(
+        default=60,
+        ge=1,
+        le=10_000,
+        description="Campaign emails one workspace sends a minute at most (stay under the "
+        "mail provider's rate; ticket replies go first).",
+    )
+    unsubscribe_limit: int = Field(
+        default=600,
+        ge=1,
+        description="Unsubscribe and open-image requests per IP per window. High on "
+        "purpose: mail providers send many people's one-click unsubscribes and image "
+        "fetches from a few addresses.",
+    )
+    unsubscribe_window_seconds: int = Field(default=600, ge=1)
     plans: str = Field(
         default="",
         description="Cloud plan limits as JSON (md O4), e.g. "
@@ -160,6 +188,10 @@ class Settings(BaseSettings):
     mail_from_address: str = ""
     mail_from_name: str = "CeDesk"
     mail_backend: MailBackend = MailBackend.log
+    mail_outbox_dir: str = Field(
+        default="mail-outbox",
+        description="With CEDESK_MAIL_BACKEND=log (dev only): the folder emails are written to.",
+    )
     smtp_host: str = ""
     smtp_port: int = Field(default=587, ge=1, le=65535)
     smtp_security: SmtpSecurity = SmtpSecurity.starttls
@@ -235,6 +267,77 @@ class Settings(BaseSettings):
         description="The Firebase service account's JSON key (the whole file's content), "
         "with the 'Firebase Cloud Messaging API' role. Never logged.",
     )
+    # Self-service sign-up: anyone can create a workspace from the sign-in page, after
+    # proving their email with a code. Off unless turned on, so no install opens by accident.
+    signup_enabled: bool = Field(
+        default=False,
+        description="Lets anyone create a workspace from the sign-in page (email code first). "
+        "Off: the sign-up routes answer 404.",
+    )
+    signup_default_plan: str = Field(
+        default="free",
+        description="The cloud plan a workspace made by sign-up starts on (one of "
+        "CEDESK_PLANS). Ignored on self_hosted. Empty: no plan (no limits).",
+    )
+    signup_captcha_site_key: str = Field(
+        default="", description="Cloudflare Turnstile site key the sign-up page shows."
+    )
+    signup_captcha_secret: SecretStr | None = Field(
+        default=None,
+        description="Cloudflare Turnstile secret the API checks each sign-up with. Unset: no "
+        "CAPTCHA (refused on the cloud edition outside dev).",
+    )
+    signup_per_ip_hour: int = Field(
+        default=5, ge=1, description="Sign-ups started per IP per hour (kept in the database)."
+    )
+    signup_workspaces_per_ip_day: int = Field(
+        default=3, ge=1, description="Workspaces created by sign-up per IP per day."
+    )
+    signup_mail_concurrency: int = Field(
+        default=10,
+        ge=1,
+        le=50,
+        description="Sign-up code emails the worker sends at once (stay under the mail "
+        "provider's rate).",
+    )
+    signup_hash_slots: int = Field(
+        default=4,
+        ge=1,
+        le=64,
+        description="Sign-up passwords hashed at once per API process (each Argon2 hash "
+        "uses about 64 MB of memory).",
+    )
+    report_timeout_seconds: int = Field(
+        default=10,
+        ge=1,
+        le=120,
+        description="A custom or built-in report query that runs longer than this is "
+        "cancelled (the answer says to narrow the range). Scheduled reports use "
+        "`report_schedule_timeout_seconds` instead.",
+    )
+    report_schedule_timeout_seconds: int = Field(
+        default=5,
+        ge=1,
+        le=60,
+        description="A scheduled report's query that runs longer than this is cancelled and "
+        "the schedule says why. Lower than the interactive limit: the worker's one loop also "
+        "sends ticket email, SLA alerts and pushes, and waits for it.",
+    )
+    report_schedule_budget_seconds: int = Field(
+        default=20,
+        ge=1,
+        le=300,
+        description="The most time one worker pass spends on scheduled reports. Once it is "
+        "spent no new schedule is started (one already running finishes); the rest stay due "
+        "and go out on the next pass, a minute later.",
+    )
+    report_concurrency: int = Field(
+        default=4,
+        ge=1,
+        le=50,
+        description="Report queries one API process runs at once; more wait a few seconds, "
+        "then answer 429.",
+    )
 
     def push_on(self) -> bool:
         return bool(self.push_fcm_project_id and self.push_fcm_service_account)
@@ -263,6 +366,23 @@ class Settings(BaseSettings):
             problems.append("CEDESK_INBOUND_EMAIL_TOKEN: use a random value of 32+ characters")
         return problems
 
+    def signup_problems(self) -> list[str]:
+        """The API's check, with sign-up on (outside dev): what lets bots in, or leaves the
+        codes with no sender. The worker checks the mail server (`mail_problems`)."""
+        if not self.signup_enabled or self.env is Env.dev:
+            return []
+        problems = []
+        if not self.mail_from_address:
+            problems.append("CEDESK_MAIL_FROM_ADDRESS: sign-up codes need a sender")
+        captcha = bool(self.signup_captcha_site_key) + bool(self.signup_captcha_secret)
+        if captcha == 1:
+            problems.append(
+                "CEDESK_SIGNUP_CAPTCHA_SITE_KEY and CEDESK_SIGNUP_CAPTCHA_SECRET: set both"
+            )
+        elif captcha == 0 and self.edition is Edition.cloud:
+            problems.append("CEDESK_SIGNUP_CAPTCHA_SECRET: the cloud edition needs a CAPTCHA")
+        return problems
+
     def mail_problems(self) -> list[str]:
         """What stops the worker sending email (the API itself sends none) or scanning."""
         problems = []
@@ -277,10 +397,16 @@ class Settings(BaseSettings):
                 "CEDESK_PUSH_FCM_PROJECT_ID and CEDESK_PUSH_FCM_SERVICE_ACCOUNT: set both, "
                 "or neither (push off)"
             )
-        if self.env is Env.production and self.mail_backend is MailBackend.log:
+        if self.signup_enabled and self.env is not Env.dev:
+            if self.mail_backend is not MailBackend.smtp:
+                problems.append("CEDESK_MAIL_BACKEND: sign-up codes need smtp")
+            if not self.mail_from_address:
+                problems.append("CEDESK_MAIL_FROM_ADDRESS: sign-up codes need a sender")
+        if self.env is not Env.dev and self.mail_backend is MailBackend.log:
             problems.append(
-                "CEDESK_MAIL_BACKEND: `log` writes emails (with sign-in codes) to the log; "
-                "use smtp, or none until a mail server is set up"
+                "CEDESK_MAIL_BACKEND: `log` keeps every email (with sign-in codes and reset "
+                "links) on this machine and is for a developer's machine only; use smtp, or "
+                "none until a mail server is set up"
             )
         return problems
 

@@ -1,7 +1,7 @@
 """Marketplace apps (md PL7) and the ticket sidebar's orders and payments (C12)."""
 
 from datetime import datetime
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Request, Response, status
@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 from cedesk.cevanos_client import Cevanos
 from cedesk.helpdesk.api.deps import CallerDep, SealerDep, SessionmakerDep
 from cedesk.helpdesk.api.schemas import Body
+from cedesk.helpdesk.domain import apps as rules
 from cedesk.helpdesk.domain.apps import App
 from cedesk.helpdesk.service import apps
 from cedesk.helpdesk.service.apps import AppHttp, AppView, Card
@@ -40,9 +41,25 @@ def _cevanos(request: Request) -> Cevanos | None:
     return found
 
 
+class AppFieldOut(BaseModel):
+    key: str
+    label: str = Field(description='Show above the box, e.g. "Jira site".')
+    hint: str = Field(description='Show under the box, e.g. "acme for acme.atlassian.net."')
+    send_as: Literal["settings", "secret", "signing_secret"] = Field(
+        description="settings: send as `settings[key]`; secret or signing_secret: send as "
+        "that field of the install body."
+    )
+    secret: bool = Field(description="A password box: it is never shown again once saved.")
+
+
 class AppOut(BaseModel):
     app: App
     name: str
+    fields: list[AppFieldOut] = Field(
+        description="The install form, in order: every setting and credential with its "
+        "label and hint. Build the form from this; `settings_fields`, `credential` and "
+        "`second_credential` say the same without labels."
+    )
     card: str = Field(
         description="What it adds: orders or payments (ticket sidebar), jira, alerts, or "
         "side (side conversations in Slack), book (the saved reply /book)."
@@ -134,7 +151,10 @@ class PaymentsOut(CardOut):
 
 
 def _out(view: AppView) -> AppOut:
-    return AppOut(**(view.__dict__ | {"settings_fields": list(view.settings_fields)}))
+    fields = [AppFieldOut(**f.__dict__) for f in rules.form(view.app)]
+    return AppOut(
+        **(view.__dict__ | {"settings_fields": list(view.settings_fields), "fields": fields})
+    )
 
 
 @router.get("/apps", response_model=list[AppOut], summary="Apps and what is installed (Settings)")

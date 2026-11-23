@@ -4,11 +4,18 @@ only (the log can't be changed later, so it never holds the customer's address).
 
 Export: one JSON file (the customer, their tickets, archived ones too (md O3), with
 every message, file names and ratings), kept in storage for 7 days and downloaded signed
-in. Internal notes are included: review them before sending the file to the customer.
+in. Internal notes are included (ticket notes, and the team's notes about the customer,
+plan 2.2): review them before sending the file to the customer. Their contact attributes,
+other (merged-in) addresses and merge history are in it too, and the campaign emails sent
+to them and their suppression list entries.
 
 Erase: the words that could identify the customer are replaced and their files are
-deleted from storage; every row stays, so ticket counts, reply times, ratings and time
-logged are unchanged. The stored files go first (as in core-api's erasure.py): if the
+deleted from storage; their contact notes, attribute values and other (merged-in)
+addresses are deleted, and each of those addresses is scrubbed as their own is. Campaign
+emails sent to them lose the address and name, and each of their addresses stays on the
+campaign suppression list as a hash only (so they are never mailed again). Every
+row of their tickets stays, so ticket counts, reply times, ratings and time logged are
+unchanged. The stored files go first (as in core-api's erasure.py): if the
 erase then fails, nothing in the database changed and running it again finds the same
 keys (deleting a missing key is not an error). A retention export (md O2) that holds the
 customer's tickets is deleted whole (one file names many customers). A chat kept in
@@ -31,10 +38,13 @@ from cedesk.helpdesk.domain.exports import ExportFile, archived_export, export_t
 from cedesk.helpdesk.domain.permissions import Action
 from cedesk.helpdesk.repo import archive as archive_repo
 from cedesk.helpdesk.repo import auth as auth_repo
+from cedesk.helpdesk.repo import automation as automation_repo
+from cedesk.helpdesk.repo import contact_fields as field_repo
+from cedesk.helpdesk.repo import contacts as contact_repo
 from cedesk.helpdesk.repo import limits as limits_repo
 from cedesk.helpdesk.repo import privacy as repo
 from cedesk.helpdesk.repo.privacy import ERASED, ERASED_NAME
-from cedesk.helpdesk.service import audit
+from cedesk.helpdesk.service import audit, campaigns
 from cedesk.helpdesk.service.auth import Sessionmaker
 from cedesk.helpdesk.service.errors import Conflict, Invalid, NotFound
 from cedesk.helpdesk.service.members import require
@@ -76,7 +86,13 @@ def build_export(
     *,
     workspace: str,
     now: datetime,
+    notes: Sequence[RowMapping] = (),
+    fields: Sequence[RowMapping] = (),
+    other_emails: Sequence[str] = (),
+    merges: Sequence[RowMapping] = (),
 ) -> dict[str, Any]:
+    labels = {str(f["key"]): str(f["label"]) for f in fields}
+    attributes = contact.get("attributes") or {}
     return {
         "exported_at": when(now),
         "workspace": workspace,
@@ -92,7 +108,32 @@ def build_export(
             "customer_since": when(contact["customer_since"]),
             "first_contact": when(contact["created_at"]),
             "erased_at": when(contact["erased_at"]),
+            # Phase 2: other addresses (merged in), custom attributes, the team's notes
+            # about them and the customers merged into them.
+            "other_emails": list(other_emails),
+            "attributes": [
+                {"key": key, "label": labels.get(key, key), "value": value}
+                for key, value in sorted(attributes.items())
+            ],
         },
+        "contact_notes": [
+            {
+                "author": n["author_name"],
+                "body": n["body"],
+                "created_at": when(n["created_at"]),
+                "updated_at": when(n["updated_at"]),
+            }
+            for n in notes
+        ],
+        "merged_customers": [
+            {
+                "id": str(m["merged_id"]),
+                "name": m["merged_name"],
+                "email": m["merged_email"],
+                "merged_at": when(m["created_at"]),
+            }
+            for m in merges
+        ],
         "tickets": export_tickets(tickets, messages, files, ratings),
     }
 
@@ -122,9 +163,26 @@ async def export(
             await repo.ratings_of(s, contact["id"]),
             workspace=await repo.workspace_name(s),
             now=now,
+            notes=await contact_repo.notes_for_export(s, contact["id"]),
+            fields=await field_repo.all_fields(s),
+            other_emails=await contact_repo.aliases(s, contact["id"]),
+            merges=await contact_repo.merges_for_export(s, contact["id"]),
         )
         archived = await archive_repo.for_contact(s, contact["id"])
         data["tickets"] += [archived_export(a) for a in archived]  # md O3
+        # What automation did on their tickets (plan 5.5): names and results only.
+        data["automation_runs"] = [
+            {
+                "ticket": r["ticket_number"], "automation": r["name"], "trigger": r["trigger"],
+                "state": r["state"], "result": r["result"], "at": when(r["created_at"]),
+            }
+            for r in await automation_repo.runs_for_tickets(s, ids)
+        ]  # fmt: skip
+        # Campaign emails sent to them and their suppression entries (plan phase 6).
+        data |= await campaigns.export_rows(
+            s, caller.workspace_id, contact["id"],
+            [str(contact["email"]), *data["customer"]["other_emails"]],
+        )  # fmt: skip
         n_tickets = len(tickets) + len(archived)
         n_messages = len(messages) + sum(len(a["messages"]) for a in archived)
         body = json.dumps(data, ensure_ascii=False, indent=2).encode()
@@ -186,7 +244,9 @@ async def erase(
         if confirm_email.strip().lower() != contact["email"]:
             raise Invalid("Type the customer's email address exactly to confirm.")
         ids = await repo.ticket_ids(s, contact_id)
+        copies = await repo.merged_copies(s, contact_id)  # before their messages change
         keys = await repo.file_keys(s, ids) + await repo.export_keys(s, contact_id)
+        keys += await repo.message_file_keys(s, copies)
         keys += await archive_repo.file_keys(s, contact_id)  # archived tickets (md O3)
         # Retention exports (md O2) that hold their tickets go whole: one file names many.
         retained = await limits_repo.exports_naming(s, contact_id)
@@ -194,10 +254,27 @@ async def erase(
         for key in keys:  # first: see the module note
             await store.delete(key)
         counts = await repo.erase_tickets(s, ids)
+        counts |= await repo.erase_messages(s, copies)
         counts["archived_tickets"] = await archive_repo.erase_for_contact(
             s, contact_id, erased=ERASED, name=ERASED_NAME
         )
+        other_emails = await contact_repo.aliases(s, contact_id)  # merged in (plan 2.4)
+        # Campaigns (plan phase 6): their recipient rows lose the address; each address
+        # stays on the suppression list as a hash, so they are never mailed again.
+        counts |= await campaigns.erase(
+            s, caller.workspace_id, contact_id, [str(contact["email"]), *other_emails],
+            ERASED_NAME,
+        )  # fmt: skip
         counts |= await repo.erase_contact(s, contact_id, str(contact["email"]))
+        for address in other_emails:  # the same, for each other address they had
+            for key, n in (await repo.erase_contact(s, contact_id, address)).items():
+                counts[key] += n
+        counts |= await contact_repo.erase(s, contact_id)  # notes, attributes (phase 2)
+        # Workflow runs waiting to email them stop (plan 5.3); the run log holds no
+        # personal data and stays with the tickets.
+        counts["automation_runs_cancelled"] = await automation_repo.cancel_waiting(
+            s, ticket_ids=ids, reason="The customer's data was erased."
+        )
         counts["exports"] = await repo.forget_exports(s, contact_id)
         for r in retained:
             await limits_repo.forget_export(s, r["id"])
