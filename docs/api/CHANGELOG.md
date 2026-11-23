@@ -3,6 +3,17 @@
 `openapi.json` next to this file is the API as served (`uv run cedesk openapi`). Every
 route is under `/api/v1`. Breaking changes only come in v2 (md 2B). Newest first.
 
+## 2026-11-23: No survey email to Cevanos chat customers, even with their real address
+
+Fix. No API change; no migration.
+
+The satisfaction survey email skipped a Cevanos chat's customer only by their placeholder
+address (`chat-…@cevanos.invalid`). Since a handover fills in the customer's real name
+and email from Cevanos (AI6), resolving such a ticket would have emailed them a survey,
+on top of the rating the Cevanos widget asks for in the chat. Now a ticket that came from
+a Cevanos chat (handed over or converted) never gets the survey email, whatever its
+customer's address.
+
 ## 2026-11-23: The archive age and retention each say when they were changed
 
 Fix. No new routes or fields. Migration 0078.
