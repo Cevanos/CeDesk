@@ -36,6 +36,9 @@ CeDesk asks for on Accept. Not a handover to CeDesk, so no ticket."""
 
 API_KEY = re.compile(r"^cvn_sk_[A-Za-z0-9_-]{8,200}$")
 SECRET_MIN, SECRET_MAX = 16, 200
+TICKET_SOURCE = "cevanos"
+"""`hd_ticket.source` of a chat handed over or converted: its customer is a chat visitor,
+whatever their address (the widget asks them for a rating, so no survey email)."""
 CONTACT_DOMAIN = "cevanos.invalid"
 """A handover's ticket starts with the contact `chat-<conversation>@cevanos.invalid` (a
 reserved domain that never receives mail), "Chat customer", until Cevanos says who the
