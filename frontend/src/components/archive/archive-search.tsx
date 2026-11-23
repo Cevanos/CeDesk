@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
+import { InfiniteScroll } from "@/components/ui/infinite-scroll";
 import { Badge, Button, Card, EmptyState, Input, Skeleton } from "@/components/ui/primitives";
 import {
   ARCHIVE_QUERY_HINT,
@@ -136,17 +137,12 @@ export function ArchiveSearchView({ initial }: { initial?: ArchiveSearch | null 
                 </li>
               ))}
             </ul>
-            {q.hasNextPage && (
-              <div className="border-t border-border p-3 text-center">
-                <Button
-                  variant="ghost"
-                  onClick={() => q.fetchNextPage()}
-                  loading={q.isFetchingNextPage}
-                >
-                  Show more
-                </Button>
-              </div>
-            )}
+            <InfiniteScroll
+              query={q}
+              shown={rows.length}
+              noun="tickets"
+              className="border-t border-border"
+            />
           </Card>
         )}
       </div>

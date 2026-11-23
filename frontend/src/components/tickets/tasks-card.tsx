@@ -9,6 +9,7 @@ import {
   toastError,
   type ExtraProps,
 } from "@/components/tickets/extras-shared";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Button, Input, Select } from "@/components/ui/primitives";
 import { useAddTask, useTasks, useUpdateTask } from "@/hooks/use-ticket-extras";
 import { useAgents } from "@/hooks/use-workspace";
@@ -114,10 +115,10 @@ export function TasksCard({ ticketId, canEdit }: ExtraProps) {
                 </Select>
               </div>
               {due === "date" && (
-                <Input
+                <DatePicker
                   type="datetime-local"
                   value={date}
-                  onChange={(e) => setDate(e.target.value)}
+                  onChange={(v) => setDate(v)}
                   aria-label="Due date"
                   className="h-9"
                 />

@@ -1,7 +1,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { KeyRound, Loader2, Lock, ShieldOff, UserPlus } from "lucide-react";
+import { KeyRound, Lock, ShieldOff, UserPlus } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
@@ -9,6 +9,7 @@ import { z } from "zod";
 
 import { PasswordInput } from "@/components/auth/password-input";
 import { useConfirm } from "@/components/ui/confirm";
+import { InfiniteScroll } from "@/components/ui/infinite-scroll";
 import { Dialog } from "@/components/ui/overlay";
 import {
   Badge,
@@ -170,18 +171,12 @@ export function MembersView() {
             })}
           </ul>
         )}
-        {q.hasNextPage && (
-          <div className="border-t border-border p-3 text-center">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => q.fetchNextPage()}
-              disabled={q.isFetchingNextPage}
-            >
-              {q.isFetchingNextPage && <Loader2 className="size-4 animate-spin" />} Load more
-            </Button>
-          </div>
-        )}
+        <InfiniteScroll
+          query={q}
+          shown={rows.length}
+          noun="members"
+          className="border-t border-border"
+        />
       </Card>
 
       <AddMemberDialog open={adding} onClose={() => setAdding(false)} />

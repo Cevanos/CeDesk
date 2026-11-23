@@ -6,6 +6,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 
 import { useConfirm } from "@/components/ui/confirm";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Dialog, MenuItem, Popover } from "@/components/ui/overlay";
 import { Button, Card, Field, Input, Select, Skeleton } from "@/components/ui/primitives";
 import { LoadError } from "@/components/workspace/list-shared";
@@ -429,24 +430,24 @@ function Builder({
             className="flex items-center gap-2 text-sm text-muted-foreground"
           >
             From
-            <Input
+            <DatePicker
               id="rb-from"
               type="date"
               className="w-40"
               value={form.from}
               max={form.to || undefined}
-              onChange={(e) => set({ from: e.target.value })}
+              onChange={(v) => set({ from: v })}
             />
           </label>
           <label htmlFor="rb-to" className="flex items-center gap-2 text-sm text-muted-foreground">
             To
-            <Input
+            <DatePicker
               id="rb-to"
               type="date"
               className="w-40"
               value={form.to}
               min={form.from || undefined}
-              onChange={(e) => set({ to: e.target.value })}
+              onChange={(v) => set({ to: v })}
             />
           </label>
         </div>

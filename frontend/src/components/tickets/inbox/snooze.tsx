@@ -4,6 +4,7 @@ import { AlarmClock, CalendarClock, Clock } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
+import { DatePicker } from "@/components/ui/date-picker";
 import { MenuItem, Popover } from "@/components/ui/overlay";
 import { Button } from "@/components/ui/primitives";
 import { useSnoozeTicket, useUnsnoozeTicket } from "@/hooks/use-inbox-tools";
@@ -92,13 +93,14 @@ function SnoozeChoices({ onPick, close }: { onPick: (until: string) => void; clo
             onPick(iso);
           }}
         >
-          <input
+          <DatePicker
+            inline
+            required
             type="datetime-local"
             aria-label="Snooze until"
             value={value}
             min={min}
-            onChange={(e) => setValue(e.target.value)}
-            className="h-9 w-full rounded-lg border border-input bg-surface px-2 text-sm focus:border-primary focus:ring-4 focus:ring-primary/15 focus:outline-none"
+            onChange={setValue}
           />
           <Button type="submit" size="sm" className="w-full" disabled={!value}>
             Snooze

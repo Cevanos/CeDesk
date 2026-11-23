@@ -4,6 +4,7 @@ import { SlidersHorizontal } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
+import { DatePicker } from "@/components/ui/date-picker";
 import { Card, Input, Select } from "@/components/ui/primitives";
 import { useCurrentUser } from "@/hooks/use-auth";
 import { useSetAttributes } from "@/hooks/use-contacts";
@@ -94,6 +95,15 @@ function AttributeRow({
             </option>
           ))}
         </Select>
+      ) : field.kind === "date" ? (
+        <DatePicker
+          aria-label={field.label}
+          defaultOpen
+          className="h-8"
+          value={draft}
+          onChange={(v) => save(v || null)}
+          onClose={() => setEditing(false)}
+        />
       ) : (
         <Input
           {...common}
@@ -101,7 +111,7 @@ function AttributeRow({
           // eslint-disable-next-line jsx-a11y/no-autofocus
           autoFocus
           className="h-8"
-          type={field.kind === "date" ? "date" : field.kind === "number" ? "number" : "text"}
+          type={field.kind === "number" ? "number" : "text"}
           maxLength={2000}
           value={draft}
           disabled={set.isPending}

@@ -8,6 +8,7 @@ import { toast } from "sonner";
 
 import { useConfirm } from "@/components/ui/confirm";
 import { Drawer } from "@/components/ui/drawer";
+import { InfiniteScroll } from "@/components/ui/infinite-scroll";
 import { Badge, Button, Card, EmptyState, Select, Skeleton } from "@/components/ui/primitives";
 import { formatWhen, outcomeLabel, TicketPicker } from "@/components/workspace/automation-test";
 import { LoadError } from "@/components/workspace/list-shared";
@@ -196,18 +197,12 @@ export function AutomationLogView() {
               </li>
             ))}
           </ul>
-          {runs.hasNextPage && (
-            <div className="border-t border-border p-3 text-center">
-              <Button
-                variant="outline"
-                size="sm"
-                loading={runs.isFetchingNextPage}
-                onClick={() => runs.fetchNextPage()}
-              >
-                Load more
-              </Button>
-            </div>
-          )}
+          <InfiniteScroll
+            query={runs}
+            shown={all.length}
+            noun="runs"
+            className="border-t border-border"
+          />
         </Card>
       )}
 

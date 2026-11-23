@@ -6,6 +6,7 @@ import { toast } from "sonner";
 
 import { CampaignTabs, CampaignsGate, errorText } from "@/components/campaigns/shared";
 import { ConfirmDialog } from "@/components/ui/confirm";
+import { InfiniteScroll } from "@/components/ui/infinite-scroll";
 import { Dialog } from "@/components/ui/overlay";
 import {
   Badge,
@@ -183,17 +184,7 @@ function SuppressionList() {
         </Card>
       )}
 
-      {list.hasNextPage && (
-        <div className="mt-4 flex justify-center">
-          <Button
-            variant="outline"
-            loading={list.isFetchingNextPage}
-            onClick={() => list.fetchNextPage()}
-          >
-            Load more
-          </Button>
-        </div>
-      )}
+      <InfiniteScroll query={list} shown={rows.length} noun="entries" className="mt-2" />
 
       <AddDialog open={adding} onClose={() => setAdding(false)} />
       {removing && (

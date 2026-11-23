@@ -12,7 +12,8 @@ import {
 import Link from "next/link";
 import { useState } from "react";
 
-import { Button, Card, EmptyState, Skeleton } from "@/components/ui/primitives";
+import { InfiniteScroll } from "@/components/ui/infinite-scroll";
+import { Card, EmptyState, Skeleton } from "@/components/ui/primitives";
 import { LoadError } from "@/components/workspace/list-shared";
 import { useTimeline } from "@/hooks/use-contacts";
 import type { TimelineItem, TimelineKind } from "@/lib/api/contacts-types";
@@ -187,18 +188,7 @@ export function Timeline({ contactId }: { contactId: string }) {
               );
             })}
           </ol>
-          {q.hasNextPage && (
-            <div className="mt-4 text-center">
-              <Button
-                variant="outline"
-                size="sm"
-                loading={q.isFetchingNextPage}
-                onClick={() => q.fetchNextPage()}
-              >
-                Load more
-              </Button>
-            </div>
-          )}
+          <InfiniteScroll query={q} shown={items.length} noun="events" className="mt-2" />
         </Card>
       )}
     </div>

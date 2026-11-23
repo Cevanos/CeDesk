@@ -6,6 +6,7 @@ import { toast } from "sonner";
 
 import { ProgressBar, StateBadge, errorText, percent } from "@/components/campaigns/shared";
 import { useConfirm } from "@/components/ui/confirm";
+import { InfiniteScroll } from "@/components/ui/infinite-scroll";
 import { Badge, Button, Card, EmptyState, Select, Skeleton } from "@/components/ui/primitives";
 import { LoadError } from "@/components/workspace/list-shared";
 import {
@@ -319,17 +320,7 @@ function Recipients({ campaign }: { campaign: Campaign }) {
         </Card>
       )}
 
-      {list.hasNextPage && (
-        <div className="mt-4 flex justify-center">
-          <Button
-            variant="outline"
-            loading={list.isFetchingNextPage}
-            onClick={() => list.fetchNextPage()}
-          >
-            Load more
-          </Button>
-        </div>
-      )}
+      <InfiniteScroll query={list} shown={rows.length} noun="recipients" className="mt-2" />
     </div>
   );
 }

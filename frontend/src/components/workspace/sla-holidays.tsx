@@ -5,6 +5,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 
 import { useConfirm } from "@/components/ui/confirm";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Dialog } from "@/components/ui/overlay";
 import { Badge, Button, EmptyState, Field, Input } from "@/components/ui/primitives";
 import { FormError, fieldErrors } from "@/components/workspace/list-shared";
@@ -153,7 +154,7 @@ function HolidayForm({ holiday, onClose }: { holiday: Holiday | null; onClose: (
       }}
     >
       <Field label="Date" htmlFor="h-day" error={errs.day}>
-        <Input id="h-day" type="date" value={day} onChange={(e) => setDay(e.target.value)} />
+        <DatePicker id="h-day" type="date" value={day} onChange={(v) => setDay(v)} />
       </Field>
       <Field label="Name" htmlFor="h-name" error={errs.name}>
         <Input id="h-name" maxLength={80} value={name} onChange={(e) => setName(e.target.value)} />
