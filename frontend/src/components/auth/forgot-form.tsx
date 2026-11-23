@@ -29,7 +29,7 @@ export function ForgotForm() {
     formState: { errors },
   } = useForm<Values>({
     resolver: zodResolver(schema),
-    defaultValues: { workspace: process.env.NEXT_PUBLIC_DEFAULT_WORKSPACE ?? "", email: "" },
+    defaultValues: { workspace: "", email: "" },
   });
 
   const onSubmit = handleSubmit((v) => {

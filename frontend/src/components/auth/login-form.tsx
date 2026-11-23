@@ -23,8 +23,6 @@ const schema = z.object({
 });
 type Values = z.infer<typeof schema>;
 
-const WS_KEY = "cedesk.workspace";
-
 /** Where to go once signed in. An expired password only gets Change password. */
 function landing(r: SignInResponse | undefined, next: string | null) {
   return r?.password_expired ? "/account?expired=1" : safeNext(next);
@@ -59,7 +57,7 @@ export function LoginForm() {
   const signIn = useSignIn();
   const twoFactor = useTwoFactorSignIn();
   const signup = useSignupConfig();
-  // A workspace just created (or linked to) fills the field and beats the remembered one.
+  // A workspace just created (or linked to) fills the field.
   const fromUrl = params.get("workspace")?.trim().toLowerCase() ?? "";
   // After a correct password the page asks for the code (the proxy holds the token).
   const [step, setStep] = useState<"password" | "code">("password");
@@ -73,14 +71,13 @@ export function LoginForm() {
   const {
     register,
     handleSubmit,
-    setValue,
     setFocus,
     control,
     formState: { errors },
   } = useForm<Values>({
     resolver: zodResolver(schema),
     defaultValues: {
-      workspace: fromUrl || (process.env.NEXT_PUBLIC_DEFAULT_WORKSPACE ?? ""),
+      workspace: fromUrl,
       email: "",
       password: "",
     },
@@ -90,29 +87,14 @@ export function LoginForm() {
   const sso = useSsoInfo(useDebounced(workspace));
   const ssoOn = sso.data?.enabled === true && workspace.trim() !== "";
 
-  // Remember the workspace (not the password) on this device.
+  // Only a workspace passed in the URL (e.g. right after sign-up) is prefilled.
   useEffect(() => {
-    if (fromUrl) {
-      setFocus("email");
-      return;
-    }
-    try {
-      const saved = localStorage.getItem(WS_KEY);
-      if (saved) {
-        setValue("workspace", saved);
-        setFocus("email");
-      }
-    } catch {
-      /* storage blocked: fine */
-    }
-  }, [setValue, setFocus, fromUrl]);
+    if (fromUrl) setFocus("email");
+  }, [setFocus, fromUrl]);
 
   const onSubmit = handleSubmit((v) => {
     signIn.mutate(v, {
       onSuccess: (r) => {
-        try {
-          localStorage.setItem(WS_KEY, v.workspace);
-        } catch {}
         if (r?.two_factor_required) {
           setStep("code");
           return;
