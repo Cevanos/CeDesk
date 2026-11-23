@@ -369,14 +369,16 @@ async def erase_for_contact(
     return len(result.all())
 
 
-# ---- the setting (a column of hd_retention) ----------------------------------------------
+# ---- the setting (columns of hd_retention, with its own changed by / at) ----------------
+# `updated_by` / `updated_at` there are retention's: saving the archive age leaves them.
 
 
 async def setting(session: AsyncSession) -> RowMapping | None:
     result = await session.execute(
         text(
-            "SELECT r.archive_after_days, r.updated_at, m.name AS updated_by_name "
-            "FROM hd_retention r LEFT JOIN member m ON m.id = r.updated_by"
+            "SELECT r.archive_after_days, r.archive_updated_at AS updated_at, "
+            "m.name AS updated_by_name "
+            "FROM hd_retention r LEFT JOIN member m ON m.id = r.archive_updated_by"
         )
     )
     return result.mappings().first()
@@ -387,10 +389,11 @@ async def save_setting(
 ) -> None:
     await session.execute(
         text(
-            "INSERT INTO hd_retention (workspace_id, archive_after_days, updated_by) "
-            "VALUES (:ws, :days, :by) ON CONFLICT (workspace_id) DO UPDATE SET "
+            "INSERT INTO hd_retention (workspace_id, archive_after_days, archive_updated_by, "
+            "archive_updated_at) VALUES (:ws, :days, :by, now()) "
+            "ON CONFLICT (workspace_id) DO UPDATE SET "
             "archive_after_days = EXCLUDED.archive_after_days, "
-            "updated_by = EXCLUDED.updated_by, updated_at = now()"
+            "archive_updated_by = EXCLUDED.archive_updated_by, archive_updated_at = now()"
         ),
         {"ws": workspace_id, "days": days, "by": by},
     )

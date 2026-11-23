@@ -503,3 +503,55 @@ async def test_0073_to_0077_add_the_reporting_tables_and_go_back_down(owner_engi
                 text("SELECT relforcerowsecurity FROM pg_class WHERE relname = :t"), {"t": table}
             )
             assert forced is True
+
+
+async def test_0078_gives_the_archive_age_its_own_last_change(
+    client: Any, app_sessionmaker: Any, owner_engine: Any
+) -> None:
+    """Before 0078 the archive age and retention wrote one "last changed", so saving the
+    archive age moved retention's (staging, 23 Nov). 0078 takes each one's from its latest
+    change in the audit log, and going back down keeps the newer of the two."""
+    import asyncio
+    from datetime import datetime
+    from uuid import UUID
+
+    from sqlalchemy import text
+
+    from tests.db.helpers import bearer, new_workspace, ok, sign_in
+
+    slug = await new_workspace(app_sessionmaker)
+    h = bearer(await sign_in(client, slug, "admin@example.com"))
+    ws = UUID(ok(await client.get("/api/v1/me", headers=h))["workspace"]["id"])
+    ok(await client.put("/api/v1/retention", headers=h, json={"closed_ticket_days": 30}))
+    ok(await client.put("/api/v1/archive/settings", headers=h, json={"after_days": 200}))
+
+    entries = {
+        area: ok(await client.get("/api/v1/audit", headers=h, params={"area": area}))["entries"]
+        for area in ("retention", "archive")
+    }
+
+    def changed(area: str) -> datetime:
+        return datetime.fromisoformat(entries[area][0]["at"])
+
+    cfg = alembic_config()
+    try:
+        await asyncio.to_thread(command.downgrade, cfg, "0077")
+        async with owner_engine.connect() as conn:
+            await conn.execute(text("ALTER TABLE hd_retention NO FORCE ROW LEVEL SECURITY"))
+            try:
+                merged = await conn.scalar(
+                    text("SELECT updated_at FROM hd_retention WHERE workspace_id = :ws"),
+                    {"ws": ws},
+                )
+            finally:
+                await conn.rollback()
+        # Down, the one pair keeps the newer save: the archive age's, made after retention.
+        assert merged > changed("retention")
+    finally:
+        await asyncio.to_thread(command.upgrade, cfg, "head")
+
+    kept = ok(await client.get("/api/v1/retention", headers=h))
+    age = ok(await client.get("/api/v1/archive/settings", headers=h))
+    assert datetime.fromisoformat(kept["updated_at"]) == changed("retention")
+    assert datetime.fromisoformat(age["updated_at"]) == changed("archive")
+    assert kept["updated_by_name"] and age["updated_by_name"]
