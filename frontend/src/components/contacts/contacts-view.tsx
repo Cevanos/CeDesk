@@ -257,7 +257,7 @@ function Rows({ rows }: { rows: ContactRow[] }) {
           {rows.map((c) => (
             <tr
               key={c.id}
-              onClick={() => router.push(`/customers/${c.id}`)}
+              onClick={() => router.push(`/customers/${c.id}?from=contacts`)}
               className="group cursor-pointer transition-colors hover:bg-primary-soft/40"
             >
               <td className="px-5 py-3.5">
@@ -265,7 +265,7 @@ function Rows({ rows }: { rows: ContactRow[] }) {
                   <ContactAvatar name={c.name} id={c.id} />
                   <div className="min-w-0">
                     <Link
-                      href={`/customers/${c.id}`}
+                      href={`/customers/${c.id}?from=contacts`}
                       onClick={(e) => e.stopPropagation()}
                       className="inline-flex items-center gap-1.5 font-semibold group-hover:text-primary-ink"
                     >

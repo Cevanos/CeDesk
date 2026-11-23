@@ -18,6 +18,7 @@ import {
   Ticket,
 } from "lucide-react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -138,6 +139,7 @@ function NameEditor({
 }
 
 export function CustomerView({ id }: { id: string }) {
+  const fromContacts = useSearchParams().get("from") === "contacts";
   const { user, perms } = useCurrentUser();
   const q = useContactTickets(id);
   // Phone, organization, notes and attributes. Without it (older server) the page is as before.
@@ -178,14 +180,14 @@ export function CustomerView({ id }: { id: string }) {
   return (
     <div className="mx-auto w-full max-w-4xl animate-rise px-3 py-5 sm:px-6 sm:py-7">
       <Link
-        href="/tickets"
+        href={fromContacts ? "/contacts" : "/tickets"}
         className="mb-4 inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-sm text-muted-foreground transition-colors hover:bg-surface-2 hover:text-foreground"
       >
-        <ArrowLeft className="size-4" /> Tickets
+        <ArrowLeft className="size-4" /> {fromContacts ? "Contacts" : "Tickets"}
       </Link>
 
-      <Card className="relative overflow-hidden rounded-2xl border-0 shadow-pop ring-1 ring-border">
-        <div className="relative h-24 bg-gradient-to-br from-[#5b45e8] via-[#7762fb] to-[#a78bfa] sm:h-28">
+      <Card className="relative rounded-2xl border-0 shadow-pop ring-1 ring-border">
+        <div className="relative h-24 overflow-hidden rounded-t-2xl bg-gradient-to-br from-[#5b45e8] via-[#7762fb] to-[#a78bfa] sm:h-28">
           <div className="pointer-events-none absolute -top-10 -right-8 size-48 rounded-full bg-white/15 blur-2xl" />
           <div className="pointer-events-none absolute -bottom-16 left-1/3 size-40 rounded-full bg-[#2b6cf5]/30 blur-3xl" />
           <div
