@@ -97,50 +97,44 @@ export function TimeCard({ ticketId, canEdit }: ExtraProps) {
           ) : (
             <Muted>No time logged.</Muted>
           )}
-          <form className="mt-3 space-y-2" onSubmit={submit}>
-            <div className="flex gap-2">
-              <Input
-                type="number"
-                min={1}
-                max={1440}
-                value={minutes}
-                onChange={(e) => setMinutes(e.target.value)}
-                placeholder="Minutes"
-                aria-label="Minutes"
-                disabled={!canEdit}
-                className="h-9 w-24 flex-none"
-              />
-              <Input
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-                placeholder="Note (optional)"
-                aria-label="Note"
-                maxLength={500}
-                disabled={!canEdit}
-                className="h-9"
-              />
-            </div>
-            <div className="flex items-center justify-between gap-2">
-              <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  className="size-4 accent-primary"
-                  checked={billable}
-                  disabled={!canEdit}
-                  onChange={(e) => setBillable(e.target.checked)}
+          {canEdit && (
+            <form className="mt-3 space-y-2" onSubmit={submit}>
+              <div className="flex gap-2">
+                <Input
+                  type="number"
+                  min={1}
+                  max={1440}
+                  value={minutes}
+                  onChange={(e) => setMinutes(e.target.value)}
+                  placeholder="Minutes"
+                  aria-label="Minutes"
+                  className="h-9 w-24 flex-none"
                 />
-                Billable
-              </label>
-              <Button
-                type="submit"
-                size="sm"
-                disabled={!canEdit || !minutes}
-                loading={log.isPending}
-              >
-                Log time
-              </Button>
-            </div>
-          </form>
+                <Input
+                  value={note}
+                  onChange={(e) => setNote(e.target.value)}
+                  placeholder="Note (optional)"
+                  aria-label="Note"
+                  maxLength={500}
+                  className="h-9"
+                />
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    className="size-4 accent-primary"
+                    checked={billable}
+                    onChange={(e) => setBillable(e.target.checked)}
+                  />
+                  Billable
+                </label>
+                <Button type="submit" size="sm" disabled={!minutes} loading={log.isPending}>
+                  Log time
+                </Button>
+              </div>
+            </form>
+          )}
         </>
       )}
     </ExtraCard>

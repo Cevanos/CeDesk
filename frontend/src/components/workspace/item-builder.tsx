@@ -590,17 +590,41 @@ export function ItemBuilder({
   );
 }
 
+/** Names for the contact fields, so a `contact_field` condition can say which field. */
+export type FieldNames = { key: string; label: string }[];
+
+const labelOf = (opts: { value: string; label: string }[], v: unknown) =>
+  opts.find((o) => o.value === v)?.label;
+
 /** One-line summary of an item, for lists. */
-export function summarize(it: Item, kinds: KindSpec[]): string {
+export function summarize(it: Item, kinds: KindSpec[], contactFields?: FieldNames): string {
   const spec = kinds.find((k) => k.kind === it.kind);
   const label = spec?.label ?? it.kind;
+
+  if (it.kind === "time_since") {
+    const of = labelOf(TIME_OF_OPTS, it.of) ?? "the last reply";
+    const op = labelOf(TIME_OP_OPTS, it.op) ?? "";
+    const mins = typeof it.minutes === "number" && it.minutes > 0 ? formatMinutes(it.minutes) : "";
+    return `Time since ${of} ${op} ${mins}`.replace(/\s+/g, " ").trim();
+  }
+  if (it.kind === "contact_field") {
+    const key = typeof it.key === "string" ? it.key : "";
+    if (!key) return label;
+    const name = contactFields?.find((f) => f.key === key)?.label ?? key;
+    const op = OP_LABEL[String(it.op ?? "equals")] ?? String(it.op);
+    const noValue = it.op === "is_set" || it.op === "is_not_set";
+    const value = noValue || it.value == null || it.value === "" ? "" : String(it.value);
+    return `${name} ${op} ${value}`.trim();
+  }
+
   const bits = (spec?.fields ?? [])
     .filter((f) => ["text", "textarea", "words", "multi", "select", "duration"].includes(f.type))
     .map((f) => {
       const v = it[f.key];
       if (f.type === "duration") return typeof v === "number" && v > 0 ? formatMinutes(v) : "";
-      if (Array.isArray(v)) return v.join(", ");
-      return typeof v === "string" ? v : "";
+      const options = "options" in f ? f.options : [];
+      if (Array.isArray(v)) return v.map((x) => labelOf(options, x) ?? String(x)).join(", ");
+      return typeof v === "string" ? (labelOf(options, v) ?? v) : "";
     })
     .filter(Boolean);
   return bits.length ? `${label}: ${bits.join(", ")}` : label;

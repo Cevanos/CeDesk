@@ -227,6 +227,8 @@ export interface AgentRow {
   skills: string[];
   /** `false` for a deactivated member. `GET /agents` lists everyone on purpose. */
   is_active?: boolean;
+  /** Active and the role replies to customers, so tickets can be assigned to them. */
+  assignable?: boolean;
 }
 
 export interface Member {

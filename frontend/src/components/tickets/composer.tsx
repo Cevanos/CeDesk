@@ -195,7 +195,9 @@ export function Composer({
     );
   };
 
-  const people = (agents.data ?? []).filter((a) => !mentions.some((m) => m.id === a.member_id));
+  const people = (agents.data ?? []).filter(
+    (a) => a.is_active !== false && !mentions.some((m) => m.id === a.member_id),
+  );
 
   const [full, setFull] = useState(false);
   useEscape(full, () => setFull(false));

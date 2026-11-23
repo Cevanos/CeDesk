@@ -15,6 +15,24 @@ import { cn, formatDateTime } from "@/lib/utils";
 
 const MAX = 5000;
 
+/** Length as the API counts it: characters of the trimmed text, not UTF-16 units. */
+const noteLength = (text: string) => [...text.trim()].length;
+
+/** Length counter that turns into an error once a note is too long to save. */
+function Counter({ length }: { length: number }) {
+  const over = length > MAX;
+  return (
+    <p
+      role={over ? "alert" : undefined}
+      className={over ? "text-xs font-medium text-danger" : "text-xs text-muted-foreground"}
+    >
+      {over
+        ? `This note is ${length - MAX} characters too long. Notes can be at most ${MAX} characters.`
+        : `${length}/${MAX}`}
+    </p>
+  );
+}
+
 function NoteItem({
   contactId,
   note,
@@ -81,22 +99,27 @@ function NoteItem({
           onSubmit={(e) => {
             e.preventDefault();
             const body = draft.trim();
-            if (!body) return;
+            if (!body || noteLength(body) > MAX) return;
             edit.mutate({ noteId: note.id, body }, { onSuccess: () => setEditing(false) });
           }}
         >
           <Textarea
             aria-label="Edit note"
             rows={3}
-            maxLength={MAX}
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
           />
+          <Counter length={noteLength(draft)} />
           <div className="flex justify-end gap-2">
             <Button type="button" size="sm" variant="ghost" onClick={() => setEditing(false)}>
               Cancel
             </Button>
-            <Button type="submit" size="sm" loading={edit.isPending} disabled={!draft.trim()}>
+            <Button
+              type="submit"
+              size="sm"
+              loading={edit.isPending}
+              disabled={!draft.trim() || noteLength(draft) > MAX}
+            >
               Save
             </Button>
           </div>
@@ -145,7 +168,7 @@ export function NotesCard({
           onSubmit={(e) => {
             e.preventDefault();
             const body = text.trim();
-            if (!body) return;
+            if (!body || noteLength(body) > MAX) return;
             add.mutate(body, {
               onSuccess: () => {
                 setText("");
@@ -158,13 +181,18 @@ export function NotesCard({
             aria-label="Add a private note"
             placeholder="Add a private note"
             rows={compact ? 2 : 3}
-            maxLength={MAX}
             value={text}
             onChange={(e) => setText(e.target.value)}
           />
+          {text.length > 0 && <Counter length={noteLength(text)} />}
           <div className="flex items-center justify-between gap-2">
             <p className="text-xs text-muted-foreground">Only your team sees notes.</p>
-            <Button type="submit" size="sm" loading={add.isPending} disabled={!text.trim()}>
+            <Button
+              type="submit"
+              size="sm"
+              loading={add.isPending}
+              disabled={!text.trim() || noteLength(text) > MAX}
+            >
               Save
             </Button>
           </div>

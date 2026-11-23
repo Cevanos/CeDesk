@@ -102,7 +102,10 @@ function EraseCard() {
       >
         <TriangleAlert className="mt-0.5 size-4 flex-none" aria-hidden />
         <div>
-          <p>This permanently erases the customer and their tickets. It can&rsquo;t be undone.</p>
+          <p>
+            This permanently erases the customer&rsquo;s personal details and anonymizes their
+            tickets. It can&rsquo;t be undone.
+          </p>
           <p className="mt-1">A chat kept in Cevanos must be erased in Cevanos too.</p>
         </div>
       </div>

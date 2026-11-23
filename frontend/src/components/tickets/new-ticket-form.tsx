@@ -88,7 +88,7 @@ export function NewTicketForm() {
   const assigneeId = useWatch({ control, name: "assignee_id" });
   const type = types.data?.find((t) => t.id === typeId);
   const assignable = (agents.data ?? []).filter(
-    (a) => perms.assignOthers || a.member_id === user?.id,
+    (a) => a.assignable !== false && (perms.assignOthers || a.member_id === user?.id),
   );
 
   if (!isPending && !perms.createTicket) {

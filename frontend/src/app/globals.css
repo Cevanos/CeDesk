@@ -243,3 +243,10 @@
   scrollbar-width: thin;
   scrollbar-color: var(--border-strong) transparent;
 }
+
+/* Workflow canvas: the library's dark default edge (#3e3e3e, 1px) is nearly invisible. */
+.react-flow {
+  --xy-edge-stroke: var(--muted-foreground);
+  --xy-edge-stroke-width: 2;
+  --xy-edge-stroke-selected: var(--primary);
+}

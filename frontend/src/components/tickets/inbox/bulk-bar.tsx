@@ -77,7 +77,7 @@ export function BulkBar({
 
   // Supervisors and admins may assign anyone; agents only themselves (the server checks too).
   const assignable = (agents.data ?? []).filter(
-    (a) => perms.assignOthers || a.member_id === user?.id,
+    (a) => a.assignable !== false && (perms.assignOthers || a.member_id === user?.id),
   );
 
   const trigger = (icon: React.ReactNode, label: string) =>

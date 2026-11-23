@@ -44,6 +44,7 @@ import {
   Problems,
   ReorderButtons,
 } from "@/components/workspace/list-shared";
+import { useContactFields } from "@/hooks/use-contacts";
 import {
   callsWebhook,
   useAutomationAccess,
@@ -70,6 +71,7 @@ const DEFAULT_PER_DAY = 10000;
 export const WEBHOOK_LOCKED = "Only an Admin can change this (it calls a webhook)";
 
 export function RulesView() {
+  const contactFields = useContactFields().data;
   const rules = useRules();
   const del = useDeleteRule();
   const reorder = useReorderRules();
@@ -141,7 +143,9 @@ export function RulesView() {
                       <div className="text-xs text-muted-foreground">
                         {EVENT_LABEL[r.event] ?? r.event} ·{" "}
                         {r.conditions
-                          .map((c) => summarize(c as Item, AUTOMATION_CONDITION_KINDS))
+                          .map((c) =>
+                            summarize(c as Item, AUTOMATION_CONDITION_KINDS, contactFields),
+                          )
                           .join(" and ")}{" "}
                         →{" "}
                         {r.actions
