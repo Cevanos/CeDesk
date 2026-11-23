@@ -1,0 +1,309 @@
+"use client";
+
+import { Download, ExternalLink } from "lucide-react";
+import { useState } from "react";
+import { toast } from "sonner";
+
+import { Button, Card, EmptyState, Skeleton } from "@/components/ui/primitives";
+import { LoadError } from "@/components/workspace/list-shared";
+import {
+  csvQuery,
+  useAiReport,
+  useMetricsReport,
+  type Labelled,
+  type MetricTile,
+  type MetricsAgentRow,
+  type MetricsReport,
+  type ReportParams,
+} from "@/hooks/workspace/reports";
+import { ApiError, downloadFile } from "@/lib/api/client";
+import { duration } from "@/lib/reports";
+import { safeHttpUrl } from "@/lib/safe-url";
+import { cn } from "@/lib/utils";
+
+const dash = "—";
+const count = (n: number | null) => (n === null ? dash : n.toLocaleString());
+
+function tileValue(t: MetricTile): string {
+  if (t.value === null) return dash;
+  if (t.unit === "minutes") return duration(t.value);
+  if (t.unit === "percent") return `${Math.round(t.value * 10) / 10}%`;
+  return t.value.toLocaleString();
+}
+
+/** Downloads a report as a file through the session (a plain link would get a 401). */
+export function CsvButton({
+  path,
+  params,
+  withTeam,
+  name,
+}: {
+  path: string;
+  params: ReportParams;
+  withTeam: boolean;
+  name: string;
+}) {
+  const [busy, setBusy] = useState(false);
+  return (
+    <Button
+      size="sm"
+      variant="outline"
+      loading={busy}
+      onClick={() => {
+        setBusy(true);
+        downloadFile(path, `${name}-${params.from}-to-${params.to}.csv`, csvQuery(params, withTeam))
+          .catch((e) => toast.error(e instanceof ApiError ? e.userMessage : "Download failed"))
+          .finally(() => setBusy(false));
+      }}
+    >
+      {!busy && <Download className="size-3.5" aria-hidden />} Download CSV
+    </Button>
+  );
+}
+
+function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
+  return (
+    <Card className="p-4">
+      <p className="text-[11px] font-medium tracking-wider text-subtle-foreground uppercase">
+        {label}
+      </p>
+      <p className="mt-0.5 truncate text-xl font-semibold tracking-tight tabular-nums">{value}</p>
+      {hint && <p className="truncate text-xs text-muted-foreground">{hint}</p>}
+    </Card>
+  );
+}
+
+function Bars({ title, rows }: { title: string; rows: Labelled[] }) {
+  const max = Math.max(1, ...rows.map((r) => r.open));
+  return (
+    <section aria-label={title}>
+      <h2 className="mb-2 text-base font-semibold">{title}</h2>
+      <Card className="p-4">
+        {rows.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No data for this period</p>
+        ) : (
+          <ul className="space-y-2">
+            {rows.map((r) => (
+              <li key={r.label} className="flex items-center gap-3 text-sm">
+                <span className="w-32 shrink-0 truncate font-medium" title={r.label}>
+                  {r.label}
+                </span>
+                <span className="h-2.5 min-w-0 flex-1 overflow-hidden rounded-full bg-surface-3">
+                  <span
+                    className="block h-full rounded-full bg-primary"
+                    style={{ width: `${(r.open / max) * 100}%` }}
+                  />
+                </span>
+                <span className="w-12 shrink-0 text-right text-muted-foreground tabular-nums">
+                  {r.open.toLocaleString()}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
+    </section>
+  );
+}
+
+/** Channels / Topics / Sentiment behind three switch buttons. */
+function Breakdown({ d }: { d: MetricsReport }) {
+  const tabs = [
+    { key: "channels", label: "Channels", rows: d.channels },
+    { key: "topics", label: "Topics", rows: d.topics },
+    { key: "sentiment", label: "Sentiment", rows: d.sentiment },
+  ] as const;
+  const [active, setActive] = useState<(typeof tabs)[number]["key"]>("channels");
+  const cur = tabs.find((t) => t.key === active)!;
+  return (
+    <section aria-label="Breakdown">
+      <div className="mb-2 flex flex-wrap gap-1.5">
+        {tabs.map((t) => (
+          <Button
+            key={t.key}
+            size="sm"
+            variant={t.key === active ? "primary" : "outline"}
+            aria-pressed={t.key === active}
+            onClick={() => setActive(t.key)}
+          >
+            {t.label}
+          </Button>
+        ))}
+      </div>
+      <Card className="overflow-x-auto">
+        {cur.rows.length === 0 ? (
+          <EmptyState title="No data for this period">Nothing to show.</EmptyState>
+        ) : (
+          <table className="w-full min-w-[20rem] text-sm">
+            <thead>
+              <tr className="border-b border-border text-left text-xs text-muted-foreground">
+                <th scope="col" className="px-4 py-2.5 font-medium">
+                  {cur.label.replace(/s$/, "")}
+                </th>
+                <th scope="col" className="px-4 py-2.5 text-right font-medium">
+                  Created
+                </th>
+                <th scope="col" className="px-4 py-2.5 text-right font-medium">
+                  Open
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {cur.rows.map((r) => (
+                <tr key={r.label} className="hover:bg-surface-2/60">
+                  <th scope="row" className="px-4 py-3 text-left font-medium">
+                    {r.label}
+                  </th>
+                  <td className="px-4 py-3 text-right tabular-nums">{count(r.created)}</td>
+                  <td className="px-4 py-3 text-right tabular-nums">{r.open.toLocaleString()}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </Card>
+    </section>
+  );
+}
+
+function AgentsMetrics({ agents }: { agents: MetricsAgentRow[] }) {
+  return (
+    <section aria-label="Agents">
+      <h2 className="mb-2 text-base font-semibold">Agents: time and tasks</h2>
+      <Card className="overflow-x-auto">
+        {agents.length === 0 ? (
+          <EmptyState title="No agent data">Nothing to show for this period.</EmptyState>
+        ) : (
+          <table className="w-full min-w-[28rem] text-sm">
+            <thead>
+              <tr className="border-b border-border text-left text-xs text-muted-foreground">
+                <th scope="col" className="px-4 py-2.5 font-medium">
+                  Agent
+                </th>
+                <th scope="col" className="px-4 py-2.5 text-right font-medium">
+                  Time logged
+                </th>
+                <th scope="col" className="px-4 py-2.5 text-right font-medium">
+                  Billable
+                </th>
+                <th scope="col" className="px-4 py-2.5 text-right font-medium">
+                  Open tasks
+                </th>
+                <th scope="col" className="px-4 py-2.5 text-right font-medium">
+                  Overdue
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {agents.map((a) => (
+                <tr key={a.id ?? a.name} className="hover:bg-surface-2/60">
+                  <th scope="row" className="px-4 py-3 text-left font-medium">
+                    {a.name}
+                  </th>
+                  <td className="px-4 py-3 text-right tabular-nums">
+                    {a.logged_minutes === null ? dash : duration(a.logged_minutes)}
+                  </td>
+                  <td className="px-4 py-3 text-right tabular-nums">
+                    {a.billable_minutes === null ? dash : duration(a.billable_minutes)}
+                  </td>
+                  <td className="px-4 py-3 text-right tabular-nums">{count(a.open_tasks)}</td>
+                  <td
+                    className={cn(
+                      "px-4 py-3 text-right tabular-nums",
+                      (a.overdue_tasks ?? 0) > 0 && "font-medium text-red-600",
+                    )}
+                  >
+                    {count(a.overdue_tasks)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </Card>
+    </section>
+  );
+}
+
+/** "More metrics" tab. */
+export function MetricsPanel({ params }: { params: ReportParams }) {
+  const q = useMetricsReport(params);
+  if (q.isPending) return <Skeleton className="h-64 rounded-xl" />;
+  if (q.isError) return <LoadError error={q.error} />;
+  const d = q.data;
+  const governanceUrl = safeHttpUrl(d.governance_url);
+  return (
+    <div className={cn("space-y-6 transition-opacity", q.isPlaceholderData && "opacity-60")}>
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        {governanceUrl && (
+          <a
+            href={governanceUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border-strong bg-surface px-3 text-[13px] font-medium hover:bg-surface-2"
+          >
+            Governance <ExternalLink className="size-3.5" aria-hidden />
+          </a>
+        )}
+        <CsvButton path="reports/metrics" params={params} withTeam name="more-metrics" />
+      </div>
+      {d.tiles.length > 0 && (
+        <section aria-label="Summary" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {d.tiles.map((t) => (
+            <Stat key={t.key} label={t.label} value={tileValue(t)} hint={t.hint} />
+          ))}
+        </section>
+      )}
+      <Bars title="Open tickets by age" rows={d.backlog} />
+      <Breakdown d={d} />
+      <AgentsMetrics agents={d.agents} />
+    </div>
+  );
+}
+
+/** "AI" tab: what the AI assistant did. */
+export function AiPanel({ params }: { params: ReportParams }) {
+  const q = useAiReport(params);
+  if (q.isPending) return <Skeleton className="h-28 rounded-xl" />;
+  if (q.isError) return <LoadError error={q.error} />;
+  const d = q.data;
+  return (
+    <div className="space-y-4">
+      <div className="flex justify-end">
+        <CsvButton path="reports/ai" params={params} withTeam={false} name="cedesk-ai-report" />
+      </div>
+      <section
+        aria-label="AI assistant"
+        className={cn(
+          "grid gap-3 transition-opacity sm:grid-cols-2 lg:grid-cols-4",
+          q.isPlaceholderData && "opacity-60",
+        )}
+      >
+        <Stat label="AI chats" value={count(d.chats)} />
+        <Stat
+          label="Handed to a person"
+          value={count(d.handed_over)}
+          hint={
+            d.handed_over_percent === null
+              ? undefined
+              : `${d.handed_over_percent}% of finished chats`
+          }
+        />
+        <Stat
+          label="Resolved by AI"
+          value={count(d.resolved_by_ai)}
+          hint={
+            d.resolved_by_ai_percent === null
+              ? undefined
+              : `${d.resolved_by_ai_percent}% of finished chats`
+          }
+        />
+        <Stat
+          label="CSAT of AI"
+          value={d.csat_average === null ? dash : `${d.csat_average.toFixed(1)} ★`}
+          hint={d.csat_count ? `${d.csat_count} ratings` : undefined}
+        />
+      </section>
+    </div>
+  );
+}

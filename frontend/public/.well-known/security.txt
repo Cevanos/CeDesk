@@ -1,0 +1,5 @@
+# Security contact for CeDesk Frontend (RFC 9116).
+Contact: https://github.com/Cevanos/CeDesk-Frontend/security/advisories/new
+Expires: 2027-11-23T00:00:00.000Z
+Preferred-Languages: en
+Policy: https://github.com/Cevanos/CeDesk-Frontend/blob/main/SECURITY.md

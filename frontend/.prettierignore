@@ -1,0 +1,11 @@
+.next
+node_modules
+coverage
+playwright-report
+test-results
+package-lock.json
+refDoc
+public
+src/lib/api/schema.d.ts
+*.tsbuildinfo
+.next-e2e
