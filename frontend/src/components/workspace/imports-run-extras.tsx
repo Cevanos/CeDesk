@@ -6,6 +6,7 @@ import { toast } from "sonner";
 
 import { PasswordInput } from "@/components/auth/password-input";
 import { useConfirm } from "@/components/ui/confirm";
+import { InfiniteScroll } from "@/components/ui/infinite-scroll";
 import { Badge, Button, Field, Skeleton } from "@/components/ui/primitives";
 import { FormError, LoadError } from "@/components/workspace/list-shared";
 import {
@@ -229,16 +230,7 @@ export function FailuresList({ runId }: { runId: string }) {
           </table>
         </div>
       )}
-      {q.hasNextPage && (
-        <Button
-          variant="outline"
-          size="sm"
-          loading={q.isFetchingNextPage}
-          onClick={() => void q.fetchNextPage()}
-        >
-          Load more
-        </Button>
-      )}
+      <InfiniteScroll query={q} shown={rows.length} noun="rows" />
     </section>
   );
 }

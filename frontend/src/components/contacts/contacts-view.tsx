@@ -1,6 +1,20 @@
 "use client";
 
-import { Download, Filter, Search, Settings2, Star, Upload, X } from "lucide-react";
+import {
+  Building2,
+  ChevronRight,
+  Download,
+  Filter,
+  Mail,
+  Phone,
+  Search,
+  Settings2,
+  Star,
+  Ticket,
+  Upload,
+  Users,
+  X,
+} from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -8,7 +22,17 @@ import { toast } from "sonner";
 
 import { ImportDialog } from "@/components/contacts/import-dialog";
 import { SegmentNameDialog, SegmentsPanel } from "@/components/contacts/segments-panel";
-import { Button, Card, EmptyState, Input, Select, Skeleton } from "@/components/ui/primitives";
+import { DatePicker } from "@/components/ui/date-picker";
+import { InfiniteScroll } from "@/components/ui/infinite-scroll";
+import {
+  Badge,
+  Button,
+  Card,
+  EmptyState,
+  Input,
+  Select,
+  Skeleton,
+} from "@/components/ui/primitives";
 import { FormError } from "@/components/workspace/list-shared";
 import { useCurrentUser } from "@/hooks/use-auth";
 import {
@@ -126,6 +150,14 @@ function AttributeFilter({
             searchable={false}
             onChange={(e) => add(e.target.value)}
           />
+        ) : field.kind === "date" ? (
+          <DatePicker
+            aria-label={`${field.label} value`}
+            className="h-9 w-48"
+            value=""
+            placeholder="Pick a date…"
+            onChange={add}
+          />
         ) : (
           <form
             className="flex gap-1.5"
@@ -137,7 +169,7 @@ function AttributeFilter({
             <Input
               aria-label={`${field.label} value`}
               className="h-9 w-40"
-              type={field.kind === "number" ? "number" : field.kind === "date" ? "date" : "text"}
+              type={field.kind === "number" ? "number" : "text"}
               value={value}
               onChange={(e) => setValue(e.target.value)}
               placeholder="Value"
@@ -151,15 +183,71 @@ function AttributeFilter({
   );
 }
 
+const AVATAR_TONES = [
+  "from-indigo-500 to-violet-500",
+  "from-sky-500 to-cyan-500",
+  "from-emerald-500 to-teal-500",
+  "from-amber-500 to-orange-500",
+  "from-rose-500 to-pink-500",
+  "from-fuchsia-500 to-purple-500",
+];
+
+function ContactAvatar({ name, id, className }: { name: string; id: string; className?: string }) {
+  const hash = [...id].reduce((n, c) => n + c.charCodeAt(0), 0);
+  const initials =
+    name
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((w) => w[0]!.toUpperCase())
+      .join("") || "?";
+  return (
+    <span
+      aria-hidden
+      className={cn(
+        "grid size-10 shrink-0 place-items-center rounded-full bg-gradient-to-br text-xs font-semibold text-white shadow-sm ring-2 ring-surface",
+        AVATAR_TONES[hash % AVATAR_TONES.length],
+        className,
+      )}
+    >
+      {initials}
+    </span>
+  );
+}
+
+function StatTile({
+  icon: Icon,
+  label,
+  value,
+  tone,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  value: React.ReactNode;
+  tone: string;
+}) {
+  return (
+    <Card className="flex items-center gap-3 rounded-2xl p-4">
+      <span className={cn("grid size-10 shrink-0 place-items-center rounded-xl", tone)}>
+        <Icon className="size-5" />
+      </span>
+      <div className="min-w-0">
+        <p className="truncate text-xs font-medium text-muted-foreground">{label}</p>
+        <p className="text-xl leading-tight font-semibold tracking-tight tabular-nums">{value}</p>
+      </div>
+    </Card>
+  );
+}
+
 function Rows({ rows }: { rows: ContactRow[] }) {
   const router = useRouter();
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[720px] text-left text-sm">
-        <thead className="border-b border-border bg-surface-2 text-xs text-muted-foreground">
+      <table className="w-full min-w-[860px] text-left text-sm">
+        <thead className="border-b border-border bg-surface-2/60 text-[11px] tracking-wider text-muted-foreground uppercase">
           <tr>
-            {["Name", "Email", "Phone", "Organization", "Tickets", "Last activity"].map((h) => (
-              <th key={h} scope="col" className="px-4 py-2.5 font-medium">
+            {["Contact", "Phone", "Organization", "Tickets", "Last activity", ""].map((h, i) => (
+              <th key={h || i} scope="col" className="px-5 py-3 font-semibold">
                 {h}
               </th>
             ))}
@@ -170,35 +258,65 @@ function Rows({ rows }: { rows: ContactRow[] }) {
             <tr
               key={c.id}
               onClick={() => router.push(`/customers/${c.id}`)}
-              className="cursor-pointer transition-colors hover:bg-primary-soft/40"
+              className="group cursor-pointer transition-colors hover:bg-primary-soft/40"
             >
-              <td className="px-4 py-3">
-                <Link
-                  href={`/customers/${c.id}`}
-                  onClick={(e) => e.stopPropagation()}
-                  className="inline-flex items-center gap-1.5 font-medium hover:text-primary-ink"
-                >
-                  {c.name}
-                  {c.vip && (
-                    <Star
-                      className="size-3.5 fill-amber-400 text-amber-500"
-                      aria-label="VIP"
-                      role="img"
-                    />
-                  )}
-                </Link>
+              <td className="px-5 py-3.5">
+                <div className="flex items-center gap-3">
+                  <ContactAvatar name={c.name} id={c.id} />
+                  <div className="min-w-0">
+                    <Link
+                      href={`/customers/${c.id}`}
+                      onClick={(e) => e.stopPropagation()}
+                      className="inline-flex items-center gap-1.5 font-semibold group-hover:text-primary-ink"
+                    >
+                      {c.name}
+                      {c.vip && (
+                        <Star
+                          className="size-3.5 fill-amber-400 text-amber-500"
+                          aria-label="VIP"
+                          role="img"
+                        />
+                      )}
+                    </Link>
+                    <p className="flex items-center gap-1.5 truncate text-xs text-muted-foreground">
+                      <Mail className="size-3 shrink-0" /> {c.email}
+                    </p>
+                  </div>
+                </div>
               </td>
-              <td className="px-4 py-3 text-muted-foreground">{c.email}</td>
-              <td className="px-4 py-3 text-muted-foreground">{c.phone ?? "—"}</td>
-              <td className="px-4 py-3 text-muted-foreground">{c.organization ?? "—"}</td>
-              <td className="px-4 py-3 whitespace-nowrap">
-                {c.ticket_count}
-                {c.open_ticket_count > 0 && (
-                  <span className="ml-1.5 text-xs text-info">{c.open_ticket_count} open</span>
+              <td className="px-5 py-3.5 whitespace-nowrap text-muted-foreground">
+                {c.phone ? (
+                  <span className="inline-flex items-center gap-1.5">
+                    <Phone className="size-3.5" /> {c.phone}
+                  </span>
+                ) : (
+                  "—"
                 )}
               </td>
-              <td className="px-4 py-3 whitespace-nowrap text-muted-foreground">
+              <td className="px-5 py-3.5 text-muted-foreground">
+                {c.organization ? (
+                  <span className="inline-flex items-center gap-1.5">
+                    <Building2 className="size-3.5 shrink-0" /> {c.organization}
+                  </span>
+                ) : (
+                  "—"
+                )}
+              </td>
+              <td className="px-5 py-3.5 whitespace-nowrap">
+                <span className="inline-flex items-center gap-2">
+                  <span className="inline-flex items-center gap-1 tabular-nums">
+                    <Ticket className="size-3.5 text-muted-foreground" /> {c.ticket_count}
+                  </span>
+                  {c.open_ticket_count > 0 && (
+                    <Badge tone="primary">{c.open_ticket_count} open</Badge>
+                  )}
+                </span>
+              </td>
+              <td className="px-5 py-3.5 whitespace-nowrap text-muted-foreground">
                 {c.last_activity_at ? timeAgo(c.last_activity_at) : "—"}
+              </td>
+              <td className="w-10 px-3 py-3.5 text-subtle-foreground">
+                <ChevronRight className="size-4 transition-transform group-hover:translate-x-0.5 group-hover:text-primary-ink" />
               </td>
             </tr>
           ))}
@@ -254,9 +372,14 @@ export function ContactsView() {
   };
 
   return (
-    <div className="mx-auto w-full max-w-7xl px-3 py-5 sm:px-6 sm:py-7">
-      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-semibold tracking-tight">Contacts</h1>
+    <div className="mx-auto w-full max-w-[1600px] px-3 py-5 sm:px-6 sm:py-7 lg:px-8">
+      <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Contacts</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Everyone who has written in, with their tickets and history in one place.
+          </p>
+        </div>
         <div className="flex flex-wrap gap-2">
           {canSegment && !segment && filtered && !editing && (
             <Button variant="outline" onClick={() => setSaving(true)}>
@@ -302,8 +425,37 @@ export function ContactsView() {
         </div>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-[230px_1fr]">
-        <aside>
+      {!q.isPending && rows.length > 0 && (
+        <div className="mb-5 grid grid-cols-2 gap-3 xl:grid-cols-4">
+          <StatTile
+            icon={Users}
+            label={segment ? "In segment" : "Contacts in view"}
+            value={count ?? rows.length}
+            tone="bg-primary-soft text-primary-ink"
+          />
+          <StatTile
+            icon={Star}
+            label="VIP in view"
+            value={rows.filter((r) => r.vip).length}
+            tone="bg-amber-100 text-amber-600 dark:bg-amber-500/15"
+          />
+          <StatTile
+            icon={Ticket}
+            label="With open tickets"
+            value={rows.filter((r) => r.open_ticket_count > 0).length}
+            tone="bg-sky-100 text-sky-600 dark:bg-sky-500/15"
+          />
+          <StatTile
+            icon={Mail}
+            label="Open tickets"
+            value={rows.reduce((n, r) => n + r.open_ticket_count, 0)}
+            tone="bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15"
+          />
+        </div>
+      )}
+
+      <div className="grid gap-5 lg:grid-cols-[260px_1fr] xl:grid-cols-[280px_1fr]">
+        <aside className="lg:sticky lg:top-4 lg:self-start">
           <SegmentsPanel
             activeId={segment?.id ?? null}
             canManage={canSegment}
@@ -319,7 +471,7 @@ export function ContactsView() {
           />
         </aside>
 
-        <main className="min-w-0 space-y-3">
+        <main className="min-w-0 space-y-4">
           {editing && (
             <div
               role="status"
@@ -406,24 +558,24 @@ export function ContactsView() {
                 </Toggle>
                 <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                   <span aria-hidden>Created from</span>
-                  <Input
+                  <DatePicker
                     aria-label="Created from"
                     type="date"
                     className="h-8 w-36"
                     value={filters.created_from}
                     max={filters.created_to || undefined}
-                    onChange={(e) => set({ ...filters, created_from: e.target.value })}
+                    onChange={(v) => set({ ...filters, created_from: v })}
                   />
                 </div>
                 <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                   <span aria-hidden>to</span>
-                  <Input
+                  <DatePicker
                     aria-label="Created to"
                     type="date"
                     className="h-8 w-36"
                     value={filters.created_to}
                     min={filters.created_from || undefined}
-                    onChange={(e) => set({ ...filters, created_to: e.target.value })}
+                    onChange={(v) => set({ ...filters, created_to: v })}
                   />
                 </div>
               </div>
@@ -466,18 +618,13 @@ export function ContactsView() {
           ) : (
             <Card className="overflow-hidden rounded-2xl">
               <Rows rows={rows} />
-              {q.hasNextPage && (
-                <div className="border-t border-border p-3 text-center">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    loading={q.isFetchingNextPage}
-                    onClick={() => q.fetchNextPage()}
-                  >
-                    Load more
-                  </Button>
-                </div>
-              )}
+              <InfiniteScroll
+                query={q}
+                shown={rows.length}
+                total={count}
+                noun="contacts"
+                className="border-t border-border"
+              />
             </Card>
           )}
         </main>

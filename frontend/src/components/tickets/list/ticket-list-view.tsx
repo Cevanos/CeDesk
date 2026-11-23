@@ -1,6 +1,6 @@
 "use client";
 
-import { Inbox, Loader2, Plus } from "lucide-react";
+import { Inbox, Plus } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 
@@ -9,6 +9,7 @@ import { SavedViews } from "@/components/tickets/inbox/saved-views";
 import { FilterBar, SORTS, activeChips } from "@/components/tickets/list/filter-bar";
 import { StatusTabs } from "@/components/tickets/list/status-tabs";
 import { VirtualTicketList } from "@/components/tickets/list/virtual-ticket-list";
+import { InfiniteScroll } from "@/components/ui/infinite-scroll";
 import { Button, Card, EmptyState, Skeleton } from "@/components/ui/primitives";
 import { useCurrentUser } from "@/hooks/use-auth";
 import { useTicketFilters } from "@/hooks/use-ticket-filters";
@@ -199,19 +200,12 @@ export function TicketListView() {
             onToggle={toggle}
           />
         )}
-        {q.hasNextPage && (
-          <div className="border-t border-border bg-surface-2/40 p-3 text-center">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => q.fetchNextPage()}
-              disabled={q.isFetchingNextPage}
-            >
-              {q.isFetchingNextPage && <Loader2 className="size-4 animate-spin" />} Load more
-              tickets
-            </Button>
-          </div>
-        )}
+        <InfiniteScroll
+          query={q}
+          shown={rows.length}
+          noun="tickets"
+          className="border-t border-border bg-surface-2/40"
+        />
       </Card>
     </div>
   );

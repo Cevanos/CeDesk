@@ -13,6 +13,7 @@ import {
   StateBadge,
   percent,
 } from "@/components/campaigns/shared";
+import { InfiniteScroll } from "@/components/ui/infinite-scroll";
 import { Button, Card, EmptyState, Select, Skeleton } from "@/components/ui/primitives";
 import { LoadError } from "@/components/workspace/list-shared";
 import { useCampaigns, useCreateCampaign } from "@/hooks/use-workspace";
@@ -160,17 +161,7 @@ function CampaignList() {
         </Card>
       )}
 
-      {list.hasNextPage && (
-        <div className="mt-4 flex justify-center">
-          <Button
-            variant="outline"
-            loading={list.isFetchingNextPage}
-            onClick={() => list.fetchNextPage()}
-          >
-            Load more
-          </Button>
-        </div>
-      )}
+      <InfiniteScroll query={list} shown={rows.length} noun="campaigns" className="mt-2" />
 
       <CampaignSettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} />
     </div>

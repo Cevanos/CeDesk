@@ -5,7 +5,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
 
-import { EmptyState, Input, Select, Skeleton } from "@/components/ui/primitives";
+import { DatePicker } from "@/components/ui/date-picker";
+import { EmptyState, Select, Skeleton } from "@/components/ui/primitives";
 import { useCurrentUser } from "@/hooks/use-auth";
 import { useTeams } from "@/hooks/use-workspace";
 import { withOffset, type ReportParams } from "@/hooks/workspace/reports";
@@ -186,24 +187,24 @@ function FrameBody({ children }: { children: ReactNode }) {
           <div className="mt-4 flex flex-wrap items-center gap-3">
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <label htmlFor="rep-from">From</label>
-              <Input
+              <DatePicker
                 id="rep-from"
                 type="date"
                 className="w-40"
                 value={custom.from}
                 max={custom.to || undefined}
-                onChange={(e) => setCustom((c) => ({ ...c, from: e.target.value }))}
+                onChange={(v) => setCustom((c) => ({ ...c, from: v }))}
               />
             </div>
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <label htmlFor="rep-to">To</label>
-              <Input
+              <DatePicker
                 id="rep-to"
                 type="date"
                 className="w-40"
                 value={custom.to}
                 min={custom.from || undefined}
-                onChange={(e) => setCustom((c) => ({ ...c, to: e.target.value }))}
+                onChange={(v) => setCustom((c) => ({ ...c, to: v }))}
               />
             </div>
             {badRange && (

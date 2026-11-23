@@ -2,6 +2,7 @@
 
 import { useId, useState } from "react";
 
+import { DatePicker } from "@/components/ui/date-picker";
 import { Input, Select, Textarea } from "@/components/ui/primitives";
 import { useContactFields, useSegments } from "@/hooks/use-contacts";
 import { useAutomationCatalog, useMemberOptions, useWebhooks } from "@/hooks/use-workspace";
@@ -396,11 +397,11 @@ function ContactValue({
       );
     case "date":
       return (
-        <Input
+        <DatePicker
           type="date"
           aria-label="Value"
           value={String(value ?? "")}
-          onChange={(e) => onChange(e.target.value)}
+          onChange={(v) => onChange(v)}
         />
       );
     case "select":

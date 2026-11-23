@@ -5,8 +5,9 @@ import { useState } from "react";
 import { toast } from "sonner";
 
 import { errorText } from "@/components/campaigns/shared";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Dialog } from "@/components/ui/overlay";
-import { Button, Field, Input, Skeleton } from "@/components/ui/primitives";
+import { Button, Field, Skeleton } from "@/components/ui/primitives";
 import { FormError } from "@/components/workspace/list-shared";
 import { useCampaignAudience, useSendCampaign } from "@/hooks/use-workspace";
 import type { Campaign } from "@/lib/api/types";
@@ -125,13 +126,13 @@ function SendForm({
         </label>
         {mode === "later" && (
           <Field label="Date and time (your time zone)" htmlFor="sd-when">
-            <Input
+            <DatePicker
               id="sd-when"
               type="datetime-local"
               value={when}
               min={localInput(new Date(now))}
               max={localInput(new Date(now + 90 * DAY_MS))}
-              onChange={(e) => setWhen(e.target.value)}
+              onChange={(v) => setWhen(v)}
               className="max-w-64"
             />
           </Field>

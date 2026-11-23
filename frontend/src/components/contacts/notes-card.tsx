@@ -5,6 +5,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 
 import { useConfirm } from "@/components/ui/confirm";
+import { InfiniteScroll } from "@/components/ui/infinite-scroll";
 import { Button, Card, Textarea } from "@/components/ui/primitives";
 import { useCurrentUser } from "@/hooks/use-auth";
 import { useAddNote, useAllNotes, useDeleteNote, useEditNote } from "@/hooks/use-contacts";
@@ -185,17 +186,7 @@ export function NotesCard({
           Show all notes
         </Button>
       )}
-      {all && full.hasNextPage && (
-        <Button
-          size="sm"
-          variant="ghost"
-          className="mt-2"
-          loading={full.isFetchingNextPage}
-          onClick={() => full.fetchNextPage()}
-        >
-          Load more
-        </Button>
-      )}
+      {all && <InfiniteScroll query={full} shown={notes.length} noun="notes" />}
     </Card>
   );
 }

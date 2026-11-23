@@ -4,6 +4,7 @@ import { ChevronDown, ChevronRight, Download, ShieldCheck } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
+import { InfiniteScroll } from "@/components/ui/infinite-scroll";
 import { Badge, Button, Card, EmptyState, Select, Skeleton } from "@/components/ui/primitives";
 import { LoadError } from "@/components/workspace/list-shared";
 import { useAuditLog, useVerifyAudit, type AuditEntry } from "@/hooks/use-workspace";
@@ -148,17 +149,12 @@ export function AuditView() {
               <Row key={e.id ?? `${e.at}-${i}`} e={e} />
             ))}
           </ul>
-          {log.hasNextPage && (
-            <div className="border-t border-border p-3 text-center">
-              <Button
-                variant="ghost"
-                loading={log.isFetchingNextPage}
-                onClick={() => log.fetchNextPage()}
-              >
-                Load more
-              </Button>
-            </div>
-          )}
+          <InfiniteScroll
+            query={log}
+            shown={rows.length}
+            noun="entries"
+            className="border-t border-border"
+          />
         </Card>
       )}
     </div>
