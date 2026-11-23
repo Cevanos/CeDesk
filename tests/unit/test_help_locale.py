@@ -49,3 +49,75 @@ def test_category_names_are_cleaned_and_limited() -> None:
     many = {f"a{chr(97 + i // 26)}{chr(97 + i % 26)}": "n" for i in range(h.MAX_CATEGORY_NAMES + 1)}
     with pytest.raises(h.BadLocale):
         h.clean_category_names(many)
+
+
+@pytest.mark.parametrize(
+    ("title", "slug"),
+    [
+        ("Refund policy", "refund-policy"),
+        ("Réinitialiser le mot de passe", "reinitialiser-le-mot-de-passe"),
+        ("  --Hello,  World!! ", "hello-world"),
+        ("2024 update: what's new?", "2024-update-what-s-new"),
+        ("धनवापसी नीति", None),  # nothing usable: the address is just the id
+        ("Hi", None),
+        ("日本語 FAQ", "faq"),
+    ],
+)
+def test_a_slug_is_suggested_from_a_title(title: str, slug: str | None) -> None:
+    assert h.suggest_slug(title) == slug
+
+
+def test_a_long_title_gives_a_slug_that_fits_and_ends_on_a_word() -> None:
+    slug = h.suggest_slug("word " * 60)
+    assert slug is not None and len(slug) <= h.SLUG_MAX
+    assert not slug.endswith("-") and slug.startswith("word-word")
+    assert h.suggest_slug("x" * 300) == "x" * h.SLUG_MAX
+
+
+def test_a_slug_is_checked_and_lower_cased() -> None:
+    assert h.clean_slug(" Refund-Policy ") == "refund-policy"
+    assert h.clean_slug(None) is None
+    assert h.clean_slug("  ") is None
+    for bad in ("ab", "x" * 101, "has space", "under_score", "double--hyphen", "-lead", "trail-"):
+        with pytest.raises(h.BadSeo):
+            h.clean_slug(bad)
+
+
+def test_meta_text_is_one_line_of_plain_text() -> None:
+    assert h.clean_meta_title("  Refund \n\n policy\t") == "Refund policy"
+    assert h.clean_meta_title("   ") is None
+    assert h.clean_meta_title(None) is None
+    assert h.clean_meta_description("a" * h.META_DESCRIPTION_MAX) is not None
+    with pytest.raises(h.BadSeo):
+        h.clean_meta_title("x" * (h.META_TITLE_MAX + 1))
+    with pytest.raises(h.BadSeo):
+        h.clean_meta_description("x" * (h.META_DESCRIPTION_MAX + 1))
+    with pytest.raises(h.BadSeo):
+        h.clean_meta_title("bad\x00title")
+    with pytest.raises(h.BadSeo):
+        h.clean_meta_description("esc\x1b[31m")
+
+
+def test_a_canonical_url_is_a_plain_https_address() -> None:
+    assert h.clean_canonical(" https://example.com/help/refunds?x=1 ") == (
+        "https://example.com/help/refunds?x=1"
+    )
+    assert h.clean_canonical("") is None
+    assert h.clean_canonical(None) is None
+    bad = (
+        "http://example.com/x", "//example.com/x", "https://", "https:///path",
+        "https://user:pw@example.com/", "https://user@example.com/", "https://example.com/#top",
+        "https://exa mple.com/", "https://example.com/a\nb", "javascript:alert(1)",
+        "https://[::1", "https://example.com/" + "a" * 500, "example.com",
+    )  # fmt: skip
+    for url in bad:
+        with pytest.raises(h.BadSeo):
+            h.clean_canonical(url)
+
+
+def test_all_four_seo_fields_are_cleaned_together() -> None:
+    cleaned = h.clean_seo({"slug": "Hello-World", "meta_title": " T ", "canonical_url": ""})
+    assert cleaned == {
+        "slug": "hello-world", "meta_title": "T", "meta_description": None, "canonical_url": None
+    }  # fmt: skip
+    assert h.clean_seo({}) == dict.fromkeys(h.SEO_FIELDS)

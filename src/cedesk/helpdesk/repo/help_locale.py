@@ -15,8 +15,11 @@ from cedesk.helpdesk.domain.help_locale import DEFAULT_LOCALE
 # Settings
 
 
-async def lock_settings(session: AsyncSession, workspace_id: UUID, *, exclusive: bool) -> str:
-    """The workspace's default language, with its settings row locked until the end of the
+async def lock_settings(
+    session: AsyncSession, workspace_id: UUID, *, exclusive: bool
+) -> RowMapping:
+    """The workspace's settings (`default_locale`, `seo_indexable`), with the row locked until
+    the end of the
     transaction. A translation write takes it shared and a change of default takes it
     exclusive, so the two can never both succeed for the same language. The row is made
     the first time it is needed."""
@@ -30,12 +33,12 @@ async def lock_settings(session: AsyncSession, workspace_id: UUID, *, exclusive:
     lock = "FOR UPDATE" if exclusive else "FOR SHARE"
     result = await session.execute(
         text(
-            "SELECT default_locale FROM hd_help_center_settings "  # noqa: S608
+            "SELECT default_locale, seo_indexable FROM hd_help_center_settings "  # noqa: S608
             f"WHERE workspace_id = :ws {lock}"
         ),
         {"ws": workspace_id},
     )
-    return str(result.scalar_one())
+    return result.mappings().one()
 
 
 async def default_locale(session: AsyncSession) -> str:
@@ -45,13 +48,24 @@ async def default_locale(session: AsyncSession) -> str:
     return str(found) if found else DEFAULT_LOCALE
 
 
-async def set_default_locale(session: AsyncSession, locale: str, member_id: UUID) -> None:
+async def settings(session: AsyncSession) -> tuple[str, bool]:
+    """`(default_locale, seo_indexable)`; no settings row yet means English, not indexable."""
+    result = await session.execute(
+        text("SELECT default_locale, seo_indexable FROM hd_help_center_settings")
+    )
+    found = result.first()
+    return (str(found[0]), bool(found[1])) if found else (DEFAULT_LOCALE, False)
+
+
+async def set_settings(
+    session: AsyncSession, *, locale: str, indexable: bool, member_id: UUID
+) -> None:
     await session.execute(
         text(
-            "UPDATE hd_help_center_settings SET default_locale = :locale, updated_by = :by, "
-            "updated_at = now()"
+            "UPDATE hd_help_center_settings SET default_locale = :locale, "
+            "seo_indexable = :indexable, updated_by = :by, updated_at = now()"
         ),
-        {"locale": locale, "by": member_id},
+        {"locale": locale, "indexable": indexable, "by": member_id},
     )
 
 
@@ -66,7 +80,8 @@ async def count_in_locale(session: AsyncSession, locale: str) -> int:
 # Translations
 
 _TRANSLATION = (
-    "SELECT t.id, t.article_id, t.locale, t.title, t.body, t.status, t.published_at, "
+    "SELECT t.id, t.article_id, t.locale, t.title, t.body, t.status, t.slug, t.meta_title, "
+    "t.meta_description, t.canonical_url, t.published_at, "
     "t.created_at, t.updated_at, m.name AS updated_by_name "
     "FROM hd_article_translation t LEFT JOIN member m ON m.id = t.updated_by "
 )
@@ -105,15 +120,24 @@ async def upsert_translation(
     body: str,
     status: str,
     member_id: UUID,
+    slug: str | None = None,
+    meta_title: str | None = None,
+    meta_description: str | None = None,
+    canonical_url: str | None = None,
 ) -> None:
     """`published_at` is the first time it went live; unpublishing keeps it."""
     await session.execute(
         text(
             "INSERT INTO hd_article_translation (workspace_id, article_id, locale, title, "
-            "body, status, updated_by, published_at) VALUES (:ws, :article, :locale, :title, "
-            ":body, :status, :by, CASE WHEN :status = 'published' THEN now() END) "
+            "body, status, updated_by, slug, meta_title, meta_description, canonical_url, "
+            "published_at) VALUES (:ws, :article, :locale, :title, :body, :status, :by, "
+            ":slug, :meta_title, :meta_description, :canonical_url, "
+            "CASE WHEN :status = 'published' THEN now() END) "
             "ON CONFLICT (workspace_id, article_id, locale) DO UPDATE SET "
             "title = EXCLUDED.title, body = EXCLUDED.body, status = EXCLUDED.status, "
+            "slug = EXCLUDED.slug, meta_title = EXCLUDED.meta_title, "
+            "meta_description = EXCLUDED.meta_description, "
+            "canonical_url = EXCLUDED.canonical_url, "
             "updated_by = EXCLUDED.updated_by, updated_at = now(), "
             "published_at = CASE WHEN EXCLUDED.status = 'published' "
             "THEN coalesce(hd_article_translation.published_at, now()) "
@@ -127,6 +151,10 @@ async def upsert_translation(
             "body": body,
             "status": status,
             "by": member_id,
+            "slug": slug,
+            "meta_title": meta_title,
+            "meta_description": meta_description,
+            "canonical_url": canonical_url,
         },
     )
 
@@ -185,7 +213,8 @@ _PUBLIC_ROW = (
     "coalesce(CAST(c.name_translations ->> CAST(:l1 AS text) AS text), "
     "CAST(c.name_translations ->> CAST(:l2 AS text) AS text), c.name) AS category_name, "
     "coalesce(t.title, a.title) AS title, coalesce(t.updated_at, a.updated_at) AS updated_at, "
-    "coalesce(t.locale, CAST(:default AS text)) AS locale "
+    "coalesce(t.locale, CAST(:default AS text)) AS locale, "
+    "CASE WHEN t.id IS NULL THEN a.slug ELSE t.slug END AS slug "
 )
 
 
@@ -275,13 +304,39 @@ async def public_article(
     result = await session.execute(
         text(
             _PUBLIC_ROW + ", coalesce(t.body, a.body) AS body, "  # noqa: S608
-            "(SELECT coalesce(array_agg(u.l ORDER BY u.l), '{}') FROM ("
-            "SELECT CAST(:default AS text) AS l UNION ALL "
-            "SELECT y.locale FROM hd_article_translation y "
-            "WHERE y.article_id = a.id AND y.status = 'published') u) AS available_locales "
+            # SEO text belongs to the row shown: a translation never takes the article's
+            # canonical address (that would point every language at one page).
+            "CASE WHEN t.id IS NULL THEN a.meta_title ELSE t.meta_title END AS meta_title, "
+            "CASE WHEN t.id IS NULL THEN a.meta_description ELSE t.meta_description END "
+            "AS meta_description, "
+            "CASE WHEN t.id IS NULL THEN a.canonical_url ELSE t.canonical_url END "
+            "AS canonical_url, "
+            "(SELECT coalesce(jsonb_agg(jsonb_build_object('locale', u.l, 'slug', u.slug) "
+            "ORDER BY u.l), '[]'::jsonb) FROM ("
+            "SELECT CAST(:default AS text) AS l, a.slug AS slug UNION ALL "
+            "SELECT y.locale, y.slug FROM hd_article_translation y "
+            "WHERE y.article_id = a.id AND y.status = 'published') u) AS alternates "
             + _PUBLIC_FROM
             + "WHERE a.id = :id AND a.status = 'published'"
         ),
         {**_params(want, default), "id": article_id},
     )
     return result.mappings().first()
+
+
+async def sitemap(session: AsyncSession, default: str, *, limit: int) -> Sequence[RowMapping]:
+    """Published articles, oldest first, each with its published translations: one query, so
+    the number of languages costs nothing extra."""
+    result = await session.execute(
+        text(
+            "SELECT a.id, a.slug, a.updated_at, CAST(:default AS text) AS locale, "
+            "(SELECT coalesce(jsonb_agg(jsonb_build_object('locale', y.locale, "
+            "'slug', y.slug, 'updated_at', y.updated_at) ORDER BY y.locale), '[]'::jsonb) "
+            "FROM hd_article_translation y WHERE y.article_id = a.id "
+            "AND y.status = 'published') AS translations "
+            "FROM hd_article a WHERE a.status = 'published' "
+            "ORDER BY a.created_at, a.id LIMIT :limit"
+        ),
+        {"default": default, "limit": limit},
+    )
+    return result.mappings().all()

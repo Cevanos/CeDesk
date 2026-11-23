@@ -8,10 +8,12 @@ from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Path, status
-from pydantic import BaseModel, Field, StringConstraints
+from pydantic import BaseModel, Field, StringConstraints, computed_field
 
+from cedesk.helpdesk.api.articles import SeoIn
 from cedesk.helpdesk.api.deps import CallerDep, SessionmakerDep
 from cedesk.helpdesk.api.schemas import Body
+from cedesk.helpdesk.domain import help_locale
 from cedesk.helpdesk.domain.articles import ArticleStatus
 from cedesk.helpdesk.service import article_translations as service
 
@@ -36,10 +38,15 @@ class HelpCenterSettingsOut(BaseModel):
         description="The language the articles themselves are written in. Every other "
         "language is a translation."
     )
+    seo_indexable: bool = Field(
+        description="Whether search engines may index the public help center. Off until an "
+        "Admin turns it on; the frontend serves `noindex` and an empty sitemap meanwhile."
+    )
 
 
 class HelpCenterSettingsIn(Body):
-    default_locale: Annotated[str, StringConstraints(min_length=2, max_length=11)]
+    default_locale: Annotated[str, StringConstraints(min_length=2, max_length=11)] | None = None
+    seo_indexable: bool | None = Field(default=None, description="Send only what changes.")
 
 
 class TranslationOut(BaseModel):
@@ -47,13 +54,24 @@ class TranslationOut(BaseModel):
     title: str
     body: str = Field(description="Markdown. Render it without raw HTML.")
     status: ArticleStatus = Field(description="Published only counts when the article is too.")
+    slug: str | None
+    meta_title: str | None
+    meta_description: str | None
+    canonical_url: str | None = Field(
+        description="This language's own override; null means it is its own canonical page."
+    )
     published_at: datetime | None
     created_at: datetime
     updated_at: datetime
     updated_by_name: str | None
 
+    @computed_field(description="A slug made from the title, or null when it gives none.")  # type: ignore[prop-decorator]
+    @property
+    def suggested_slug(self) -> str | None:
+        return help_locale.suggest_slug(self.title)
 
-class TranslationIn(Body):
+
+class TranslationIn(SeoIn):
     title: Title
     body: TranslatedBody = ""
     status: ArticleStatus = ArticleStatus.draft
@@ -73,22 +91,29 @@ class CategoryNameIn(Body):
     summary="The help center's default language",
 )
 async def get_settings(caller: CallerDep, sm: SessionmakerDep) -> HelpCenterSettingsOut:
-    return HelpCenterSettingsOut(default_locale=await service.default_locale(sm, caller))
+    found = await service.get_settings(sm, caller)
+    return HelpCenterSettingsOut(
+        default_locale=found.default_locale, seo_indexable=found.seo_indexable
+    )
 
 
 @router.put(
     "/help-center/settings",
     response_model=HelpCenterSettingsOut,
-    summary="Change the default language (Admin)",
-    description="Refused (409) while an article has a translation in the new default.",
+    summary="Change the default language or the indexable switch (Admin)",
+    description="Send only what changes. A new default language is refused (409) while an "
+    "article has a translation in it.",
     responses={**_ADMIN, 409: {"description": "Translations exist in that language"},
                422: {"description": "Not a language code"}},
 )  # fmt: skip
 async def put_settings(
     body: HelpCenterSettingsIn, caller: CallerDep, sm: SessionmakerDep
 ) -> HelpCenterSettingsOut:
+    found = await service.update_settings(
+        sm, caller, default_locale=body.default_locale, seo_indexable=body.seo_indexable
+    )
     return HelpCenterSettingsOut(
-        default_locale=await service.set_default_locale(sm, caller, body.default_locale)
+        default_locale=found.default_locale, seo_indexable=found.seo_indexable
     )
 
 
@@ -119,7 +144,14 @@ async def put_translation(
     sm: SessionmakerDep,
 ) -> TranslationOut:  # fmt: skip
     row = await service.save_translation(
-        sm, caller, article_id, locale, title=body.title, body=body.body, status=body.status
+        sm,
+        caller,
+        article_id,
+        locale,
+        title=body.title,
+        body=body.body,
+        status=body.status,
+        seo=body.model_dump(include=set(help_locale.SEO_FIELDS)),
     )
     return TranslationOut.model_validate(dict(row))
 

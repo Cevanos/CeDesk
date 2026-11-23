@@ -6,7 +6,8 @@ like articles and categories. The public side, which picks the best translation,
 `service/articles.py`.
 """
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from uuid import UUID
 
 from sqlalchemy import RowMapping
@@ -38,38 +39,63 @@ def _locale(code: str) -> str:
         raise Invalid(str(exc)) from exc
 
 
-# The default language
+# The settings: the default language and whether the help center may be indexed
 
 
-async def default_locale(sm: Sessionmaker, caller: Caller) -> str:
+@dataclass(frozen=True)
+class Settings:
+    default_locale: str
+    seo_indexable: bool
+
+
+async def get_settings(sm: Sessionmaker, caller: Caller) -> Settings:
     require(caller, Action.read_ticket)
     async with workspace_session(sm, caller.workspace_id) as s:
-        return await repo.default_locale(s)
+        return Settings(*await repo.settings(s))
 
 
-async def set_default_locale(sm: Sessionmaker, caller: Caller, code: str) -> str:
-    """Changes which language the article rows are in. Refused while any article has a
-    translation in the new default: the article would have two versions in one language
+async def update_settings(
+    sm: Sessionmaker,
+    caller: Caller,
+    *,
+    default_locale: str | None = None,
+    seo_indexable: bool | None = None,
+) -> Settings:
+    """Changes the settings that are given. A new default language is refused while any
+    article has a translation in it: the article would have two versions in one language
     (delete those translations first). The settings row is locked while this runs, so a
     translation being saved in that language at the same moment cannot slip through."""
     require(caller, Action.settings)
-    locale = _locale(code)
+    locale = _locale(default_locale) if default_locale is not None else None
     async with workspace_session(sm, caller.workspace_id) as s:
         current = await repo.lock_settings(s, caller.workspace_id, exclusive=True)
-        if locale == current:
-            return current
-        clashing = await repo.count_in_locale(s, locale)
-        if clashing:
-            raise Conflict(
-                f"{clashing} article translation(s) are in '{locale}'. Delete them "
-                "(or translate in another language) before making it the default."
-            )
-        await repo.set_default_locale(s, locale, caller.member_id)
+        was = Settings(str(current["default_locale"]), bool(current["seo_indexable"]))
+        new = Settings(
+            locale or was.default_locale,
+            was.seo_indexable if seo_indexable is None else seo_indexable,
+        )
+        if new == was:
+            return was
+        if new.default_locale != was.default_locale:
+            clashing = await repo.count_in_locale(s, new.default_locale)
+            if clashing:
+                raise Conflict(
+                    f"{clashing} article translation(s) are in '{new.default_locale}'. Delete "
+                    "them (or translate in another language) before making it the default."
+                )
+        await repo.set_settings(
+            s, locale=new.default_locale, indexable=new.seo_indexable, member_id=caller.member_id
+        )
+        changes = {
+            key: {"from": getattr(was, key), "to": getattr(new, key)}
+            for key in ("default_locale", "seo_indexable")
+            if getattr(was, key) != getattr(new, key)
+        }
         await audit.record(
-            s, caller, Area.help_center, "changed", "Help center default language",
-            detail={"changes": {"default_locale": {"from": current, "to": locale}}},
+            s, caller, Area.help_center, "changed", "Help center settings",
+            detail={"changes": changes},
         )  # fmt: skip
-    return locale
+    return new
 
 
 # Translations
@@ -94,17 +120,21 @@ async def save_translation(
     title: str,
     body: str,
     status: rules.ArticleStatus,
+    seo: Mapping[str, str | None] | None = None,
 ) -> RowMapping:
-    """Makes or replaces the translation in one language."""
+    """Makes or replaces the translation in one language (the SEO fields are replaced too)."""
     require(caller, Action.settings)
     locale = _locale(code)
     try:
         clean_title = rules.clean_title(title)
         clean_body = rules.clean_body(body)
-    except rules.BadArticle as exc:
+        clean_seo = help_locale.clean_seo(seo or {})
+    except (rules.BadArticle, help_locale.BadSeo) as exc:
         raise Invalid(str(exc)) from exc
     async with workspace_session(sm, caller.workspace_id) as s:
-        default = await repo.lock_settings(s, caller.workspace_id, exclusive=False)
+        default = (await repo.lock_settings(s, caller.workspace_id, exclusive=False))[
+            "default_locale"
+        ]
         if locale == default:
             raise Invalid(IS_DEFAULT)
         if await article_repo.lock_article(s, article_id) is None:
@@ -117,6 +147,7 @@ async def save_translation(
         await repo.upsert_translation(
             s, workspace_id=caller.workspace_id, article_id=article_id, locale=locale,
             title=clean_title, body=clean_body, status=status.value, member_id=caller.member_id,
+            **clean_seo,
         )  # fmt: skip
         found = await repo.translation(s, article_id, locale)
         assert found is not None
@@ -152,7 +183,9 @@ async def save_category_name(
     require(caller, Action.settings)
     locale = _locale(code)
     async with workspace_session(sm, caller.workspace_id) as s:
-        default = await repo.lock_settings(s, caller.workspace_id, exclusive=False)
+        default = (await repo.lock_settings(s, caller.workspace_id, exclusive=False))[
+            "default_locale"
+        ]
         if locale == default:
             raise Invalid("That is the default language: rename the category itself.")
         names = await repo.category_names(s, category_id)

@@ -557,3 +557,63 @@ async def test_0078_adds_help_center_languages_and_wont_go_down_while_translatio
             forced = "SELECT relforcerowsecurity FROM pg_class WHERE relname = :t"
             assert await conn.scalar(text(forced), {"t": table}) is True
         assert await conn.scalar(text(columns)) == 2
+
+
+async def test_0079_adds_help_center_seo_columns_and_goes_back_down(owner_engine: Any) -> None:
+    """Slug, meta text and canonical address on articles and translations (with checks that
+    keep them tidy), and the indexable switch, off by default."""
+    import asyncio
+
+    from sqlalchemy import text
+    from sqlalchemy.exc import IntegrityError
+
+    cfg = alembic_config()
+    columns = (
+        "SELECT count(*) FROM information_schema.columns WHERE column_name IN "
+        "('slug', 'meta_title', 'meta_description', 'canonical_url') "
+        "AND table_name IN ('hd_article', 'hd_article_translation')"
+    )
+    switch = (
+        "SELECT count(*) FROM information_schema.columns WHERE "
+        "table_name = 'hd_help_center_settings' AND column_name = 'seo_indexable'"
+    )
+    async with owner_engine.connect() as conn:
+        assert await conn.scalar(text(columns)) == 8
+        assert await conn.scalar(text(switch)) == 1
+    async with owner_engine.begin() as conn:
+        await conn.execute(text("ALTER TABLE workspace NO FORCE ROW LEVEL SECURITY"))
+        await conn.execute(text("ALTER TABLE hd_article NO FORCE ROW LEVEL SECURITY"))
+        ws = await conn.scalar(text("INSERT INTO workspace (name) VALUES ('P4S') RETURNING id"))
+        art = await conn.scalar(
+            text("INSERT INTO hd_article (workspace_id, title) VALUES (:ws, 'A') RETURNING id"),
+            {"ws": ws},
+        )
+    try:
+        for column, bad in (
+            ("slug", "Bad Slug"), ("slug", "ab"), ("slug", "double--hyphen"),
+            ("meta_title", ""), ("meta_description", "x" * 321),
+            ("canonical_url", "http://example.com/"), ("canonical_url", "https://exa mple.com/"),
+        ):  # fmt: skip
+            with pytest.raises(IntegrityError):
+                async with owner_engine.begin() as conn:
+                    await conn.execute(
+                        text(f"UPDATE hd_article SET {column} = :v WHERE id = :id"),  # noqa: S608
+                        {"v": bad, "id": art},
+                    )
+        async with owner_engine.begin() as conn:  # a good one is accepted
+            await conn.execute(
+                text("UPDATE hd_article SET slug = 'refund-policy' WHERE id = :id"), {"id": art}
+            )
+    finally:
+        async with owner_engine.begin() as conn:
+            await conn.execute(text("DELETE FROM hd_article WHERE id = :id"), {"id": art})
+            await conn.execute(text("DELETE FROM workspace WHERE id = :id"), {"id": ws})
+            await conn.execute(text("ALTER TABLE hd_article FORCE ROW LEVEL SECURITY"))
+            await conn.execute(text("ALTER TABLE workspace FORCE ROW LEVEL SECURITY"))
+    await asyncio.to_thread(command.downgrade, cfg, "0078")
+    async with owner_engine.connect() as conn:
+        assert await conn.scalar(text(columns)) == 0
+        assert await conn.scalar(text(switch)) == 0
+    await asyncio.to_thread(command.upgrade, cfg, "head")
+    async with owner_engine.connect() as conn:
+        assert await conn.scalar(text(columns)) == 8

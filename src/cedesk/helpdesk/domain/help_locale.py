@@ -5,7 +5,9 @@ rows. A language is a code like `en`, `hi` or `pt-br`, stored lower-case.
 """
 
 import re
+import unicodedata
 from collections.abc import Mapping
+from urllib.parse import urlsplit
 
 from cedesk.helpdesk.domain.articles import CATEGORY_MAX
 
@@ -54,3 +56,96 @@ def clean_category_names(names: Mapping[str, str]) -> dict[str, str]:
             raise BadLocale(f"A category name needs 1 to {CATEGORY_MAX} characters.")
         cleaned[clean_locale(code)] = value
     return cleaned
+
+
+# SEO text (feature-gap plan 4.3)
+
+SLUG_MIN = 3
+SLUG_MAX = 100
+META_TITLE_MAX = 120
+META_DESCRIPTION_MAX = 320
+CANONICAL_MAX = 500
+
+_SLUG = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
+
+
+class BadSeo(ValueError):
+    pass
+
+
+def suggest_slug(title: str) -> str | None:
+    """A URL word from a title: accents dropped, ASCII letters and digits joined by hyphens.
+    A title with fewer than 3 usable characters (for example Hindi) gives none, and the
+    page's address is just its id."""
+    plain = unicodedata.normalize("NFKD", title).encode("ascii", "ignore").decode()
+    slug = re.sub(r"[^a-z0-9]+", "-", plain.lower()).strip("-")
+    if len(slug) > SLUG_MAX:
+        slug = slug[:SLUG_MAX].rsplit("-", 1)[0] if "-" in slug[:SLUG_MAX] else slug[:SLUG_MAX]
+    return slug if len(slug) >= SLUG_MIN else None
+
+
+def clean_slug(value: str | None) -> str | None:
+    if value is None or not value.strip():
+        return None
+    slug = value.strip().lower()
+    if not SLUG_MIN <= len(slug) <= SLUG_MAX or not _SLUG.match(slug):
+        raise BadSeo(
+            f"A slug is {SLUG_MIN} to {SLUG_MAX} lower-case letters, digits and single hyphens."
+        )
+    return slug
+
+
+def _plain(value: str | None, limit: int, what: str) -> str | None:
+    """One line of text: line breaks and runs of spaces become one space; other control
+    characters are refused."""
+    if value is None:
+        return None
+    if any(unicodedata.category(ch) == "Cc" and ch not in "\t\n\r" for ch in value):
+        raise BadSeo(f"The {what} can't contain control characters.")
+    text = " ".join(value.split())
+    if not text:
+        return None
+    if len(text) > limit:
+        raise BadSeo(f"The {what} can be at most {limit} characters.")
+    return text
+
+
+def clean_meta_title(value: str | None) -> str | None:
+    return _plain(value, META_TITLE_MAX, "meta title")
+
+
+def clean_meta_description(value: str | None) -> str | None:
+    return _plain(value, META_DESCRIPTION_MAX, "meta description")
+
+
+def clean_canonical(value: str | None) -> str | None:
+    """An https address with a host, no sign-in details and no fragment, or None."""
+    if value is None or not value.strip():
+        return None
+    url = value.strip()
+    problem = BadSeo("The canonical URL must be a full https:// address.")
+    if len(url) > CANONICAL_MAX or any(ch.isspace() or ord(ch) < 32 for ch in url):
+        raise problem
+    try:
+        parts = urlsplit(url)
+        host = parts.hostname
+    except ValueError:  # e.g. an unclosed [ in the host
+        raise problem from None
+    if parts.scheme != "https" or not host or parts.fragment:
+        raise problem
+    if parts.username is not None or parts.password is not None:
+        raise problem
+    return url
+
+
+SEO_FIELDS = ("slug", "meta_title", "meta_description", "canonical_url")
+
+
+def clean_seo(values: Mapping[str, str | None]) -> dict[str, str | None]:
+    """All four SEO fields, cleaned; an empty one is None (not set)."""
+    return {
+        "slug": clean_slug(values.get("slug")),
+        "meta_title": clean_meta_title(values.get("meta_title")),
+        "meta_description": clean_meta_description(values.get("meta_description")),
+        "canonical_url": clean_canonical(values.get("canonical_url")),
+    }

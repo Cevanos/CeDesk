@@ -80,7 +80,10 @@ async def test_the_default_language_and_its_rules(
     client: AsyncClient, app_sessionmaker: Sm
 ) -> None:
     w = await desk(client, app_sessionmaker)
-    assert ok(await client.get(S, headers=w["neha"])) == {"default_locale": "en"}
+    assert ok(await client.get(S, headers=w["neha"])) == {
+        "default_locale": "en",
+        "seo_indexable": False,
+    }
     art = await write(client, w, "Hello")
     assert (await put(client, w, art["id"], "en", "Hello again")).status_code == 422  # default
 
@@ -93,11 +96,14 @@ async def test_the_default_language_and_its_rules(
     bad = await client.put(S, headers=w["admin"], json={"default_locale": "english"})
     assert bad.status_code == 422
 
+    off = {"seo_indexable": False}
     assert ok(await client.put(S, headers=w["admin"], json={"default_locale": "FR"})) == {
-        "default_locale": "fr"
+        "default_locale": "fr",
+        **off,
     }
     assert ok(await client.put(S, headers=w["admin"], json={"default_locale": "fr"})) == {
-        "default_locale": "fr"
+        "default_locale": "fr",
+        **off,
     }
     assert (await put(client, w, art["id"], "fr", "Bonjour")).status_code == 422
 
@@ -316,6 +322,6 @@ async def test_translation_changes_are_in_the_audit_log_without_the_text(
     ok(await client.put(S, headers=w["admin"], json={"default_locale": "fr"}))
     page = ok(await client.get("/api/v1/audit", headers=w["admin"],
                                params={"area": "help_center", "limit": 200}))  # fmt: skip
-    mine = [e for e in page["entries"] if "ranslation" in e["target"] or "default" in e["target"]]
+    mine = [e for e in page["entries"] if "ranslation" in e["target"] or "settings" in e["target"]]
     assert [e["action"] for e in reversed(mine)] == ["created", "changed", "deleted", "changed"]
     assert "गोपनीय" not in str(page)

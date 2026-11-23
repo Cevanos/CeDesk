@@ -15,6 +15,7 @@ _VOTES = (
 )
 _ARTICLE = (  # built from the constants above only
     "SELECT a.id, a.category_id, c.name AS category_name, a.title, a.body, a.status, "  # noqa: S608
+    "a.slug, a.meta_title, a.meta_description, a.canonical_url, "
     "a.source, a.published_at, a.created_at, a.updated_at, m.name AS updated_by_name, "
     "(SELECT coalesce(array_agg(t.locale ORDER BY t.locale), '{}') "
     "FROM hd_article_translation t WHERE t.article_id = a.id) AS locales, "
@@ -168,11 +169,17 @@ async def insert_article(
     body: str,
     status: str,
     member_id: UUID,
+    slug: str | None = None,
+    meta_title: str | None = None,
+    meta_description: str | None = None,
+    canonical_url: str | None = None,
 ) -> UUID:
     result = await session.execute(
         text(
             "INSERT INTO hd_article (workspace_id, category_id, title, body, status, "
-            "updated_by, published_at) VALUES (:ws, :category, :title, :body, :status, :by, "
+            "updated_by, slug, meta_title, meta_description, canonical_url, published_at) "
+            "VALUES (:ws, :category, :title, :body, :status, :by, :slug, :meta_title, "
+            ":meta_description, :canonical_url, "
             "CASE WHEN :status = 'published' THEN now() END) RETURNING id"
         ),
         {
@@ -182,6 +189,10 @@ async def insert_article(
             "body": body,
             "status": status,
             "by": member_id,
+            "slug": slug,
+            "meta_title": meta_title,
+            "meta_description": meta_description,
+            "canonical_url": canonical_url,
         },
     )
     found: UUID = result.scalar_one()
@@ -197,12 +208,18 @@ async def update_article(
     body: str,
     status: str,
     member_id: UUID,
+    slug: str | None = None,
+    meta_title: str | None = None,
+    meta_description: str | None = None,
+    canonical_url: str | None = None,
 ) -> None:
     """`published_at` is the first time it went live; unpublishing keeps it."""
     await session.execute(
         text(
             "UPDATE hd_article SET category_id = :category, title = :title, body = :body, "
-            "status = :status, updated_by = :by, updated_at = now(), "
+            "status = :status, updated_by = :by, updated_at = now(), slug = :slug, "
+            "meta_title = :meta_title, meta_description = :meta_description, "
+            "canonical_url = :canonical_url, "
             "published_at = CASE WHEN :status = 'published' "
             "THEN coalesce(published_at, now()) ELSE published_at END WHERE id = :id"
         ),
@@ -213,6 +230,10 @@ async def update_article(
             "body": body,
             "status": status,
             "by": member_id,
+            "slug": slug,
+            "meta_title": meta_title,
+            "meta_description": meta_description,
+            "canonical_url": canonical_url,
         },
     )
 
@@ -241,7 +262,8 @@ async def set_body(session: AsyncSession, article_id: UUID, body: str) -> None:
 async def lock_article(session: AsyncSession, article_id: UUID) -> RowMapping | None:
     result = await session.execute(
         text(
-            "SELECT id, category_id, title, body, status FROM hd_article WHERE id = :id FOR UPDATE"
+            "SELECT id, category_id, title, body, status, slug, meta_title, meta_description, "
+            "canonical_url FROM hd_article WHERE id = :id FOR UPDATE"
         ),
         {"id": article_id},
     )
