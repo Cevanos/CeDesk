@@ -3,7 +3,7 @@
 `openapi.json` next to this file is the API as served (`uv run cedesk openapi`). Every
 route is under `/api/v1`. Breaking changes only come in v2 (md 2B). Newest first.
 
-## 2026-11-17: Team report: first-reply SLA met per team
+## 2026-11-23: Team report: first-reply SLA met per team
 
 Additive. In `GET /reports/team`, each row of `teams` gains `first_reply_sla_met_percent`
 (null when none of that team's tickets was measured) and `first_reply_sla_measured`. They
@@ -11,6 +11,508 @@ follow the summary's rule: of the team's tickets created in the period (not impo
 merged) whose first-reply clock stopped or ran out, the share answered in time. A ticket
 still within its first-reply time counts nowhere yet. The CSV's Teams table gains the
 same two columns. No migration.
+
+## 2026-11-22: Reporting follow-ups
+
+No new routes or fields; no migration.
+
+- `DELETE /reports/saved/{id}` is now **409** while another member's scheduled report sends
+  it (as unsharing already was). The report owner's own schedules still go with it; each is
+  audited (area `report_schedules`, action `deleted`, detail the report id), and the report's
+  own `deleted` entry counts them (`schedules`).
+- It is also **409** while the report is a card on a shared dashboard or on another member's
+  dashboard. Cards on the owner's own personal dashboards still go with it; each dashboard is
+  audited (area `dashboards`, action `changed`, detail the report id), and the report's
+  `deleted` entry counts them (`dashboard_cards`).
+- A dashboard card whose saved report you can no longer see (its owner unshared it) is
+  labelled `Report not available` instead of showing the report's name; running it stays 404.
+- Scheduled report emails: the worker holds each pass to `CEDESK_REPORT_SCHEDULE_BUDGET_SECONDS`
+  (20) with workspaces taking turns, and each scheduled query to
+  `CEDESK_REPORT_SCHEDULE_TIMEOUT_SECONDS` (5; `CEDESK_REPORT_TIMEOUT_SECONDS` is now the API's
+  only). A schedule that fails while sending is marked with the reason and moves to its next
+  time; the others in the workspace still go out.
+
+## 2026-11-21: Reporting: trends and breakdowns, custom and saved reports, dashboards, live view, scheduled email
+
+Additive only: new routes and fields; nothing existing changed shape. Migrations 0073-0077.
+Feature-gap plan phase 3. No new permission: everything needs `reports` (Supervisor, Admin, a
+custom role with the reports right); sharing a saved report or dashboard needs `share_views`;
+an Admin (`settings`) also sees and changes every schedule. New audit areas: `reports`,
+`dashboards`, `report_schedules` (ids and counts only). New settings
+`CEDESK_REPORT_TIMEOUT_SECONDS` (10) and `CEDESK_REPORT_CONCURRENCY` (4).
+
+- **Backlog over time.** The worker writes one snapshot per workspace, per team and day
+  (`hd_backlog_snapshot`, at the first pass after the workspace's local day ended; kept 3
+  years). `GET /reports/backlog?from&to&team_id` lists `{day, open, pending, breaching}`;
+  history starts when this ships, and a day the worker was down is missing.
+- **Trends and breakdowns, custom reports.** `GET /reports/options` lists the metrics
+  (created, resolved, avg first response, avg resolution, CSAT average and count, reopen rate,
+  time logged, open_now, backlog), groupings (day, week, month, team, assignee, priority,
+  type, channel, tag, topic, sentiment), filters, preset ranges and 19 built-in reports.
+  `POST /reports/run {preset | definition}` runs one (`?format=csv` too): time series are
+  zero-filled in the workspace's time zone (weeks start Monday), other groupings keep the
+  biggest 50. Definitions use fixed lists only (unknown keys are 422); a run over
+  `CEDESK_REPORT_TIMEOUT_SECONDS` is 422 "narrow the range", more than
+  `CEDESK_REPORT_CONCURRENCY` at once per API process wait about 5 s then answer 429.
+  `incomplete` warns that a range reaches back past the archive age. `GET /reports/ai` and the
+  new routes have `format=csv`.
+- **Saved reports.** `GET|POST /reports/saved`, `GET|PATCH|DELETE /reports/saved/{id}`,
+  `POST /reports/saved/{id}/run`: a name, a definition with a *preset* range, personal or
+  shared (50 each, 100 shared). They run under the viewer's own team scope.
+- **Dashboards.** `GET|POST /dashboards`, `GET|PATCH|DELETE /dashboards/{id}`,
+  `POST /dashboards/{id}/cards/{card_id}/run` (optional `range` and `team_id` for every card).
+  Up to 20 cards, each a saved report or a built-in one. A shared dashboard holds only
+  built-in and shared reports; unsharing a report on one is 409.
+- **Live view.** `GET /reports/live`: open, pending, snoozed, past-SLA and SLA-due-soon counts
+  per team, the 50 tickets waiting longest for a first reply, the 20 soonest due, agents by
+  status. Shared for about 5 s between viewers.
+- **Scheduled email.** `GET|POST /report-schedules`, `GET|PATCH|DELETE /report-schedules/{id}`,
+  `POST /report-schedules/{id}/leave`. Daily, weekly or monthly at an hour of the workspace's
+  day, to up to 10 members (never free addresses), one plain-text email each. The worker
+  checks every recipient and the owner at every send and sends once after an outage.
+
+## 2026-11-20: Email campaigns, unsubscribe and the suppression list
+
+Additive only: new routes, one new outcome on `POST /inbound/email` (`bounce`), new
+settings. Migrations 0071-0072. Feature-gap plan phase 6. Every signed-in route needs the
+new right `manage_campaigns` (Admins only; never a custom role, never an API key: 403).
+New audit area `campaigns` (created, changed, deleted, test_sent, scheduled, sent,
+started, finished, failed, cancelled, paused, resumed, results_exported,
+settings_changed, suppression_added, suppression_removed): ids and counts only, never an
+address or the email's text.
+
+- **Settings.** `GET|PUT /campaigns/settings {postal_address}`: the postal address every
+  campaign email's footer shows (10-300 characters). No campaign can be sent without it.
+  The answer also shows the server's caps (`max_recipients`, `daily_cap`, `per_minute`).
+- **Suppression list.** `GET /suppressions?reason=&email=&cursor=&limit=` (newest first,
+  `counts` per reason; `email` looks up one address exactly), `POST /suppressions {email,
+  note}` (reason `manual`; 409 if already on it), `POST /suppressions/{id}/remove
+  {confirm_consent, justification}`. Reasons: `unsubscribed`, `hard_bounce`, `complaint`,
+  `manual`, `erased`. `manual` and `hard_bounce` come off freely; `unsubscribed` and
+  `complaint` only with `confirm_consent: true` and a 10+ character justification (kept in
+  the audit log, addresses hidden); an erased customer's entry (`email` null) never (409).
+  Only campaigns read the list: ticket replies and other transactional email still go.
+- **Campaigns.** `GET /campaigns?state=`, `POST /campaigns {name, segment_id, subject,
+  body, from_address_id, track_opens}`, `GET|PATCH|DELETE /campaigns/{id}` (PATCH and
+  DELETE: drafts only, else 409). `CampaignOut` has `state` (draft, scheduled, sending,
+  paused, sent, cancelled, failed), `stats` and, for a draft, `problems` (what blocks a
+  send). The body is reply/macro text with the same placeholders and a little Markdown
+  (paragraphs, `#` headings, lists, bold, italics, links); raw HTML shows as text.
+- **Before sending.** `GET /campaigns/{id}/audience` (in segment, not mailable,
+  suppressed, recipients, sent in 24 h, queued, caps, `problem`); `POST
+  /campaigns/{id}/preview {contact_id?}` (subject, text, html for one customer); `POST
+  /campaigns/{id}/test` (202: to the signed-in Admin only, `[Test]` subject; 20 an hour).
+- **Sending.** `POST /campaigns/{id}/send {confirm: true, scheduled_at?}`: 422 unless
+  confirmed and ready (subject, body, segment, a support address with the forwarding check
+  passed and SPF and DKIM `ok` in its last DNS check, the postal address, an https public
+  address outside dev) and within the caps (`CEDESK_CAMPAIGN_MAX_RECIPIENTS` per campaign,
+  default 5000; `CEDESK_CAMPAIGN_DAILY_CAP` per workspace per 24 h, default 10000).
+  Recipients are copied from the segment when it starts (erased, placeholder, role and
+  support addresses and suppressed customers left out). The worker sends at most
+  `CEDESK_CAMPAIGN_PER_MINUTE` (default 60) a minute per workspace, each recipient at most
+  once. `POST /campaigns/{id}/cancel` (scheduled: back to draft; sending or paused:
+  `cancelled`), `/pause`, `/resume`. Over 5% hard bounces after 50 sent pauses it.
+- **Results.** `GET /campaigns/{id}/stats`, `GET /campaigns/{id}/recipients?status=`
+  (a status, or `opened`, `unsubscribed`, `complained`; paged by address), `GET
+  /campaigns/{id}/recipients/export` (CSV, audited).
+- **Public, no sign-in.** `GET /public/unsubscribe/{token}` (`workspace_name`, null for an
+  unknown link; `unsubscribed`), `POST /public/unsubscribe/{token}` (always 200, the same
+  answer; also RFC 8058 one-click from the `List-Unsubscribe` header), `GET
+  /public/open/{token}` (always a 1x1 GIF; counts opens when the campaign tracks them).
+  Their own per-IP limit, `CEDESK_UNSUBSCRIBE_LIMIT` (default 600 per 10 minutes).
+- **Email in.** A bounce (RFC 3464) or spam report (ARF) about a campaign email, matched
+  by the original Message-ID, answers `outcome: "bounce"` and makes no ticket; a hard
+  bounce or complaint puts the address on the suppression list.
+- **Privacy.** The export has `campaign_emails` and `suppression_list`; erase clears the
+  address and name on their campaign rows (counts stay) and keeps each of their addresses
+  on the suppression list as a hash only (counts `campaign_emails`, `suppression_kept`).
+
+## 2026-11-20: Automation: richer rules, workflows with waits, safeguards, test mode, run log
+
+Additive only: new routes and fields; nothing existing changed shape (rules saved before
+keep their format and run as before). Migrations 0069-0070. Feature-gap plan phase 5
+(5.1, 5.2, 5.3, 5.5; the bot inbox, 5.4, is not in it). Everything here needs the
+`settings` right (Admin; a custom role with the settings right). A rule or workflow that
+calls a webhook can only be saved or changed by an Admin signed in (not an API key), as
+webhooks themselves. New audit area `flows` (created, changed, enabled, disabled, deleted,
+run_cancelled); rules stay under `rules`.
+
+- **Rules: new event and conditions.** Event `snooze_ended` (the worker reopened a snoozed
+  ticket). Conditions `contact_field {key, op, value}` (op: equals, not_equals, is_set,
+  not_set, contains, more_than, less_than; checked against the field's kind),
+  `contact_vip {value}`, `contact_in_segment {segment_ids, negate}`, `time_since {of:
+  customer_reply|agent_reply, op: more_than|less_than, minutes}` (no reply yet: since the
+  ticket was created), `snoozed {value}`, `has_followers {value}`.
+- **Rules: new actions.** `snooze {minutes}` (only when the ticket ends Pending),
+  `add_follower {member_id}`, `send_email {body}` (a message from the workspace with
+  `{{customer.first_name}}`-style placeholders; emailed on email and web-form tickets;
+  skipped for an erased customer; does not stop the first-reply SLA clock),
+  `call_webhook {webhook_id}` (queues one delivery to an existing webhook, event
+  `automation.webhook`, signed, retried and SSRF-checked like every webhook; body:
+  `automation {kind, id, name, run_id}` and the ticket brief; never on demo tickets).
+- **Rules: limits.** `max_runs_per_hour` (1-100000, default 1000) and `max_runs_per_day`
+  (1-1000000, default 10000, not below the hourly one) on `POST|PUT|PATCH /rules` and in
+  `RuleOut`.
+- **Safeguards.** A run is blocked (logged, nothing changed) past 5 levels of automations
+  answering each other on a ticket (an automatic email or snooze causing the next event
+  within 10 minutes), after 20 runs of one rule or workflow on one ticket in 24 hours, or
+  past its hourly or daily limit. Blocked runs don't count toward the limits.
+- **Test mode.** `POST /rules/{id}/test {ticket_id}` and `POST /rules/test {ticket_id,
+  rule: {event, conditions, actions}}`: each condition matched or not, what each action
+  would write, `ticket_after`, and (saved rules) the safeguard that would block it.
+  `POST /flows/{id}/test {ticket_id}` and `POST /flows/test {ticket_id, graph}`: the
+  `steps` it would take until its first wait, `would_wait`, `ticket_after`, `blocked`.
+  Nothing is changed, sent or logged.
+- **Workflows.** `GET|POST /flows`, `GET|PATCH|DELETE /flows/{id}`,
+  `GET /flows/{id}/versions`, `POST /flows/validate {graph}` (200 `{valid, trigger,
+  error}`; shape only). A graph is `{nodes, edges}`: one `trigger` node (`event`),
+  `condition` nodes (`conditions`, out by `yes`/`no`), `action` nodes (one rule `action`),
+  `wait` nodes (`minutes` 1-43200, optional `until: "customer_replied"`, out by `next`, or
+  `replied`/`timeout`). Edges `{from, to, when}`. Every node reachable, one edge per way
+  out, loops only through a wait, at most 50 nodes and 100 edges, 50 workflows. Nodes may
+  carry `position` and `label`. 422 with the first problem; 409 for a name in use.
+  Workflows start turned off. A changed graph is a new `version`; waiting runs finish on
+  the version they started on. Turning one off or deleting it cancels its waiting runs.
+  Workflows run after the rules on the same events, in one save.
+- **Waits.** The worker moves due runs on once a minute (each run once). A customer
+  reply moves runs waiting `until: customer_replied` on by `replied`; otherwise `timeout`
+  when the minutes pass. A run waiting on a ticket that was resolved (and no reply), merged
+  or whose workflow is off is cancelled when it comes due.
+- **Catalog.** `GET /automation/catalog`: triggers, conditions, actions (each with a JSON
+  schema of its parameters), node types and their ways out, and the limits.
+- **Run log.** `GET /automation/runs?rule_id=&flow_id=&ticket_id=&state=&trigger=&cursor=
+  &limit=` (newest first, cursor paging), `GET /automation/runs/{id}`,
+  `POST /automation/runs/{id}/cancel` (a waiting run; 409 otherwise). A run: kind (rule or
+  flow), name, ticket, trigger, state (done, waiting, cancelled, blocked, failed), result,
+  steps, depth, resume time. No message text, email body, webhook URL or secret. Finished
+  runs are kept 30 days.
+- **Privacy.** The export has `automation_runs` (per ticket: automation, trigger, state,
+  result, time). Erase cancels the customer's waiting runs (`automation_runs_cancelled` in
+  the counts).
+
+## 2026-11-20: Contacts: list and search, notes, custom attributes, merge, CSV, segments, timeline
+
+Additive only: new routes and fields; nothing existing changed shape. Migrations 0065-0068.
+Feature-gap plan phase 2. New permissions (`GET /me` lists them in `actions`):
+`manage_contacts` (Admin; a custom role with the settings right), `merge_contacts` and
+`manage_segments` (Admin, Supervisor; a custom role with the settings right),
+`export_contacts` (Admin only: never a custom role or an API key). Reading contacts and
+notes uses `read_ticket` (a Light agent too), adding a note `private_note`, setting
+attribute values `change_fields`. New audit areas: `contacts`, `contact_fields`,
+`segments`; contact entries name the customer by id only and never hold a note's words, an
+attribute's value or an address.
+
+- **Contact list.** `GET /contacts?q=&sort=name|recent|tickets&vip=&has_open=&created_from=
+  &created_to=&attr=key:value&cursor=&limit=`. `q` matches name, email (also merged-in
+  addresses), phone and organization. Rows: profile, `ticket_count`, `open_ticket_count`,
+  `last_activity_at`, `other_emails`, `attributes`. Cursor paging as the ticket list.
+  Erased customers are left out. `GET /contacts/{id}`: the same plus `erased_at`, CSAT,
+  `note_count`, the newest 5 `notes` and the workspace's contact `fields` (for the
+  customer page and a ticket's Customer tab, via the ticket's `contact.id`).
+- **Notes.** `GET|POST /contacts/{id}/notes`, `PATCH|DELETE /contacts/{id}/notes/{note_id}`.
+  Private (customers never see them), 1-5000 characters. Author or `manage_contacts` to
+  change or delete (403 otherwise); `can_edit` says which. Audited by note id.
+- **Contact fields and values.** `GET|POST /contact-fields`, `PATCH|DELETE
+  /contact-fields/{id}` (`manage_contacts`). Kinds: text, number, date (YYYY-MM-DD), select
+  (with options), checkbox. Key and kind never change. Deleting one removes every value;
+  409 while a segment filters on it. `PUT /contacts/{id}/attributes {attributes}` sets
+  values (null or "" clears one), checked by kind (422).
+- **Merge.** `POST /contacts/{id}/merge-preview {duplicate_id}` (changes nothing): moves,
+  conflicts (survivor wins), the result, `can_merge`, `blocked`, `warnings`.
+  `POST /contacts/{id}/merge {duplicate_id, confirm: true}`: tickets (archived too),
+  ratings, notes and addresses move to `{id}`; it takes a phone, organization or attribute
+  value it lacks, VIP if either is, and the earlier "customer since"; the duplicate is
+  deleted and its portal sign-ins end. Its address becomes an `other_emails` entry: new
+  mail, tickets, imports and portal sign-ins from it find the survivor. 409 for an erased
+  customer or a duplicate with privacy requests; 422 without `confirm`. Can't be undone.
+- **CSV import.** `POST /contacts/import?dry_run=true|false&on_existing=fill_blanks|
+  overwrite|skip&mapping={json}`; the body is the CSV file (UTF-8), at most 2 MB (413) and
+  5,000 rows. Matched by email; per-row errors by line; one transaction. Answer:
+  `headers`, `mapping` used, `rows`, `created`, `updated`, `unchanged`, `errors`.
+- **CSV export.** `GET /contacts/export` with the list's filters: a CSV file (BOM,
+  formula-safe cells), at most 50,000 rows (413). `export_contacts`; audited with the row
+  count (a search only as `search: true`).
+- **Segments.** `GET|POST /segments`, `GET|PATCH|DELETE /segments/{id}` (`GET` adds
+  `contact_count`), `GET /segments/{id}/contacts` (rows and paging as `GET /contacts`).
+  Filters are `GET /contacts`' own (q, sort, vip, has_open, created_from, created_to,
+  attributes), checked with its rules. Who is in one is worked out when read.
+- **Timeline.** `GET /contacts/{id}/timeline?kind=&cursor=&limit=`: ticket_created,
+  ticket_resolved, message (public only), csat, note, merge; newest first; ticket items
+  follow a team-only role's scope.
+- **Privacy.** `POST /privacy/export` also finds a customer by a merged-in address, and the
+  file adds `customer.other_emails`, `customer.attributes`, `contact_notes` and
+  `merged_customers`. `POST /privacy/erase` also deletes their contact notes, attribute
+  values and merged-in addresses (each scrubbed like their own address) and blanks the
+  names and addresses in their merge history; new `counts` keys `contact_notes`,
+  `other_emails`, `attributes`, `merge_history`.
+- **API keys.** `/contacts/*` was already a read-write key area: a read-write key lists,
+  reads, notes and sets values; importing and merging need an admin key; the export never
+  works with a key. `contact-fields` and `segments` are not open to keys.
+
+## 2026-11-20: Agent inbox tools: snooze, saved views, bulk changes, auto-close, followers, transcript
+
+Additive only: new routes and fields; nothing existing changed shape. Migrations 0061-0064.
+Feature-gap plan phase 1. New permissions (`GET /me` lists them in `actions`):
+`bulk_edit` (Admin, Supervisor, Agent; every custom role), `share_views` (Admin,
+Supervisor; a custom role with the settings right), `send_transcript` (Admin, Supervisor,
+Agent; a custom role with the reply right). New audit areas: `tickets`, `views`,
+`auto_close`. New notification kinds: `snooze_ended`, `following`.
+
+- **Snooze.** `POST /tickets/{id}/snooze` `{until}` puts the ticket in Pending until then
+  (1 minute to 1 year ahead, with a time zone); `DELETE /tickets/{id}/snooze` reopens it
+  now. Same rights and `If-Match` as `PATCH /tickets/{id}`; 409 on a resolved ticket. The
+  worker reopens it at the time (once a minute) and tells the assignee (`snooze_ended`)
+  and followers; a customer reply wakes it early; any other status change ends it.
+  - Tickets (list and detail) have `snoozed_until` (null: not snoozed).
+  - `GET /tickets?snoozed=true|false` (only snoozed / none of them); `counts.snoozed`.
+  - `ticket.updated` lists `snoozed_until` in `changes` when it changed.
+- **Saved views.** `GET /views`, `POST /views`, `GET|PATCH|DELETE /views/{id}`. A view
+  is `{name, filters, shared}`; `filters` holds only `GET /tickets` parameters (status,
+  scope, priority, team, q, sort, imported, snoozed), checked with the list's own rules
+  (422 otherwise). Personal views: owner only (404 for anyone else, Admins too). Shared
+  views: everyone sees them; `share_views` to make, change, delete, share or unshare.
+  Audited (area `views`). API keys can't use `/views`.
+- **Bulk changes.** `POST /tickets/bulk` `{ticket_ids (1-100), action, value}`; actions
+  assign, set_team, set_status, set_priority, add_tags, remove_tags, snooze, unsnooze.
+  Each ticket goes through the single-edit path with its own checks and transaction;
+  answer 200 with a result per ticket (`ok`, `error {code, message}`), `succeeded`,
+  `failed`. Needs `bulk_edit`; 10 requests a minute per person (429). One audit entry per
+  request (area `tickets`).
+- **Auto-close.** `GET|PUT /auto-close` `{enabled, after_days (1-365), notice}` (Settings
+  right; audited, area `auto_close`); off by default. Daily, Pending tickets with no
+  customer reply and no change for `after_days` are resolved (notice first, as a reply
+  from the workspace); never snoozed, handover-waiting, approval-waiting, open-child,
+  merged or imported tickets. Each close: a line, `ticket.resolved` (so the CSAT survey),
+  followers told, an audit entry (area `tickets`, by "Auto-close").
+- **Followers.** `GET /tickets/{id}/followers`, `POST /tickets/{id}/followers`
+  `{member_id}`, `DELETE /tickets/{id}/followers/{member_id}`; answers `{followers,
+  following}`. Yourself: read right; someone else: the right to change the ticket.
+  Assigned and @mentioned members follow automatically. Followers get `following`
+  notifications for public replies and status changes (not their own). Audited.
+- **Email transcript.** `POST /tickets/{id}/transcript` `{to?}` (202): the public
+  conversation (customer, agent and AI messages; never notes, system lines or side
+  conversations) emailed from the default support address to the customer or `to`. Needs
+  `send_transcript` and the right to change the ticket. 409 without a support address or
+  public messages; 422 for a chat/demo customer or a support address; 10 an hour per
+  person, 100 per workspace (429). A line on the ticket; the audit entry holds no text.
+
+## 2026-11-20: Translate: an order number or a single word isn't "not translated"
+
+No route or field changed. Found retesting against the now-fixed Cevanos: "ORD-1042" to
+Hindi rightly comes back as it was, but Cevanos labels it English, which the rule below
+read as a failed translation (503 "Cevanos didn't translate this."). A text of fewer than
+two words (an order number, a code, a single name) sent back as it was now gets the note
+"Cevanos found nothing to translate in this text." instead.
+
+## 2026-11-19: AI improve and translate say when Cevanos changed nothing
+
+Additive: one new field on each answer. No migration. Found testing the AI features
+against the real Cevanos: every translation came back untranslated but was shown as
+"Translated from hi by AI", and "Shorter" never changed a reply, with no word to the
+agent. The fix itself is Cevanos's (reported to them); this stops CeDesk misleading the
+agent meanwhile.
+
+- **`POST /assist/improve`** answers `{text, note}`. `note` is null, or "No changes
+  suggested. Try another tone." when Cevanos sent the text back as it was (spaces
+  aside). Show it.
+- **`POST /assist/translate`** answers `{text, from, note}`:
+  - Cevanos found another language but sent the text back untranslated: **503**
+    "Cevanos didn't translate this. Try again later." (was a 200 with the same text);
+  - the text is already in `to` (`from` and `to` are the same language, `en` = `en-GB`):
+    200 with `note` "This is already in English." (or "…in that language.");
+  - Cevanos found no language (e.g. "ORD-1042"): 200 with `note` "Cevanos found
+    nothing to translate in this text.";
+  - with a `note`, show it instead of "Translated from …".
+
+## 2026-11-19: Assignee pickers can tell who takes tickets; the refusal says who and why
+
+Additive: two new fields. No migration. Found on staging: the New ticket form's Assignee
+list offered a light agent and a deactivated member, and choosing either failed with
+"That person can't be assigned tickets." (the form showed nothing).
+
+- **New on `GET /agents`** (and `PUT /me/status`, `PATCH /agents/{id}/routing`):
+  - `assignable` (bool): can be given tickets: active, and the role replies to customers
+    (not a light agent, nor a custom role without the reply right). List only these in
+    an Assignee picker.
+  - `works_on_team_id` (uuid or null): a custom role limited to one team; only that
+    team's tickets can be given to them. null: any team.
+- **Clearer 422** when a ticket is given to someone who can't take it
+  (`POST /tickets`, `PATCH /tickets/{id}`, `POST /tickets/{id}/accept`):
+  - "Meena can't be assigned tickets: the Light agent role doesn't reply to customers."
+  - "Test Intern is deactivated, so can't be assigned tickets."
+  - "That person isn't a member of this workspace." (an unknown id)
+
+  The team case is unchanged ("Ravi's role works on Shipping's tickets only, …").
+
+## 2026-11-19: Calendly: a booking link is taken as the Admin copies it
+
+No route or field changed. No migration. Found testing the Calendly app with a real
+Calendly account.
+
+- **Fixed:** `PUT /apps/calendly` refused the link as the browser's address bar shows it
+  once the page has loaded (`https://calendly.com/acme/30min?month=2026-11`), with
+  `www.`, or without `https://`, and Calendly's one-off links
+  (`https://calendly.com/d/<code>/<event>`). These are now accepted and saved as
+  `https://calendly.com/<path>`: the query, a `#...` and a trailing slash are dropped, so
+  `/book` only ever carries the page.
+- Still a 422: http, another host (`calendly.com.evil.com`), a user or a port, a path
+  longer than `<you>/<event>`. The message now says where to get the link: "Give your
+  Calendly booking link: on Calendly, use the event's Copy link, e.g.
+  https://calendly.com/acme/30min."
+
+## 2026-11-19: Slack: alerts say why a webhook stopped working; side conversation replies read better
+
+No route or field changed. No migration. Found testing both Slack apps against a real
+Slack workspace. The Slack side conversations app now needs the `files:read` bot scope
+(see below; without it everything works, a file's name just may read "[file]").
+
+- **Slack side conversations, replies read better** (a reply's `body` in
+  `GET /tickets/{id}/side-conversations`):
+  - **A pasted link showed twice.** Slack labels it with the address minus `https://`, and
+    it read "example.com/logs (https://example.com/logs)". Now it's just the address. A
+    real label still reads "label (address)".
+  - **Mentioned colleagues get their names:** `@Meena`, was `@U07ABC123`. Only the
+    replier's name was asked for before. Up to 5 people per reply, asked together within
+    the same 1.5 s.
+  - **A shared file without its name in Slack's event** (`file_access: check_file_info`)
+    read "[file: unnamed]". Its name is now asked for with `files.info`, so the Slack app
+    needs the **`files:read`** bot scope; the file itself is still never fetched. Without
+    the scope, or if Slack doesn't answer in time, the line is "[file]".
+  - A reply that is only a file, sent without `text` and without a subtype (Slack's
+    current form), is kept.
+- **Slack side conversations, clearer channel errors** (422 on
+  `POST /tickets/{id}/side-conversations/slack`): `channel_not_found` adds "If it's a
+  private channel, invite the bot there first: type /invite @<your bot> in it." (a
+  private channel the bot isn't in answers the same). An archived channel says so.
+- The Slack app's setup text (`GET /apps`, `credential_help`) lists `files:read`.
+- **Slack alerts, clearer messages** when Slack refuses the webhook. They show in a
+  failed event's `last_error` (`GET /outbox/failed`, Settings > Channels > Failed events),
+  and as the 422 when installing with such a webhook (`PUT /apps/slack_alerts`). Both used
+  to say only "Slack has no such thing.":
+  - 404 (removed in Slack, the Slack app uninstalled, or the channel deleted): "Slack no
+    longer has this webhook: ... Add a new webhook in Slack (Incoming Webhooks) and
+    install Slack alerts with its URL.";
+  - 410 (channel archived): "The webhook's Slack channel is archived. ...";
+  - 401/403 (revoked, or the channel doesn't let apps post): "Slack refused this
+    webhook: ...".
+
+  Timeouts and 5xx keep the general message and are retried as before.
+
+## 2026-11-19: Jira: a clickable link back to the ticket, and clear "not found" messages
+
+No route or field changed. No migration. Found testing the Jira app against a real Jira
+Cloud site.
+
+- **Fixed:** the description of an issue made from a ticket ends with "From CeDesk ticket
+  T-1042: <link>", but the link was plain text in Jira (Jira doesn't turn text into
+  links), so it had to be copied. Every http(s) address in the description is now sent
+  as a link (Atlassian Document Format link marks), the ticket's and any the agent
+  wrote; punctuation right after an address stays text.
+- **Clearer messages** (422) where Jira answers 404:
+  - `POST /tickets/{id}/jira/link` with a key Jira doesn't have: "Jira has no issue
+    KAN-777, or the Jira account in Settings > Apps can't see it." (was "Jira has no such
+    thing.");
+  - installing Jira with a project it doesn't have: "Jira has no project NOPE, or this
+    account can't see it."; with a site that doesn't exist: "There's no Jira site at
+    acme.atlassian.net. Check the site name."
+- Other apps' 404 now says "<App> couldn't find what was asked for (404)." instead of
+  "<App> has no such thing."
+
+## 2026-11-18: Self-service sign-up (create a workspace from the sign-in page)
+
+All additive; nothing existing changed. Migration 0060 adds two tables. Off unless
+`CEDESK_SIGNUP_ENABLED=true`: then these routes answer 404, except the config route.
+
+- **`GET /auth/signup-config`** (no sign-in): `{enabled, captcha_site_key}`. Show the
+  "Create a workspace" link only when `enabled`; `captcha_site_key` is the Cloudflare
+  Turnstile key to show, or null for no CAPTCHA.
+- **`POST /auth/signup`** `{workspace, workspace_name, name, email, password,
+  captcha_token}`: 202 `{signup_id, code_expires_at, resend_after}`. Nothing is created
+  yet: a 6-digit code (10 minutes, 5 tries) is emailed. 409 `slug_taken`, 422 (an address
+  that is reserved or not 3-40 lowercase letters, digits and single dashes; a bad email;
+  a password under 10 characters; a name or workspace name with a line break, a hidden
+  character, or a web or email address in it), 403 `captcha_failed`, 429 (5 sign-ups an hour per IP,
+  3 code emails an hour per email from one IP, 10 per email in all). A new sign-up for an
+  email from the same IP replaces its waiting one; one from another IP doesn't.
+  The code email holds only the code and CeDesk's own words: nothing typed on the form
+  (it can name anyone's email) goes into it.
+- **`POST /auth/signup/verify`** `{signup_id, code, workspace?}`: 200 `{workspace}`, then
+  sign in as usual. Creates the workspace, its first Admin, the default teams and ticket
+  types, the cloud plan (`CEDESK_SIGNUP_DEFAULT_PLAN`, cloud edition only) and the first
+  audit entries ("Self-service sign-up", area `workspace`). Safe to repeat: the same code
+  answers the same. 422 `bad_code`, 410 `code_expired` (resend) or `signup_expired`
+  (start over), 409 `slug_taken` (send the same code again with a new `workspace`), 429
+  (3 workspaces a day per IP).
+- **`POST /auth/signup/resend`** `{signup_id}`: 202 as above; the old code stops working,
+  and its email is not sent if it hadn't gone yet.
+  429 before `resend_after` (60 s), or after 3 code emails an hour from this IP (10 per
+  email in all).
+- **Audit**: a new area `workspace`.
+
+## 2026-11-18: Limiting the portal to some domains signs the others out
+
+No route or field changed. No migration.
+
+- **Fixed (S7):** when an Admin saved a domain list (`PUT /portal-settings`,
+  `allowed_domains`), only new sign-ins were refused: a customer already signed in with
+  another email kept using the portal until their session ended (found in the Phase 3
+  retest). Now saving the list ends those sessions at once. Their next portal request
+  answers 401 and their live stream ends (`signed_out`); they can't sign in again. Opening
+  the list later doesn't bring an ended session back. The audit entry for the change says
+  how many sessions ended (`portal_sessions_ended`).
+- Every portal request also checks the email against the list, so a session made at the
+  very moment the list was saved is refused on its next request: 401 with the list's
+  message, e.g. "Only acme.com emails can open tickets here."
+
+## 2026-11-18: App install forms with labels, webhook retry while off, portal names
+
+All additive; no field was removed or renamed. No migration. Found in the Phase 3 retest
+of the portal and Settings > Developers on the test server.
+
+- **New `fields` on `GET /apps` (and every app answer).** The install form, in order:
+  `{key, label, hint, send_as, secret}` for every setting and credential, e.g. Jira:
+  "Jira site" (hint "acme for acme.atlassian.net."), "Atlassian account email", "Project
+  key", "API token". `send_as` is `settings` (send as `settings[key]`), `secret` or
+  `signing_secret` (that field of the install body); `secret` true means a password box.
+  Before, only the bare keys came (`settings_fields: ["site", "email", "project"]`), so
+  the Jira and Calendly boxes showed no label. `settings_fields`, `credential` and
+  `second_credential` stay and say the same.
+- **`POST /webhooks/deliveries/{id}/retry` answers 409** "The webhook is turned off. Turn
+  it on, then send this again." when the delivery's webhook is turned off. Before, it
+  answered 204 and queued the delivery, which the worker then refused ("The webhook is
+  turned off."), so the page said "sent again" for something never sent. Nothing is
+  queued now; once the webhook is on, the retry works as before.
+- **A new customer's name** (portal sign-in, and a web form sent without a name) is made
+  from the part of the email before the @: `priya.shah@` is "Priya Shah", `ravi_k+orders@`
+  is "Ravi K". Before it was the bare "priya.shah", so a reply's
+  `{{customer.first_name}}` said "Hi priya.shah". A known customer keeps their name.
+- Tests: the DB tests connect to `127.0.0.1:5447` by default instead of `localhost`.
+  Compose publishes the port on 127.0.0.1 only, and on Windows `localhost` tries IPv6
+  first, so every connection waited about 2 s. `CEDESK_TEST_OWNER_URL` and
+  `CEDESK_TEST_APP_URL` still override it.
+
+## 2026-11-18: Imported help center articles are Markdown
+
+No route or field changed. No migration.
+
+- **Fixed (P6):** an article imported from **Zendesk or Intercom** kept the source's HTML,
+  so the help center (which shows `body` as Markdown, without raw HTML) showed tags such
+  as `<p class="no-margin">` and `<h2>` as text. Every article import now writes the body
+  as Markdown: headings, paragraphs, line breaks, lists (nested too), bold, italics, links,
+  images, quotes, code and rules keep their shape; a table becomes one line per row, cells
+  split by ` | `; an embedded video becomes a link. Scripts and styles are dropped, and so
+  is any other tag (its text stays). Only http(s) and mailto links and http(s) images are
+  kept; a relative link keeps its text. Text is escaped so it reads as written
+  (`order_id` stays `order_id`).
+- **Freshdesk, Zoho Desk and Help Scout** articles, which were turned into plain text, now
+  keep their formatting the same way (Freshdesk reads `description`, and
+  `description_text` only when there is no HTML).
+- **Articles imported before this:** re-importing doesn't change an article that is
+  already here, so run **`cedesk articles-markdown`** once on each server. It rewrites
+  imported articles whose body still holds HTML tags and leaves everything else alone: an
+  Admin's own articles and bodies that are already text or Markdown. Each article keeps
+  its dates and who last edited it. It prints how many it changed, and is safe to run
+  again.
 
 ## 2026-11-17: Imports: the run report, new credentials, and what imports now keep
 

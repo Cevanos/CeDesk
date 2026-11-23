@@ -44,7 +44,7 @@ workspace our operators give a cloud plan (`cedesk set-plan`), which you never d
    - `CEDESK_SITE=help.example.com` (your domain; Caddy gets its certificate).
    - `CEDESK_APP_URL=https://app.example.com` and
      `CEDESK_CORS_ORIGINS=https://app.example.com` (the frontend's address).
-   - Email: see [Email](#email). Production refuses `CEDESK_MAIL_BACKEND=log`.
+   - Email: see [Email](#email). Only a developer's machine (`CEDESK_ENV=dev`) accepts `CEDESK_MAIL_BACKEND=log`.
 
    **Keep a copy of `CEDESK_SECRET_KEY` somewhere safe and never change it.** It encrypts
    every member's two-step sign-in secret, app credentials, the Cevanos key, webhook
@@ -133,6 +133,25 @@ Set `CEDESK_MAIL_FORWARD_TO` to the address support addresses should forward to,
 Settings > Email can tell Admins. "Check forwarding" there proves an address arrives.
 Auto-replies, bounces and mailing lists are ignored, so CeDesk never answers an
 out-of-office forever.
+
+## Self-service sign-up (optional)
+
+New workspaces are made with `cedesk create-workspace`. To let anyone create one from the
+sign-in page instead (a form, then a 6-digit code emailed to them, then they sign in), set
+in `.env`:
+
+```
+CEDESK_SIGNUP_ENABLED=true
+CEDESK_MAIL_FROM_ADDRESS=no-reply@your-domain
+CEDESK_MAIL_BACKEND=smtp        # and the CEDESK_SMTP_* settings
+```
+
+Anyone who can reach the sign-in page can then make a workspace, so leave it off for a
+server only your team uses. To stop bots, add a Cloudflare Turnstile CAPTCHA (free; the
+site key and secret from the Cloudflare dashboard) as `CEDESK_SIGNUP_CAPTCHA_SITE_KEY` and
+`CEDESK_SIGNUP_CAPTCHA_SECRET`. The worker sends the codes on a lane of their own, so
+nothing else it does can hold one back. Limits and the rest: [SETTINGS.md](SETTINGS.md),
+"Self-service sign-up".
 
 ## Files
 

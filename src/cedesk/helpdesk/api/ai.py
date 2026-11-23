@@ -5,13 +5,15 @@ from datetime import datetime
 from typing import Annotated, Any
 from uuid import UUID
 
-from fastapi import APIRouter, Query, Request
+from fastapi import APIRouter, Query, Request, Response
 from pydantic import BaseModel, Field
 
 from cedesk.cevanos_client import Cevanos
 from cedesk.helpdesk.api.deps import CallerDep, SessionmakerDep
+from cedesk.helpdesk.api.reports import FormatQuery, csv_response
 from cedesk.helpdesk.api.schemas import Body
 from cedesk.helpdesk.domain import ai as rules
+from cedesk.helpdesk.domain.report_csv import Table
 from cedesk.helpdesk.service import ai
 
 router = APIRouter(tags=["ai"])
@@ -26,6 +28,12 @@ _ERRORS: dict[int | str, dict[str, Any]] = {
     503: {"description": "Cevanos is down or slow: try again"},
 }
 _TICKET_ERRORS = _ERRORS | {404: {"description": "No such ticket, or another team's"}}
+_UNTRANSLATED: dict[int | str, dict[str, Any]] = {
+    503: {
+        "description": "Cevanos is down or slow, or sent the text back untranslated "
+        '("Cevanos didn\'t translate this. Try again later.")'
+    }
+}
 _ONLY = "Only when Cevanos is connected (`GET /me` `ai`); nothing is stored."
 
 
@@ -58,10 +66,26 @@ class TranslateIn(Body):
     )
 
 
+class ImprovedOut(BaseModel):
+    text: str
+    note: str | None = Field(
+        default=None,
+        description='Show it to the agent when set: "No changes suggested. Try another '
+        'tone." (Cevanos sent the text back as it was; `text` is that text).',
+    )
+
+
 class TranslationOut(BaseModel):
     text: str
     from_: str | None = Field(
         alias="from", serialization_alias="from", description="The language found, e.g. hi."
+    )
+    note: str | None = Field(
+        default=None,
+        description='Show it to the agent when set, instead of "Translated from …": '
+        '"This is already in English." or "Cevanos found nothing to translate in this '
+        'text." (`text` is the text as it was). A text Cevanos should have translated but '
+        "sent back as it was is a 503 instead.",
     )
 
     model_config = {"populate_by_name": True}
@@ -98,30 +122,32 @@ async def suggest(
 
 @router.post(
     "/assist/improve",
-    response_model=TextOut,
+    response_model=ImprovedOut,
     summary="Improve the writing of a reply or note (Cevanos AI)",
-    description="Returns the text rewritten in the tone, for the agent to edit and send. " + _ONLY,
+    description="Returns the text rewritten in the tone, for the agent to edit and send; "
+    "`note` says when nothing changed. " + _ONLY,
     responses=_ERRORS,
 )
 async def improve(
     body: ImproveIn, request: Request, caller: CallerDep, sm: SessionmakerDep
-) -> TextOut:
+) -> ImprovedOut:
     found = await ai.improve(sm, _cevanos(request), caller, text=body.text, tone=body.tone)
-    return TextOut(text=found)
+    return ImprovedOut(text=found.text, note=found.note)
 
 
 @router.post(
     "/assist/translate",
     response_model=TranslationOut,
     summary="Translate a message or a reply (Cevanos AI)",
-    description="Returns the text in `to` and the language it was in. " + _ONLY,
-    responses=_ERRORS,
+    description="Returns the text in `to` and the language it was in; `note` says when "
+    "there was nothing to translate. " + _ONLY,
+    responses=_ERRORS | _UNTRANSLATED,
 )
 async def translate(
     body: TranslateIn, request: Request, caller: CallerDep, sm: SessionmakerDep
 ) -> TranslationOut:
     found = await ai.translate(sm, _cevanos(request), caller, text=body.text, to=body.to)
-    return TranslationOut(text=found.text, from_=found.source)
+    return TranslationOut(text=found.text, from_=found.source, note=found.note)
 
 
 class AiNumbersOut(BaseModel):
@@ -159,6 +185,23 @@ async def ai_report(
         Query(alias="from", description="Default: 30 days before `to`. With a time zone."),
     ] = None,
     end: Annotated[datetime | None, Query(alias="to", description="Default: now.")] = None,
-) -> AiReportOut:
+    fmt: FormatQuery = "json",
+) -> AiReportOut | Response:
     found = await ai.numbers(sm, _cevanos(request), caller, start=start, end=end)
+    if fmt == "csv":
+        n = found.numbers
+        table = Table(
+            "AI",
+            ("Metric", "Value"),
+            [
+                ("Cevanos chats", n.conversations),
+                ("Handed over to a person", n.handed_over),
+                ("Handover rate (0-1)", n.handover_rate),
+                ("Resolved by the AI alone", n.ai_resolved),
+                ("AI resolved rate (0-1)", n.ai_resolved_rate),
+                ("CSAT of AI answers (1-5)", n.ai_csat),
+                ("CSAT responses", n.ai_csat_responses),
+            ],
+        )
+        return csv_response("ai", "CeDesk AI report", found.start, found.end, None, [table])
     return AiReportOut(from_=found.start, to=found.end, ai=AiNumbersOut(**found.numbers.__dict__))

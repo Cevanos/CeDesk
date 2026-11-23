@@ -53,9 +53,7 @@ def test_a_file_share_reply_keeps_its_text_and_names_its_files() -> None:
              {"title": "label.pdf"}, {}, "junk"]  # fmt: skip
     reply = slack.thread_reply(_event(subtype="file_share", files=files))
     assert reply is not None
-    assert slack.reply_body(reply) == (
-        "Here it is\n[file: parcel.jpg]\n[file: label.pdf]\n[file: unnamed]"
-    )
+    assert slack.reply_body(reply) == "Here it is\n[file: parcel.jpg]\n[file: label.pdf]\n[file]"
     only_a_photo = slack.thread_reply(_event(subtype="file_share", text="",
                                              files=[{"name": "a<b>.png"}]))  # fmt: skip
     assert only_a_photo is not None and slack.reply_body(only_a_photo) == "[file: a<b>.png]"
@@ -63,6 +61,34 @@ def test_a_file_share_reply_keeps_its_text_and_names_its_files() -> None:
     del no_text_key["event"]["text"]
     got = slack.thread_reply(no_text_key)
     assert got is not None and slack.reply_body(got) == "[file: x.png]"
+
+
+def test_a_file_slack_sent_without_its_name_is_named_from_files_info() -> None:
+    """Live retest: a photo came as {"id": ..., "file_access": "check_file_info"} and read
+    "[file: unnamed]". Its id is kept, so the name can be asked for (files.info)."""
+    bare = {"id": "F0PHOTO", "mode": "file_access", "file_access": "check_file_info"}
+    files = [bare, {"id": "F0NAMED", "name": "a.pdf"}, dict(bare), {"id": "../etc"}]
+    event = _event(files=files)  # Slack now sends file replies without a subtype
+    del event["event"]["text"]
+    reply = slack.thread_reply(event)
+    assert reply is not None and reply.unnamed == ["F0PHOTO"]  # once; a bad id isn't asked
+    assert slack.reply_body(reply) == "[file]\n[file: a.pdf]\n[file]\n[file]"
+    named = slack.reply_body(reply, file_names={"F0PHOTO": "photo.png"})
+    assert named == "[file: photo.png]\n[file: a.pdf]\n[file: photo.png]\n[file]"
+    assert slack.file_name({"title": "  T  "}) == "T" and slack.file_name("x") is None
+
+
+def test_the_people_mentioned() -> None:
+    text = "Ask <@U0RAVI> and <@U0MEENA|meena>, <@U0RAVI> again, in <#C0WAREHOUSE|warehouse>"
+    assert slack.mentioned(text) == ["U0RAVI", "U0MEENA"]
+    assert slack.mentioned("no one <https://x.example>") == []
+
+
+def test_channel_errors_say_what_to_do() -> None:
+    missing = slack.api_problem({"ok": False, "error": "channel_not_found"}, "#ops")
+    assert missing is not None and "invite the bot" in missing[0] and missing[1]
+    archived = slack.api_problem({"ok": False, "error": "is_archived"}, "#ops")
+    assert archived == ("Slack channel #ops is archived.", True)
 
 
 @pytest.mark.parametrize(
@@ -97,7 +123,13 @@ def test_a_broadcast_reply_comes_back() -> None:
         ),
         ("See <https://x.example>", "See https://x.example"),
         ("See <https://x.example|https://x.example>", "See https://x.example"),
-        ("Mail <mailto:a@b.example|a@b.example>", "Mail a@b.example (mailto:a@b.example)"),
+        # Slack's own label is the address minus https:// (live retest: it read twice)
+        ("see <https://example.com/logs|example.com/logs>", "see https://example.com/logs"),
+        ("<http://www.x.example|www.x.example>", "http://www.x.example"),
+        ("<https://x.example/|x.example>", "https://x.example/"),
+        ("<https://x.example/a|x.example>", "x.example (https://x.example/a)"),  # not the same
+        ("Mail <mailto:a@b.example|a@b.example>", "Mail a@b.example"),
+        ("Mail <mailto:a@b.example|Ravi>", "Mail Ravi (mailto:a@b.example)"),
         ("In <#C0WAREHOUSE|warehouse>", "In #warehouse"),
         ("<!here> look", "@here look"),
         ("1 &lt; 2 &gt; 0 &amp; done", "1 < 2 > 0 & done"),

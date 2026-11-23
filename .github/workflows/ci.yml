@@ -30,6 +30,11 @@ jobs:
       - name: Create the database roles
         run: psql -h localhost -p 5447 -U postgres -d cedesk -v ON_ERROR_STOP=1 -f infra/postgres/init/01-roles.sql
       - run: uv sync --frozen
+      # Fails the PR when any locked library (dev ones too) has a known vulnerability;
+      # the output names the fixed version. Dependabot (.github/dependabot.yml) opens
+      # the upgrade PRs.
+      - name: Check libraries for known vulnerabilities
+        run: uv export --frozen --no-hashes --no-emit-project --format requirements-txt | uvx pip-audit==2.10.1 --disable-pip --no-deps -r /dev/stdin
       - run: uv run ruff check .
       - run: uv run ruff format --check .
       - run: uv run mypy

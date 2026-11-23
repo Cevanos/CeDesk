@@ -128,6 +128,77 @@ async def test_deactivating_a_member_signs_them_out(
     assert r.status_code == 401
 
 
+async def test_deactivating_a_member_removes_them_from_their_teams(
+    client: AsyncClient, app_sessionmaker: Sm
+) -> None:
+    slug = await new_workspace(app_sessionmaker)
+    admin = await sign_in(client, slug, "admin@example.com")
+    keep_id = await add(client, admin, "keep@example.com", "agent")
+    gone_id = await add(client, admin, "gone@example.com", "agent")
+    made = await client.post(
+        "/api/v1/teams",
+        headers=bearer(admin),
+        json={"name": "Front desk", "member_ids": [keep_id, gone_id]},
+    )
+    assert made.status_code == 201
+    team_id = made.json()["id"]
+
+    r = await client.patch(
+        f"/api/v1/members/{gone_id}", headers=bearer(admin), json={"is_active": False}
+    )
+    assert r.status_code == 200
+
+    teams = (await client.get("/api/v1/teams", headers=bearer(admin))).json()
+    team = next(t for t in teams if t["id"] == team_id)
+    assert team["member_ids"] == [keep_id]
+    # The team can still be saved: nothing inactive is left in it.
+    r = await client.patch(
+        f"/api/v1/teams/{team_id}", headers=bearer(admin), json={"name": "Front desk 2"}
+    )
+    assert r.status_code == 200
+
+
+async def test_a_team_lists_only_active_members_even_with_an_old_row(
+    client: AsyncClient, app_sessionmaker: Sm
+) -> None:
+    """A member deactivated before deactivation left their teams still has a row. The
+    team must not list them, so a client that reads it and saves it back is not refused."""
+    slug = await new_workspace(app_sessionmaker)
+    admin = await sign_in(client, slug, "admin@example.com")
+    workspace_id = UUID(admin.split(".")[0])
+    keep_id = await add(client, admin, "keep@example.com", "agent")
+    gone_id = await add(client, admin, "gone@example.com", "agent")
+    made = await client.post(
+        "/api/v1/teams",
+        headers=bearer(admin),
+        json={"name": "Front desk", "member_ids": [keep_id]},
+    )
+    assert made.status_code == 201
+    team_id = made.json()["id"]
+    r = await client.patch(
+        f"/api/v1/members/{gone_id}", headers=bearer(admin), json={"is_active": False}
+    )
+    assert r.status_code == 200
+    async with workspace_session(app_sessionmaker, workspace_id) as s:  # the pre-fix leftover
+        await s.execute(
+            text(
+                "INSERT INTO hd_team_member (workspace_id, team_id, member_id, position) "
+                "VALUES (:ws, :t, :m, 9)"
+            ),
+            {"ws": workspace_id, "t": UUID(team_id), "m": UUID(gone_id)},
+        )
+
+    teams = (await client.get("/api/v1/teams", headers=bearer(admin))).json()
+    team = next(t for t in teams if t["id"] == team_id)
+    assert team["member_ids"] == [keep_id]
+    r = await client.patch(
+        f"/api/v1/teams/{team_id}",
+        headers=bearer(admin),
+        json={"name": "Front desk 2", "member_ids": team["member_ids"]},
+    )
+    assert r.status_code == 200
+
+
 async def test_one_workspace_cannot_touch_another(
     client: AsyncClient, app_sessionmaker: Sm
 ) -> None:

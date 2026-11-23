@@ -68,6 +68,7 @@ import httpx
 from cedesk import egress
 from cedesk.egress import Guard
 from cedesk.helpdesk.domain import imports as rules
+from cedesk.helpdesk.domain import markdown
 from cedesk.helpdesk.domain.imports import (
     AccountInfo,
     Article,
@@ -829,7 +830,7 @@ def _article(raw: object, names: Mapping[str, str]) -> Article | None:
     return Article(
         external_id=str(data["id"]),
         title=str(data.get("title") or "(untitled)"),
-        body=str(data.get("body") or ""),
+        body=markdown.from_html(str(data.get("body") or "")),
         category=category,
         published=data.get("state") == "published",
         updated_at=rules.valid_date(when(data.get("updated_at"))),

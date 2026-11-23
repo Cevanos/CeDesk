@@ -171,7 +171,7 @@ async def test_each_sort_is_served_by_its_index(
     params: dict[str, Any] = {
         "me": caller.member_id, "status": None, "priority": None, "team": None,
         "contact": None, "imported": None, "vt": None, "scope": "everyone", "q_like": None,
-        "q_number": None, "limit": 51,
+        "q_number": None, "snoozed": None, "limit": 51,
     }  # fmt: skip
     after = {"priority": [0, 1, "1700000000.5", 7], "sla": [0, "1700000000.5", 7]}
     for first_page in (True, False):

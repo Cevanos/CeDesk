@@ -164,6 +164,22 @@ def _sla_refresh() -> int:
     return 0
 
 
+def _articles_markdown() -> int:
+    from cedesk.db import make_engine, make_sessionmaker
+    from cedesk.helpdesk.service.articles import markdown_everywhere
+    from cedesk.settings import get_settings
+
+    async def run() -> int:
+        engine = make_engine(get_settings().database_url)
+        try:
+            return await markdown_everywhere(make_sessionmaker(engine))
+        finally:
+            await engine.dispose()
+
+    print(f"Imported articles written as Markdown: {asyncio.run(run())}.")
+    return 0
+
+
 def _seed_demo(args: argparse.Namespace) -> int:
     from cedesk.db import make_engine, make_sessionmaker
     from cedesk.demo import seed_demo
@@ -215,19 +231,31 @@ def _prune_sessions() -> int:
 def _worker(once: bool) -> int:
     """Every few seconds: reads new emails from the IMAP mailbox (when one is set), reads
     connected Cevanos chats for new customer messages, sends queued emails, delivers
-    outbox events (Cevanos take-overs and replies), alerts SLA breaches and overdue tasks
-    (once a minute), and drops expired idempotency keys. Run one next to the API (sending
-    and delivering are safe with several; reading a mailbox is meant for one)."""
+    outbox events (Cevanos take-overs and replies), alerts SLA breaches and overdue tasks,
+    sends email campaigns within each workspace's limits (after the ticket emails),
+    wakes snoozed tickets and resumes waiting workflow runs (once a minute), auto-closes
+    inactive tickets (daily, before the archive pass), and drops expired idempotency keys.
+    Run one next to the API (sending and delivering are safe with several; reading a
+    mailbox is meant for one)."""
+    import contextlib
     import logging
 
     from cedesk import logs
     from cedesk.cevanos_client import make_cevanos
     from cedesk.crypto import Sealer
-    from cedesk.db import make_engine, make_sessionmaker
+    from cedesk.db import make_engine, make_sessionmaker, notifications
+    from cedesk.helpdesk.api.campaigns import config_of as campaign_config
+    from cedesk.helpdesk.domain import signup as signup_rules
     from cedesk.helpdesk.domain.limits import parse_plans
     from cedesk.helpdesk.service import limits as plan_limits
     from cedesk.helpdesk.service.apps import slack_bound
     from cedesk.helpdesk.service.archive import run_archive
+    from cedesk.helpdesk.service.auto_close import run_auto_close
+    from cedesk.helpdesk.service.automation import prune_everywhere as prune_runs
+    from cedesk.helpdesk.service.automation import resume_due
+    from cedesk.helpdesk.service.backlog import prune_everywhere as prune_backlog
+    from cedesk.helpdesk.service.backlog import run_snapshots
+    from cedesk.helpdesk.service.campaigns import run_due as send_campaigns
     from cedesk.helpdesk.service.cevanos import CevanosHandler, ChatPoller
     from cedesk.helpdesk.service.csat import CsatHandler
     from cedesk.helpdesk.service.delivery import Handler, deliver_due
@@ -242,11 +270,14 @@ def _worker(once: bool) -> int:
     from cedesk.helpdesk.service.portal_notice import PortalNoticeHandler
     from cedesk.helpdesk.service.privacy import remove_expired_exports
     from cedesk.helpdesk.service.push import push_due
+    from cedesk.helpdesk.service.report_schedules import run_scheduled_reports
     from cedesk.helpdesk.service.scanning import scan_due
     from cedesk.helpdesk.service.security_alerts import SecurityAlertHandler
+    from cedesk.helpdesk.service.signup_mail import run_lane
     from cedesk.helpdesk.service.sla import refresh_everywhere
     from cedesk.helpdesk.service.sla_alerts import alert_everywhere
     from cedesk.helpdesk.service.slack_alerts import SlackAlertHandler
+    from cedesk.helpdesk.service.snooze import wake_everywhere
     from cedesk.helpdesk.service.stream import prune_everywhere as prune_stream
     from cedesk.helpdesk.service.task_alerts import alert_everywhere as alert_tasks
     from cedesk.helpdesk.service.webhooks import WebhookFanout
@@ -255,7 +286,7 @@ def _worker(once: bool) -> int:
     from cedesk.mail import MailboxError, make_mailbox, make_mailer
     from cedesk.push_client import FcmClient, PushConfigError
     from cedesk.scanning import make_scanner
-    from cedesk.settings import get_settings
+    from cedesk.settings import Env, ScanBackend, get_settings
     from cedesk.storage import make_store
     from cedesk.webhook_client import WebhookClient
 
@@ -281,6 +312,11 @@ def _worker(once: bool) -> int:
         print("Refusing to start:\n  " + "\n  ".join(problems), file=sys.stderr)
         return 1
     logger = logging.getLogger("cedesk.worker")
+    if settings.env is not Env.dev and settings.scan_backend is ScanBackend.none:
+        logger.warning(
+            "virus scan is off: files customers send are not checked "
+            "(set CEDESK_SCAN_BACKEND=clamd, deploy/README.md)"
+        )
 
     async def run() -> None:
         engine = make_engine(settings.database_url)
@@ -320,6 +356,33 @@ def _worker(once: bool) -> int:
         alerted_at = 0.0
         retained_at = -float(RETENTION_EVERY_SECONDS)  # due at the first pass
         logger.info("worker started", extra={"event": settings.mail_backend.value})
+        # Self-service sign-up codes go out on their own lane, beside this loop, so no job
+        # below can hold a code back. Only with sign-up on; off, nothing here changes.
+        lane: asyncio.Task[None] | None = None
+        listening = contextlib.AsyncExitStack()
+        if settings.signup_enabled:
+            wake = None
+            try:
+                wake = await listening.enter_async_context(
+                    notifications(engine, signup_rules.NOTIFY_CHANNEL)
+                )
+            except Exception:
+                logger.warning("sign-up lane: no LISTEN connection, checking every second")
+            sign_up_codes = run_lane(
+                sm,
+                mailer,
+                Sender(
+                    settings.mail_from_address or "no-reply@cedesk.local",
+                    settings.mail_from_name,
+                ),
+                concurrency=settings.signup_mail_concurrency,
+                wake=wake,
+                once=once,
+            )
+            if once:
+                await sign_up_codes
+            else:
+                lane = asyncio.create_task(sign_up_codes, name="signup-mail")
         # Tickets made before SLA was wired (or while the SLA code had a bug) get their
         # stored due time, so `sort=sla` is right after every deploy without a manual step.
         try:
@@ -376,6 +439,20 @@ def _worker(once: bool) -> int:
                         f"{result.failed} failed",
                         extra={"event": "email"},
                     )
+                # Campaign emails (plan phase 6) after the ticket emails, so a reply never
+                # waits behind a campaign; each workspace within its per-minute limit.
+                try:
+                    sent = await send_campaigns(sm, mailer, campaign_config(settings))
+                except Exception:
+                    logger.exception("campaign pass failed")
+                else:
+                    if sent.sent or sent.failed or sent.started or sent.finished:
+                        logger.info(
+                            f"campaigns: {sent.started} started, {sent.sent} sent, "
+                            f"{sent.retrying} retrying, {sent.failed} failed, "
+                            f"{sent.skipped} skipped, {sent.finished} finished",
+                            extra={"event": "campaign"},
+                        )
                 # After the outbox (its handlers make notifications) and the emails: one
                 # pass sends for at most 20 s, the rest waits for the next.
                 try:
@@ -411,6 +488,36 @@ def _worker(once: bool) -> int:
                         logger.exception("Overdue task alerts failed")
                     if overdue:
                         logger.info(f"Overdue tasks alerted: {overdue}", extra={"event": "tasks"})
+                    try:  # snoozed tickets whose time came (feature-gap plan 1.1)
+                        woke = await wake_everywhere(sm)
+                    except Exception:
+                        woke = 0
+                        logger.exception("Waking snoozed tickets failed")
+                    if woke:
+                        logger.info(f"Snoozed tickets woke: {woke}", extra={"event": "snooze"})
+                    try:  # scheduled report emails that are due (feature-gap plan 3.5)
+                        reports_sent = await run_scheduled_reports(
+                            sm,
+                            base_url=settings.app_url,
+                            fallback=fallback,
+                            timeout_ms=settings.report_schedule_timeout_seconds * 1000,
+                            budget_ms=settings.report_schedule_budget_seconds * 1000,
+                        )
+                    except Exception:
+                        reports_sent = 0
+                        logger.exception("Scheduled reports failed")
+                    if reports_sent:
+                        logger.info(
+                            f"Report emails queued: {reports_sent}", extra={"event": "reports"}
+                        )
+                    try:  # workflow runs whose wait is over (feature-gap plan 5.3)
+                        resumed = await resume_due(sm)
+                    except Exception:
+                        resumed = 0
+                        logger.exception("Resuming workflow runs failed")
+                    if resumed:
+                        logger.info(f"Workflow runs resumed: {resumed}",
+                                    extra={"event": "automation"})  # fmt: skip
                     alerted_at = time.monotonic()
                 if time.monotonic() - swept_at > SWEEP_EVERY_SECONDS:
                     await sweep_everywhere(sm)
@@ -430,6 +537,17 @@ def _worker(once: bool) -> int:
                         await prune_webhooks(sm)
                     except Exception:
                         logger.exception("Pruning the webhook log failed")
+                    try:  # yesterday's backlog snapshot, once per workspace (plan 3.1)
+                        written = await run_snapshots(sm)
+                        if written:
+                            logger.info(f"backlog snapshots: {written}", extra={"event": "backlog"})
+                        await prune_backlog(sm)
+                    except Exception:
+                        logger.exception("Backlog snapshots failed")
+                    try:  # automation runs past their 30 days (plan 5.5)
+                        await prune_runs(sm)
+                    except Exception:
+                        logger.exception("Pruning the automation run log failed")
                     swept_at = time.monotonic()
                 if time.monotonic() - retained_at > RETENTION_EVERY_SECONDS:
                     try:  # resolved tickets past the archive age to the archive (md O3)
@@ -438,6 +556,13 @@ def _worker(once: bool) -> int:
                             logger.info(f"archive: {moved} tickets", extra={"event": "archive"})
                     except Exception:
                         logger.exception("Archiving failed")
+                    try:  # Pending tickets with no customer reply for too long (plan 1.4)
+                        closed = await run_auto_close(sm)
+                        if closed:
+                            logger.info(f"auto-close: {closed} tickets",
+                                        extra={"event": "auto_close"})  # fmt: skip
+                    except Exception:
+                        logger.exception("Auto-close failed")
                     try:  # resolved tickets past the workspace's retention (md O2)
                         gone = await run_retention(sm, store)
                         if gone:
@@ -449,6 +574,11 @@ def _worker(once: bool) -> int:
                     return
                 await asyncio.sleep(settings.worker_interval_seconds)
         finally:
+            if lane is not None:
+                lane.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await lane
+            await listening.aclose()
             await engine.dispose()
 
     try:
@@ -520,6 +650,10 @@ def main(argv: list[str] | None = None) -> int:
         "sla-refresh",
         help="Work out the SLA of every open ticket again (once, after migration 0019)",
     )
+    sub.add_parser(
+        "articles-markdown",
+        help="Write imported help center articles that still hold HTML as Markdown (once)",
+    )
     plan = sub.add_parser("set-plan", help="Give a workspace its cloud plan (limits, md O4)")
     plan.add_argument("--workspace", required=True, help="Sign-in address, e.g. 'acme-store'")
     plan.add_argument("--plan", required=True, help="free, growth, enterprise, or none")
@@ -557,6 +691,8 @@ def main(argv: list[str] | None = None) -> int:
         return _clear_ip_allowlist(args.workspace)
     if args.command == "sla-refresh":
         return _sla_refresh()
+    if args.command == "articles-markdown":
+        return _articles_markdown()
     if args.command == "set-plan":
         return _set_plan(args.workspace, args.plan)
     if args.command == "openapi":

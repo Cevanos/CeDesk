@@ -68,6 +68,7 @@ def parse_step(raw: Mapping[str, Any]) -> Step:
             action = rules.parse_action(raw)
         except rules.RuleError as exc:
             raise MacroError(str(exc)) from exc
+        assert isinstance(action, rules.CHANGES)  # _CHANGE_KINDS are change kinds only
         return action
     raise MacroError(
         "A step kind is reply, note, set_status, set_priority, set_type, set_team or add_tag."

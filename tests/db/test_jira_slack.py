@@ -14,6 +14,8 @@ import pytest
 from httpx import AsyncClient
 
 from cedesk.crypto import Sealer
+from cedesk.helpdesk.domain import jira as jira_rules
+from cedesk.helpdesk.domain import slack as slack_rules
 from cedesk.helpdesk.service import apps
 from cedesk.helpdesk.service.app_post import AppPost
 from cedesk.helpdesk.service.delivery import deliver_due
@@ -37,6 +39,7 @@ class Fake:
     def __init__(self) -> None:
         self.seen: list[httpx.Request] = []
         self.slack_gone = False
+        self.slack_archived = False
 
     def __call__(self, request: httpx.Request) -> httpx.Response:
         self.seen.append(request)
@@ -55,6 +58,8 @@ class Fake:
         if request.url.host == "hooks.slack.com":
             if self.slack_gone or path != "/services/T01/B02/abcd":
                 return httpx.Response(404, text="no_service")
+            if self.slack_archived:
+                return httpx.Response(410, text="channel_is_archived")
             return httpx.Response(200, text="ok")
         return httpx.Response(404)
 
@@ -111,6 +116,16 @@ async def test_jira_issues_from_tickets(client: AsyncClient, app_sessionmaker: S
             f"{A}/jira", headers=w["h"], json={"settings": settings, "secret": secret}
         )
         assert r.status_code == 422, (settings, r.text)
+    # Live retest: Jira's 404 only said "Jira has no such thing."; now it says what's missing.
+    no_site = jira_rules.NO_SITE.format(host="nosite.atlassian.net")
+    for settings, said in (
+        (JIRA_SETTINGS | {"project": "NOPE"}, jira_rules.NO_PROJECT.format(project="NOPE")),
+        (JIRA_SETTINGS | {"site": "nosite"}, no_site),
+    ):  # fmt: skip
+        r = await client.put(
+            f"{A}/jira", headers=w["h"], json={"settings": settings, "secret": TOKEN}
+        )
+        assert (r.status_code, r.json()["error"]["message"]) == (422, said)
     made = ok(await client.put(f"{A}/jira", headers=w["h"],
                                json={"settings": JIRA_SETTINGS, "secret": TOKEN}))  # fmt: skip
     assert made["settings"] == {"site": "acme", "email": "ops@acme.com", "project": "SUP"}
@@ -123,15 +138,21 @@ async def test_jira_issues_from_tickets(client: AsyncClient, app_sessionmaker: S
     text = json.dumps(sent["description"])
     assert "Payout bug" in text and f"/tickets/{t['id']}" in text
     assert "charged twice" not in text  # the customer's words stay in CeDesk
+    # The link back is a real link in Jira, not text to copy (live retest with a real Jira).
+    nodes = [node for p in sent["description"]["content"] for node in p["content"]]
+    hrefs = [m["attrs"]["href"] for node in nodes for m in node.get("marks", [])]
+    assert len(hrefs) == 1 and hrefs[0].endswith(f"/tickets/{t['id']}")
 
     linked = ok(await client.post(f"{url}/link", headers=w["neha"], json={"key": "sup-7"}), 201)
     assert (linked["key"], linked["made_here"]) == ("SUP-7", False)
     assert (
         await client.post(f"{url}/link", headers=w["neha"], json={"key": "SUP-7"})
     ).status_code == 409
-    assert (
-        await client.post(f"{url}/link", headers=w["neha"], json={"key": "SUP-404"})
-    ).status_code == 422
+    r = await client.post(f"{url}/link", headers=w["neha"], json={"key": "SUP-404"})
+    assert r.status_code == 422
+    assert r.json()["error"]["message"] == (
+        "Jira has no issue SUP-404, or the Jira account in Settings > Apps can't see it."
+    )
     assert (
         await client.post(f"{url}/link", headers=w["neha"], json={"key": "nope"})
     ).status_code == 422
@@ -182,6 +203,11 @@ async def test_slack_alerts_for_urgent_and_high(client: AsyncClient, app_session
     for bad in ("https://evil.com/services/x", "http://hooks.slack.com/services/x"):
         r = await client.put(f"{A}/slack_alerts", headers=w["h"], json={"secret": bad})
         assert r.status_code == 422, bad
+    # Live retest: an old webhook (removed in Slack) said only "Slack has no such thing."
+    old = HOOK.replace("abcd", "gone")
+    r = await client.put(f"{A}/slack_alerts", headers=w["h"], json={"secret": old})
+    assert (r.status_code, r.json()["error"]["message"]) == (422, slack_rules.WEBHOOK_GONE)
+    fake.seen.clear()
     ok(await client.put(f"{A}/slack_alerts", headers=w["h"], json={"secret": HOOK}))
     assert fake.slack() == [apps.SLACK_TEST_LINE]  # installing posts a test line
 
@@ -209,7 +235,15 @@ async def test_slack_alerts_for_urgent_and_high(client: AsyncClient, app_session
     result = await deliver_due(sm, [handler])
     assert result.failed == 1
     failed = ok(await client.get("/api/v1/outbox/failed", headers=w["h"]))
-    assert any(e["ticket_id"] == gone["id"] for e in failed["events"])
+    said = {e["ticket_id"]: e["last_error"] for e in failed["events"]}
+    assert said[gone["id"]] == f"slack_alerts: {slack_rules.WEBHOOK_GONE}"
+
+    fake.slack_gone, fake.slack_archived = False, True  # the channel was archived
+    archived = await ticket(client, w, "Site down again", "urgent")
+    assert (await deliver_due(sm, [handler])).failed == 1
+    failed = ok(await client.get("/api/v1/outbox/failed", headers=w["h"]))
+    said = {e["ticket_id"]: e["last_error"] for e in failed["events"]}
+    assert said[archived["id"]] == f"slack_alerts: {slack_rules.WEBHOOK_ARCHIVED}"
 
     other = await desk(client, sm)  # no Slack app: nothing posted
     before = len(fake.slack())

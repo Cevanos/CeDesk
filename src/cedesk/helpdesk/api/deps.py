@@ -24,6 +24,8 @@ from cedesk.helpdesk.service.errors import (
     TwoFactorSetupRequired,
 )
 from cedesk.helpdesk.service.idempotency import Idempotency
+from cedesk.helpdesk.service.password_reset import Sender
+from cedesk.ratelimit import SlidingWindowLimiter
 from cedesk.settings import Settings
 from cedesk.storage import ObjectStore
 
@@ -210,6 +212,22 @@ def limit_public_reads(request: Request) -> None:
 
 
 PublicLimit = Depends(limit_public_reads)
+
+
+def within(limiter: SlidingWindowLimiter, key: str, what: str) -> None:
+    """One more request against a per-member (or per-workspace) budget: 429 with
+    Retry-After when it is used up."""
+    wait = limiter.hit(key)
+    if wait is not None:
+        raise TooManyAttempts(f"Too many {what}. Try again in {wait} seconds.", wait)
+
+
+def fallback_sender(settings: Settings) -> Sender | None:
+    """The server's sender (`CEDESK_MAIL_FROM_ADDRESS`) for mail a workspace sends before
+    it has a support address of its own."""
+    if not settings.mail_from_address:
+        return None
+    return Sender(settings.mail_from_address, settings.mail_from_name)
 
 
 IdempotencyKey = Annotated[

@@ -30,7 +30,7 @@ These are the notes for our own servers. For a customer hosting CeDesk themselve
 
    It asks for one password for all demo accounts and prints the sign-in emails
    (workspace `acme-store`).
-6. Backups: add `deploy/backup.sh` to cron (the line is at the top of the script).
+6. Backups: see [Backups](#backups) below. Do it before real customer data arrives.
 
 ## Updating
 
@@ -58,28 +58,93 @@ To do it by hand (safe to run again):
 docker compose exec api uv run --no-sync cedesk sla-refresh
 ```
 
+## Backups
+
+`backup.sh` saves the database and the uploaded files every night, **encrypted for a key
+that is not on the server**, so anyone who can read the backup folder (another user, a
+leaked disk image) still can't read a customer's data. `restore.sh` checks a backup and
+loads it into a **new** database next to the live one.
+
+Set up once (as root on the server):
+
+1. On a laptop (not the server), make the key pair and export the public half:
+   `gpg --quick-gen-key "CeDesk backups" rsa4096 encrypt never`, then
+   `gpg --export --armor <fingerprint> > cedesk-backup.pub`. Keep the private key
+   (`gpg --export-secret-keys --armor <fingerprint>`) offline, in two places (e.g. the
+   company password manager and an encrypted USB stick). Never copy it to the server.
+2. On the server: `gpg --import cedesk-backup.pub`.
+3. `cp backup.env.example backup.env && chmod 600 backup.env`; set
+   `BACKUP_GPG_RECIPIENT` to the fingerprint (and `BACKUP_COMPOSE` if the server uses an
+   extra compose file). Optional: `BACKUP_REQUIRE_ENCRYPTION=1`, so a missing key stops
+   the backup instead of writing an unencrypted one.
+4. Cron: `30 2 * * * /path/to/CDESK/deploy/backup.sh >> /var/log/cedesk-backup.log 2>&1`.
+5. Run it once by hand and check `ls -l` on the folder: `drwx------` and every file
+   `-rw-------`, names ending `.gpg`.
+
+Each night writes one set: `cedesk-<time>.manifest` plus `-db.sql.gz.gpg` and
+`-files.tar.gz.gpg`. The manifest holds each file's checksum. Sets older than
+`BACKUP_KEEP_DAYS` (14) are deleted, but the newest `BACKUP_KEEP_MIN` (7) are always kept.
+Backups made by the old script (`cedesk-*.sql.gz`, unencrypted) are never touched: delete
+them by hand once a new encrypted backup has been restored successfully (below).
+
+Exit codes: 0 done; 3 done but **not encrypted** (no key set; files are 0600, the alert
+fires); anything else failed and wrote nothing. Set `BACKUP_ALERT_URL` (a Slack or other
+webhook) to be told; the message names the step that failed, never any data.
+
+Restore (test it monthly, and before deleting old backups):
+
+```sh
+# on a machine that has the private key (or import it for the restore, then remove it)
+./restore.sh /root/cedesk-backups/cedesk-<time>.manifest --files-to /tmp/cedesk-files-check
+```
+
+It checks the checksums (a changed or broken file is refused), decrypts, and loads the
+database into `cedesk_restore_<time>`, leaving `cedesk` alone. Look at it
+(`docker compose exec db psql -U postgres -d cedesk_restore_<time>`), then drop it.
+Replacing the live database needs `--db cedesk --force`, with the API and worker stopped,
+right after a fresh backup.
+
 ## Email
 
 The `worker` service sends the emails the API queues (replies on email tickets, test
 emails). Choose how in `deploy/.env`:
 
-- `CEDESK_MAIL_BACKEND=log` (the default): nothing is sent; each email is written to the
-  worker's log (`docker compose logs worker`). For the test server only.
+- `CEDESK_MAIL_BACKEND=none` (the default here): emails are dropped. The log says how many,
+  never to whom.
 - `CEDESK_MAIL_BACKEND=smtp` with `CEDESK_SMTP_HOST`, `CEDESK_SMTP_PORT` (587),
   `CEDESK_SMTP_SECURITY` (`starttls`, or `ssl` for port 465), `CEDESK_SMTP_USERNAME`
   and `CEDESK_SMTP_PASSWORD`: any SMTP server, e.g. Amazon SES
   (`email-smtp.<region>.amazonaws.com`), or Gmail / Zoho with an app password.
-- `CEDESK_MAIL_BACKEND=none`: emails are dropped.
+- `CEDESK_MAIL_BACKEND=log`: a developer's machine only (`CEDESK_ENV=dev`). Each email is
+  written as a private .eml file to `CEDESK_MAIL_OUTBOX_DIR`; the log gets only the file name.
+  On a server the worker refuses it: emails carry sign-in codes and reset links.
 
 The worker also delivers outbox events (what happened on tickets) to the handlers that
 need them, retrying for about 15 hours; Admins see the ones that still failed at
 `GET /api/v1/outbox/failed`. And it removes `Idempotency-Key`s older than a day.
 
-Virus scan: start ClamAV with `docker compose --profile scan up -d` and set
-`CEDESK_SCAN_BACKEND=clamd` in `deploy/.env` (then `docker compose up -d api worker`).
-ClamAV needs about 1.5 GB of memory, and its first start downloads the virus definitions
-(a few minutes; until then files wait as "being checked"). The worker checks each new
-file; infected ones are removed. Files uploaded before scanning was on are checked too.
+Virus scan: on by default (`CEDESK_SCAN_BACKEND=clamd`; the `clamav` service starts
+with the others). ClamAV needs about 1.5 GB of memory (3 GB for a minute while it loads
+new definitions), and its first start downloads the virus definitions (a few minutes;
+until then files wait as "being checked"). The worker checks each new file; infected
+ones are removed. Files uploaded before scanning was on are checked too, so after
+switching it on old files wait until the worker reaches them; nothing is deleted unless
+ClamAV finds a virus. `docker compose ps clamav` shows `healthy` once it answers.
+
+Switching it on, on a server that ran without it (in this order, so downloads never
+wait on a scanner that is not there yet):
+
+1. `docker compose up -d clamav`, then wait for `docker compose ps clamav` to say
+   `healthy` (up to 10 minutes the first time).
+2. Set `CEDESK_SCAN_BACKEND=clamd` in `deploy/.env` (or remove a `none` line).
+3. `docker compose up -d api worker`.
+4. Check: upload the EICAR test file (a harmless file every scanner reports, from
+   https://www.eicar.org) to a test ticket; within a minute it shows as blocked, and a
+   normal file shows as clean.
+
+To undo: set `CEDESK_SCAN_BACKEND=none` and `docker compose up -d api worker`; files
+already marked infected stay blocked. A server too small for ClamAV keeps `none` and
+runs `docker compose stop clamav`; the worker then logs a warning at every start.
 
 Cevanos: `CEDESK_CEVANOS_URL` is Cevanos's API address (default
 `https://api.cevanos.ai`), and `CEDESK_CEVANOS_APP_URL` its web app (default
@@ -140,8 +205,8 @@ SPF and DKIM set up for the mail service, or emails land in spam.
 
 With `CEDESK_ENV` other than `dev`, the API does not start with the dev secret key or the
 dev database password, and `cedesk migrate` refuses the dev owner password. The worker
-also refuses `CEDESK_MAIL_BACKEND=log` in production (emails will carry sign-in codes),
-and `smtp` without a host.
+also refuses `CEDESK_MAIL_BACKEND=log` anywhere but `dev` (emails carry sign-in codes and
+reset links), and `smtp` without a host. No log line holds an email address, subject or body.
 
 ## For the frontend team
 

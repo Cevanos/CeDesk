@@ -14,13 +14,16 @@ Fetching: `ImapMailbox` reads unread emails from one IMAP folder (Gmail, Zoho, .
 import asyncio
 import imaplib
 import logging
+import os
 import smtplib
 import ssl
+import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from email.message import EmailMessage
 from email.utils import format_datetime, formataddr
+from pathlib import Path
 from typing import Protocol
 
 from cedesk.settings import MailBackend, Settings, SmtpSecurity
@@ -47,6 +50,10 @@ class OutgoingEmail:
     in_reply_to: str | None = None
     references: list[str] = field(default_factory=list)
     attachments: list[MailFile] = field(default_factory=list)
+    # An HTML part next to the text (campaign emails); None: text only, as replies are.
+    html: str | None = None
+    # Extra headers (a campaign's List-Unsubscribe); never From, To, Subject or the ids.
+    headers: tuple[tuple[str, str], ...] = ()
 
 
 class SendError(Exception):
@@ -75,7 +82,11 @@ def build(email: OutgoingEmail) -> EmailMessage:
         msg["In-Reply-To"] = email.in_reply_to
     if email.references:
         msg["References"] = " ".join(email.references)
+    for name, value in email.headers:
+        msg[name] = value
     msg.set_content(email.text)
+    if email.html is not None:
+        msg.add_alternative(email.html, subtype="html")
     for file in email.attachments:
         maintype, _, subtype = file.mime.partition("/")
         msg.add_attachment(
@@ -88,22 +99,32 @@ def build(email: OutgoingEmail) -> EmailMessage:
 
 
 class LogMailer:
+    """A developer's machine only (settings refuse it elsewhere): each email is written as a
+    .eml file, readable only by this user, to `outbox`. The log names the file and never
+    holds the email itself: emails carry sign-in codes, reset links and customer text."""
+
+    def __init__(self, outbox: str = "mail-outbox") -> None:
+        self.outbox = Path(outbox)
+
     async def send(self, email: OutgoingEmail) -> None:
-        logger.info(
-            "email (log only, not sent)",
-            extra={
-                "mail_to": email.to,
-                "mail_cc": email.cc,
-                "mail_subject": email.subject,
-                "mail_text": email.text,
-                "mail_files": [f"{f.name} ({len(f.data)} bytes)" for f in email.attachments],
-            },
-        )
+        name = f"{datetime.now(UTC):%Y%m%d-%H%M%S}-{uuid.uuid4().hex[:8]}.eml"
+        await asyncio.to_thread(self._write, name, build(email).as_bytes())
+        logger.info("email written to the dev outbox, not sent", extra={"event": name})
+
+    def _write(self, name: str, data: bytes) -> None:
+        self.outbox.mkdir(mode=0o700, parents=True, exist_ok=True)
+        fd = os.open(self.outbox / name, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, "wb") as f:
+            f.write(data)
 
 
 class NoMailer:
     async def send(self, email: OutgoingEmail) -> None:
-        logger.warning("email dropped: no mail server set up", extra={"mail_to": email.to})
+        # How many, never who: an address is customer data.
+        logger.warning(
+            "email dropped: no mail server set up",
+            extra={"count": len(email.to) + len(email.cc)},
+        )
 
 
 class SmtpMailer:
@@ -144,7 +165,8 @@ class SmtpMailer:
         except (OSError, smtplib.SMTPException) as exc:
             raise SendError(f"Could not reach the mail server ({type(exc).__name__}).") from exc
         if refused:
-            logger.warning("some recipients refused", extra={"refused": sorted(refused)})
+            # How many were refused, never which addresses (customer data).
+            logger.warning("some recipients refused", extra={"count": len(refused)})
 
 
 def make_mailer(settings: Settings) -> Mailer:
@@ -152,7 +174,7 @@ def make_mailer(settings: Settings) -> Mailer:
         return SmtpMailer(settings)
     if settings.mail_backend is MailBackend.none:
         return NoMailer()
-    return LogMailer()
+    return LogMailer(settings.mail_outbox_dir)
 
 
 class MailboxError(Exception):

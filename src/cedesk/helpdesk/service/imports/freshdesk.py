@@ -132,6 +132,7 @@ import httpx
 from cedesk import egress
 from cedesk.egress import Guard
 from cedesk.helpdesk.domain import imports as rules
+from cedesk.helpdesk.domain import markdown
 from cedesk.helpdesk.domain.imports import (
     AccountInfo,
     Article,
@@ -144,6 +145,7 @@ from cedesk.helpdesk.domain.imports import (
     Link,
     Message,
     Page,
+    RateLimited,
     Reply,
     SourceConnector,
     SourceError,
@@ -530,6 +532,17 @@ class FreshdeskConnector:
                 break
         return found
 
+    def _window_cursor(
+        self, c: Mapping[str, Any], edge_at: str, edge_ids: set[int], max_id: int
+    ) -> dict[str, Any]:
+        return {
+            **{k: v for k, v in c.items() if k != "skip"},
+            "edge_at": edge_at,
+            "edge_ids": sorted(edge_ids),
+            "max_id": max_id,
+            "csat_off": self._csat_off,
+        }
+
     async def _window_step(self, c: Mapping[str, Any]) -> tuple[list[Ticket], dict[str, Any], bool]:
         """One page of the live list after cursor `c`: its tickets, the next cursor, and
         whether the list ended."""
@@ -548,20 +561,22 @@ class FreshdeskConnector:
             max_id = max(max_id, ticket_id)
             if ticket_id in taken or not _fresh(raw, edge_at, edge_ids):
                 continue
+            try:
+                await self._read(items, raw, archived=False)
+            except RateLimited:
+                if not taken:
+                    raise  # nothing done on this page: the run pauses and tries it again
+                # Keep what was read. The edge only covers the tickets that were, so the next
+                # look at this same page starts at the first one that was not.
+                nxt = self._window_cursor(c, edge_at, edge_ids, max_id)
+                return items, nxt, False
             taken.add(ticket_id)
             stamp = _stamp(raw.get("updated_at"))
             if stamp and stamp > edge_at:
                 edge_at, edge_ids = stamp, set()
             if stamp == edge_at:
                 edge_ids.add(ticket_id)
-            await self._read(items, raw, archived=False)
-        nxt: dict[str, Any] = {
-            **{k: v for k, v in c.items() if k != "skip"},
-            "edge_at": edge_at,
-            "edge_ids": sorted(edge_ids),
-            "max_id": max_id,
-            "csat_off": self._csat_off,
-        }
+        nxt = self._window_cursor(c, edge_at, edge_ids, max_id)
         if size < FULL_PAGE:
             return items, nxt, True
         if number < LIST_PAGE_CAP:
@@ -656,15 +671,21 @@ class FreshdeskConnector:
         misses = int(c.get("misses") or 0)
         items: list[Ticket] = []
         refusals = [0]
+        first = ticket_id
         for _ in range(rules.PAGE_MAX):
             if ticket_id > top and misses >= ARCHIVE_TAIL:
                 break
-            raw = await self._archived_one(ticket_id, refusals)
-            if raw is not None:
-                misses = 0
-                await self._read(items, raw, archived=True)
-            elif ticket_id > top:
-                misses += 1
+            try:
+                raw = await self._archived_one(ticket_id, refusals)
+                if raw is not None:
+                    misses = 0
+                    await self._read(items, raw, archived=True)
+                elif ticket_id > top:
+                    misses += 1
+            except RateLimited:
+                if ticket_id == first:
+                    raise  # nothing done on this page: the run pauses and tries it again
+                break  # keep the ids done; the next page starts at the one that was cut
             ticket_id += 1
         if ticket_id > top and misses >= ARCHIVE_TAIL:
             return Page(items, None)
@@ -682,8 +703,21 @@ class FreshdeskConnector:
         if ticket is not None:
             items.append(ticket)
 
+    async def _with_view(self, raw: Mapping[str, Any], ticket_id: str) -> Mapping[str, Any]:
+        """A live ticket's list row, with what only the ticket view carries: its `attachments`
+        (the list has none, so the files on the first message were never read) and the
+        `associated_tickets_list` the links need. A ticket that is gone by now has no view;
+        its conversations answer that."""
+        view = await self._http.get(f"/api/v2/tickets/{segment(ticket_id)}", missing_ok=True)
+        if not isinstance(view, dict):
+            return raw
+        extra = {k: view[k] for k in ("attachments", "associated_tickets_list") if k in view}
+        return {**raw, **extra}
+
     async def _ticket(self, raw: Mapping[str, Any], *, archived: bool) -> Ticket:
         ticket_id = str(raw["id"])
+        if not archived and "attachments" not in raw:
+            raw = await self._with_view(raw, ticket_id)
         created = rules.dated(
             self.failures,
             "ticket",
@@ -967,7 +1001,10 @@ class FreshdeskConnector:
 
     @staticmethod
     def _article(raw: Mapping[str, Any], folder_id: str, folder_name: str) -> Article:
-        text = str(raw.get("description_text") or "") or html_to_text(raw.get("description"))
+        # The HTML keeps the article's headings, lists and links; text only when there is none.
+        text = markdown.from_html(str(raw.get("description") or "")) or markdown.from_text(
+            str(raw.get("description_text") or "")
+        )
         published = _int(raw.get("status")) == 2
         return Article(
             external_id=str(raw["id"]),

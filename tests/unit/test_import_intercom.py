@@ -363,7 +363,7 @@ async def test_articles_name_their_collection() -> None:
     page = await c.page("articles", None)
     assert page.cursor is None
     pub, draft = page.items
-    assert pub.published and pub.body == "<p>Click reset</p>" and pub.category is not None
+    assert pub.published and pub.body == "Click reset" and pub.category is not None
     assert pub.category == rules.Category("55", "Account & billing")
     assert not draft.published and draft.category is None
 

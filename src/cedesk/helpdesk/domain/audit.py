@@ -55,6 +55,27 @@ class Area(StrEnum):
     plan = "plan"
     demo = "demo"
     archive = "archive"
+    workspace = "workspace"  # the workspace itself was created (self-service sign-up)
+    # Inbox tools (feature-gap plan phase 1): snooze, bulk changes, followers, transcripts
+    # and automatic closes; saved views; the auto-close setting.
+    tickets = "tickets"
+    views = "views"
+    auto_close = "auto_close"
+    # Contacts (feature-gap plan phase 2): notes, attribute values, merges, CSV import and
+    # export; the contact fields; segments.
+    contacts = "contacts"
+    contact_fields = "contact_fields"
+    segments = "segments"
+    # Reporting (feature-gap plan phase 3): saved reports, dashboards, scheduled emails.
+    reports = "reports"
+    dashboards = "dashboards"
+    report_schedules = "report_schedules"
+    # Automation (feature-gap plan phase 5): workflows, and waiting runs stopped by hand.
+    # Rules stay under `rules`.
+    flows = "flows"
+    # Email campaigns (feature-gap plan phase 6): campaigns, their settings and the
+    # suppression list. Counts and ids only: never an address or an email's text.
+    campaigns = "campaigns"
 
 
 @dataclass(frozen=True)

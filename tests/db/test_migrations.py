@@ -346,3 +346,160 @@ async def test_0059_adds_contact_details_and_recipients_and_goes_back_down(
         assert [r[0] for r in (await conn.execute(text(cols))).all()] == [
             "hd_contact.organization", "hd_contact.phone", "hd_message.recipients"
         ]  # fmt: skip
+
+
+async def test_0061_to_0064_add_the_inbox_tools_and_go_back_down(owner_engine: Any) -> None:
+    """Snooze column and trigger, saved views, auto-close setting and followers; going
+    below 0061 removes them all (and the two new notification kinds)."""
+    import asyncio
+
+    from sqlalchemy import text
+
+    tables = ("hd_saved_view", "hd_auto_close", "hd_ticket_follower")
+    column = (
+        "SELECT count(*) FROM information_schema.columns "
+        "WHERE table_name = 'hd_ticket' AND column_name = 'snoozed_until'"
+    )
+    kinds = (
+        "SELECT pg_get_constraintdef(oid) FROM pg_constraint "
+        "WHERE conname = 'hd_notification_kind_check'"
+    )
+    cfg = alembic_config()
+    await asyncio.to_thread(command.downgrade, cfg, "0060")
+    async with owner_engine.connect() as conn:
+        for table in tables:
+            assert await conn.scalar(text(f"SELECT to_regclass('{table}')")) is None
+        assert await conn.scalar(text(column)) == 0
+        assert "snooze_ended" not in await conn.scalar(text(kinds))
+    await asyncio.to_thread(command.upgrade, cfg, "head")
+    async with owner_engine.connect() as conn:
+        for table in tables:
+            forced = await conn.scalar(
+                text("SELECT relforcerowsecurity FROM pg_class WHERE relname = :t"), {"t": table}
+            )
+            assert forced is True
+        assert await conn.scalar(text(column)) == 1
+        assert "following" in await conn.scalar(text(kinds))
+
+
+async def test_0065_to_0068_add_the_contact_tables_and_go_back_down(owner_engine: Any) -> None:
+    """Contact notes, fields and values, merge (other addresses, history) and segments;
+    going below 0065 removes them all and the contact's attributes column."""
+    import asyncio
+
+    from sqlalchemy import text
+
+    tables = (
+        "hd_contact_note", "hd_contact_field", "hd_contact_alias", "hd_contact_merge",
+        "hd_segment",
+    )  # fmt: skip
+    column = (
+        "SELECT count(*) FROM information_schema.columns "
+        "WHERE table_name = 'hd_contact' AND column_name = 'attributes'"
+    )
+    cfg = alembic_config()
+    await asyncio.to_thread(command.downgrade, cfg, "0064")
+    async with owner_engine.connect() as conn:
+        for table in tables:
+            assert await conn.scalar(text(f"SELECT to_regclass('{table}')")) is None
+        assert await conn.scalar(text(column)) == 0
+        assert await conn.scalar(text("SELECT to_regclass('hd_contact_name')")) is None
+    await asyncio.to_thread(command.upgrade, cfg, "head")
+    async with owner_engine.connect() as conn:
+        for table in tables:
+            forced = await conn.scalar(
+                text("SELECT relforcerowsecurity FROM pg_class WHERE relname = :t"), {"t": table}
+            )
+            assert forced is True
+        assert await conn.scalar(text(column)) == 1
+
+
+async def test_0069_to_0070_add_automation_and_go_back_down(owner_engine: Any) -> None:
+    """The run log, the rule limits and the snooze_ended event (0069); workflows and
+    their versions (0070). Going below 0069 removes them all."""
+    import asyncio
+
+    from sqlalchemy import text
+
+    tables = ("hd_automation_run", "hd_flow", "hd_flow_version")
+    limits = (
+        "SELECT count(*) FROM information_schema.columns WHERE table_name = 'hd_rule' "
+        "AND column_name IN ('max_runs_per_hour', 'max_runs_per_day')"
+    )
+    event_check = (
+        "SELECT pg_get_constraintdef(oid) FROM pg_constraint "
+        "WHERE conrelid = 'hd_rule'::regclass AND contype = 'c' "
+        "AND pg_get_constraintdef(oid) LIKE '%customer_replied%'"
+    )
+    cfg = alembic_config()
+    await asyncio.to_thread(command.downgrade, cfg, "0068")
+    async with owner_engine.connect() as conn:
+        for table in tables:
+            assert await conn.scalar(text(f"SELECT to_regclass('{table}')")) is None
+        assert await conn.scalar(text(limits)) == 0
+        assert "snooze_ended" not in await conn.scalar(text(event_check))
+    await asyncio.to_thread(command.upgrade, cfg, "head")
+    async with owner_engine.connect() as conn:
+        for table in tables:
+            forced = await conn.scalar(
+                text("SELECT relforcerowsecurity FROM pg_class WHERE relname = :t"), {"t": table}
+            )
+            assert forced is True
+        assert await conn.scalar(text(limits)) == 2
+        assert "snooze_ended" in await conn.scalar(text(event_check))
+
+
+async def test_0071_to_0072_add_campaigns_and_go_back_down(owner_engine: Any) -> None:
+    """The suppression list, campaign settings and the test email's HTML part (0071);
+    campaigns and their recipients (0072). Going below 0071 removes them all."""
+    import asyncio
+
+    from sqlalchemy import text
+
+    tables = ("hd_suppression", "hd_campaign_settings", "hd_campaign", "hd_campaign_recipient")
+    html = (
+        "SELECT count(*) FROM information_schema.columns "
+        "WHERE table_name = 'hd_email_out' AND column_name = 'body_html'"
+    )
+    cfg = alembic_config()
+    await asyncio.to_thread(command.downgrade, cfg, "0070")
+    async with owner_engine.connect() as conn:
+        for table in tables:
+            assert await conn.scalar(text(f"SELECT to_regclass('{table}')")) is None
+        assert await conn.scalar(text(html)) == 0
+    await asyncio.to_thread(command.upgrade, cfg, "head")
+    async with owner_engine.connect() as conn:
+        for table in tables:
+            forced = await conn.scalar(
+                text("SELECT relforcerowsecurity FROM pg_class WHERE relname = :t"), {"t": table}
+            )
+            assert forced is True
+        assert await conn.scalar(text(html)) == 1
+
+
+async def test_0073_to_0077_add_the_reporting_tables_and_go_back_down(owner_engine: Any) -> None:
+    """Backlog snapshots, report indexes, saved reports, dashboards and schedules; going
+    below 0073 removes them all, and coming back up leaves row-level security forced."""
+    import asyncio
+
+    from sqlalchemy import text
+
+    tables = (
+        "hd_backlog_snapshot", "hd_saved_report", "hd_dashboard", "hd_dashboard_card",
+        "hd_report_schedule", "hd_report_schedule_recipient",
+    )  # fmt: skip
+    indexes = ("hd_ticket_created_range",)
+    cfg = alembic_config()
+    await asyncio.to_thread(command.downgrade, cfg, "0072")
+    async with owner_engine.connect() as conn:
+        for name in (*tables, *indexes):
+            assert await conn.scalar(text(f"SELECT to_regclass('{name}')")) is None
+    await asyncio.to_thread(command.upgrade, cfg, "head")
+    async with owner_engine.connect() as conn:
+        for name in indexes:
+            assert await conn.scalar(text(f"SELECT to_regclass('{name}')")) is not None
+        for table in tables:
+            forced = await conn.scalar(
+                text("SELECT relforcerowsecurity FROM pg_class WHERE relname = :t"), {"t": table}
+            )
+            assert forced is True

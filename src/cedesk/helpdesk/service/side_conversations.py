@@ -53,6 +53,8 @@ NO_ADDRESS = "Add a support address first (Settings > Email): side conversations
 NO_SLACK = "Install the Slack side conversations app first (Settings > Apps)."
 BAD_SIGNATURE = "The request isn't signed by this workspace's Slack app."
 NAME_WAIT = 1.5  # seconds for Slack's users.info before a reply keeps the Slack id
+MENTIONS_MAX = 5  # people mentioned in one reply whose names are asked for
+FILE_LOOKUPS_MAX = 5  # files of one reply whose names are asked for (files.info)
 
 logger = logging.getLogger("cedesk.slack")
 
@@ -424,14 +426,16 @@ async def receive_slack(
             return {}  # Slack sent the same message again
         line_id = await _replied(s, workspace_id, UUID(str(side["ticket_id"])), who,
                                  _slack_line(who, where))  # fmt: skip
-    name = await _name_in_time(bot, reply.user)
-    if name is None:
+    names, files = await _details_in_time(bot, reply)
+    if not names and not files:
         return {}
+    name = names.get(reply.user)
     async with workspace_session(sm, workspace_id) as s:
         await repo.name_message(
-            s, added, author_name=name, body=_slack_body(reply, {reply.user: name})
+            s, added, author_name=name or who, body=_slack_body(reply, names, files)
         )
-        await repo.rename_line(s, line_id, _slack_line(name, where))
+        if name is not None:
+            await repo.rename_line(s, line_id, _slack_line(name, where))
     return {}
 
 
@@ -439,14 +443,37 @@ def _slack_line(who: str, where: str) -> str:
     return f"{who} replied in the side conversation in Slack {where}"
 
 
-def _slack_body(reply: slack_rules.ThreadReply, names: dict[str, str]) -> str:
-    return slack_rules.reply_body(reply, names)[: rules.BODY_MAX] or "(empty)"
+def _slack_body(
+    reply: slack_rules.ThreadReply, names: dict[str, str], files: dict[str, str] | None = None
+) -> str:
+    return slack_rules.reply_body(reply, names, files)[: rules.BODY_MAX] or "(empty)"
 
 
-async def _name_in_time(bot: slack_bot.Bot, user: str) -> str | None:
-    """The replier's Slack name, or None when Slack is slow or fails (never an error)."""
-    try:
-        return await asyncio.wait_for(bot.name_of(user), NAME_WAIT)
-    except Exception as exc:  # a slow or broken lookup must not lose the reply
-        logger.warning("slack: name lookup failed (%s)", type(exc).__name__)
-        return None
+async def _details_in_time(
+    bot: slack_bot.Bot, reply: slack_rules.ThreadReply
+) -> tuple[dict[str, str], dict[str, str]]:
+    """The Slack names of the replier and of the people mentioned (Slack id -> name), and
+    the names of the files Slack sent without one (file id -> name): all asked for at
+    once, and whatever Slack says within NAME_WAIT is kept. Never an error: a slow or
+    failed lookup leaves the Slack id (@U123), or "[file]". Live, Phase 3 retest: only the
+    replier was looked up, so a colleague they mentioned stayed @U123."""
+    users = list(dict.fromkeys([reply.user, *slack_rules.mentioned(reply.text)]))
+    asks: dict[asyncio.Task[str | None], tuple[str, str]] = {}
+    for user in users[: MENTIONS_MAX + 1]:
+        asks[asyncio.ensure_future(bot.name_of(user))] = ("user", user)
+    for file_id in reply.unnamed[:FILE_LOOKUPS_MAX]:
+        asks[asyncio.ensure_future(bot.file_name(file_id))] = ("file", file_id)
+    done, pending = await asyncio.wait(list(asks), timeout=NAME_WAIT)
+    for task in pending:
+        task.cancel()
+    await asyncio.gather(*pending, return_exceptions=True)
+    names: dict[str, str] = {}
+    files: dict[str, str] = {}
+    for task in done:
+        if (failed := task.exception()) is not None:  # must not lose the reply
+            logger.warning("slack: a name lookup failed (%s)", type(failed).__name__)
+            continue
+        if found := task.result():
+            kind, key = asks[task]
+            (names if kind == "user" else files)[key] = found
+    return names, files

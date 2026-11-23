@@ -544,12 +544,13 @@ def test_archived_tickets_are_on_unless_turned_off() -> None:
 async def test_articles_come_with_their_folder_and_status() -> None:
     items, _ = await drain(connect(Desk(base_routes() | solution_routes())), "articles")
     assert [a.external_id for a in items] == ["100", "101", "102"]
-    assert items[0].title == "Reset password" and items[0].body == "Click reset."
+    # the HTML is read as Markdown, so its bold stays (P6: it was plain text before)
+    assert items[0].title == "Reset password" and items[0].body == "Click **reset**."
     # the category's name is kept with the folder's; a subfolder's article is not lost
     assert items[0].category == rules.Category("10", "Basics / Getting started")
     assert items[2].category == rules.Category("12", "Basics / Getting started / Accounts")
     assert items[0].published is True and items[1].published is False
-    assert items[1].body == "wip"  # no description_text: the HTML is turned into text
+    assert items[1].body == "wip"  # no description_text: the HTML alone is enough
     assert items[0].updated_at == datetime(2024, 3, 5, 16, 20, tzinfo=UTC)
     assert items[0].published_at == datetime(2024, 1, 11, 9, 0, tzinfo=UTC)
     assert items[1].published_at is None  # a draft was never published
@@ -944,3 +945,120 @@ async def test_an_expired_signed_link_is_asked_for_again_once() -> None:
     assert await connector.fetch(attachment, 100) == b"log"
     gone = rules.Attachment("x", "https://s3.example.com/files/unknown.bin")
     assert await connector.fetch(gone, 100) is None  # not from a ticket read here: no retry
+
+
+# A source with a per-window request quota (Freshdesk's trial: 50 a minute). The worker builds a
+# new connector on every pass and, after a 429, waits for Retry-After before the next one.
+
+
+class Quota:
+    """Answers 429 once `per_window` requests were made in the current window."""
+
+    def __init__(self, inner: Desk, per_window: int) -> None:
+        self.inner = inner
+        self.per_window = per_window
+        self.used = 0
+
+    def new_window(self) -> None:
+        self.used = 0
+
+    def __call__(self, request: httpx.Request) -> httpx.Response:
+        self.used += 1
+        if self.used > self.per_window:
+            return httpx.Response(429, headers={"Retry-After": "1"}, json={})
+        return self.inner(request)
+
+
+async def drain_across_windows(quota: Quota, kind: str, windows: int = 40) -> list[Any]:
+    """The worker's loop: pages until a 429, then a new window and a new connector."""
+    items: list[Any] = []
+    cursor: Any = None
+    for _ in range(windows):
+        quota.new_window()
+        connector = connect(quota)
+        try:
+            while True:
+                page = await connector.page(kind, cursor)
+                items.extend(page.items)
+                cursor = page.cursor
+                if cursor is None:
+                    return items
+                json.dumps(cursor)
+        except RateLimited:
+            continue
+    raise AssertionError("never finished: a rate-limited page starts again from its first request")
+
+
+async def test_the_archive_walk_keeps_its_place_when_a_429_cuts_a_page(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A page of the walk is 100 ids, one request each. With 40 requests a window it can
+    never be read whole; the ids done before the 429 must be kept (B-60)."""
+    monkeypatch.setattr(fd, "ARCHIVE_TAIL", 5)
+    archived = fixture("archived_3.json")
+    routes = base_routes() | {
+        "/api/v2/tickets": ticket_list([row(130, datetime(2025, 6, 1, tzinfo=UTC))]),
+        "/api/v2/tickets/archived/7": archived | {"id": 7},
+        "/api/v2/tickets/archived/90": archived | {"id": 90},
+        "/api/v2/contacts/202": fixture("contact_202.json"),
+    }
+    desk = Desk(routes)
+    items = await drain_across_windows(Quota(desk, 40), "tickets")
+    assert sorted(int(t.external_id) for t in items) == [7, 90, 130]
+    probes = [
+        int(p.rsplit("/", 1)[1])
+        for p in desk.paths()
+        if p.rsplit("/", 1)[-1].isdigit() and "/archived/" in p
+    ]
+    assert max(probes) == 130 + 5
+
+
+async def test_the_live_list_keeps_its_place_when_a_429_cuts_a_page() -> None:
+    """30 tickets cost about 60 requests (conversations, ratings); 20 a window. The tickets
+    read before the 429 are kept and the next window goes on after them, none twice."""
+    start = datetime(2025, 1, 1, tzinfo=UTC)
+    rows = [row(i, start + timedelta(minutes=i)) for i in range(1, 31)]
+    desk = Desk(base_routes() | {"/api/v2/tickets": ticket_list(rows)})
+    items = await drain_across_windows(Quota(desk, 20), "tickets")
+    ids = [int(t.external_id) for t in items]
+    assert ids == list(range(1, 31)), "every ticket once, in order"
+
+
+async def test_a_429_before_any_ticket_of_a_page_is_read_still_pauses_the_run() -> None:
+    desk = Desk(
+        base_routes() | {"/api/v2/tickets": ticket_list([row(1, datetime(2025, 6, 1, tzinfo=UTC))])}
+    )
+    quota = Quota(desk, 0)
+    with pytest.raises(RateLimited) as caught:
+        await connect(quota).page("tickets", None)
+    assert caught.value.retry_after == 1
+
+
+async def test_the_files_on_a_tickets_first_message_come_from_the_ticket_view() -> None:
+    """Freshdesk's ticket list has no `attachments`; only `GET /tickets/{id}` has them. A file
+    on the first message was never read (checked against a live account, 18 Nov)."""
+    full = fixture("ticket_2_attachments.json")
+    listed = {k: v for k, v in full.items() if k != "attachments"}  # as the list sends it
+    routes = {
+        **base_routes(),
+        "/api/v2/tickets": ticket_list([listed]),
+        "/api/v2/tickets/2": full,
+        "/api/v2/tickets/2/conversations": fixture("conversations_2_attachments.json"),
+    }
+    desk = Desk(routes)
+    items, _ = await drain(connect(desk, archived=False), "tickets")
+    first = items[0].messages[0]
+    assert [a.name for a in first.attachments] == ["photo.png"]
+    assert "/api/v2/tickets/2" in desk.paths()
+
+
+async def test_a_ticket_deleted_after_it_was_listed_has_no_view_and_is_still_read() -> None:
+    full = fixture("ticket_2_attachments.json")
+    listed = {k: v for k, v in full.items() if k != "attachments"}
+    routes = {
+        **base_routes(),
+        "/api/v2/tickets": ticket_list([listed]),
+        "/api/v2/tickets/2/conversations": fixture("conversations_2_attachments.json"),
+    }  # no view route: a 404
+    items, _ = await drain(connect(Desk(routes), archived=False), "tickets")
+    assert list(items[0].messages[0].attachments) == []

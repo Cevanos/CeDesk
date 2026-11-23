@@ -20,6 +20,7 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from enum import StrEnum
 from typing import Any
+from urllib.parse import urlsplit
 
 
 class App(StrEnum):
@@ -81,7 +82,8 @@ CATALOG: dict[App, AppInfo] = {
         settings=(),
         credential="bot_token",
         credential_help="Make a Slack app (api.slack.com/apps) with the bot scopes "
-        "chat:write, channels:history, groups:history and users:read, install it in your "
+        "chat:write, channels:history, groups:history, users:read and files:read (only a "
+        "shared file's name is read, never the file), install it in your "
         "Slack, and paste its bot token (xoxb-...) and, as `signing_secret`, its signing "
         "secret. Then, in the Slack app's Event Subscriptions, set the Request URL to "
         "<CeDesk API>/api/v1/slack/events/<workspace id> and subscribe the bot to "
@@ -99,8 +101,61 @@ CATALOG: dict[App, AppInfo] = {
         "uninstalling removes it.",
     ),
 }
+
+
+@dataclass(frozen=True)
+class FormField:
+    """One box of an app's install form, as the Admin should see it."""
+
+    key: str
+    label: str
+    hint: str
+    send_as: str  # "settings": in settings[key]; "secret" or "signing_secret": that field
+    secret: bool  # a password box; never shown again once saved
+
+
+# The label and hint of every setting and credential, by its key (the keys don't repeat
+# across apps). Before, the form had only the bare keys, so the Jira and Calendly boxes
+# showed no label at all (live, Phase 3 retest).
+_FIELD_TEXT: dict[str, tuple[str, str]] = {
+    "shop": ("Shop name", "acme for acme.myshopify.com."),
+    "access_token": (
+        "Admin API access token",
+        "From a custom app with read_orders and read_customers.",
+    ),
+    "api_key": ("Restricted key", "Starts with rk_ (read only is enough), or sk_."),
+    "site": ("Jira site", "acme for acme.atlassian.net."),
+    "email": ("Atlassian account email", "The account the API token belongs to."),
+    "project": ("Project key", "Where new issues go, e.g. SUP."),
+    "api_token": ("API token", "id.atlassian.com > Security > API tokens."),
+    "webhook_url": ("Incoming webhook URL", "https://hooks.slack.com/services/..."),
+    "bot_token": ("Bot token", "Starts with xoxb-."),
+    "signing_secret": ("Signing secret", "Your Slack app > Basic Information > App Credentials."),
+    "link": ("Booking link", "Your Calendly page, e.g. https://calendly.com/acme/30min."),
+}
+
+
+def form(app: App) -> tuple[FormField, ...]:
+    """What the install form asks for, in order: the settings, then the credentials."""
+    info = CATALOG[app]
+    boxes = [(key, "settings", False) for key in info.settings]
+    if info.credential:
+        boxes.append((info.credential, "secret", True))
+    if info.second_credential:
+        boxes.append((info.second_credential, "signing_secret", True))
+    return tuple(
+        FormField(key, *_FIELD_TEXT.get(key, (key.replace("_", " ").capitalize(), "")),
+                  send_as=send_as, secret=secret)
+        for key, send_as, secret in boxes
+    )  # fmt: skip
+
+
 BOOK_SHORTCUT = "book"
-_CALENDLY = re.compile(r"^https://calendly\.com/[A-Za-z0-9_-]{1,100}(/[A-Za-z0-9_-]{1,100})?/?$")
+_CALENDLY_HOSTS = ("calendly.com", "www.calendly.com")
+_SLUG = r"[A-Za-z0-9_-]{1,100}"
+# /<you>, /<you>/<event> (or a team's /<team>/<event>), or a one-off /d/<code>/<event>
+_CALENDLY_PATH = re.compile(rf"^/(?:d/{_SLUG}/{_SLUG}|{_SLUG}(?:/{_SLUG})?)$")
+LINK_MAX = 300
 CARD_LIMIT = 5  # orders or payments shown per customer
 SECRET_MAX = 300
 SHOPIFY_API = "2024-10"
@@ -131,13 +186,38 @@ def secret_hint(value: str) -> str:
 
 
 def booking_link(raw: Any) -> str:
-    """A Calendly page: https://calendly.com/<you> or https://calendly.com/<you>/<event>."""
-    link = str(raw or "").strip()
-    if not _CALENDLY.match(link):
-        raise BadCredentials(
-            "Give your Calendly booking link, e.g. https://calendly.com/acme/30min."
-        )
-    return link.rstrip("/")
+    """A Calendly page: https://calendly.com/<you>, .../<you>/<event>, or a one-off
+    .../d/<code>/<event>, as the Admin copied it: without https://, with www., or from the
+    browser's address bar with ?month=2026-11 (live, Phase 3 retest: that was refused).
+    Saved as https://calendly.com/<path>, without the query or a trailing slash, so /book
+    never carries anything but the page. Anything else (http, another host, a user or a
+    port, more path) is refused."""
+    text = str(raw or "").strip()
+    if not text or len(text) > LINK_MAX or any(c.isspace() for c in text):
+        raise BadCredentials(_LINK_HELP)
+    if "://" not in text:  # "calendly.com/acme"; "javascript:x" becomes a bad host
+        text = "https://" + text
+    try:
+        parts = urlsplit(text)
+        port = parts.port
+    except ValueError:
+        raise BadCredentials(_LINK_HELP) from None
+    path = parts.path.rstrip("/")
+    if (
+        parts.scheme.lower() != "https"
+        or (parts.hostname or "") not in _CALENDLY_HOSTS
+        or port is not None
+        or parts.username is not None
+        or not _CALENDLY_PATH.match(path)
+    ):
+        raise BadCredentials(_LINK_HELP)
+    return f"https://calendly.com{path}"
+
+
+_LINK_HELP = (
+    "Give your Calendly booking link: on Calendly, use the event's Copy link, e.g. "
+    "https://calendly.com/acme/30min."
+)
 
 
 def book_reply(link: str) -> str:

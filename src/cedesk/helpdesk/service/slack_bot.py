@@ -1,5 +1,5 @@
 """The Slack bot of the `slack` app (md X5): posts in a channel or a thread, and reads the
-name of whoever replied. Rules in domain/slack.py.
+names of whoever replied or was mentioned, and of a shared file. Rules in domain/slack.py.
 
 Every call goes through `AppPost` (the egress guard, the checked address pinned, https,
 no redirects, at most 10 s), to slack.com only; the token is only in the Authorization
@@ -23,6 +23,7 @@ SOMEONE = "Someone in Slack"
 _USER = re.compile(r"^[UW][A-Z0-9]{2,39}$")
 _CHANNEL = re.compile(r"^[CG][A-Z0-9]{6,29}$")
 _TS = re.compile(r"^[0-9]{1,20}\.[0-9]{1,10}$")
+_FILE = re.compile(r"^F[A-Z0-9]{2,40}$")
 
 
 def bound(workspace_id: UUID) -> str:
@@ -83,6 +84,19 @@ class Bot:
         names.append(person.get("name") if isinstance(person, dict) else None)
         found = next((n for n in names if isinstance(n, str) and n.strip()), None)
         return found.strip()[:120] if found else None
+
+    async def file_name(self, file_id: str) -> str | None:
+        """A shared file's name, when Slack's event didn't carry it (files.info, scope
+        files:read; the file itself isn't fetched). None if Slack can't say."""
+        if not _FILE.match(file_id):
+            return None
+        try:
+            data = await self._client().get(f"/api/files.info?file={file_id}")
+        except AppCallError:
+            return None
+        if rules.api_problem(data, "") is not None:
+            return None  # e.g. missing_scope: the app was made before files:read
+        return rules.file_name(data.get("file") if isinstance(data, dict) else None)
 
 
 def stand_in(user: str) -> str:

@@ -5,8 +5,10 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres_dev
       POSTGRES_DB: cedesk
+    # This machine only: the dev passwords are in this file, so the database must not be
+    # reachable from the network. (Docker's published ports bypass ufw.)
     ports:
-      - "5447:5432"
+      - "127.0.0.1:5447:5432"
     volumes:
       - cedesk-pg:/var/lib/postgresql/data
       - ./infra/postgres/init:/docker-entrypoint-initdb.d:ro
@@ -35,7 +37,7 @@ services:
     environment:
       CEDESK_DATABASE_URL: postgresql+asyncpg://cedesk_app:cedesk_app_dev@db:5432/cedesk
     ports:
-      - "8100:8100"
+      - "127.0.0.1:8100:8100"
 
 volumes:
   cedesk-pg:

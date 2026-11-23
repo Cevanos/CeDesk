@@ -19,6 +19,7 @@ DEPLOY_ONLY = {
     "CEDESK_APP_PASSWORD",
     "CEDESK_SITE",
     "BACKUP_DIR",
+    "CEDESK_FORWARDED_ALLOW_IPS",
 }
 SETTINGS = {f"CEDESK_{name.upper()}" for name in Settings.model_fields}
 
@@ -61,3 +62,13 @@ def test_the_in_compose_column_matches_the_compose_file() -> None:
             continue  # the deploy-only table has no such column
         says_no = cells[4] == "no"
         assert says_no == (name not in passed), f"{name}: 'In compose' says {cells[4]!r}"
+
+
+def test_scheduled_reports_get_a_lower_query_limit_and_a_budget_per_pass() -> None:
+    """The worker's one loop also sends ticket email, SLA alerts and pushes: a scheduled
+    report may hold it for less than a member waiting on the page would."""
+    fields = Settings.model_fields
+    assert (
+        fields["report_schedule_timeout_seconds"].default < fields["report_timeout_seconds"].default
+    )
+    assert fields["report_schedule_budget_seconds"].default == 20

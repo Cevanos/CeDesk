@@ -199,10 +199,10 @@ async def test_connected_each_route_gives_cevanos_answer(cv: AsyncClient, app_se
         "text": "Hi Priya, your parcel ships today."}  # fmt: skip
     improved = await cv.post("/api/v1/assist/improve", headers=h,
                              json={"text": "thx 4 waiting", "tone": "friendly"})  # fmt: skip
-    assert ok(improved) == {"text": "Thank you for waiting, Priya."}
+    assert ok(improved) == {"text": "Thank you for waiting, Priya.", "note": None}
     translated = await cv.post("/api/v1/assist/translate", headers=h,
                                json={"text": "Mera order kahan hai?", "to": "en"})  # fmt: skip
-    assert ok(translated) == {"text": "Where is my order?", "from": "hi"}
+    assert ok(translated) == {"text": "Where is my order?", "from": "hi", "note": None}
     report = ok(await cv.get("/api/v1/reports/ai", headers=h))
     assert report["ai"] == {"conversations": 200, "handed_over": 30, "handover_rate": 0.15,
                             "ai_resolved": 170, "ai_resolved_rate": 0.85, "ai_csat": 4.4,
@@ -217,6 +217,41 @@ async def test_connected_each_route_gives_cevanos_answer(cv: AsyncClient, app_se
     assert sent["rewrite"] == {"text": "thx 4 waiting", "tone": "friendly"}
     assert sent["translate"] == {"text": "Mera order kahan hai?", "to": "en"}
     assert set(sent["analytics"]) == {"from", "to"}  # the period, as ISO times
+
+
+async def test_text_sent_back_as_it_was_is_said_so(
+    cv: AsyncClient, app_sessionmaker: Sm, world: FakeAi
+) -> None:
+    """Live retest with the real Cevanos: every translation came back untranslated (shown
+    as "Translated from hi by AI"), and "Shorter" never changed a reply, with no word to
+    the agent."""
+    w = await desk(cv, app_sessionmaker, world)
+    h = w["admin"]
+    sloppy = "hi priya sry 4 the torn tshirt"
+    world.answers["rewrite"] = {"data": {"text": f"  {sloppy} "}}  # spaces aside: the same
+    got = ok(await cv.post("/api/v1/assist/improve", headers=h,
+                           json={"text": sloppy, "tone": "concise"}))  # fmt: skip
+    assert got == {"text": sloppy, "note": "No changes suggested. Try another tone."}
+
+    async def translate(text: str, to: str, answer: dict[str, Any]) -> Any:
+        world.answers["translate"] = {"data": answer}
+        return await cv.post("/api/v1/assist/translate", headers=h, json={"text": text, "to": to})
+
+    # Cevanos found Hindi but sent it back: nothing to show as a translation.
+    r = await translate("Mera order kahan hai?", "en", {"text": "Mera order kahan hai?",
+                                                        "from": "hi"})  # fmt: skip
+    assert (r.status_code, r.json()["error"]["message"]) == (
+        503, "Cevanos didn't translate this. Try again later.")  # fmt: skip
+    # Already in the language asked for, or nothing to translate: said, not an error.
+    r = await translate("Where is my order?", "en-GB", {"text": "Where is my order?",
+                                                        "from": "en"})  # fmt: skip
+    assert ok(r) == {"text": "Where is my order?", "from": "en",
+                     "note": "This is already in English."}  # fmt: skip
+    r = await translate("ORD-1042", "hi", {"text": "ORD-1042", "from": None})
+    assert ok(r)["note"] == "Cevanos found nothing to translate in this text."
+    # Live retest: Cevanos labels an order number English and sends it back: not a failure.
+    r = await translate("ORD-1042", "hi", {"text": "ORD-1042", "from": "en"})
+    assert ok(r)["note"] == "Cevanos found nothing to translate in this text."
 
 
 async def test_cevanos_down_is_a_503(cv: AsyncClient, app_sessionmaker: Sm, world: FakeAi) -> None:

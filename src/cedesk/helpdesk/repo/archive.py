@@ -320,15 +320,16 @@ def _each(array: str, patch: str) -> str:
 
 _ERASED = "CAST(:erased AS text)"
 
-# As live erase (repo/privacy.py): the ticket, its messages (their email headers too),
-# file names, the rating's comment, the emails sent, tasks, approvals and time notes. Side
-# conversations, Jira issues and links are left, as on a live ticket.
+# As live erase (repo/privacy.py): the ticket, its messages (their email headers and
+# recipients too), file names, the rating's comment, the emails sent, tasks, approvals,
+# time notes and side conversations. Jira issues and links hold only keys and ids.
 _ERASE = f"""
 UPDATE hd_ticket_archive a SET
     subject = :erased,
     ticket = a.ticket || jsonb_build_object('subject', {_ERASED},
                                             'fields', '{{}}'::jsonb, 'handover', NULL),
-    messages = {_each("a.messages", f"jsonb_build_object('body', {_ERASED}, 'email', NULL) "
+    messages = {_each("a.messages", f"jsonb_build_object('body', {_ERASED}, 'email', NULL, "
+        "'recipients', NULL) "
         f"|| CASE WHEN x->>'kind' = 'customer' THEN jsonb_build_object('author_name', "
         f"CAST(:name AS text)) ELSE '{{}}'::jsonb END")},
     files = {_each("a.files", "jsonb_build_object('name', 'erased', 'scan_status', 'erased')")},
@@ -343,7 +344,14 @@ UPDATE hd_ticket_archive a SET
         'tasks', {_each("a.related->'tasks'", f"jsonb_build_object('text', {_ERASED})")},
         'approvals', {_each("a.related->'approvals'",
             f"jsonb_build_object('what', {_ERASED}, 'decision_note', NULL)")},
-        'time_log', {_each("a.related->'time_log'", "jsonb_build_object('note', NULL)")})
+        'time_log', {_each("a.related->'time_log'", "jsonb_build_object('note', NULL)")},
+        'side_conversations', {_each("a.related->'side_conversations'",
+            f"jsonb_build_object('subject', {_ERASED}, "
+            "'to_addresses', jsonb_build_array('erased@erased.invalid'), 'messages', "
+            + _each("x->'messages'", f"jsonb_build_object('body', {_ERASED}) || CASE WHEN "
+                    "x->>'direction' = 'in' THEN jsonb_build_object('author_name', "
+                    "CAST(:name AS text), 'from_address', 'erased@erased.invalid') "
+                    "ELSE '{}'::jsonb END") + ")")})
 WHERE a.contact_id = :c
 RETURNING a.id
 """  # noqa: S608 (constants only)  # fmt: skip
