@@ -9,7 +9,7 @@ from cedesk.helpdesk.domain.portal import clean_name, contact_name
     ("email", "name"),
     [
         ("priya.shah@example.org", "Priya Shah"),
-        ("pranav.katariya@cogninest.ai", "Pranav Katariya"),
+        ("pranav.katariya@example.com", "Pranav Katariya"),
         ("ravi_k+orders@example.org", "Ravi K"),  # the +tag is not part of the name
         ("j-smith99@example.org", "J Smith99"),
         ("info@acme.com", "Info"),

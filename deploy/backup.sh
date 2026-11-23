@@ -2,7 +2,7 @@
 # CeDesk backup: the database and the uploaded files, encrypted for an offline key.
 #
 # Cron (as root, or the user that runs docker):
-#   30 2 * * * /path/to/CDESK/deploy/backup.sh >> /var/log/cedesk-backup.log 2>&1
+#   30 2 * * * /path/to/CeDesk/deploy/backup.sh >> /var/log/cedesk-backup.log 2>&1
 #
 # Settings come from the environment, or from deploy/backup.env (see backup.env.example):
 #   BACKUP_GPG_RECIPIENT  fingerprint of the PUBLIC key backups are encrypted for. Only the

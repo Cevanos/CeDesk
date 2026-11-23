@@ -16,7 +16,7 @@ These are the notes for our own servers. For a customer hosting CeDesk themselve
    ```
 
    (Docker opens published ports itself, past ufw. Only Caddy publishes any here.)
-2. Get the code: `git clone https://github.com/Cogninest-AI/CDESK.git && cd CDESK/deploy`
+2. Get the code: `git clone https://github.com/Cevanos/CeDesk.git && cd CeDesk/deploy`
 3. `cp env.example .env`, then fill in `.env`: four secrets from `openssl rand -hex 32`,
    `CEDESK_SITE` (a domain pointing at the server for HTTPS, or `:80`) and
    `CEDESK_CORS_ORIGINS` (the frontend's addresses).
@@ -35,7 +35,7 @@ These are the notes for our own servers. For a customer hosting CeDesk themselve
 ## Updating
 
 ```sh
-cd CDESK && git pull && cd deploy && docker compose up -d --build
+cd CeDesk && git pull && cd deploy && docker compose up -d --build
 ```
 
 Migrations run before the new API starts. Uploaded files (`files` volume), the database
@@ -77,7 +77,7 @@ Set up once (as root on the server):
    `BACKUP_GPG_RECIPIENT` to the fingerprint (and `BACKUP_COMPOSE` if the server uses an
    extra compose file). Optional: `BACKUP_REQUIRE_ENCRYPTION=1`, so a missing key stops
    the backup instead of writing an unencrypted one.
-4. Cron: `30 2 * * * /path/to/CDESK/deploy/backup.sh >> /var/log/cedesk-backup.log 2>&1`.
+4. Cron: `30 2 * * * /path/to/CeDesk/deploy/backup.sh >> /var/log/cedesk-backup.log 2>&1`.
 5. Run it once by hand and check `ls -l` on the folder: `drwx------` and every file
    `-rw-------`, names ending `.gpg`.
 

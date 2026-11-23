@@ -31,7 +31,7 @@ workspace our operators give a cloud plan (`cedesk set-plan`), which you never d
 2. Get the code and the settings file:
 
    ```sh
-   git clone https://github.com/Cogninest-AI/CDESK.git && cd CDESK/deploy
+   git clone https://github.com/Cevanos/CeDesk.git && cd CeDesk/deploy
    cp env.example .env
    ```
 
@@ -83,8 +83,8 @@ workspace our operators give a cloud plan (`cedesk set-plan`), which you never d
 6. Daily jobs (cron, as the user that runs Docker):
 
    ```sh
-   30 2 * * * /path/to/CDESK/deploy/backup.sh >> /var/log/cedesk-backup.log 2>&1
-   45 2 * * * cd /path/to/CDESK/deploy && docker compose exec -T api uv run --no-sync cedesk prune-sessions
+   30 2 * * * /path/to/CeDesk/deploy/backup.sh >> /var/log/cedesk-backup.log 2>&1
+   45 2 * * * cd /path/to/CeDesk/deploy && docker compose exec -T api uv run --no-sync cedesk prune-sessions
    ```
 
    The worker does everything else by itself: sending email, reading the mailbox, SLA
@@ -193,7 +193,7 @@ address.
 ## Updating
 
 ```sh
-cd /path/to/CDESK && git pull && cd deploy && docker compose up -d --build
+cd /path/to/CeDesk && git pull && cd deploy && docker compose up -d --build
 ```
 
 Migrations run before the new API starts. The database (`pgdata`), files (`files`) and

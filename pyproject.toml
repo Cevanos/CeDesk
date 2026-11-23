@@ -3,7 +3,7 @@ name = "cedesk"
 version = "0.1.0"
 description = "CeDesk help desk backend: tickets, routing, SLA, macros, rules, portal and imports."
 authors = [
-    { name = "ritesh-cogninest-ai", email = "ritesh.choudhary@cogninest.ai" }
+    { name = "Cevanos" }
 ]
 requires-python = ">=3.12"
 dependencies = [
