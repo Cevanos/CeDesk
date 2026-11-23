@@ -61,3 +61,12 @@ Record significant decisions in `docs/adr`. Add a numbered ADR when you change s
 - **ESLint stays on 10.** `npm audit` reports moderate findings in the ESLint and typescript-eslint chain (dev dependencies only; production audit is clean). The suggested `npm audit fix --force` would downgrade ESLint and `eslint-config-next`, so it is not applied.
 - **Tailwind CSS 4 is wired through `@tailwindcss/turbopack`** (published by Tailwind Labs, same version as `tailwindcss`). There is no PostCSS config.
 - **Node 22** is what `.nvmrc`, CI and the Dockerfile use. `engines` allows 20.19+.
+
+## License and ownership
+
+CeDesk is released under the [MIT License](LICENSE). By opening a pull request you agree that your contribution is licensed under the same MIT License (inbound = outbound). You keep the copyright in your work.
+
+- There is **no Contributor License Agreement** and no sign-off requirement. Open a pull request and we will review it.
+- Only submit code you wrote or have the right to submit under MIT. Do not copy in code from GPL, AGPL, LGPL or other copyleft projects, or from sources whose license you have not checked.
+- New dependencies must use a license compatible with MIT distribution (MIT, BSD, ISC, Apache-2.0 and similar). Mention the license in the pull request.
+

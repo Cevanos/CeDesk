@@ -145,6 +145,10 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) and the [Code of Conduct](CODE_OF_CONDUCT
 
 [MIT](LICENSE) © 2026 Cevanos.
 
+The CeDesk name and logo are trademarks of Cevanos and are not covered by the MIT License. Cevanos AI, managed CeDesk cloud hosting and future enterprise-only features are separate commercial products and are not part of this repository.
+
+Third-party dependencies keep their own licenses. All are permissive or weak-copyleft; the only LGPL components are the optional prebuilt `sharp` image binaries (libvips) that Next.js uses for image optimization, which are installed from npm rather than copied into this repository.
+
 ## Acknowledgements
 
 Built with [Next.js](https://nextjs.org), [React](https://react.dev), [Tailwind CSS](https://tailwindcss.com), [TanStack Query](https://tanstack.com/query), [React Hook Form](https://react-hook-form.com), [Zod](https://zod.dev), [next-intl](https://next-intl.dev), [Lucide](https://lucide.dev), [Vitest](https://vitest.dev) and [Playwright](https://playwright.dev).

@@ -63,7 +63,6 @@ Desktop.ini
 .cache/
 .turbo/
 *.local
-.claude/settings.local.json
 *.key
 *.p12
 *.pfx
