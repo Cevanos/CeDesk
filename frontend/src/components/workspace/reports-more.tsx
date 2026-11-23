@@ -18,6 +18,7 @@ import {
 } from "@/hooks/workspace/reports";
 import { ApiError, downloadFile } from "@/lib/api/client";
 import { duration } from "@/lib/reports";
+import { safeHttpUrl } from "@/lib/safe-url";
 import { cn } from "@/lib/utils";
 
 const dash = "—";
@@ -230,12 +231,13 @@ export function MetricsPanel({ params }: { params: ReportParams }) {
   if (q.isPending) return <Skeleton className="h-64 rounded-xl" />;
   if (q.isError) return <LoadError error={q.error} />;
   const d = q.data;
+  const governanceUrl = safeHttpUrl(d.governance_url);
   return (
     <div className={cn("space-y-6 transition-opacity", q.isPlaceholderData && "opacity-60")}>
       <div className="flex flex-wrap items-center justify-end gap-2">
-        {d.governance_url && (
+        {governanceUrl && (
           <a
-            href={d.governance_url}
+            href={governanceUrl}
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border-strong bg-surface px-3 text-[13px] font-medium hover:bg-surface-2"

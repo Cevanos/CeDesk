@@ -12,7 +12,6 @@ describe("safeNext", () => {
     "https://evil.example",
     "//evil.example",
     "/\\evil.example",
-    // eslint-disable-next-line no-script-url -- deliberate attack payload
     "javascript:alert(1)",
     "",
     null,

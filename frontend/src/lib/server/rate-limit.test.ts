@@ -23,6 +23,14 @@ describe("createLimiter", () => {
     expect(l.hit("a", 1000).ok).toBe(true);
   });
 
+  it("keeps a blocked client blocked while unique keys flood the table", () => {
+    const l = createLimiter(1, 60_000, 5);
+    l.hit("attacker", 0);
+    expect(l.hit("attacker", 1).ok).toBe(false);
+    for (let i = 0; i < 3; i++) l.hit(`k${i}`, 2);
+    expect(l.hit("attacker", 3).ok).toBe(false);
+  });
+
   it("bounds memory under a flood of unique keys", () => {
     const l = createLimiter(1, 60_000, 5);
     for (let i = 0; i < 50; i++) l.hit(`k${i}`, 0);

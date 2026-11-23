@@ -62,16 +62,25 @@ export function useContactArchive(contactId: string) {
   });
 }
 
-/** Turns one search box into the query the API wants. Returns null for an empty box. */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Turns one search box into the query the API wants. Returns null for an empty box or
+ * for text that is none of a ticket number, an email or a customer id (use
+ * `ARCHIVE_QUERY_HINT` for that case; the API is not called).
+ */
 export function parseArchiveQuery(input: string): ArchiveSearch | null {
   const q = input.trim();
   if (!q) return null;
   if (q.includes("@")) return { email: q };
-  const num = /^t?-?(\d{1,10})$/i.exec(q);
+  const num = /^(?:t-?|#)?(\d{1,10})$/i.exec(q);
   if (num) return { number: num[1] };
-  // Anything else is taken as a customer id.
-  return { contact_id: q };
+  if (UUID.test(q)) return { contact_id: q };
+  return null;
 }
+
+export const ARCHIVE_QUERY_HINT =
+  "Type a ticket number like 1042 or T-1042, or the customer's email.";
 
 interface Page {
   items: ArchivedTicketRow[];

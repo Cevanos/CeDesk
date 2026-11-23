@@ -23,6 +23,8 @@ export interface ArchiveSettings {
   /** 30 to 3650, or null for the default (120). */
   after_days: number | null;
   effective_days: number;
+  updated_by_name?: string | null;
+  updated_at?: string | null;
 }
 
 /** A `null` limit means "no limit"; `plan: null` means "No plan limits". */

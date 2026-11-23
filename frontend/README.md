@@ -4,7 +4,7 @@ Web frontend for CDesk, a customer support desk. Agents, supervisors and admins 
 
 ## Screenshots
 
-Captured from the app running against the sample data in `e2e/mock-backend.mjs`, not a real workspace.
+Captured from the app running against the sample data in `e2e/mock-backend.ts`, not a real workspace.
 
 ![Ticket inbox](docs/images/ticket-inbox.png)
 
@@ -41,7 +41,7 @@ Needs Node 20.19+ and npm 10+ (`.nvmrc` pins 22, which CI and the Dockerfile als
 | `npm run typecheck`                         | `tsc --noEmit`                                                          |
 | `npm run format` / `format:check`           | Prettier                                                                |
 | `npm test` / `test:watch` / `test:coverage` | Vitest, Testing Library, MSW                                            |
-| `npm run test:e2e`                          | Playwright against a production build and `e2e/mock-backend.mjs`        |
+| `npm run test:e2e`                          | Playwright against a production build and `e2e/mock-backend.ts`         |
 | `npm run validate`                          | typecheck, lint, format check, tests, build (what CI runs)              |
 | `npm run analyze`                           | Bundle analyser (JS only, see note)                                     |
 | `npm run gen:api`                           | Generate API types: `OPENAPI_SPEC=path/to/openapi.json npm run gen:api` |

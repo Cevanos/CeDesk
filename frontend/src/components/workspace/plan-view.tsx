@@ -126,14 +126,22 @@ function RetentionForm({ initial }: { initial: RetentionSettings }) {
         onSubmit={(e) => {
           e.preventDefault();
           const n = days.trim() ? parseDays(days) : null;
-          if (days.trim() && (n === null || n < 1))
-            return setErrs({ closed_ticket_days: "Enter a number of days, or leave empty." });
+          if (days.trim() && (n === null || n < 30 || n > 3650))
+            return setErrs({
+              closed_ticket_days: "Enter 30 to 3650 days, or leave empty to keep resolved tickets.",
+            });
           setErrs({});
           save.mutate(
             { closed_ticket_days: n, export_before_delete: exportFirst },
             {
               onSuccess: () => toast.success("Retention saved"),
-              onError: (err) => setErrs(fieldErrors(err)),
+              // One message, in one place: the banner.
+              onError: (err) =>
+                setErrs({
+                  _form:
+                    fieldErrors(err)._form ||
+                    (err instanceof ApiError ? err.message : "Couldn't save retention."),
+                }),
             },
           );
         }}
@@ -142,7 +150,9 @@ function RetentionForm({ initial }: { initial: RetentionSettings }) {
           label="Delete resolved tickets after (days)"
           htmlFor="ret-days"
           error={errs.closed_ticket_days}
-          hint="Leave empty to keep resolved tickets. Deleted tickets can't be brought back."
+          hint={`30 to 3650. Leave empty to keep resolved tickets. Deleted tickets can't be brought back. Right now: ${
+            initial.effective_days === null ? "kept for good" : `${initial.effective_days} days`
+          }.`}
         >
           <Input
             id="ret-days"
@@ -190,12 +200,25 @@ function RetentionForm({ initial }: { initial: RetentionSettings }) {
 
 function ArchiveCard() {
   const q = useArchiveSettings();
+  const ret = useRetention();
   if (q.isPending) return <Skeleton className="h-32" />;
   if (q.isError) return <LoadError error={q.error} />;
-  return <ArchiveForm initial={q.data} />;
+  const retDays = ret.data?.effective_days;
+  return (
+    <ArchiveForm
+      initial={q.data}
+      shortRetentionDays={retDays != null && retDays < q.data.effective_days ? retDays : null}
+    />
+  );
 }
 
-function ArchiveForm({ initial }: { initial: ArchiveSettings }) {
+function ArchiveForm({
+  initial,
+  shortRetentionDays,
+}: {
+  initial: ArchiveSettings;
+  shortRetentionDays: number | null;
+}) {
   const save = useSaveArchiveSettings();
   // Empty = the default (null on the wire); the placeholder shows what applies now.
   const [days, setDays] = useState(initial.after_days ? String(initial.after_days) : "");
@@ -224,7 +247,7 @@ function ArchiveForm({ initial }: { initial: ArchiveSettings }) {
         }}
       >
         <Field
-          label="Archive closed tickets after (days)"
+          label="Archive resolved tickets after (days)"
           htmlFor="arc-days"
           error={errs.after_days}
           hint={`30 to 3650. Empty uses the default (120). Right now: ${initial.effective_days} days.`}
@@ -237,8 +260,19 @@ function ArchiveForm({ initial }: { initial: ArchiveSettings }) {
             onChange={(e) => setDays(e.target.value)}
           />
         </Field>
+        {shortRetentionDays !== null && (
+          <p role="note" className="rounded-lg bg-surface-2 px-3 py-2 text-sm">
+            Resolved tickets are deleted after {shortRetentionDays} days (Retention), so none stay
+            long enough to be archived at {initial.effective_days} days.
+          </p>
+        )}
         <FormError message={errs._form} />
-        <div className="flex justify-end">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-xs text-muted-foreground">
+            {initial.updated_at
+              ? `Last changed${initial.updated_by_name ? ` by ${initial.updated_by_name}` : ""}, ${new Date(initial.updated_at).toLocaleString()}`
+              : ""}
+          </p>
           <Button type="submit" loading={save.isPending}>
             Save
           </Button>
@@ -285,6 +319,7 @@ function ExportRow({ x }: { x: RetentionExport }) {
 
 function ExportsCard() {
   const q = useRetentionExports();
+  const ret = useRetention();
   return (
     <Card className="overflow-hidden">
       <h2 className="px-5 pt-5 pb-2 text-[15px] font-semibold">Retention export files</h2>
@@ -296,7 +331,9 @@ function ExportsCard() {
         </div>
       ) : q.data.length === 0 ? (
         <p className="px-5 pb-5 text-sm text-muted-foreground">
-          No exports yet. Turn on Export before delete to keep a copy.
+          {ret.data?.export_before_delete
+            ? "No exports yet. A file is written each time retention deletes tickets."
+            : "No exports yet. Turn on Export before delete to keep a copy."}
         </p>
       ) : (
         <div className="overflow-x-auto">

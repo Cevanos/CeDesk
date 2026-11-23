@@ -76,12 +76,14 @@ export function DemoView() {
             onClick={() =>
               ask({
                 title: "Reset demo data?",
-                message: "Only demo tickets are removed. Real and imported tickets stay.",
+                message:
+                  "The 16 demo tickets and everything done on them are replaced with a fresh set. Real and imported tickets stay.",
                 confirmLabel: "Reset demo",
                 tone: "warning",
-                run: run(
-                  reset,
-                  (r) => `Demo data reset${r?.deleted != null ? ` (${r.deleted} removed)` : ""}`,
+                run: run(reset, (r) =>
+                  r?.created != null && r?.deleted != null
+                    ? `Demo reset: ${r.created} fresh demo tickets, ${r.deleted} old ones removed.`
+                    : "Demo data reset",
                 ),
               })
             }
@@ -96,7 +98,7 @@ export function DemoView() {
         </p>
       )}
       <p className="mt-4 text-xs text-muted-foreground">
-        Reset removes demo tickets only. Real and imported tickets stay.
+        Reset replaces the demo tickets with a fresh set. Real and imported tickets stay.
       </p>
     </Card>
   );

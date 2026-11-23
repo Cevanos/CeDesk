@@ -19,7 +19,15 @@ import {
   trustedProxyHops,
   upstreamBase,
 } from "@/lib/server/config";
-import { clientKey, isAllowedTarget, isSameOrigin, visitorIp } from "@/lib/server/proxy-guards";
+import {
+  BodyTooLargeError,
+  clientKey,
+  isAllowedTarget,
+  isSameOrigin,
+  readBodyCapped,
+  safeRedirectLocation,
+  visitorIp,
+} from "@/lib/server/proxy-guards";
 import { createLimiter } from "@/lib/server/rate-limit";
 
 /**
@@ -208,15 +216,21 @@ async function handle(req: NextRequest, { params }: Ctx) {
   const ip = visitorIp(req.headers, trustedProxyHops());
   if (ip) headers.set("x-forwarded-for", ip);
 
-  let body: ArrayBuffer | undefined;
+  let body: Uint8Array<ArrayBuffer> | undefined;
   if (req.method !== "GET" && req.method !== "HEAD") {
+    // Reject early on the declared size, then enforce the real size while reading: the
+    // header is absent on chunked uploads and can be understated.
     const declared = Number(req.headers.get("content-length") ?? 0);
     if (declared > MAX_UPLOAD_BYTES) {
       return errorBody("TooLarge", "That file is larger than 25 MB.", 413);
     }
-    body = await req.arrayBuffer();
-    if (body.byteLength > MAX_UPLOAD_BYTES) {
-      return errorBody("TooLarge", "That file is larger than 25 MB.", 413);
+    try {
+      body = await readBodyCapped(req.body, MAX_UPLOAD_BYTES);
+    } catch (err) {
+      if (err instanceof BodyTooLargeError) {
+        return errorBody("TooLarge", "That file is larger than 25 MB.", 413);
+      }
+      throw err;
     }
   }
 
@@ -254,7 +268,10 @@ async function handle(req: NextRequest, { params }: Ctx) {
   // Single sign-on start: the answer is a redirect to the identity provider. Only the
   // Location is passed on, and only for this one route.
   if (isSsoStart(path) && req.method === "GET" && upstream.status >= 300 && upstream.status < 400) {
-    const location = upstream.headers.get("location");
+    const location = safeRedirectLocation(
+      upstream.headers.get("location"),
+      process.env.ALLOW_INSECURE_HTTP === "1",
+    );
     if (location) {
       out.set("location", location);
       return new NextResponse(null, { status: 302, headers: out });

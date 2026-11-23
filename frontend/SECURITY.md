@@ -19,6 +19,8 @@ Only the latest release on `main` gets security fixes.
 - Credential endpoints are rate limited per client IP. Set `TRUSTED_PROXY_HOPS` to match your deployment so the IP can't be forged.
 - Every response carries a per-request nonce CSP (no `unsafe-eval`, no inline scripts), HSTS, COOP/CORP, `frame-ancestors 'none'` and a restrictive Permissions-Policy.
 - The container runs as a non-root user from a minimal standalone build.
+- Uploads are capped at 25 MB by bytes read, not by the `Content-Length` header. Links from API data only render for `http(s)` URLs.
+- A machine-readable contact is published at `/.well-known/security.txt`.
 
 ## Automated checks
 

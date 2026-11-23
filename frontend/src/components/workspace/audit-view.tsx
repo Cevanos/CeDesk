@@ -10,6 +10,12 @@ import { useAuditLog, useVerifyAudit, type AuditEntry } from "@/hooks/use-worksp
 import { ApiError, downloadFile } from "@/lib/api/client";
 
 const label = (a: string) => (a ? a.replace(/_/g, " ") : "All areas");
+/** Setting names as the settings pages label them. Unknown keys stay raw. */
+const FIELD_LABELS: Record<string, string> = {
+  closed_ticket_days: "Delete resolved tickets after (days)",
+  export_before_delete: "Export before delete",
+  archive_after_days: "Archive resolved tickets after (days)",
+};
 const show = (v: unknown) => (v === null || v === undefined || v === "" ? "(empty)" : String(v));
 
 function Row({ e }: { e: AuditEntry }) {
@@ -48,7 +54,7 @@ function Row({ e }: { e: AuditEntry }) {
         <dl className="mx-4 mb-3 ml-11 space-y-1 rounded-lg bg-surface-2 px-3 py-2 text-xs">
           {changes.map(([field, [before, after]]) => (
             <div key={field} className="flex flex-wrap gap-x-2">
-              <dt className="font-medium">{field.replace(/_/g, " ")}</dt>
+              <dt className="font-medium">{FIELD_LABELS[field] ?? field.replace(/_/g, " ")}</dt>
               <dd className="text-muted-foreground">
                 {show(before)} <span aria-label="changed to">→</span> {show(after)}
               </dd>

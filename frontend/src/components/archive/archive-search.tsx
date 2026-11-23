@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { Badge, Button, Card, EmptyState, Input, Skeleton } from "@/components/ui/primitives";
 import {
+  ARCHIVE_QUERY_HINT,
   parseArchiveQuery,
   useArchiveSearch,
   type ArchivedTicketRow,
@@ -28,6 +29,7 @@ export function ArchiveSearchView({ initial }: { initial?: ArchiveSearch | null 
   const ref = useRef<HTMLInputElement>(null);
   useEffect(() => ref.current?.focus(), []);
   const [filters, setFilters] = useState<ArchiveSearch | null>(initial ?? parseArchiveQuery(start));
+  const [invalid, setInvalid] = useState(() => !initial && !!start.trim() && !filters);
   const q = useArchiveSearch(filters);
   const rows = q.data?.pages.flatMap((p) => p.items) ?? [];
 
@@ -44,7 +46,9 @@ export function ArchiveSearchView({ initial }: { initial?: ArchiveSearch | null 
         className="mt-5 flex gap-2"
         onSubmit={(e) => {
           e.preventDefault();
-          setFilters(parseArchiveQuery(text));
+          const f = parseArchiveQuery(text);
+          setFilters(f);
+          setInvalid(!f && !!text.trim());
         }}
       >
         <div className="relative flex-1">
@@ -70,7 +74,9 @@ export function ArchiveSearchView({ initial }: { initial?: ArchiveSearch | null 
         {!filters ? (
           <Card>
             <EmptyState icon={<Archive className="size-5" />} title="Search the archive">
-              Type a ticket number like 1042, or a customer&apos;s email.
+              {invalid
+                ? ARCHIVE_QUERY_HINT
+                : "Type a ticket number like 1042, or a customer's email."}
             </EmptyState>
           </Card>
         ) : q.isLoading ? (
@@ -81,7 +87,11 @@ export function ArchiveSearchView({ initial }: { initial?: ArchiveSearch | null 
           </div>
         ) : q.isError ? (
           <Card className="p-5 text-sm text-danger" role="alert">
-            {q.error instanceof ApiError ? q.error.userMessage : "Couldn't search the archive."}{" "}
+            {q.error instanceof ApiError
+              ? q.error.status === 422
+                ? q.error.message || q.error.userMessage
+                : q.error.userMessage
+              : "Couldn't search the archive."}{" "}
             <button className="font-medium underline" onClick={() => q.refetch()}>
               Try again
             </button>

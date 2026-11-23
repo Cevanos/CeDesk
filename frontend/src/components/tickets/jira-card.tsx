@@ -16,6 +16,7 @@ import {
 import { useConfirm } from "@/components/ui/confirm";
 import { Badge, Button, Input, Textarea } from "@/components/ui/primitives";
 import { useCreateJira, useJira, useLinkJira, useUnlinkJira } from "@/hooks/use-ticket-extras";
+import { safeHttpUrl } from "@/lib/safe-url";
 
 function JiraForm({
   ticketId,
@@ -142,8 +143,9 @@ export function JiraHeaderChip({ ticketId }: { ticketId: string }) {
   if (!first) return null;
   const label = `Jira ${first.key}${issues.length > 1 ? ` +${issues.length - 1}` : ""}`;
   const title = issues.map((j) => j.key).join(", ");
-  return first.url && /^https?:\/\//i.test(first.url) ? (
-    <a href={first.url} target="_blank" rel="noopener noreferrer" title={title}>
+  const firstUrl = safeHttpUrl(first.url);
+  return firstUrl ? (
+    <a href={firstUrl} target="_blank" rel="noopener noreferrer" title={title}>
       <Badge className="hover:underline">
         {label} <ExternalLink className="size-3" aria-hidden />
       </Badge>
@@ -168,9 +170,9 @@ export function JiraCard({ ticketId, canEdit, subject }: ExtraProps & { subject?
               {q.data.map((j) => (
                 <li key={j.key} className="flex items-start gap-2 text-sm">
                   <div className="min-w-0 flex-1">
-                    {j.url && /^https?:\/\//i.test(j.url) ? (
+                    {safeHttpUrl(j.url) ? (
                       <a
-                        href={j.url}
+                        href={safeHttpUrl(j.url) ?? undefined}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="inline-flex items-center gap-1 font-mono text-xs font-semibold text-primary-ink hover:underline"

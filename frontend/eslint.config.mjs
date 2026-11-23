@@ -55,7 +55,12 @@ const eslintConfig = defineConfig([
   {
     // Tests and tooling may log and use looser patterns.
     files: ["**/*.test.{ts,tsx}", "src/test/**", "e2e/**", "*.config.*"],
-    rules: { "no-console": "off", "no-restricted-syntax": "off" },
+    rules: {
+      "no-console": "off",
+      "no-restricted-syntax": "off",
+      // Security tests feed `javascript:` URLs on purpose to prove they are rejected.
+      "no-script-url": "off",
+    },
   },
   globalIgnores([
     ".next/**",

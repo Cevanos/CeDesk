@@ -1,6 +1,7 @@
 import { ExternalLink } from "lucide-react";
 
 import type { Ticket, TicketType } from "@/lib/api/types";
+import { safeHttpUrl } from "@/lib/safe-url";
 
 const SOURCE_LABEL: Record<string, string> = {
   zendesk: "Zendesk",
@@ -51,7 +52,7 @@ export function ImportedCard({ ticket, type }: { ticket: Ticket; type?: TicketTy
   if (!isImported(ticket)) return null;
   const name = SOURCE_LABEL[ticket.source ?? ""] ?? "the old help desk";
   const url = ticket.fields?.source_url;
-  const safeUrl = typeof url === "string" && /^https?:\/\//i.test(url) ? url : null;
+  const safeUrl = safeHttpUrl(url);
   const rows = importedRows(ticket, type);
   if (!safeUrl && rows.length === 0) return null;
   return (

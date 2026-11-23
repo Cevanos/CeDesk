@@ -332,8 +332,10 @@ export function TicketSidebar({ ticket, etag }: { ticket: Ticket; etag: string |
                 e.preventDefault();
                 const v = tag.trim().toLowerCase();
                 if (!v || (ticket.tags ?? []).includes(v)) return;
-                if ((ticket.tags ?? []).length >= 20)
-                  return toast.error("A ticket can have at most 20 tags.");
+                if ((ticket.tags ?? []).length >= 20) {
+                  toast.error("A ticket can have at most 20 tags.");
+                  return;
+                }
                 patch({ add_tags: [v] });
                 setTag("");
               }}
@@ -508,8 +510,10 @@ function Files({ ticketId, canUpload }: { ticketId: string; canUpload: boolean }
               const file = e.target.files?.[0];
               e.target.value = "";
               if (!file) return;
-              if (file.size > 25 * 1024 * 1024)
-                return toast.error("That file is larger than 25 MB.");
+              if (file.size > 25 * 1024 * 1024) {
+                toast.error("That file is larger than 25 MB.");
+                return;
+              }
               upload.mutate(file, { onSuccess: () => toast.success("File uploaded") });
             }}
           />

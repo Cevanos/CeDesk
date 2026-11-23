@@ -1,6 +1,6 @@
 // A tiny stand-in for the CDesk API, just enough for the end-to-end tests.
 // Run by Playwright (see playwright.config.ts). Not part of the app bundle.
-import { createServer } from "node:http";
+import { createServer, type ServerResponse, type IncomingMessage } from "node:http";
 
 const PORT = Number(process.env.PORT ?? 3101);
 const TOKEN = "mock-token";
@@ -15,16 +15,59 @@ const me = {
   status: "available",
 };
 
-let seq = 1002;
-/** @type {Record<string, any>} */
-let tickets = seedTickets();
+type Priority = "low" | "medium" | "high" | "urgent";
+type Status = "open" | "pending" | "resolved";
 
-function seedTickets() {
+interface Message {
+  id: string;
+  kind: string;
+  body: string;
+  author_member_id: string;
+  author_name: string;
+  created_at: string;
+}
+
+interface MockTicket {
+  id: string;
+  label: string;
+  subject: string;
+  status: Status;
+  priority: Priority;
+  channel: "email";
+  type_name: string | null;
+  team_name: string | null;
+  assignee_name: string | null;
+  assignee_id: string | null;
+  team_id: string | null;
+  type_id: string | null;
+  contact: { name: string; email: string };
+  tags: string[];
+  created_at: string;
+  updated_at: string;
+  messages: Message[];
+  older_messages_cursor: string | null;
+  handover: unknown;
+  version: number;
+}
+
+/** Loosely-typed JSON body sent by the browser; every field is optional on purpose. */
+type Body = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+
+let seq = 1002;
+let tickets: Record<string, MockTicket> = seedTickets();
+
+function seedTickets(): Record<string, MockTicket> {
   seq = 1002;
   return { t1: ticket("t1", "T-1001", "Cannot log in", "high", "open") };
 }
 
-function ticket(id, label, subject, priority, status) {
+function ticket(
+  id: string,
+  label: string,
+  subject: string,
+  priority: Priority,
+  status: Status,
+): MockTicket {
   return {
     id,
     label,
@@ -49,22 +92,28 @@ function ticket(id, label, subject, priority, status) {
   };
 }
 
-const summary = ({ messages: _m, handover: _h, version: _v, ...rest }) => rest;
+const summary = ({ messages: _m, handover: _h, version: _v, ...rest }: MockTicket) => rest;
 
-function send(res, status, body, headers = {}) {
+function send(
+  res: ServerResponse,
+  status: number,
+  body?: unknown,
+  headers: Record<string, string> = {},
+) {
   res.writeHead(status, { "content-type": "application/json", ...headers });
   res.end(body === undefined ? undefined : JSON.stringify(body));
 }
-const fail = (res, status, code, message) => send(res, status, { error: { code, message } });
+const fail = (res: ServerResponse, status: number, code: string, message: string) =>
+  send(res, status, { error: { code, message } });
 
-async function readJson(req) {
-  const chunks = [];
+async function readJson(req: IncomingMessage): Promise<Body> {
+  const chunks: Buffer[] = [];
   for await (const c of req) chunks.push(c);
   const raw = Buffer.concat(chunks).toString();
   return raw ? JSON.parse(raw) : {};
 }
 
-let signup = null;
+let signup: { workspace: string } | null = null;
 const signupAck = () => ({
   signup_id: "00000000-0000-4000-8000-000000000001",
   code_expires_at: new Date(Date.now() + 600_000).toISOString(),

@@ -115,7 +115,10 @@ function DrawerBody({
 
   const toggleChannel = (c: ChannelGroup) => {
     const has = a.channels.includes(c);
-    if (has && a.channels.length === 1) return toast.error("An agent needs at least one channel");
+    if (has && a.channels.length === 1) {
+      toast.error("An agent needs at least one channel");
+      return;
+    }
     patch(
       { channels: has ? a.channels.filter((x) => x !== c) : [...a.channels, c] },
       "Channels updated",

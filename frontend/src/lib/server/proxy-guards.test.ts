@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 
-import { clientKey, isAllowedTarget, isSameOrigin, visitorIp } from "@/lib/server/proxy-guards";
+import {
+  BodyTooLargeError,
+  clientKey,
+  isAllowedTarget,
+  isSameOrigin,
+  readBodyCapped,
+  safeRedirectLocation,
+  visitorIp,
+} from "@/lib/server/proxy-guards";
 
 const allowed = new Set(["tickets", "me"]);
 const h = (o: Record<string, string>) => new Headers(o);
@@ -42,11 +50,46 @@ describe("isSameOrigin", () => {
     expect(isSameOrigin(h({ origin: "https://evil.test" }), "app.test")).toBe(false));
   it("rejects a malformed Origin", () =>
     expect(isSameOrigin(h({ origin: "nope" }), "app.test")).toBe(false));
-  it("without Origin, trusts anything but cross-site fetch metadata", () => {
+  it("without Origin, relies on fetch metadata", () => {
     expect(isSameOrigin(h({}), "app.test")).toBe(true);
     expect(isSameOrigin(h({ "sec-fetch-site": "same-origin" }), "app.test")).toBe(true);
+    expect(isSameOrigin(h({ "sec-fetch-site": "none" }), "app.test")).toBe(true);
     expect(isSameOrigin(h({ "sec-fetch-site": "cross-site" }), "app.test")).toBe(false);
   });
+  it("refuses a sibling subdomain (same-site, not same-origin)", () =>
+    expect(isSameOrigin(h({ "sec-fetch-site": "same-site" }), "app.test")).toBe(false));
+});
+
+const streamOf = (...parts: number[]) =>
+  new ReadableStream<Uint8Array>({
+    start(c) {
+      for (const n of parts) c.enqueue(new Uint8Array(n).fill(1));
+      c.close();
+    },
+  });
+
+describe("readBodyCapped", () => {
+  it("returns an empty body for no stream", async () =>
+    expect((await readBodyCapped(null, 10)).byteLength).toBe(0));
+  it("joins chunks up to the limit", async () =>
+    expect((await readBodyCapped(streamOf(4, 6), 10)).byteLength).toBe(10));
+  it("stops and throws once the real size passes the limit", async () =>
+    await expect(readBodyCapped(streamOf(6, 6), 10)).rejects.toBeInstanceOf(BodyTooLargeError));
+});
+
+describe("safeRedirectLocation", () => {
+  it("keeps an absolute https URL", () =>
+    expect(safeRedirectLocation("https://idp.example.com/sso?x=1")).toBe(
+      "https://idp.example.com/sso?x=1",
+    ));
+  it("allows http only when asked", () => {
+    expect(safeRedirectLocation("http://idp.test/sso")).toBeNull();
+    expect(safeRedirectLocation("http://idp.test/sso", true)).toBe("http://idp.test/sso");
+  });
+  it.each(["javascript:alert(1)", "//evil.test", "/relative", "data:text/html,x", "", null])(
+    "drops %j",
+    (v) => expect(safeRedirectLocation(v)).toBeNull(),
+  );
 });
 
 describe("clientKey", () => {

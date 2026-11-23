@@ -102,7 +102,8 @@ describe("session handling", () => {
     expect(res.status).toBe(200);
     expect(seen?.get("authorization")).toBe("Bearer tok-123");
     expect(seen?.get("cookie")).toBeNull();
-    expect(seen?.get("x-forwarded-for")).toBeNull();
+    // The API trusts this header, so the proxy sets one address it worked out itself.
+    expect(seen?.get("x-forwarded-for")).toBe("1.1.1.1");
     expect(res.headers.get("etag")).toBe('"e1"');
     expect(res.headers.get("x-secret")).toBeNull();
     expect(res.headers.get("cache-control")).toBe("no-store");

@@ -4,6 +4,23 @@ Notable changes are listed here. The format follows [Keep a Changelog](https://k
 
 ## [Unreleased]
 
+### Security
+
+- Proxy: the 25 MB upload limit is now enforced on the bytes actually read, so chunked uploads with no `Content-Length` can no longer be buffered without bound (413 once exceeded).
+- Proxy: the same-origin check also refuses `Sec-Fetch-Site: same-site` (a sibling subdomain) on mutating calls that have no `Origin`.
+- Proxy: the SSO start redirect is passed on only when it is an absolute `https:` URL.
+- Rate limiter: a flood of unique keys now evicts the oldest windows instead of wiping every counter.
+- Links built from API data (Jira, imported-ticket source, governance report) go through `safeHttpUrl`, so only `http(s)` URLs reach an anchor.
+- CI: the gitleaks download is verified against a pinned SHA-256 before it runs.
+- Dependencies: dev-only `minimatch` advisories (via `typescript-eslint`) fixed; `npm audit` reports 0 vulnerabilities.
+- Added `/.well-known/security.txt` (RFC 9116).
+
+### Changed (TypeScript)
+
+- The whole repository is TypeScript: the e2e mock backend is now `e2e/mock-backend.ts` (run with `tsx`), and `allowJs` is off.
+- `tsconfig`: target ES2022 and `noImplicitOverride`, `noImplicitReturns`, `noUnusedLocals`, `noUnusedParameters`, `allowUnreachableCode: false`.
+- Fixed two stale tests (proxy `X-Forwarded-For`, sign-up 429 banner) that were failing on `main`.
+
 ### Added (agent inbox tools)
 
 - Snooze: header button with quick times and a date picker, a "Snoozed until" banner with Unsnooze, a clock chip on list rows, and a Snoozed tab (`snoozed=true`) plus a "Hide snoozed" toggle.

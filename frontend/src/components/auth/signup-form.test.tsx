@@ -184,7 +184,7 @@ describe("SignupForm", () => {
     const user = userEvent.setup();
     renderWithProviders(<SignupForm />);
     await fillAndSubmit(user);
-    expect(await screen.findByText(/Wait 30 seconds/)).toBeInTheDocument();
+    expect(await screen.findByText(/try again in 30 seconds/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Create workspace \(wait \d+s\)/ })).toBeDisabled();
   });
 

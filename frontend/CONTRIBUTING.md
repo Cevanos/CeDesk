@@ -41,7 +41,7 @@ Mark breaking changes with `feat(api)!: ...` or a `BREAKING CHANGE:` footer. Add
 - Route handler tests (`src/app/api/**/route.test.ts`): proxy behaviour. Put `// @vitest-environment node` at the top.
 - End to end (Playwright, `e2e/*.spec.ts`): whole flows and accessibility.
 
-Mock the network with MSW (`server.use(http.get(...))`) instead of stubbing `fetch`. Unhandled requests fail the test on purpose. E2E runs against `e2e/mock-backend.mjs`; extend it when a flow needs a new endpoint.
+Mock the network with MSW (`server.use(http.get(...))`) instead of stubbing `fetch`. Unhandled requests fail the test on purpose. E2E runs against `e2e/mock-backend.ts`; extend it when a flow needs a new endpoint.
 
 ## Adding an endpoint or screen
 

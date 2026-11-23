@@ -14,8 +14,13 @@ export function createLimiter(limit: number, windowMs: number, maxKeys = 10_000)
 
   const sweep = (now: number) => {
     for (const [k, b] of buckets) if (b.resetAt <= now) buckets.delete(k);
-    // Hard cap so a flood of unique keys cannot grow memory without bound.
-    if (buckets.size > maxKeys) buckets.clear();
+    // Hard cap so a flood of unique keys cannot grow memory without bound. Drop the oldest
+    // windows first (Map keeps insertion order) rather than wiping every client's counter,
+    // which would hand a flooder a free reset of its own limit.
+    for (const k of buckets.keys()) {
+      if (buckets.size < maxKeys) break;
+      buckets.delete(k);
+    }
   };
 
   return {

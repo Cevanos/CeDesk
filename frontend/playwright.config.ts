@@ -5,7 +5,7 @@ const API_PORT = 3101;
 
 /**
  * End-to-end tests run the real Next.js app against a tiny in-repo mock backend
- * (e2e/mock-backend.mjs), so they need no external services and are repeatable.
+ * (e2e/mock-backend.ts), so they need no external services and are repeatable.
  */
 export default defineConfig({
   testDir: "./e2e",
@@ -22,7 +22,7 @@ export default defineConfig({
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   webServer: [
     {
-      command: "node e2e/mock-backend.mjs",
+      command: "npx tsx e2e/mock-backend.ts",
       env: { PORT: String(API_PORT) },
       url: `http://localhost:${API_PORT}/health`,
       reuseExistingServer: !process.env.CI,
