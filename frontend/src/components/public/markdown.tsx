@@ -11,7 +11,17 @@ import { cn } from "@/lib/utils";
  * - / 1. lists and [text](url) links.
  */
 
-const SAFE_LINK = /^(https?:\/\/|mailto:)/i;
+const SAFE_PROTOCOLS = new Set(["http:", "https:", "mailto:"]);
+
+/** The link as the browser would read it, if it is an absolute http(s) or mailto link. */
+function safeHref(raw: string): string | null {
+  try {
+    const url = new URL(raw);
+    return SAFE_PROTOCOLS.has(url.protocol) ? url.href : null;
+  } catch {
+    return null; // relative or malformed
+  }
+}
 
 function inline(text: string, keyPrefix: string): React.ReactNode[] {
   const out: React.ReactNode[] = [];
@@ -36,9 +46,9 @@ function inline(text: string, keyPrefix: string): React.ReactNode[] {
     } else {
       const close = tok.indexOf("](");
       const label = tok.slice(1, close);
-      const href = tok.slice(close + 2, -1);
+      const href = safeHref(tok.slice(close + 2, -1));
       out.push(
-        SAFE_LINK.test(href) ? (
+        href ? (
           <a
             key={key}
             href={href}

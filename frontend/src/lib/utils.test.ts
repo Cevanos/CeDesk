@@ -13,6 +13,10 @@ describe("safeNext", () => {
     "//evil.example",
     "/\\evil.example",
     "javascript:alert(1)",
+    // Browsers drop tabs and newlines, which would turn these into //evil.example.
+    "/\t/evil.example",
+    "/\n/evil.example",
+    "/\r/evil.example",
     "",
     null,
     undefined,
