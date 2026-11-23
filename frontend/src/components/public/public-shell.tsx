@@ -130,7 +130,7 @@ export function PublicShell({ children }: { children: React.ReactNode }) {
       <footer className="border-t border-border/70 py-6 text-center text-xs text-subtle-foreground">
         <span className="inline-flex items-center gap-1.5">
           <LifeBuoy className="size-3.5" aria-hidden /> Powered by CeDesk · © {new Date().getFullYear()}{" "}
-          Cogninest AI
+          Cevanos
         </span>
       </footer>
     </div>

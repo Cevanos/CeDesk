@@ -41,7 +41,7 @@ export function AuthShell({ children }: { children: React.ReactNode }) {
         </main>
 
         <footer className="text-xs text-subtle-foreground">
-          © {new Date().getFullYear()} Cogninest AI · CeDesk
+          © {new Date().getFullYear()} Cevanos · CeDesk
         </footer>
       </div>
 
