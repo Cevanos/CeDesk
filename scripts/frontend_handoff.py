@@ -374,6 +374,9 @@ SCREENS: list[Screen] = [
         "- Usage and plan limits (cloud). Retention: delete resolved tickets after N days, "
         "and `export_before_delete` (write them to a file first, kept 30 days: Admins list "
         "and download them under Retention exports). Archive age (default 120 days).\n"
+        "- Retention and the archive age each have their own `updated_at` and "
+        "`updated_by_name`: show \"Last changed by\" on each card from its own answer. "
+        "Retention's are null until retention itself is saved.\n"
         "- Demo (not on production servers): load the demo, load sample tickets (for an "
         "empty inbox), reset the demo.",
         either(starts("/usage", "/retention", "/archive/settings", "/demo")),

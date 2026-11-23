@@ -3,6 +3,22 @@
 `openapi.json` next to this file is the API as served (`uv run cedesk openapi`). Every
 route is under `/api/v1`. Breaking changes only come in v2 (md 2B). Newest first.
 
+## 2026-11-23: The archive age and retention each say when they were changed
+
+Fix. No new routes or fields. Migration 0078.
+
+- `GET` / `PUT /archive/settings`: `updated_at` and `updated_by_name` are now the archive
+  age's own (when it was last saved, and by whom). They were shared with retention, so
+  saving the archive age made the Retention card say retention had just been changed.
+- `GET` / `PUT /retention`: `updated_at` and `updated_by_name` move only when retention is
+  saved. Both are null when only the archive age has been saved so far.
+- Migration 0078 fills both from each setting's latest change in the audit log (area
+  `archive` or `retention`, action `changed`).
+- `PUT /retention` with `closed_ticket_days` outside 30 to 3650 is still **422**, now with
+  the message "Keep resolved tickets 30 to 3650 days, or for good (null)." instead of the
+  validator's "Input should be greater than or equal to 30". The schema no longer has
+  `minimum` / `maximum` on that field; its description gives the range.
+
 ## 2026-11-23: Team report: first-reply SLA met per team
 
 Additive. In `GET /reports/team`, each row of `teams` gains `first_reply_sla_met_percent`
