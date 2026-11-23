@@ -33400,6 +33400,23 @@
             ],
             "title": "Avg First Response Minutes"
           },
+          "first_reply_sla_met_percent": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Reply Sla Met Percent",
+            "description": "The summary's first-reply SLA met %, for this team's tickets. null when none of them was measured."
+          },
+          "first_reply_sla_measured": {
+            "type": "integer",
+            "title": "First Reply Sla Measured",
+            "description": "How many tickets that % is out of."
+          },
           "csat_ratings": {
             "type": "integer",
             "title": "Csat Ratings"
@@ -33424,6 +33441,8 @@
           "created",
           "resolved",
           "avg_first_response_minutes",
+          "first_reply_sla_met_percent",
+          "first_reply_sla_measured",
           "csat_ratings",
           "csat_average"
         ],
