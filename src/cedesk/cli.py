@@ -233,7 +233,7 @@ def _worker(once: bool) -> int:
     connected Cevanos chats for new customer messages, sends queued emails, delivers
     outbox events (Cevanos take-overs and replies), alerts SLA breaches and overdue tasks,
     sends email campaigns within each workspace's limits (after the ticket emails),
-    wakes snoozed tickets and resumes waiting workflow runs (once a minute), auto-closes
+    wakes snoozed tickets (once a minute), resumes waiting workflow runs, auto-closes
     inactive tickets (daily, before the archive pass), and drops expired idempotency keys.
     Run one next to the API (sending and delivering are safe with several; reading a
     mailbox is meant for one)."""
@@ -473,6 +473,16 @@ def _worker(once: bool) -> int:
                             f"retrying, {hooks.failed} failed",
                             extra={"event": "webhook"},
                         )
+                # Workflow runs whose wait is over (feature-gap plan 5.3). Every tick, not every
+                # minute, so a wait ends within seconds of its time; the query is indexed.
+                try:
+                    resumed = await resume_due(sm)
+                except Exception:
+                    resumed = 0
+                    logger.exception("Resuming workflow runs failed")
+                if resumed:
+                    logger.info(f"Workflow runs resumed: {resumed}",
+                                extra={"event": "automation"})  # fmt: skip
                 if time.monotonic() - alerted_at > SLA_ALERT_EVERY_SECONDS:
                     try:
                         breached = await alert_everywhere(sm)
@@ -510,14 +520,6 @@ def _worker(once: bool) -> int:
                         logger.info(
                             f"Report emails queued: {reports_sent}", extra={"event": "reports"}
                         )
-                    try:  # workflow runs whose wait is over (feature-gap plan 5.3)
-                        resumed = await resume_due(sm)
-                    except Exception:
-                        resumed = 0
-                        logger.exception("Resuming workflow runs failed")
-                    if resumed:
-                        logger.info(f"Workflow runs resumed: {resumed}",
-                                    extra={"event": "automation"})  # fmt: skip
                     alerted_at = time.monotonic()
                 if time.monotonic() - swept_at > SWEEP_EVERY_SECONDS:
                     await sweep_everywhere(sm)

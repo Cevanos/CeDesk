@@ -344,7 +344,9 @@ async def test_rule(
         now = datetime.now(UTC)
         facts = await automation.build_facts(s, detail, rule.event, rule.conditions, now=now)
         targets = await automation.build_targets(s, rule.actions)
-        state = await automation.start_state(s, detail, rule.actions, rule.conditions)
+        state = await automation.start_state(
+            s, detail, rule.actions, rule.conditions, always_followers=True
+        )
         explained = engine.explain(rule, facts, state, targets)
         reason = None
         if explained.matched:
@@ -358,7 +360,9 @@ async def test_rule(
         rule_name=rule.name,
         event=rule.event.value,
         matched=explained.matched,
-        conditions=[{"condition": c, "matched": m} for c, m in explained.conditions],
+        conditions=[
+            {"condition": c, "matched": m, "reason": r} for c, m, r in explained.conditions
+        ],
         actions=[{"action": a, "would": said} for a, said in explained.actions],
         blocked=reason,
         ticket_after={

@@ -21747,12 +21747,18 @@
           "matched": {
             "type": "boolean",
             "title": "Matched"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason",
+            "description": "What the ticket has, in plain words (for example \"the ticket is not snoozed\"): the fact behind the verdict."
           }
         },
         "type": "object",
         "required": [
           "condition",
-          "matched"
+          "matched",
+          "reason"
         ],
         "title": "ConditionCheck"
       },
@@ -32651,6 +32657,18 @@
               }
             ],
             "title": "Said"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason",
+            "description": "Test mode, a condition that said no: what the ticket has instead (for example \"the ticket is not snoozed\")."
           }
         },
         "type": "object",
