@@ -4,10 +4,10 @@
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, status
+from fastapi import APIRouter, Depends, status
 from pydantic import BaseModel, Field
 
-from cedesk.helpdesk.api.deps import CallerDep, SessionmakerDep
+from cedesk.helpdesk.api.deps import CallerDep, SessionmakerDep, require_settings
 from cedesk.helpdesk.api.schemas import Body
 from cedesk.helpdesk.api.workflow_schemas import (
     Actions,
@@ -23,7 +23,7 @@ from cedesk.helpdesk.service import rules
 from cedesk.helpdesk.service.errors import Invalid
 from cedesk.helpdesk.service.rules import RuleTest, RuleView
 
-router = APIRouter(tags=["rules"])
+router = APIRouter(tags=["rules"], dependencies=[Depends(require_settings)])
 
 
 def _out(view: RuleView) -> RuleOut:
@@ -74,6 +74,10 @@ class RuleTestBody(Body):
 class ConditionCheck(BaseModel):
     condition: dict[str, Any]
     matched: bool
+    reason: str = Field(
+        description='What the ticket has, in plain words (for example "the ticket is not '
+        'snoozed"): the fact behind the verdict.',
+    )
 
 
 class ActionCheck(BaseModel):

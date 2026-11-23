@@ -159,8 +159,16 @@ class BulkOut(BaseModel):
 async def bulk_change(
     body: BulkIn, caller: CallerDep, sm: SessionmakerDep, request: Request
 ) -> BulkOut:
-    within(request.app.state.bulk_requests, str(caller.member_id), "bulk changes")
-    results = await bulk.change_many(sm, caller, body.ticket_ids, body.action, body.given())
+    results = await bulk.change_many(
+        sm,
+        caller,
+        body.ticket_ids,
+        body.action,
+        body.given(),
+        spend=lambda: within(
+            request.app.state.bulk_requests, str(caller.member_id), "bulk changes"
+        ),
+    )
     out = [
         BulkResultOut(
             ticket_id=r.ticket_id,

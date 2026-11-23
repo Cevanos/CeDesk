@@ -15,7 +15,7 @@ transaction that made the event):
    followers, the customer email (queued like any reply), webhook deliveries (queued for
    the webhook sender).
 
-A waiting flow run is resumed by the worker (`resume_due`, every minute) when its time
+A waiting flow run is resumed by the worker (`resume_due`, every worker tick) when its time
 comes, or as soon as the customer replies when it waits for that. Each resume locks the
 run (`FOR UPDATE SKIP LOCKED`) and does its steps, effects and run update in one
 transaction, so a run is never resumed twice and nothing is sent twice. A run whose flow
@@ -344,10 +344,15 @@ async def build_targets(s: AsyncSession, actions: Sequence[engine.Action]) -> en
 
 async def start_state(
     s: AsyncSession, before: Mapping[Any, Any], actions: Sequence[engine.Action],
-    conditions: Sequence[engine.Condition],
+    conditions: Sequence[engine.Condition], *, always_followers: bool = False,
 ) -> engine.State:  # fmt: skip
-    wants_followers = any(isinstance(a, engine.AddFollower) for a in actions) or any(
-        isinstance(c, engine.HasFollowers) for c in conditions
+    """The ticket's fields before the actions run. Followers cost a query, so a live run
+    loads them only when a step looks at them; a test passes `always_followers` so its
+    "ticket after" shows the real followers."""
+    wants_followers = (
+        always_followers
+        or any(isinstance(a, engine.AddFollower) for a in actions)
+        or any(isinstance(c, engine.HasFollowers) for c in conditions)
     )
     return engine.State(
         type_id=before["type_id"],
@@ -778,7 +783,7 @@ async def customer_replied(s: AsyncSession, ticket_id: UUID) -> None:
 
 
 async def resume_due(sm: Sessionmaker, now: datetime | None = None) -> int:
-    """Every workspace (the worker, once a minute). Returns how many runs moved on."""
+    """Every workspace (the worker, every tick). Returns how many runs moved on."""
     now = now or datetime.now(UTC)
     async with sm() as s, s.begin():
         workspace_ids = await auth_repo.all_workspace_ids(s)

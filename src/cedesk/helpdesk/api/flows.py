@@ -6,10 +6,10 @@ from datetime import datetime
 from typing import Annotated, Any, Literal, Self
 from uuid import UUID
 
-from fastapi import APIRouter, Query, status
+from fastapi import APIRouter, Depends, Query, status
 from pydantic import BaseModel, Field, model_validator
 
-from cedesk.helpdesk.api.deps import CallerDep, SessionmakerDep
+from cedesk.helpdesk.api.deps import CallerDep, SessionmakerDep, require_settings
 from cedesk.helpdesk.api.schemas import Body
 from cedesk.helpdesk.api.workflow_schemas import PerDay, PerHour, RuleName
 from cedesk.helpdesk.domain import paging
@@ -17,7 +17,7 @@ from cedesk.helpdesk.service import flows, run_log
 from cedesk.helpdesk.service.errors import Invalid
 from cedesk.helpdesk.service.flows import FlowTest, FlowView
 
-router = APIRouter(tags=["automation"])
+router = APIRouter(tags=["automation"], dependencies=[Depends(require_settings)])
 
 GRAPH_HELP = (
     'The builder\'s graph: {"nodes": [...], "edges": [...]}. Node types: trigger '
@@ -106,6 +106,11 @@ class StepOut(BaseModel):
         "run log also next, replied or timeout when it went on)."
     )
     said: str | None = None
+    reason: str | None = Field(
+        default=None,
+        description="Test mode, a condition that said no: what the ticket has instead (for "
+        'example "the ticket is not snoozed").',
+    )
 
 
 class WaitOut(BaseModel):

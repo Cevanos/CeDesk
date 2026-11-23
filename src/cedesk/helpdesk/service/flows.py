@@ -256,7 +256,7 @@ async def versions(sm: Sessionmaker, caller: Caller, flow_id: UUID) -> Sequence[
 @dataclass(frozen=True)
 class FlowTest:
     trigger: str
-    steps: list[dict[str, Any]]  # node, type, outcome, said
+    steps: list[dict[str, Any]]  # node, type, outcome, said, reason
     would_wait: dict[str, Any] | None  # node, minutes, until_reply, resume_at
     stopped: str | None
     blocked: str | None
@@ -291,8 +291,8 @@ async def test_flow(
         conditions, actions = parsed.conditions(), parsed.actions()
         facts = await automation.build_facts(s, detail, parsed.event, conditions, now=now)
         targets = await automation.build_targets(s, actions)
-        state = await automation.start_state(s, detail, actions, conditions)
-        walked = rules.walk(parsed, facts, state, targets)
+        state = await automation.start_state(s, detail, actions, conditions, always_followers=True)
+        walked = rules.walk(parsed, facts, state, targets, reasons=True)
         reason = None
         if flow_id is not None and limits is not None:
             depth = await automation.event_depth(s, ticket_id, parsed.event, now)
@@ -310,7 +310,7 @@ async def test_flow(
         }  # fmt: skip
     return FlowTest(
         trigger=parsed.event.value,
-        steps=[x.stored() | {"said": x.said} for x in walked.steps],
+        steps=[x.stored() | {"said": x.said, "reason": x.reason} for x in walked.steps],
         would_wait=wait,
         stopped=walked.stopped,
         blocked=reason,

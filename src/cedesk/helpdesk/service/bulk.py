@@ -10,7 +10,7 @@ the action, its value, the tickets, and how many succeeded and failed.
 """
 
 import logging
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
@@ -48,8 +48,13 @@ async def change_many(
     ticket_ids: Sequence[UUID],
     action: rules.BulkAction,
     given: dict[str, Any],
+    *,
+    spend: Callable[[], None] | None = None,
 ) -> list[Outcome]:
-    """`given`: the body's value fields that were sent (see domain/bulk.py NEEDS)."""
+    """`given`: the body's value fields that were sent (see domain/bulk.py NEEDS).
+    `spend` uses one request of the caller's budget (it raises when the budget is used
+    up). It runs after the role and the body are checked, so a refused or malformed
+    request costs nothing."""
     require(caller, Action.bulk_edit)
     try:
         ids = rules.unique_ids(ticket_ids)
@@ -58,6 +63,8 @@ async def change_many(
             snooze_rules.check_until(changes["snooze_until"], datetime.now(UTC))
     except (rules.BulkError, snooze_rules.SnoozeError) as exc:
         raise Invalid(str(exc)) from exc
+    if spend is not None:
+        spend()
 
     results: list[Outcome] = []
     for ticket_id in ids:
