@@ -4,11 +4,61 @@ Web frontend for CeDesk, a customer support desk. Agents, supervisors and admins
 
 ## Screenshots
 
-Captured from the app running against the sample data in `e2e/mock-backend.ts`, not a real workspace.
+Captured from a demo workspace (Acme Store) with sample data, not a real customer workspace.
 
-![Ticket inbox](docs/images/ticket-inbox.png)
+### Sign in
 
-![Ticket detail](docs/images/ticket-detail.png)
+![Sign in](docs/images/login.png)
+
+### Tickets
+
+| Inbox | Ticket detail |
+| --- | --- |
+| ![Ticket inbox](docs/images/ticket-inbox.png) | ![Ticket detail](docs/images/ticket-detail.png) |
+
+![New ticket](docs/images/new-ticket.png)
+
+### Contacts, agents and campaigns
+
+| Contacts | Agents |
+| --- | --- |
+| ![Contacts](docs/images/contacts.png) | ![Agents](docs/images/agents.png) |
+
+![Campaigns](docs/images/campaigns.png)
+
+### Reports
+
+| Live | Team |
+| --- | --- |
+| ![Live report](docs/images/reports-live.png) | ![Team report](docs/images/reports-team.png) |
+
+![Backlog report](docs/images/reports-backlog.png)
+
+![Dashboards](docs/images/reports-dashboards.png)
+
+### Admin settings
+
+| Members | Teams |
+| --- | --- |
+| ![Members](docs/images/settings-members.png) | ![Teams](docs/images/settings-teams.png) |
+
+| SLA | Rules |
+| --- | --- |
+| ![SLA](docs/images/settings-sla.png) | ![Rules](docs/images/settings-rules.png) |
+
+| Workflows | Macros |
+| --- | --- |
+| ![Workflows](docs/images/settings-workflows.png) | ![Macros](docs/images/settings-macros.png) |
+
+| Help center | Roles |
+| --- | --- |
+| ![Help center settings](docs/images/settings-help-center.png) | ![Roles](docs/images/settings-roles.png) |
+
+### Customer-facing pages
+
+| Help center | Portal sign-in |
+| --- | --- |
+| ![Public help center](docs/images/public-help.png) | ![Customer portal](docs/images/public-portal.png) |
 
 ## What it does
 
