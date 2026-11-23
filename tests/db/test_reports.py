@@ -1,7 +1,10 @@
 """The team report (md R1, R2, R6) with RLS on: exact numbers from a known set of
 tickets, imported tickets left out of the time metrics (their CSAT counts), merged
-tickets left out, the team filter, and who may see it."""
+tickets left out, the first-reply SLA met % in total and per team (JSON and CSV), the team
+filter, and who may see it."""
 
+import csv
+import io
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID
@@ -122,6 +125,17 @@ async def test_the_team_report_numbers(client: AsyncClient, app_sessionmaker: Sm
         ("Shipping", 2, 2, 0, None, 0, None),
         ("No team", 1, 1, 0, None, 0, None),
     ]  # fmt: skip
+    # First-reply SLA met per team, by the summary's rule: Billing A met, B missed (E is
+    # imported, G merged); Shipping C missed, D still running; No team H still running.
+    assert [(r["name"], r["first_reply_sla_met_percent"], r["first_reply_sla_measured"])
+            for r in report["teams"]] == [
+        ("Billing", 50.0, 2), ("Shipping", 0.0, 1), ("No team", None, 0)]  # fmt: skip
+    teams_csv = (await client.get(R, headers=w["h"], params={"format": "csv"})).text
+    rows = list(csv.reader(io.StringIO(teams_csv.removeprefix("﻿"))))
+    start = rows.index(["Teams"]) + 1
+    assert rows[start][5:7] == ["First-reply SLA met (%)", "First-reply SLA measured (tickets)"]
+    assert [r[:1] + r[5:7] for r in rows[start + 1 : start + 4]] == [
+        ["Billing", "50.0", "2"], ["Shipping", "0.0", "1"], ["No team", "", "0"]]  # fmt: skip
     assert [
         (
             a["name"],
@@ -147,7 +161,9 @@ async def test_one_team_and_a_shorter_period(client: AsyncClient, app_sessionmak
     got = shipping["summary"]
     assert (got["open"], got["open_breaching"], got["created"], got["csat"]["ratings"]) == (
         2, 1, 2, 0)  # fmt: skip
-    assert [r["name"] for r in shipping["teams"]] == ["Shipping"]
+    assert [(r["name"], r["first_reply_sla_met_percent"], r["first_reply_sla_measured"])
+            for r in shipping["teams"]] == [("Shipping", 0.0, 1)]  # fmt: skip
+    assert (got["first_reply_sla_met_percent"], got["first_reply_sla_measured"]) == (0.0, 1)
     assert [a["name"] for a in shipping["agents"]] == ["Ravi"]
 
     since = (datetime.now(UTC) - timedelta(minutes=90)).isoformat()

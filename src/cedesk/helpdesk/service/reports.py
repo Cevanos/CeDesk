@@ -63,6 +63,8 @@ class TeamRow:
     created: int
     resolved: int
     avg_first_response_minutes: float | None
+    first_reply_sla_met_percent: float | None
+    first_reply_sla_measured: int
     csat_ratings: int
     csat_average: float | None
 
@@ -172,10 +174,16 @@ async def team_report(
     c = rated or _NO_RATINGS
 
     met = missed = 0
+    team_met: dict[UUID | None, int] = {}
+    team_missed: dict[UUID | None, int] = {}
     for row in facts:
         answer = sla.first_reply_met(row, cfg, now)
-        met += answer is True
-        missed += answer is False
+        if answer is None:
+            continue  # its first-reply clock is still running
+        tally = team_met if answer else team_missed
+        tally[row["team_id"]] = tally.get(row["team_id"], 0) + 1
+        met += answer
+        missed += not answer
 
     summary = Summary(
         open=int(t["open"]),
@@ -203,6 +211,7 @@ async def team_report(
     for tid, name in shown:
         tr = ticket_by_team.get(tid, _EMPTY)
         cr = rated_by_team.get(tid, _NO_RATINGS)
+        in_time, late = team_met.get(tid, 0), team_missed.get(tid, 0)
         team_rows.append(
             TeamRow(
                 team_id=tid,
@@ -211,6 +220,8 @@ async def team_report(
                 created=int(tr["created"]),
                 resolved=int(tr["resolved"]),
                 avg_first_response_minutes=rules.minutes(tr["first_response_seconds"]),
+                first_reply_sla_met_percent=rules.percent(in_time, in_time + late),
+                first_reply_sla_measured=in_time + late,
                 csat_ratings=int(cr["ratings"]),
                 csat_average=_avg(cr["average"]),
             )
