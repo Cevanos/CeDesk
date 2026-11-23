@@ -20,7 +20,14 @@ describe("Markdown", () => {
     expect(screen.getByRole("link", { name: "mail" })).toHaveAttribute("href", "mailto:a@b.c");
   });
 
-  it.each([["java", "script:void0"].join(""), "data:text/html,x", "/relative", "//evil.test"])(
+  it.each([
+    ["java", "script:void0"].join(""),
+    ["JAVA", "SCRIPT:void0"].join(""),
+    "vbscript:x",
+    "data:text/html,x",
+    "/relative",
+    "//evil.test",
+  ])(
     "does not turn %s into a link",
     (href) => {
       render(<Markdown source={`[click](${href})`} />);
