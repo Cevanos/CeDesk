@@ -69,4 +69,3 @@ CeDesk is released under the [MIT License](LICENSE). By opening a pull request y
 - There is **no Contributor License Agreement** and no sign-off requirement. Open a pull request and we will review it.
 - Only submit code you wrote or have the right to submit under MIT. Do not copy in code from GPL, AGPL, LGPL or other copyleft projects, or from sources whose license you have not checked.
 - New dependencies must use a license compatible with MIT distribution (MIT, BSD, ISC, Apache-2.0 and similar). Mention the license in the pull request.
-
