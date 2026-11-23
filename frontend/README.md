@@ -12,24 +12,24 @@ Captured from a demo workspace (Acme Store) with sample data, not a real custome
 
 ### Tickets
 
-| Inbox | Ticket detail |
-| --- | --- |
+| Inbox                                         | Ticket detail                                   |
+| --------------------------------------------- | ----------------------------------------------- |
 | ![Ticket inbox](docs/images/ticket-inbox.png) | ![Ticket detail](docs/images/ticket-detail.png) |
 
 ![New ticket](docs/images/new-ticket.png)
 
 ### Contacts, agents and campaigns
 
-| Contacts | Agents |
-| --- | --- |
+| Contacts                              | Agents                            |
+| ------------------------------------- | --------------------------------- |
 | ![Contacts](docs/images/contacts.png) | ![Agents](docs/images/agents.png) |
 
 ![Campaigns](docs/images/campaigns.png)
 
 ### Reports
 
-| Live | Team |
-| --- | --- |
+| Live                                         | Team                                         |
+| -------------------------------------------- | -------------------------------------------- |
 | ![Live report](docs/images/reports-live.png) | ![Team report](docs/images/reports-team.png) |
 
 ![Backlog report](docs/images/reports-backlog.png)
@@ -38,26 +38,26 @@ Captured from a demo workspace (Acme Store) with sample data, not a real custome
 
 ### Admin settings
 
-| Members | Teams |
-| --- | --- |
+| Members                                      | Teams                                    |
+| -------------------------------------------- | ---------------------------------------- |
 | ![Members](docs/images/settings-members.png) | ![Teams](docs/images/settings-teams.png) |
 
-| SLA | Rules |
-| --- | --- |
+| SLA                                  | Rules                                    |
+| ------------------------------------ | ---------------------------------------- |
 | ![SLA](docs/images/settings-sla.png) | ![Rules](docs/images/settings-rules.png) |
 
-| Workflows | Macros |
-| --- | --- |
+| Workflows                                        | Macros                                     |
+| ------------------------------------------------ | ------------------------------------------ |
 | ![Workflows](docs/images/settings-workflows.png) | ![Macros](docs/images/settings-macros.png) |
 
-| Help center | Roles |
-| --- | --- |
+| Help center                                                   | Roles                                    |
+| ------------------------------------------------------------- | ---------------------------------------- |
 | ![Help center settings](docs/images/settings-help-center.png) | ![Roles](docs/images/settings-roles.png) |
 
 ### Customer-facing pages
 
-| Help center | Portal sign-in |
-| --- | --- |
+| Help center                                        | Portal sign-in                                    |
+| -------------------------------------------------- | ------------------------------------------------- |
 | ![Public help center](docs/images/public-help.png) | ![Customer portal](docs/images/public-portal.png) |
 
 ## What it does
