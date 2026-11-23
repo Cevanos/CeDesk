@@ -22,7 +22,11 @@ ENV NODE_ENV=production \
     PORT=3000 \
     HOSTNAME=0.0.0.0
 
-RUN apk upgrade --no-cache && addgroup -S app && adduser -S app -G app
+# The app runs with `node server.js` only: drop npm, npx, corepack and yarn, which the base
+# image ships and which carry their own (unused) dependencies and their CVEs.
+RUN apk upgrade --no-cache && addgroup -S app && adduser -S app -G app \
+ && rm -rf /usr/local/lib/node_modules /usr/local/bin/npm /usr/local/bin/npx \
+      /usr/local/bin/corepack /usr/local/bin/yarn /usr/local/bin/yarnpkg /opt/yarn*
 # `output: "standalone"` emits a minimal server plus only the node_modules it needs.
 COPY --from=build --chown=app:app /app/.next/standalone ./
 COPY --from=build --chown=app:app /app/.next/static ./.next/static
