@@ -1,0 +1,34 @@
+# gitleaks false positives, reviewed one by one: fake passwords and tokens in test data,
+# and `key=body.key` (a Jira issue key) in src/cedesk/helpdesk/api/jira.py.
+# Format: commit:file:rule:line. Anything not listed here is still reported.
+0c2ddbb1991c9b98ff183b942cf9b21a7ac3a79e:tests/db/test_import_sync.py:generic-api-key:296
+2472d8d1bbac8bdc7ad80fb45f04f2418dfc69f2:tests/db/test_import_failures.py:generic-api-key:180
+2472d8d1bbac8bdc7ad80fb45f04f2418dfc69f2:tests/db/test_import_failures.py:generic-api-key:376
+2d45a527a234dca2eb6b65e826c826f555bebcc2:tests/db/test_import_sync_conflicts.py:generic-api-key:141
+31a85e01084c63b0d14a0ace467697671b9f6b6a:tests/unit/test_import_gorgias.py:generic-api-key:17
+35dcb7862df5ebf8be60bea2dc0bb9cd4ea46cf6:tests/db/test_cevanos.py:generic-api-key:35
+3856743ecbb3397c8b68f6de6d4ad6cc439f9453:tests/db/test_import_sync_conflicts.py:generic-api-key:141
+4ce64246999f2ad7288d85dff2c691840eb47878:tests/db/test_auth_api.py:generic-api-key:200
+559ad7ac5a5d31e7c9f7c0f338706913596381d2:src/cedesk/helpdesk/api/jira.py:generic-api-key:103
+6282f0e6aabb4a3420d2b8384e0c9bb16ae0310c:tests/db/test_auth_api.py:generic-api-key:187
+6282f0e6aabb4a3420d2b8384e0c9bb16ae0310c:tests/db/test_auth_api.py:generic-api-key:215
+657512c0f8c9cb962d170bff445bb09c497c29fd:tests/db/test_imports.py:generic-api-key:374
+657512c0f8c9cb962d170bff445bb09c497c29fd:tests/db/test_imports.py:generic-api-key:449
+6c1bda6231667ddebc300092b0a47dff72d35a34:tests/db/test_import_sync.py:generic-api-key:495
+74050e4dd6f84795d9bac12eb13960fb1c38ed9c:tests/unit/test_import_gorgias.py:generic-api-key:17
+7e678af7afca6e5209226877246fc6b761c90ca2:tests/db/test_cevanos.py:generic-api-key:35
+9ba5b5f96ab5c9412f7f82eeec3ba8fd6a4cf98f:tests/db/test_import_sync.py:generic-api-key:495
+9f191a3a4d6df43aa1f467c25cd8ab2048fd7391:tests/db/test_auth_api.py:generic-api-key:187
+9f191a3a4d6df43aa1f467c25cd8ab2048fd7391:tests/db/test_auth_api.py:generic-api-key:215
+a5be374f7f32ff672e237157d0a922a82c6c567d:tests/db/test_ai.py:generic-api-key:29
+a70807c4309d114e4901b0e30ab865a4600b9fc9:tests/db/test_ai.py:generic-api-key:29
+af59f7c91ad8b6e30f257dff5c13a2ece14065e8:tests/db/test_imports.py:generic-api-key:374
+af59f7c91ad8b6e30f257dff5c13a2ece14065e8:tests/db/test_imports.py:generic-api-key:449
+b56ea16f02a1c5f89675d500b2004d4d51e888c7:src/cedesk/helpdesk/api/jira.py:generic-api-key:103
+b7b64aa327f8d1ec61ef7a013765da161363c4a2:tests/db/test_import_sync.py:generic-api-key:296
+d5cffbbb3f9904870b3f8228b4a7da23cc98e4b0:tests/unit/test_slack_side_rules.py:generic-api-key:12
+d85491f8ffd3bd954ec144454ed032be93b84a4f:frontend/src/app/api/[...path]/route.test.ts:generic-api-key:443
+d85491f8ffd3bd954ec144454ed032be93b84a4f:frontend/src/components/auth/sso-callback.test.tsx:generic-api-key:21
+dc3794bf271d7fa303a3b05135e8f6777d2ed49b:tests/unit/test_slack_side_rules.py:generic-api-key:12
+fe539cbff22f7b5c021b2f158ea5841f9c71b5f3:tests/db/test_import_failures.py:generic-api-key:180
+fe539cbff22f7b5c021b2f158ea5841f9c71b5f3:tests/db/test_import_failures.py:generic-api-key:376
