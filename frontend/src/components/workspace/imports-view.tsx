@@ -99,7 +99,9 @@ function Wizard({ onHistory }: { onHistory: () => void }) {
 
   if (stage.name === "source") {
     return (
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      // As many cards per row as the content column fits (not the screen: the side menus
+      // leave only ~450px of a 1024px laptop), so a name never spills out of its card.
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(13rem,1fr))] gap-3">
         {[...SOURCES, null].map((s) => (
           <button
             key={s?.id ?? "csv"}

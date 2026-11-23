@@ -33,6 +33,8 @@ test.describe("tickets", () => {
 
   test("creates a ticket and lands on it", async ({ page }) => {
     await page.goto("/tickets/new");
+    // Typing before the page is interactive is lost (the form isn't listening yet).
+    await page.waitForLoadState("networkidle");
     await page.getByLabel("Subject").fill("Printer on fire");
     await page.locator("#name").fill("Linus T");
     await page.locator("#email").fill("linus@example.com");
