@@ -1,0 +1,49 @@
+{
+  "common": {
+    "retry": "Try again",
+    "reload": "Reload page",
+    "backToTickets": "Back to tickets",
+    "loading": "Loading…",
+    "close": "Close"
+  },
+  "errors": {
+    "title": "Something went wrong",
+    "description": "An unexpected error occurred. Your work on the server is safe. You can try again, or reload the page.",
+    "reference": "Reference",
+    "notFoundTitle": "Page not found",
+    "notFoundDescription": "The page you are looking for does not exist or was moved."
+  },
+  "offline": {
+    "banner": "You are offline. Changes can't be saved until your connection is back.",
+    "restored": "Back online."
+  },
+  "palette": {
+    "open": "Open command palette",
+    "button": "Search or jump to…",
+    "placeholder": "Type a command or search…",
+    "empty": "No matching commands.",
+    "navigate": "Navigate",
+    "actions": "Actions",
+    "tickets": "Tickets",
+    "agents": "Agents",
+    "searching": "Searching…",
+    "agentOpen": "{count, plural, one {# open ticket} other {# open tickets}}",
+    "goTickets": "Go to tickets",
+    "goNewTicket": "Create a new ticket",
+    "goAgents": "Go to agents",
+    "goMembers": "Settings: members",
+    "goTeams": "Settings: teams",
+    "goTicketTypes": "Settings: ticket types",
+    "goSla": "Settings: SLA",
+    "goSavedReplies": "Settings: saved replies",
+    "goMacros": "Settings: macros",
+    "goRules": "Settings: rules",
+    "goEmail": "Settings: email",
+    "goCevanos": "Settings: Cevanos",
+    "goFailed": "Settings: failed emails and events",
+    "theme": "Toggle light / dark theme"
+  },
+  "unsaved": {
+    "warning": "You have unsaved changes. Leave without saving?"
+  }
+}

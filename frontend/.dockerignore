@@ -1,0 +1,16 @@
+node_modules
+.next
+.git
+.github
+.husky
+coverage
+playwright-report
+test-results
+.env*
+!.env.example
+*.tsbuildinfo
+Dockerfile
+README.md
+refDoc
+e2e
+.next-e2e

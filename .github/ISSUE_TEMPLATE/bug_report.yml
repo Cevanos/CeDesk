@@ -1,0 +1,40 @@
+name: Bug report
+description: Something in the app does not work as expected
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. For security problems do **not** open an issue; see SECURITY.md in the repository root.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what you saw instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Sign in as ...
+        2. Open ...
+        3. Click ...
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: App version or commit
+      description: From package.json, `git rev-parse --short HEAD`, or the deployed build.
+  - type: input
+    id: env
+    attributes:
+      label: Browser, OS and Node version
+      placeholder: Chrome 130, Windows 11, Node 22.22
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or screenshots
+      description: Remove tokens, cookies, customer data and internal URLs first.

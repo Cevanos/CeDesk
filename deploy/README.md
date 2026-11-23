@@ -19,9 +19,10 @@ These are the notes for our own servers. For a customer hosting CeDesk themselve
 2. Get the code: `git clone https://github.com/Cevanos/CeDesk.git && cd CeDesk/deploy`
 3. `cp env.example .env`, then fill in `.env`: four secrets from `openssl rand -hex 32`,
    `CEDESK_SITE` (a domain pointing at the server for HTTPS, or `:80`) and
-   `CEDESK_CORS_ORIGINS` (the frontend's addresses).
+   `CEDESK_APP_URL` (`https://` + that domain). One address serves the web app and the
+   API (`/api/v1`). With `:80` (plain HTTP, a short test) also set `CEDESK_ALLOW_INSECURE_HTTP=1`.
 4. Start: `docker compose up -d --build`. It creates the database, runs the migrations,
-   then starts the API and Caddy. Check: `curl http://<server>/readyz` gives `{"status":"ok",...}`.
+   then starts the API, the worker, the web app and Caddy. Check: `curl http://<server>/readyz` gives `{"status":"ok",...}`.
 5. Demo workspace (Ritesh as Admin, the agents and tickets from the mock):
 
    ```sh

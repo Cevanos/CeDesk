@@ -1,5 +1,6 @@
-# CeDesk on one server: Postgres, a one-off migration, the API, and Caddy for HTTPS.
-# Only Caddy is reachable from outside (80, 443); the database and the API are not.
+# CeDesk on one server: Postgres, a one-off migration, the API, the web app and Caddy for
+# HTTPS. Only Caddy is reachable from outside (80, 443): it sends /api/v1/* to the API and
+# everything else to the web app. The database, the API and the web app are not reachable.
 # Usage (from this folder): cp env.example .env, fill it in, then `docker compose up -d --build`.
 name: cedesk
 
@@ -160,11 +161,28 @@ services:
       retries: 3
       start_period: 10m
 
+  # The web app (frontend/): agents, Admins and the customer portal. The browser only talks
+  # to it; its server calls the API inside Docker's network.
+  web:
+    build: ../frontend
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      CEDESK_API_URL: http://api:8100/api/v1
+      # Caddy is the one proxy in front and sets X-Forwarded-For itself.
+      TRUSTED_PROXY_HOPS: 1
+      # Only for CEDESK_SITE=:80 (plain HTTP on an IP, a short test): 1 lets sign-in
+      # cookies work without HTTPS. Never on a real server.
+      ALLOW_INSECURE_HTTP: ${CEDESK_ALLOW_INSECURE_HTTP:-0}
+
   caddy:
     image: caddy:2.8.4
     restart: unless-stopped
     depends_on:
       - api
+      - web
     ports:
       - "80:80"
       - "443:443"
