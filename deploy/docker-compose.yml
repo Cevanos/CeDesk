@@ -176,7 +176,6 @@ services:
       # Only for CEDESK_SITE=:80 (plain HTTP on an IP, a short test): 1 lets sign-in
       # cookies work without HTTPS. Never on a real server.
       ALLOW_INSECURE_HTTP: ${CEDESK_ALLOW_INSECURE_HTTP:-0}
-      AUTH_RATE_LIMIT_PER_MINUTE: ${CEDESK_WEB_AUTH_RATE_LIMIT_PER_MINUTE:-10}
 
   caddy:
     image: caddy:2.8.4
