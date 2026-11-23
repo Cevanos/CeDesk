@@ -138,7 +138,11 @@ async def test_retention_deletes_old_resolved_tickets_and_their_files(
     w = await desk(client, sm)
     for days in (10, 5000):
         r = await client.put("/api/v1/retention", headers=w["h"], json={"closed_ticket_days": days})
-        assert r.status_code == 422, days
+        # Said in words, not the validator's "Input should be greater than or equal to 30".
+        assert (r.status_code, r.json()["error"]["message"]) == (
+            422,
+            "Keep resolved tickets 30 to 3650 days, or for good (null).",
+        ), days
     neha = await add(client, w["token"], "neha@example.com", "agent", "Neha")
     agent = bearer(await sign_in(client, w["slug"], "neha@example.com"))
     assert (
