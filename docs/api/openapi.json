@@ -29386,16 +29386,14 @@
           "closed_ticket_days": {
             "anyOf": [
               {
-                "type": "integer",
-                "maximum": 3650.0,
-                "minimum": 30.0
+                "type": "integer"
               },
               {
                 "type": "null"
               }
             ],
             "title": "Closed Ticket Days",
-            "description": "Delete resolved tickets (and their files) this many days after they were resolved; null keeps them for good. A cloud plan may cap it."
+            "description": "30 to 3650: delete resolved tickets (and their files) this many days after they were resolved; null keeps them for good. A cloud plan may cap it."
           },
           "export_before_delete": {
             "anyOf": [

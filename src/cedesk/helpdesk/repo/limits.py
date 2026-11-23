@@ -83,7 +83,8 @@ async def save_retention(
     await session.execute(
         text(
             "INSERT INTO hd_retention (workspace_id, closed_ticket_days, updated_by, "
-            "export_before_delete) VALUES (:ws, :days, :by, coalesce(:export, false)) "
+            "updated_at, export_before_delete) "
+            "VALUES (:ws, :days, :by, now(), coalesce(:export, false)) "
             "ON CONFLICT (workspace_id) DO UPDATE SET "
             "closed_ticket_days = EXCLUDED.closed_ticket_days, "
             "export_before_delete = coalesce(:export, hd_retention.export_before_delete), "

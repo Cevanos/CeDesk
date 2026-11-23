@@ -188,6 +188,31 @@ async def test_the_archive_age(client: AsyncClient, app_sessionmaker: Sm) -> Non
     assert actions == ["archived", "changed"]  # newest first
 
 
+async def test_the_archive_age_and_retention_each_say_when_they_changed(
+    client: AsyncClient, app_sessionmaker: Sm
+) -> None:
+    """They share a row: saving the archive age made the Retention card say retention had
+    just been changed (staging, 23 Nov)."""
+    w = await desk(client, app_sessionmaker)
+    retention = "/api/v1/retention"
+
+    def at(answer: dict[str, Any]) -> datetime:
+        return datetime.fromisoformat(answer["updated_at"])
+
+    first = ok(await client.put(f"{A}/settings", headers=w["h"], json={"after_days": 200}))
+    assert first["updated_by_name"] and first["updated_at"]
+    never = ok(await client.get(retention, headers=w["h"]))
+    assert (never["updated_at"], never["updated_by_name"]) == (None, None)
+
+    kept = ok(await client.put(retention, headers=w["h"], json={"closed_ticket_days": 90}))
+    assert kept["updated_by_name"] and at(kept) > at(first)
+    assert at(ok(await client.get(f"{A}/settings", headers=w["h"]))) == at(first)
+
+    again = ok(await client.put(f"{A}/settings", headers=w["h"], json={"after_days": None}))
+    assert at(again) > at(kept)
+    assert at(ok(await client.get(retention, headers=w["h"]))) == at(kept)
+
+
 async def test_several_workers_never_move_a_ticket_twice(
     client: AsyncClient, app_sessionmaker: Sm, monkeypatch: pytest.MonkeyPatch
 ) -> None:
