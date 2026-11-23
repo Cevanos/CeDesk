@@ -51,6 +51,11 @@ describe("proxy path classes", () => {
       expect(ALLOWED_AREAS.has(a)).toBe(true);
   });
 
+  it("allows the Phase 3 reporting areas", () => {
+    for (const a of ["reports", "dashboards", "report-schedules"])
+      expect(ALLOWED_AREAS.has(a)).toBe(true);
+  });
+
   it("allows the Phase 5 automation areas", () => {
     for (const a of ["rules", "flows", "automation"]) expect(ALLOWED_AREAS.has(a)).toBe(true);
   });

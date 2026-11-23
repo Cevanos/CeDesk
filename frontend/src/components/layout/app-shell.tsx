@@ -29,7 +29,7 @@ import { useCurrentUser } from "@/hooks/use-auth";
 import { useEscape } from "@/hooks/use-escape";
 import { useFocusTrap } from "@/hooks/use-focus-trap";
 import { useAgentLiveUpdates } from "@/hooks/use-live-stream";
-import { ROLE_LABEL, canManageCampaigns } from "@/lib/permissions";
+import { ROLE_LABEL, canManageCampaigns, hasAction } from "@/lib/permissions";
 import { cn, initials } from "@/lib/utils";
 
 const NAV = [
@@ -66,7 +66,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const items = NAV.filter(
     (n) =>
       (!("admin" in n && n.admin) || perms.manageSettings) &&
-      (!("reports" in n && n.reports) || perms.viewReports) &&
+      (!("reports" in n && n.reports) || hasAction(user, "reports", perms.viewReports)) &&
       (!("campaigns" in n && n.campaigns) || canManageCampaigns(user)),
   );
 

@@ -178,6 +178,17 @@ export function useAgentLiveUpdates(enabled: boolean) {
   });
 }
 
+/** The agent stream for a screen that reacts to events itself (the live queue report). */
+export function useAgentLiveEvents(onEvent: (e: StreamEvent) => void, enabled = true) {
+  useLiveStream({
+    ticketPath: "stream/ticket",
+    streamPath: "stream",
+    events: AGENT_EVENTS,
+    enabled,
+    onEvent,
+  });
+}
+
 /** Live updates for a customer looking at one portal page. */
 export function usePortalLiveUpdates(enabled: boolean) {
   const qc = useQueryClient();

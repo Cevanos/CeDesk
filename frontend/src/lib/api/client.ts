@@ -191,16 +191,18 @@ export function fileNameFrom(header: string | null): string | null {
  * Fetch a file through the proxy with the session and hand it to the browser as a download.
  * A plain link or a new tab would not carry the session, so it would get a 401.
  */
-export async function downloadFile(
+async function download(
   path: string,
   fallbackName: string,
-  query?: Query,
+  query: Query | undefined,
+  init: RequestInit,
 ): Promise<void> {
   let res: Response;
   try {
     res = await fetch(`/api/${path.replace(/^\/+/, "")}${qs(query)}`, {
       credentials: "same-origin",
       cache: "no-store",
+      ...init,
     });
   } catch {
     throw new ApiError({
@@ -226,6 +228,24 @@ export async function downloadFile(
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+export function downloadFile(path: string, fallbackName: string, query?: Query): Promise<void> {
+  return download(path, fallbackName, query, {});
+}
+
+/** Same as `downloadFile`, for the report routes that are POST (a JSON body). */
+export function downloadFilePost(
+  path: string,
+  body: unknown,
+  fallbackName: string,
+  query?: Query,
+): Promise<void> {
+  return download(path, fallbackName, query, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body ?? {}),
+  });
 }
 
 export const api = {

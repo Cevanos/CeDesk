@@ -17,18 +17,11 @@ import {
   type ReportParams,
 } from "@/hooks/workspace/reports";
 import { ApiError, downloadFile } from "@/lib/api/client";
+import { duration } from "@/lib/reports";
 import { cn } from "@/lib/utils";
 
 const dash = "—";
 const count = (n: number | null) => (n === null ? dash : n.toLocaleString());
-
-/** 0 -> "0m", 90 -> "1h 30m", 2290 -> "38h 10m". */
-function duration(min: number): string {
-  const t = Math.round(min);
-  const h = Math.floor(t / 60);
-  const m = t % 60;
-  return h > 0 ? `${h}h ${m}m` : `${m}m`;
-}
 
 function tileValue(t: MetricTile): string {
   if (t.value === null) return dash;
@@ -266,42 +259,49 @@ export function MetricsPanel({ params }: { params: ReportParams }) {
   );
 }
 
-/** "AI" tab: what the AI assistant did. No CSV: /reports/ai has none. */
+/** "AI" tab: what the AI assistant did. */
 export function AiPanel({ params }: { params: ReportParams }) {
   const q = useAiReport(params);
   if (q.isPending) return <Skeleton className="h-28 rounded-xl" />;
   if (q.isError) return <LoadError error={q.error} />;
   const d = q.data;
   return (
-    <section
-      aria-label="AI assistant"
-      className={cn(
-        "grid gap-3 transition-opacity sm:grid-cols-2 lg:grid-cols-4",
-        q.isPlaceholderData && "opacity-60",
-      )}
-    >
-      <Stat label="AI chats" value={count(d.chats)} />
-      <Stat
-        label="Handed to a person"
-        value={count(d.handed_over)}
-        hint={
-          d.handed_over_percent === null ? undefined : `${d.handed_over_percent}% of finished chats`
-        }
-      />
-      <Stat
-        label="Resolved by AI"
-        value={count(d.resolved_by_ai)}
-        hint={
-          d.resolved_by_ai_percent === null
-            ? undefined
-            : `${d.resolved_by_ai_percent}% of finished chats`
-        }
-      />
-      <Stat
-        label="CSAT of AI"
-        value={d.csat_average === null ? dash : `${d.csat_average.toFixed(1)} ★`}
-        hint={d.csat_count ? `${d.csat_count} ratings` : undefined}
-      />
-    </section>
+    <div className="space-y-4">
+      <div className="flex justify-end">
+        <CsvButton path="reports/ai" params={params} withTeam={false} name="cedesk-ai-report" />
+      </div>
+      <section
+        aria-label="AI assistant"
+        className={cn(
+          "grid gap-3 transition-opacity sm:grid-cols-2 lg:grid-cols-4",
+          q.isPlaceholderData && "opacity-60",
+        )}
+      >
+        <Stat label="AI chats" value={count(d.chats)} />
+        <Stat
+          label="Handed to a person"
+          value={count(d.handed_over)}
+          hint={
+            d.handed_over_percent === null
+              ? undefined
+              : `${d.handed_over_percent}% of finished chats`
+          }
+        />
+        <Stat
+          label="Resolved by AI"
+          value={count(d.resolved_by_ai)}
+          hint={
+            d.resolved_by_ai_percent === null
+              ? undefined
+              : `${d.resolved_by_ai_percent}% of finished chats`
+          }
+        />
+        <Stat
+          label="CSAT of AI"
+          value={d.csat_average === null ? dash : `${d.csat_average.toFixed(1)} ★`}
+          hint={d.csat_count ? `${d.csat_count} ratings` : undefined}
+        />
+      </section>
+    </div>
   );
 }

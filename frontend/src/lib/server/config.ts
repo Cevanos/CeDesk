@@ -107,6 +107,9 @@ export const ALLOWED_AREAS = new Set([
   "outbox",
   "cevanos",
   "reports",
+  // Phase 3 reporting: dashboards and scheduled report emails (the rest is under `reports`).
+  "dashboards",
+  "report-schedules",
   "holidays",
   "triage-settings",
   "portal-settings",

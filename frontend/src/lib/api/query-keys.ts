@@ -53,6 +53,14 @@ export const queryKeys = {
   reports: {
     team: (p: object) => ["reports", "team", p] as const,
     articles: (p: object) => ["reports", "articles", p] as const,
+    options: ["reports", "options"] as const,
+    backlog: (p: object) => ["reports", "backlog", p] as const,
+    run: (p: object) => ["reports", "run", p] as const,
+    saved: ["reports", "saved"] as const,
+    live: (p: object) => ["reports", "live", p] as const,
+    dashboards: ["reports", "dashboards"] as const,
+    card: (p: object) => ["reports", "card", p] as const,
+    schedules: ["reports", "schedules"] as const,
   },
   imports: {
     history: ["imports", "history"] as const,

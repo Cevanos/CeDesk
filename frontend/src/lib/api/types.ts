@@ -31,6 +31,10 @@ export interface Access {
   role?: Role;
   actions?: string[];
   scope?: AccessScope;
+  /** Set for a role limited to one team (`scope: "team_only"`). */
+  team_id?: string | null;
+  team_name?: string | null;
+  role_name?: string | null;
 }
 
 export interface Me {
