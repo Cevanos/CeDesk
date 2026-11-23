@@ -112,10 +112,13 @@ class PublicArticleRow(BaseModel):
     category_id: UUID | None
     category_name: str | None
     updated_at: datetime
+    locale: str = Field(description="The language this row is in.")
 
 
 class HelpCenterOut(BaseModel):
     workspace_name: str
+    default_locale: str = Field(description="The language the articles are written in.")
+    locale: str = Field(description="The language asked for (the default one when none was).")
     categories: list[PublicCategoryOut] = Field(description="Only ones with articles.")
     articles: list[PublicArticleRow] = Field(description="Newest first; with `q`, best first.")
     next_cursor: str | None = Field(description="null with `q` (the best 20 only).")
@@ -123,6 +126,11 @@ class HelpCenterOut(BaseModel):
 
 class PublicArticleOut(PublicArticleRow):
     body: str = Field(description="Markdown. Render it without raw HTML.")
+    default_locale: str
+    fallback: bool = Field(
+        description="True when a language was asked for and the article is shown in another."
+    )
+    available_locales: list[str] = Field(description="Every language it is published in.")
 
 
 class VoteIn(Body):
@@ -131,9 +139,16 @@ class VoteIn(Body):
         description="A random id the page keeps for this browser (e.g. a UUID in "
         "localStorage). One vote per visitor per article; voting again changes it."
     )
+    locale: Annotated[str | None, StringConstraints(max_length=11)] = Field(
+        default=None, description="The language of the page voted on."
+    )
 
 
 _NO_CENTER: dict[int | str, dict[str, Any]] = {404: {"description": "Unknown workspace"}}
+LOCALE_HELP = (
+    "A language code such as `hi` or `pt-br`. Each article is shown in that language when it "
+    "has a published translation, else in the base language (`pt`), else in the default one."
+)
 
 
 @router.get(
@@ -150,12 +165,15 @@ async def help_center(
     category_id: UUID | None = None,
     cursor: Annotated[str | None, Query(max_length=200)] = None,
     limit: Annotated[int, Query(ge=1, le=MAX_LIMIT)] = DEFAULT_LIMIT,
+    locale: Annotated[str | None, Query(max_length=11, description=LOCALE_HELP)] = None,
 ) -> HelpCenterOut:
     found = await articles.help_center(
-        sm, workspace, q=q, category_id=category_id, cursor=cursor, limit=limit
+        sm, workspace, q=q, category_id=category_id, cursor=cursor, limit=limit, locale=locale
     )
     return HelpCenterOut(
         workspace_name=found.workspace_name,
+        default_locale=found.default_locale,
+        locale=found.locale,
         categories=[PublicCategoryOut.model_validate(dict(c)) for c in found.categories],
         articles=[PublicArticleRow.model_validate(dict(a)) for a in found.page.articles],
         next_cursor=found.page.next_cursor,
@@ -172,9 +190,16 @@ async def help_center(
     },
     dependencies=[PublicLimit],
 )
-async def public_article(workspace: str, article_id: UUID, sm: SessionmakerDep) -> PublicArticleOut:
-    row = await articles.public_article(sm, workspace, article_id)
-    return PublicArticleOut.model_validate(dict(row))
+async def public_article(
+    workspace: str,
+    article_id: UUID,
+    sm: SessionmakerDep,
+    locale: Annotated[str | None, Query(max_length=11, description=LOCALE_HELP)] = None,
+) -> PublicArticleOut:
+    found = await articles.public_article(sm, workspace, article_id, locale=locale)
+    return PublicArticleOut.model_validate(
+        {**dict(found.row), "default_locale": found.default_locale, "fallback": found.fallback}
+    )
 
 
 @router.post(
@@ -185,4 +210,6 @@ async def public_article(workspace: str, article_id: UUID, sm: SessionmakerDep) 
     dependencies=[VoteLimit],
 )
 async def vote(workspace: str, article_id: UUID, body: VoteIn, sm: SessionmakerDep) -> None:
-    await articles.vote(sm, workspace, article_id, helpful=body.helpful, visitor=body.visitor)
+    await articles.vote(
+        sm, workspace, article_id, helpful=body.helpful, visitor=body.visitor, locale=body.locale
+    )

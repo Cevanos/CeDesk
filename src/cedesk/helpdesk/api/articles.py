@@ -25,6 +25,9 @@ CategoryName = Annotated[str, StringConstraints(min_length=1, max_length=80)]
 class CategoryOut(BaseModel):
     id: UUID
     name: str
+    name_translations: dict[str, str] = Field(
+        description="The name in other languages, `{language: name}`."
+    )
     position: int
     source: str | None = Field(description="Set on imported categories, e.g. zendesk.")
     article_count: int
@@ -55,6 +58,7 @@ class ArticleOut(BaseModel):
     updated_by_name: str | None
     helpful_count: int = Field(description='"Was this helpful?" yes votes.')
     not_helpful_count: int
+    locales: list[str] = Field(description="The languages it is translated into (any status).")
 
 
 class ArticlesOut(BaseModel):
@@ -132,12 +136,16 @@ async def list_articles(
     q: Annotated[str | None, Query(max_length=200, description="Search words")] = None,
     status_filter: Annotated[ArticleStatus | None, Query(alias="status")] = None,
     category_id: UUID | None = None,
+    missing_locale: Annotated[
+        str | None,
+        Query(max_length=11, description="Only articles with no translation in this language."),
+    ] = None,
     cursor: Annotated[str | None, Query(max_length=200)] = None,
     limit: Annotated[int, Query(ge=1, le=MAX_LIMIT)] = DEFAULT_LIMIT,
 ) -> ArticlesOut:
     page = await articles.list_articles(
         sm, caller, q=q, status=status_filter, category_id=category_id, cursor=cursor,
-        limit=limit,
+        limit=limit, missing_locale=missing_locale,
     )  # fmt: skip
     return ArticlesOut(
         articles=[ArticleOut.model_validate(dict(r)) for r in page.articles],

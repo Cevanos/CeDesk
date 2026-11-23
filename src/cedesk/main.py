@@ -26,6 +26,7 @@ from cedesk.helpdesk.api import ai as ai_api
 from cedesk.helpdesk.api import api_keys as api_keys_api
 from cedesk.helpdesk.api import apps as apps_api
 from cedesk.helpdesk.api import archive as archive_api
+from cedesk.helpdesk.api import article_translations as article_translations_api
 from cedesk.helpdesk.api import articles as articles_api
 from cedesk.helpdesk.api import attachments as attachments_api
 from cedesk.helpdesk.api import audit as audit_api
@@ -394,6 +395,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(portal_api.router, prefix="/api/v1")
     app.include_router(public_api.router, prefix="/api/v1")
     app.include_router(articles_api.router, prefix="/api/v1")
+    app.include_router(article_translations_api.router, prefix="/api/v1")
     app.include_router(triage_api.router, prefix="/api/v1")
     app.include_router(reports_api.router, prefix="/api/v1")
     app.include_router(backlog_api.router, prefix="/api/v1")

@@ -503,3 +503,57 @@ async def test_0073_to_0077_add_the_reporting_tables_and_go_back_down(owner_engi
                 text("SELECT relforcerowsecurity FROM pg_class WHERE relname = :t"), {"t": table}
             )
             assert forced is True
+
+
+async def test_0078_adds_help_center_languages_and_wont_go_down_while_translations_exist(
+    owner_engine: Any,
+) -> None:
+    """Dropping the translations would lose them: the downgrade refuses and changes nothing;
+    once they are gone it goes down and back up with row-level security forced."""
+    import asyncio
+
+    from sqlalchemy import text
+
+    cfg = alembic_config()
+    await empty_archive_async()
+    tables = ("hd_help_center_settings", "hd_article_translation")
+    async with owner_engine.begin() as conn:
+        for table in ("workspace", "hd_article", "hd_article_translation"):
+            await conn.execute(text(f"ALTER TABLE {table} NO FORCE ROW LEVEL SECURITY"))
+        ws = await conn.scalar(text("INSERT INTO workspace (name) VALUES ('P4') RETURNING id"))
+        article = await conn.scalar(
+            text("INSERT INTO hd_article (workspace_id, title) VALUES (:ws, 'A') RETURNING id"),
+            {"ws": ws},
+        )
+        await conn.execute(
+            text(
+                "INSERT INTO hd_article_translation (workspace_id, article_id, locale, title) "
+                "VALUES (:ws, :a, 'hi', 'ए')"
+            ),
+            {"ws": ws, "a": article},
+        )
+        for table in ("workspace", "hd_article", "hd_article_translation"):
+            await conn.execute(text(f"ALTER TABLE {table} FORCE ROW LEVEL SECURITY"))
+    with pytest.raises(RuntimeError, match="holds 1 translations"):
+        await asyncio.to_thread(command.downgrade, cfg, "0077")
+    async with owner_engine.connect() as conn:  # rolled back: still there, still forced
+        for table in tables:
+            forced = "SELECT relforcerowsecurity FROM pg_class WHERE relname = :t"
+            assert await conn.scalar(text(forced), {"t": table}) is True
+    await empty_archive_async()
+    await asyncio.to_thread(command.downgrade, cfg, "0077")
+    async with owner_engine.connect() as conn:
+        for table in tables:
+            assert await conn.scalar(text(f"SELECT to_regclass('{table}')")) is None
+        columns = (
+            "SELECT count(*) FROM information_schema.columns WHERE "
+            "(table_name = 'hd_article_category' AND column_name = 'name_translations') OR "
+            "(table_name = 'hd_article_vote' AND column_name = 'locale')"
+        )
+        assert await conn.scalar(text(columns)) == 0
+    await asyncio.to_thread(command.upgrade, cfg, "head")
+    async with owner_engine.connect() as conn:
+        for table in tables:
+            forced = "SELECT relforcerowsecurity FROM pg_class WHERE relname = :t"
+            assert await conn.scalar(text(forced), {"t": table}) is True
+        assert await conn.scalar(text(columns)) == 2
