@@ -1,4 +1,4 @@
-// A tiny stand-in for the CDesk API, just enough for the end-to-end tests.
+// A tiny stand-in for the CeDesk API, just enough for the end-to-end tests.
 // Run by Playwright (see playwright.config.ts). Not part of the app bundle.
 import { createServer, type ServerResponse, type IncomingMessage } from "node:http";
 

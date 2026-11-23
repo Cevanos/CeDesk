@@ -3,7 +3,7 @@
 @custom-variant dark (&:is(.dark *));
 
 /* ------------------------------------------------------------------ *
- * CDesk design tokens.
+ * CeDesk design tokens.
  * Brand family is shared with Cevanos / CXOps: violet primary on a cool
  * blue-slate neutral ramp. Light is the default; `.dark` swaps the ramp.
  * ------------------------------------------------------------------ */

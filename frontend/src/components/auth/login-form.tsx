@@ -23,7 +23,7 @@ const schema = z.object({
 });
 type Values = z.infer<typeof schema>;
 
-const WS_KEY = "cdesk.workspace";
+const WS_KEY = "cedesk.workspace";
 
 /** Where to go once signed in. An expired password only gets Change password. */
 function landing(r: SignInResponse | undefined, next: string | null) {
@@ -229,7 +229,7 @@ export function LoginForm() {
   return (
     <div className="animate-rise">
       <h1 className="text-[1.75rem] font-semibold tracking-tight">Welcome back</h1>
-      <p className="mt-1.5 text-sm text-muted-foreground">Sign in to your CDesk workspace.</p>
+      <p className="mt-1.5 text-sm text-muted-foreground">Sign in to your CeDesk workspace.</p>
 
       {banner && (
         <div
@@ -312,7 +312,7 @@ export function LoginForm() {
 
       {signup.data?.enabled === true && (
         <p className="mt-6 text-center text-sm text-muted-foreground">
-          New to CDesk?{" "}
+          New to CeDesk?{" "}
           <Link href="/signup" className="font-medium text-primary-ink hover:underline">
             Create a workspace
           </Link>

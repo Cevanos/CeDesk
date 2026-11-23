@@ -10,7 +10,7 @@ describe("qrMatrix", () => {
   });
 
   it("grows with the text and draws the three finder patterns and the timing row", () => {
-    const m = qrMatrix("otpauth://totp/CDesk:a@b.c?secret=JBSWY3DPEHPK3PXP&issuer=CDesk")!;
+    const m = qrMatrix("otpauth://totp/CeDesk:a@b.c?secret=JBSWY3DPEHPK3PXP&issuer=CeDesk")!;
     const n = m.length;
     expect((n - 17) % 4).toBe(0);
     const at = (x: number, y: number) => m[y]?.[x];

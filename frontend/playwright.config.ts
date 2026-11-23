@@ -32,7 +32,7 @@ export default defineConfig({
       // Its own dist dir means it never clashes with a running `next dev`.
       command: `npx cross-env NEXT_DIST_DIR=.next-e2e next build && npx cross-env NEXT_DIST_DIR=.next-e2e next start --port ${APP_PORT}`,
       env: {
-        CDESK_API_URL: `http://localhost:${API_PORT}/api/v1`,
+        CEDESK_API_URL: `http://localhost:${API_PORT}/api/v1`,
         // Every spec signs in from one IP; production keeps the default of 10.
         AUTH_RATE_LIMIT_PER_MINUTE: "10000",
       },

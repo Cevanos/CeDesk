@@ -166,8 +166,8 @@ function Header({ campaign, stats }: { campaign: Campaign; stats: CampaignStats 
           <div>
             <p>{campaign.last_error}</p>
             <p className="mt-1 text-xs">
-              CDesk paused this campaign itself (more than 5% hard bounces after 50 sent). Check the
-              segment before you resume.
+              CeDesk paused this campaign itself (more than 5% hard bounces after 50 sent). Check
+              the segment before you resume.
             </p>
           </div>
         </div>

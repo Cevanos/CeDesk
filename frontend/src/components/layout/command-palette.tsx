@@ -24,7 +24,7 @@ interface Cmd {
 
 /**
  * Cmd/Ctrl+K launcher. Opened by the shortcut or by dispatching the
- * `cdesk:palette` window event (the header button does this).
+ * `cedesk:palette` window event (the header button does this).
  */
 export function CommandPalette() {
   const t = useTranslations("palette");
@@ -55,10 +55,10 @@ export function CommandPalette() {
     };
     const onOpen = () => setOpen(true);
     window.addEventListener("keydown", onKey);
-    window.addEventListener("cdesk:palette", onOpen);
+    window.addEventListener("cedesk:palette", onOpen);
     return () => {
       window.removeEventListener("keydown", onKey);
-      window.removeEventListener("cdesk:palette", onOpen);
+      window.removeEventListener("cedesk:palette", onOpen);
     };
   }, []);
 

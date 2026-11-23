@@ -3,24 +3,24 @@ import "server-only";
 import { parseEnv } from "@/lib/server/env";
 
 /** Name of the httpOnly cookie that carries the backend bearer token. */
-export const SESSION_COOKIE = "cdesk_session";
+export const SESSION_COOKIE = "cedesk_session";
 /**
  * Non-secret companion cookie (readable by the proxy only) so route guards
  * can tell "has a session" without ever exposing the token to JavaScript.
  */
-export const SESSION_HINT_COOKIE = "cdesk_auth";
+export const SESSION_HINT_COOKIE = "cedesk_auth";
 /**
  * The customer-portal token. A separate cookie because agent tokens don't work on
  * /portal routes and portal tokens don't work on agent routes: each only ever
  * goes to its own area.
  */
-export const PORTAL_COOKIE = "cdesk_portal";
+export const PORTAL_COOKIE = "cedesk_portal";
 /**
  * The half-signed-in token between password and 2FA code. It is a different cookie from
  * the session on purpose: it is only sent to POST /api/auth/2fa (cookie path), so it can
  * never authorise any other call, and it lives for the 10 minutes the backend allows.
  */
-export const PENDING_2FA_COOKIE = "cdesk_2fa";
+export const PENDING_2FA_COOKIE = "cedesk_2fa";
 export const PENDING_2FA_PATH = "/api/auth/2fa";
 export const PENDING_2FA_MAX_AGE_S = 10 * 60;
 
@@ -36,7 +36,7 @@ export const UPSTREAM_TIMEOUT_MS = 30_000;
  */
 export function upstreamBase(): string | null {
   const r = parseEnv();
-  return r.ok ? r.env.CDESK_API_URL : null;
+  return r.ok ? r.env.CEDESK_API_URL : null;
 }
 
 /** Credential endpoints are rate limited per client (default 10 tries a minute). */

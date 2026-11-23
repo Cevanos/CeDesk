@@ -1,4 +1,4 @@
-/** Domain types for the CDesk API. Source: CDESK_FRONTEND_GUIDE.md */
+/** Domain types for the CeDesk API. Source: CEDESK_FRONTEND_GUIDE.md */
 
 export type Role = "light_agent" | "agent" | "supervisor" | "admin";
 export type TicketStatus = "open" | "pending" | "resolved";
@@ -350,7 +350,7 @@ export interface EmailAddress {
   forwarding?: ForwardingState | null;
   dns?: DnsState | null;
   dkim_selector?: string | null;
-  /** The CDesk inbox to forward this address to. */
+  /** The CeDesk inbox to forward this address to. */
   forward_to?: string | null;
 }
 
@@ -359,7 +359,7 @@ export interface ForwardingState {
   status: "verified" | "not_checked" | "waiting" | (string & {});
   /** The address customers write to (X in "Forward X to Y"). */
   forward_from?: string | null;
-  /** The CDesk inbox it must be forwarded to (Y). */
+  /** The CeDesk inbox it must be forwarded to (Y). */
   forward_to?: string | null;
   checked_at?: string | null;
 }

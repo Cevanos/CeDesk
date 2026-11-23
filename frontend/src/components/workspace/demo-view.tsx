@@ -42,7 +42,7 @@ export function DemoView() {
         <div>
           <h2 className="text-[15px] font-semibold">Demo data</h2>
           <p className="mt-0.5 text-sm text-muted-foreground">
-            Fill this workspace with example tickets so you can try CDesk. They are marked
+            Fill this workspace with example tickets so you can try CeDesk. They are marked
             &ldquo;Demo&rdquo;. Only available when demo mode is on for this server.
           </p>
         </div>

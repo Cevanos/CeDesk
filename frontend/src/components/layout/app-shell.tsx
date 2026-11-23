@@ -140,7 +140,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-svh lg:grid lg:grid-cols-[15rem_minmax(0,1fr)]">
       <aside className="sticky top-0 hidden h-svh flex-col gap-6 border-r border-border bg-surface px-3 py-5 lg:flex">
-        <Link href="/tickets" className="px-2" aria-label="CDesk home">
+        <Link href="/tickets" className="px-2" aria-label="CeDesk home">
           <Logo />
         </Link>
         {newTicket}
@@ -195,7 +195,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </span>
           <div className="ml-auto flex items-center gap-1">
             <button
-              onClick={() => window.dispatchEvent(new Event("cdesk:palette"))}
+              onClick={() => window.dispatchEvent(new Event("cedesk:palette"))}
               className="mr-1 hidden h-9 items-center gap-2 rounded-lg border border-border bg-surface px-3 text-[13px] text-muted-foreground transition-colors hover:border-border-strong hover:text-foreground sm:inline-flex"
             >
               <Search className="size-3.5" aria-hidden />

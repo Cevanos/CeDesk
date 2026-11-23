@@ -13,7 +13,7 @@ export type ErrorReporter = (error: unknown, context?: ErrorContext) => void;
 export type EventSink = (name: string, data?: Record<string, unknown>) => void;
 
 const consoleReporter: ErrorReporter = (error, context) => {
-  console.error("[cdesk]", error, context ?? "");
+  console.error("[cedesk]", error, context ?? "");
 };
 
 let reporter: ErrorReporter = consoleReporter;

@@ -21,9 +21,9 @@ test.describe("authentication", () => {
 
   test("the session token is never readable by page JavaScript", async ({ page, context }) => {
     await signedIn(page);
-    expect(await page.evaluate(() => document.cookie)).not.toContain("cdesk_session");
+    expect(await page.evaluate(() => document.cookie)).not.toContain("cedesk_session");
     const cookies = await context.cookies();
-    const session = cookies.find((c) => c.name === "cdesk_session");
+    const session = cookies.find((c) => c.name === "cedesk_session");
     expect(session?.httpOnly).toBe(true);
   });
 

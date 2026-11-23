@@ -14,7 +14,7 @@ import { safeNext } from "@/lib/safe-next";
  * CSP gets a fresh nonce per request; Next reads it from the header and `x-nonce`
  * passes it to our layout.
  */
-const SESSION_COOKIE = "cdesk_session";
+const SESSION_COOKIE = "cedesk_session";
 const AUTH_PAGES = ["/login", "/forgot-password", "/reset-password", "/signup"];
 const isDev = process.env.NODE_ENV !== "production";
 

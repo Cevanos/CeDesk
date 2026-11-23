@@ -442,7 +442,7 @@ export function SignupForm({ nonce }: { nonce?: string }) {
     <div className="animate-rise">
       <h1 className="text-[1.75rem] font-semibold tracking-tight">Create a workspace</h1>
       <p className="mt-1.5 text-sm text-muted-foreground">
-        Set up CDesk for your team. We&apos;ll email you a code to confirm.
+        Set up CeDesk for your team. We&apos;ll email you a code to confirm.
       </p>
       <div aria-live="polite">{banner && <Banner>{banner}</Banner>}</div>
 

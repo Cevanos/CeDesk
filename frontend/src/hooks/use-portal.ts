@@ -262,7 +262,7 @@ export function usePublicArticle(ws: string, id: string) {
   });
 }
 
-const VISITOR_KEY = "cdesk.visitor";
+const VISITOR_KEY = "cedesk.visitor";
 
 /**
  * A random id for this browser (8 to 100 characters), kept so one visitor cannot vote twice.

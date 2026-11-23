@@ -25,7 +25,7 @@ const noSearchResults = () =>
     http.get(`${API}/agents`, () => HttpResponse.json({ items: [] })),
   );
 
-const open = () => act(() => void window.dispatchEvent(new Event("cdesk:palette")));
+const open = () => act(() => void window.dispatchEvent(new Event("cedesk:palette")));
 
 beforeEach(() => {
   noSearchResults();

@@ -13,7 +13,7 @@ describe("visitorId", () => {
   });
 
   it("replaces a stored value that is too short", () => {
-    localStorage.setItem("cdesk.visitor", "abc");
+    localStorage.setItem("cedesk.visitor", "abc");
     expect(visitorId().length).toBeGreaterThanOrEqual(8);
   });
 

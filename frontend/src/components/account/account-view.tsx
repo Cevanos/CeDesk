@@ -43,7 +43,7 @@ export function AccountView() {
       )}
       {mustSetUp2fa && !expired && (
         <Notice>
-          Your workspace requires two-step sign-in. Set it up below to carry on using CDesk.
+          Your workspace requires two-step sign-in. Set it up below to carry on using CeDesk.
         </Notice>
       )}
 

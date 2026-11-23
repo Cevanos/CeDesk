@@ -250,7 +250,7 @@ const GROUPS: Group[] = [
         href: "/settings/demo",
         label: "Demo data",
         icon: FlaskConical,
-        description: "Load sample tickets to try CDesk out.",
+        description: "Load sample tickets to try CeDesk out.",
       },
     ],
   },

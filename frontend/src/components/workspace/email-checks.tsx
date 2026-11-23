@@ -112,7 +112,7 @@ export function EmailChecks({ address: a }: { address: EmailAddress }) {
               <ForwardingBadge status={f?.status} />
             </div>
             <p className="mt-2 text-[13px] text-muted-foreground">
-              Set your mail provider to forward your support address to CDesk, so customer emails
+              Set your mail provider to forward your support address to CeDesk, so customer emails
               become tickets.
             </p>
             {forwardTo ? (

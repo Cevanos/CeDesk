@@ -31,7 +31,7 @@ export function CevanosView() {
  * proxy hides it), so set NEXT_PUBLIC_API_PUBLIC_URL to show a full address;
  * otherwise the Admin sees the path to append to it.
  */
-/** What CDesk handles today; shown when the server does not list the events itself. */
+/** What CeDesk handles today; shown when the server does not list the events itself. */
 const DEFAULT_WEBHOOK_EVENTS = [
   "conversation.escalated",
   "conversation.classified",
@@ -185,7 +185,7 @@ function CevanosBody({ conn }: { conn: CevanosConnection }) {
           <h2 className="text-base font-semibold">Webhook address</h2>
           <p className="mt-1 text-sm text-muted-foreground">
             In Cevanos, add a webhook at this address and use the signing secret you saved above.
-            Without it, no handover from the AI agent reaches CDesk.
+            Without it, no handover from the AI agent reaches CeDesk.
           </p>
         </div>
         {url.startsWith("<API") && (

@@ -35,7 +35,7 @@ export default function GlobalError({
         <main role="alert" style={{ maxWidth: 420, padding: 24, textAlign: "center" }}>
           <h1 style={{ fontSize: 22, margin: "0 0 8px" }}>Something went wrong</h1>
           <p style={{ margin: "0 0 20px", color: "#566074" }}>
-            CDesk hit an unexpected error. Please try again.
+            CeDesk hit an unexpected error. Please try again.
           </p>
           {error.digest && (
             <p style={{ fontFamily: "monospace", fontSize: 12, color: "#8a93a6" }}>

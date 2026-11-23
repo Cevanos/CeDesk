@@ -331,7 +331,7 @@ export function RecoveryCodesPanel({ codes, onDone }: { codes: string[]; onDone:
     const url = URL.createObjectURL(new Blob([text + "\n"], { type: "text/plain" }));
     const a = document.createElement("a");
     a.href = url;
-    a.download = "cdesk-recovery-codes.txt";
+    a.download = "cedesk-recovery-codes.txt";
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   };

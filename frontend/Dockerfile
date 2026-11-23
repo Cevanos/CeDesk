@@ -13,7 +13,7 @@ ENV NEXT_TELEMETRY_DISABLED=1 \
     NEXT_OUTPUT=standalone
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-# CDESK_API_URL is read at runtime (server-only), so it is NOT needed to build.
+# CEDESK_API_URL is read at runtime (server-only), so it is NOT needed to build.
 RUN npm run build
 
 # run

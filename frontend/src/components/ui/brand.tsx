@@ -39,7 +39,7 @@ export function Logo({ className, inverted }: { className?: string; inverted?: b
           inverted ? "text-white" : "text-foreground",
         )}
       >
-        C<span className="text-primary-ink">Desk</span>
+        Ce<span className="text-primary-ink">Desk</span>
       </span>
     </span>
   );

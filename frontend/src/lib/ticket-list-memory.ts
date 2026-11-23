@@ -3,7 +3,7 @@
  * tab, so opening a ticket and coming back restores the same view.
  * sessionStorage: per-tab, cleared when the tab closes, never shared.
  */
-const KEY = "cdesk:ticket-list-query";
+const KEY = "cedesk:ticket-list-query";
 
 export function saveTicketListQuery(qs: string): void {
   try {

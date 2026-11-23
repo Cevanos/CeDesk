@@ -10,7 +10,7 @@ The original (internal) frontend integration guide, section 3.1, suggested keepi
 ## Decision
 
 - The browser only talks to this app's own origin under `/api/*`.
-- A route handler (`src/app/api/[...path]/route.ts`) forwards to `CDESK_API_URL` server to server.
+- A route handler (`src/app/api/[...path]/route.ts`) forwards to `CEDESK_API_URL` server to server.
 - On sign-in, the token from the backend is stored in an httpOnly, `SameSite=Lax` cookie (`Secure` in production) and removed from the response body. The proxy adds the `Authorization: Bearer ...` header itself.
 - `src/proxy.ts` only checks that the session cookie exists, so signed-out users never see an app screen. The backend stays the authority, and a 401 clears the cookie.
 - CSRF is covered by SameSite plus a same-origin check on mutating calls.

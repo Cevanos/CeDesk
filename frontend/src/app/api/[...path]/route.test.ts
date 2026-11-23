@@ -22,15 +22,15 @@ function call(
   return handler(req, { params: Promise.resolve({ path }) });
 }
 
-const session = { cookie: "cdesk_session=tok-123" };
+const session = { cookie: "cedesk_session=tok-123" };
 let ipCounter = 0;
 const freshIp = () => ({ "x-forwarded-for": `10.0.0.${++ipCounter}` });
 
 beforeEach(() => {
-  process.env.CDESK_API_URL = BACKEND;
+  process.env.CEDESK_API_URL = BACKEND;
 });
 afterEach(() => {
-  delete process.env.CDESK_API_URL;
+  delete process.env.CEDESK_API_URL;
 });
 
 describe("Phase 1 areas and headers", () => {
@@ -74,7 +74,7 @@ describe("target validation", () => {
   });
 
   it("returns 503 when the backend is not configured, without naming it", async () => {
-    delete process.env.CDESK_API_URL;
+    delete process.env.CEDESK_API_URL;
     const res = await call(GET, ["me"], { headers: session });
     expect(res.status).toBe(503);
     expect(await res.text()).not.toContain("backend");
@@ -85,7 +85,7 @@ describe("session handling", () => {
   it("returns 401 and clears cookies when there is no session", async () => {
     const res = await call(GET, ["me"]);
     expect(res.status).toBe(401);
-    expect(res.headers.get("set-cookie")).toContain("cdesk_session=;");
+    expect(res.headers.get("set-cookie")).toContain("cedesk_session=;");
   });
 
   it("attaches the bearer token and drops browser-only headers", async () => {
@@ -113,7 +113,7 @@ describe("session handling", () => {
     server.use(http.get(`${BACKEND}/me`, () => HttpResponse.json({}, { status: 401 })));
     const res = await call(GET, ["me"], { headers: session });
     expect(res.status).toBe(401);
-    expect(res.headers.get("set-cookie")).toContain("cdesk_session=;");
+    expect(res.headers.get("set-cookie")).toContain("cedesk_session=;");
   });
 });
 
@@ -142,7 +142,7 @@ describe("sign-in", () => {
     expect(res.status).toBe(200);
     expect(body).not.toContain("secret-token");
     expect(JSON.parse(body)).toMatchObject({ member_id: "m1", role: "agent" });
-    expect(cookie).toContain("cdesk_session=secret-token");
+    expect(cookie).toContain("cedesk_session=secret-token");
     expect(cookie.toLowerCase()).toContain("httponly");
     expect(cookie.toLowerCase()).toContain("samesite=lax");
   });
@@ -187,7 +187,7 @@ describe("failure handling", () => {
 });
 
 describe("customer portal and public areas", () => {
-  const portalCookie = { cookie: "cdesk_portal=portal-tok" };
+  const portalCookie = { cookie: "cedesk_portal=portal-tok" };
   const post = (path: string[], headers: Record<string, string> = {}, body = "{}") =>
     call(POST, path, {
       method: "POST",
@@ -204,7 +204,7 @@ describe("customer portal and public areas", () => {
       }),
     );
     const res = await call(GET, ["portal", "tickets"], {
-      headers: { cookie: "cdesk_session=agent-tok; cdesk_portal=portal-tok" },
+      headers: { cookie: "cedesk_session=agent-tok; cedesk_portal=portal-tok" },
     });
     expect(res.status).toBe(200);
     expect(auth).toBe("Bearer portal-tok");
@@ -214,7 +214,7 @@ describe("customer portal and public areas", () => {
     const res = await call(GET, ["portal", "tickets"], { headers: session });
     expect(res.status).toBe(401);
     // a portal 401 never clears the agent cookie
-    expect(res.headers.get("set-cookie") ?? "").not.toContain("cdesk_session");
+    expect(res.headers.get("set-cookie") ?? "").not.toContain("cedesk_session");
   });
 
   it("does not send the portal token to agent routes", async () => {
@@ -231,7 +231,7 @@ describe("customer portal and public areas", () => {
       }),
     );
     const res = await call(GET, ["public", "acme", "articles"], {
-      headers: { cookie: "cdesk_session=agent-tok; cdesk_portal=portal-tok" },
+      headers: { cookie: "cedesk_session=agent-tok; cedesk_portal=portal-tok" },
     });
     expect(res.status).toBe(200);
     expect(auth).toBeNull();
@@ -253,9 +253,9 @@ describe("customer portal and public areas", () => {
     expect(res.status).toBe(200);
     expect(body).not.toContain("portal-secret");
     expect(JSON.parse(body)).toMatchObject({ email: "a@b.c" });
-    expect(cookie).toContain("cdesk_portal=portal-secret");
+    expect(cookie).toContain("cedesk_portal=portal-secret");
     expect(cookie.toLowerCase()).toContain("httponly");
-    expect(cookie).not.toContain("cdesk_session");
+    expect(cookie).not.toContain("cedesk_session");
   });
 
   it("clears only the portal cookie on portal sign-out", async () => {
@@ -265,15 +265,15 @@ describe("customer portal and public areas", () => {
     const res = await post(["portal", "sign-out"], portalCookie);
     const cookie = res.headers.get("set-cookie") ?? "";
     expect(res.status).toBe(204);
-    expect(cookie).toContain("cdesk_portal=;");
-    expect(cookie).not.toContain("cdesk_session");
+    expect(cookie).toContain("cedesk_portal=;");
+    expect(cookie).not.toContain("cedesk_session");
   });
 
   it("clears the portal cookie when the backend says the portal token is dead", async () => {
     server.use(http.get(`${BACKEND}/portal/tickets`, () => HttpResponse.json({}, { status: 401 })));
     const res = await call(GET, ["portal", "tickets"], { headers: portalCookie });
     expect(res.status).toBe(401);
-    expect(res.headers.get("set-cookie")).toContain("cdesk_portal=;");
+    expect(res.headers.get("set-cookie")).toContain("cedesk_portal=;");
   });
 
   it("rate limits asking for sign-in codes per client", async () => {
@@ -351,11 +351,11 @@ describe("two-step sign-in", () => {
     const cookie = (res.headers.get("set-cookie") ?? "").toLowerCase();
     expect(body).not.toContain("half-token");
     expect(JSON.parse(body)).toMatchObject({ two_factor_required: true });
-    expect(cookie).toContain("cdesk_2fa=");
+    expect(cookie).toContain("cedesk_2fa=");
     expect(cookie).toContain("path=/api/auth/2fa");
     expect(cookie).toContain("httponly");
     expect(cookie).toContain("samesite=strict");
-    expect(cookie).not.toContain("cdesk_session=");
+    expect(cookie).not.toContain("cedesk_session=");
   });
 
   it("sends the code with the pending token and turns it into a session", async () => {
@@ -375,30 +375,30 @@ describe("two-step sign-in", () => {
     const res = await post(
       ["auth", "2fa"],
       { code: "123456" },
-      { cookie: "cdesk_2fa=0.half-token" },
+      { cookie: "cedesk_2fa=0.half-token" },
     );
     const cookie = res.headers.get("set-cookie") ?? "";
     expect(res.status).toBe(200);
     expect(auth).toBe("Bearer half-token");
     expect(sent).toEqual({ code: "123456" });
-    expect(cookie).toContain("cdesk_session=half-token");
+    expect(cookie).toContain("cedesk_session=half-token");
     expect(cookie.toLowerCase()).toContain("httponly");
     expect(await res.text()).not.toContain("half-token");
   });
 
   it("keeps password_expired across the second step", async () => {
     server.use(http.post(`${BACKEND}/auth/2fa`, () => HttpResponse.json({ role: "agent" })));
-    const res = await post(["auth", "2fa"], { code: "1" }, { cookie: "cdesk_2fa=1.half-token" });
+    const res = await post(["auth", "2fa"], { code: "1" }, { cookie: "cedesk_2fa=1.half-token" });
     expect(await res.json()).toMatchObject({ password_expired: true });
   });
 
   it("refuses the code step without a pending sign-in, and ignores a real session", async () => {
-    const res = await post(["auth", "2fa"], { code: "123456" }, { cookie: "cdesk_session=tok" });
+    const res = await post(["auth", "2fa"], { code: "123456" }, { cookie: "cedesk_session=tok" });
     expect(res.status).toBe(401);
   });
 
   it("never uses the pending token on any other call", async () => {
-    const res = await call(GET, ["me"], { headers: { cookie: "cdesk_2fa=0.half-token" } });
+    const res = await call(GET, ["me"], { headers: { cookie: "cedesk_2fa=0.half-token" } });
     expect(res.status).toBe(401);
   });
 
@@ -409,7 +409,7 @@ describe("two-step sign-in", () => {
       ),
     );
     const ip = freshIp();
-    const go = () => post(["auth", "2fa"], { code: "0" }, { ...ip, cookie: "cdesk_2fa=0.t" });
+    const go = () => post(["auth", "2fa"], { code: "0" }, { ...ip, cookie: "cedesk_2fa=0.t" });
     for (let i = 0; i < 10; i++) expect((await go()).status).toBe(401);
     expect((await go()).status).toBe(429);
   });
@@ -461,8 +461,8 @@ describe("SSO session hand-off", () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ member_id: "m1", role: "admin" });
     const cookies = res.headers.getSetCookie().join("\n");
-    expect(cookies).toContain(`cdesk_session=${TOKEN}`);
-    expect(cookies).toContain("cdesk_auth=1");
+    expect(cookies).toContain(`cedesk_session=${TOKEN}`);
+    expect(cookies).toContain("cedesk_auth=1");
     expect(cookies.match(/HttpOnly/gi)?.length).toBe(2);
   });
 

@@ -19,8 +19,8 @@ const mono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: { default: "CDesk", template: "%s · CDesk" },
-  description: "CDesk, the help desk where people and AI resolve customer conversations together.",
+  title: { default: "CeDesk", template: "%s · CeDesk" },
+  description: "CeDesk, the help desk where people and AI resolve customer conversations together.",
   robots: { index: false, follow: false },
 };
 

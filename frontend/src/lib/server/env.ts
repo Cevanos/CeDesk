@@ -2,11 +2,11 @@ import { z } from "zod";
 
 /** Validated server env. No `server-only` import so instrumentation.ts can use it too. */
 const schema = z.object({
-  CDESK_API_URL: z
+  CEDESK_API_URL: z
     .string()
     .trim()
-    .url("CDESK_API_URL must be an absolute URL, e.g. https://api.example.com/api/v1")
-    .refine((v) => /^https?:\/\//.test(v), "CDESK_API_URL must use http(s)")
+    .url("CEDESK_API_URL must be an absolute URL, e.g. https://api.example.com/api/v1")
+    .refine((v) => /^https?:\/\//.test(v), "CEDESK_API_URL must use http(s)")
     .transform((v) => v.replace(/\/+$/, "")),
   /** Sign-in / password-reset attempts allowed per client per minute. */
   AUTH_RATE_LIMIT_PER_MINUTE: z.coerce.number().int().positive().max(100_000).default(10),

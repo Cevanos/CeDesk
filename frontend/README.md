@@ -1,6 +1,6 @@
-# CDesk Frontend
+# CeDesk Frontend
 
-Web frontend for CDesk, a customer support desk. Agents, supervisors and admins use it to work a shared ticket inbox, reply to customers, and manage the workspace. It is a Next.js 16 (App Router) app with React 19, TypeScript, Tailwind CSS 4, TanStack Query, React Hook Form + Zod and next-intl.
+Web frontend for CeDesk, a customer support desk. Agents, supervisors and admins use it to work a shared ticket inbox, reply to customers, and manage the workspace. It is a Next.js 16 (App Router) app with React 19, TypeScript, Tailwind CSS 4, TanStack Query, React Hook Form + Zod and next-intl.
 
 ## Screenshots
 
@@ -25,7 +25,7 @@ Captured from the app running against the sample data in `e2e/mock-backend.ts`, 
 ## Quick start
 
 ```bash
-cp .env.example .env.local   # set CDESK_API_URL
+cp .env.example .env.local   # set CEDESK_API_URL
 npm install                  # also installs the git hooks
 npm run dev                  # http://localhost:3000
 ```
@@ -55,7 +55,7 @@ Before the first e2e run: `npx playwright install chromium`.
 
 | Variable                        | Scope       | Notes                                                                                                                                                                            |
 | ------------------------------- | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `CDESK_API_URL`                 | server only | Required. Checked at boot in `src/instrumentation.ts`.                                                                                                                           |
+| `CEDESK_API_URL`                | server only | Required. Checked at boot in `src/instrumentation.ts`.                                                                                                                           |
 | `AUTH_RATE_LIMIT_PER_MINUTE`    | server only | Optional. Sign-in attempts per client per minute, default 10.                                                                                                                    |
 | `TRUSTED_PROXY_HOPS`            | server only | Optional, default 1. Number of reverse proxies that append to `X-Forwarded-For`; 0 if the app is exposed directly. Too high lets clients fake their IP and dodge the rate limit. |
 | `ALLOW_INSECURE_HTTP`           | server only | Optional, test/staging only. `1` drops the `Secure` cookie flag and `upgrade-insecure-requests` so the app works over plain HTTP. Never set in production.                       |
@@ -64,7 +64,7 @@ Before the first e2e run: `npx playwright install chromium`.
 
 ## Architecture
 
-- **Browser to this app only.** Client code calls `/api/*` on its own origin. The catch-all route handler (`src/app/api/[...path]/route.ts`) forwards to `CDESK_API_URL` server to server, attaches the session from an httpOnly cookie, and enforces the allow-list, same-origin and rate-limit guards.
+- **Browser to this app only.** Client code calls `/api/*` on its own origin. The catch-all route handler (`src/app/api/[...path]/route.ts`) forwards to `CEDESK_API_URL` server to server, attaches the session from an httpOnly cookie, and enforces the allow-list, same-origin and rate-limit guards.
 - **`src/proxy.ts`** (Next.js 16 Proxy, formerly middleware) redirects signed-out users away from agent pages, lets customer pages through (`src/lib/public-routes.ts`), and sets the per-request CSP nonce.
 - **Server state** lives in TanStack Query. Hooks in `src/hooks` own the fetching, and every cache key comes from `src/lib/api/query-keys.ts`. Responses are checked with Zod at the API boundary.
 - **Rendering.** The agent app is rendered per request (it depends on the session cookie), so build output shows those routes as dynamic. Server-only code is marked with `server-only`.
@@ -74,13 +74,13 @@ Decisions with trade-offs are written up in [docs/adr](docs/adr).
 
 ## Security notes
 
-- The browser only calls `/api/*` on this app. `src/app/api/[...path]/route.ts` forwards to `CDESK_API_URL` server to server, so the backend URL never reaches the client.
+- The browser only calls `/api/*` on this app. `src/app/api/[...path]/route.ts` forwards to `CEDESK_API_URL` server to server, so the backend URL never reaches the client.
 - The session token is stored in an httpOnly cookie (`SameSite=Lax`, `Secure` in production) and removed from the sign-in response. See [ADR 0001](docs/adr/0001-httponly-session-cookie.md).
 - The CSP uses a per-request nonce with `strict-dynamic`, no `unsafe-inline` for scripts. See [ADR 0002](docs/adr/0002-csp-nonce.md).
 - The proxy only forwards allow-listed API areas, rejects odd path segments, and checks same-origin on mutating requests.
 - Sign-in and password-reset calls are rate limited in memory per client. The backend is still the authority.
 - `?next=` redirects are limited to same-origin relative paths (`src/lib/safe-next.ts`).
-- Environment variables are validated with Zod at boot; production won't start with a bad `CDESK_API_URL`.
+- Environment variables are validated with Zod at boot; production won't start with a bad `CEDESK_API_URL`.
 
 To report a vulnerability, see [SECURITY.md](SECURITY.md).
 
@@ -95,7 +95,7 @@ src/
     (app)/            signed-in area: tickets, customers, agents, reports, settings
     (public)/         customer pages: portal, contact, help center, ticket view, CSAT rating
     robots.ts         robots.txt (disallow all; the app is not meant to be indexed)
-    api/[...path]/    proxy to the CDesk API
+    api/[...path]/    proxy to the CeDesk API
     api/health/       health probe
     dev/ui/           component gallery (development only)
   components/         auth, feedback, layout, providers, public, tickets, workspace, ui
@@ -116,8 +116,8 @@ Unit and component tests sit next to the code they cover (`*.test.ts(x)`).
 ## Deploying
 
 ```bash
-docker build -t cdesk-frontend .
-docker run -p 3000:3000 -e CDESK_API_URL=https://api.example.com/api/v1 cdesk-frontend
+docker build -t cedesk-frontend .
+docker run -p 3000:3000 -e CEDESK_API_URL=https://api.example.com/api/v1 cedesk-frontend
 ```
 
 `/api/health` returns 200 when the app is configured and 503 when it isn't, so it works as a liveness and readiness probe. Behind a reverse proxy, make sure it sets `X-Forwarded-For` and set `TRUSTED_PROXY_HOPS` to match.
@@ -126,7 +126,7 @@ docker run -p 3000:3000 -e CDESK_API_URL=https://api.example.com/api/v1 cdesk-fr
 
 | Symptom                                                       | Likely cause                                                                                                                                                                                                      |
 | ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| App shows a configuration error, or `/api/health` returns 503 | `CDESK_API_URL` is missing or not a valid URL. Copy `.env.example` to `.env.local` and set it.                                                                                                                    |
+| App shows a configuration error, or `/api/health` returns 503 | `CEDESK_API_URL` is missing or not a valid URL. Copy `.env.example` to `.env.local` and set it.                                                                                                                   |
 | Browser requests to the backend fail with a CORS error        | The browser should only call `/api/*` on this app. The backend only allows origins `:3000` and `:5173`, so run the dev server on one of those ports.                                                              |
 | Sign-in works but you are signed out immediately              | The `Secure` cookie flag is set in production builds, so over plain `http://` the browser drops the cookie. Use HTTPS (or, for a throwaway HTTP test server only, `ALLOW_INSECURE_HTTP=1`), or run `npm run dev`. |
 | Rate-limit errors (429) on sign-in behind a proxy             | `TRUSTED_PROXY_HOPS` doesn't match the number of proxies in front of the app.                                                                                                                                     |

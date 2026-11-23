@@ -31,7 +31,7 @@ import {
 import { createLimiter } from "@/lib/server/rate-limit";
 
 /**
- * BFF proxy: the browser hits /api/<route> here, we call ${CDESK_API_URL}/<route>.
+ * BFF proxy: the browser hits /api/<route> here, we call ${CEDESK_API_URL}/<route>.
  * The bearer token stays in an httpOnly cookie so page JS (and XSS) never sees
  * it, and the backend address is never sent to the browser, even in errors.
  */
@@ -180,7 +180,7 @@ async function handle(req: NextRequest, { params }: Ctx) {
 
   const base = upstreamBase();
   if (!base) {
-    console.error("CDESK_API_URL is not configured");
+    console.error("CEDESK_API_URL is not configured");
     return errorBody("Unavailable", "The service is not configured.", 503);
   }
 

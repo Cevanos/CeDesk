@@ -8,7 +8,7 @@ import { Button, Card, Field, Input } from "@/components/ui/primitives";
 import { useCodeSignIn, useRequestCode, useWorkspaceSlug } from "@/hooks/use-portal";
 
 type Saved = { step: "email" | "code"; email: string };
-const savedKey = (ws: string) => `cdesk:portal-signin:${ws}`;
+const savedKey = (ws: string) => `cedesk:portal-signin:${ws}`;
 
 function readSaved(ws: string): Saved {
   try {

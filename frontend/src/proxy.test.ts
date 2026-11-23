@@ -29,29 +29,29 @@ describe("route guard", () => {
   });
 
   it("bounces signed-in users away from login", () => {
-    const res = proxy(req("/login", "cdesk_session=t"));
+    const res = proxy(req("/login", "cedesk_session=t"));
     expect(new URL(res.headers.get("location") ?? "").pathname).toBe("/tickets");
   });
 
   it("sends a signed-in user to the page they were headed for", () => {
-    const res = proxy(req("/login?next=%2Ftickets%2F42", "cdesk_session=t"));
+    const res = proxy(req("/login?next=%2Ftickets%2F42", "cedesk_session=t"));
     expect(new URL(res.headers.get("location") ?? "").pathname).toBe("/tickets/42");
   });
 
   it("ignores an unsafe next target", () => {
-    const res = proxy(req("/login?next=https%3A%2F%2Fevil.test", "cdesk_session=t"));
+    const res = proxy(req("/login?next=https%3A%2F%2Fevil.test", "cedesk_session=t"));
     expect(new URL(res.headers.get("location") ?? "").host).toBe("localhost:3000");
   });
 
   it("keeps reset links working while signed in", () => {
-    expect(proxy(req("/reset-password?token=x", "cdesk_session=t")).status).toBe(200);
+    expect(proxy(req("/reset-password?token=x", "cedesk_session=t")).status).toBe(200);
   });
 });
 
 describe("sign-up page", () => {
   it("is open to signed-out visitors and redirects a signed-in agent", () => {
     expect(proxy(req("/signup")).status).toBe(200);
-    const res = proxy(req("/signup", "cdesk_session=t"));
+    const res = proxy(req("/signup", "cedesk_session=t"));
     expect(new URL(res.headers.get("location") ?? "").pathname).toBe("/tickets");
   });
 
@@ -65,7 +65,7 @@ describe("sign-up page", () => {
 
 describe("content security policy", () => {
   it("sets a nonce-based CSP on every response", () => {
-    for (const res of [proxy(req("/tickets", "cdesk_session=t")), proxy(req("/tickets"))]) {
+    for (const res of [proxy(req("/tickets", "cedesk_session=t")), proxy(req("/tickets"))]) {
       const csp = res.headers.get("content-security-policy") ?? "";
       expect(csp).toMatch(/script-src 'self' 'nonce-[^']+' 'strict-dynamic'/);
     }
@@ -74,8 +74,8 @@ describe("content security policy", () => {
   it("uses a different nonce each request", () => {
     const nonce = (r: Response) =>
       /'nonce-([^']+)'/.exec(r.headers.get("content-security-policy") ?? "")?.[1];
-    const a = nonce(proxy(req("/tickets", "cdesk_session=t")));
-    const b = nonce(proxy(req("/tickets", "cdesk_session=t")));
+    const a = nonce(proxy(req("/tickets", "cedesk_session=t")));
+    const b = nonce(proxy(req("/tickets", "cedesk_session=t")));
     expect(a).toBeTruthy();
     expect(a).not.toBe(b);
   });

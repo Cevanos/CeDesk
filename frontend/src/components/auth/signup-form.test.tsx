@@ -223,7 +223,7 @@ describe("LoginForm sign-up link", () => {
   });
 
   it("fills the workspace from ?workspace= over the remembered one", async () => {
-    localStorage.setItem("cdesk.workspace", "old");
+    localStorage.setItem("cedesk.workspace", "old");
     nav.search = new URLSearchParams("workspace=new-co");
     server.use(config(false), sso);
     renderWithProviders(<LoginForm />);
