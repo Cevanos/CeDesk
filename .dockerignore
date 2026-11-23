@@ -14,3 +14,4 @@ deploy/.env
 .import_linter_cache
 storage
 tests
+frontend

@@ -1,15 +1,19 @@
 # CeDesk
 
-Help desk backend: tickets, routing, SLA, macros, rules, customer portal and imports.
+Open-source help desk: tickets, routing, SLA, macros, rules, customer portal and imports.
+This repository holds the whole product: the backend (Python, this folder) and the web
+app ([frontend/](frontend), Next.js).
 CeDesk works on its own; connecting a Cevanos workspace adds the AI agent, the
 AI-to-human handover and the Cevanos chat channels.
 
-Hosting it yourself: [docs/SELF_HOSTING.md](docs/SELF_HOSTING.md). Every setting:
+Hosting it yourself: [docs/SELF_HOSTING.md](docs/SELF_HOSTING.md). One
+`docker compose up -d --build` in `deploy/` runs everything. Every setting:
 [docs/SETTINGS.md](docs/SETTINGS.md). The API: [docs/api](docs/api).
 
 ## Run it locally
 
-Needs Python 3.12 via [uv](https://docs.astral.sh/uv/) and Docker.
+The web app has its own steps: [frontend/README.md](frontend/README.md). The backend
+needs Python 3.12 via [uv](https://docs.astral.sh/uv/) and Docker.
 
 ```bash
 uv sync                      # install
@@ -167,6 +171,8 @@ supplied through `CEDESK_*` environment variables.
 ## Layout
 
 ```
+frontend/        the web app (Next.js): agents, Admins and the customer portal
+deploy/          Docker Compose and Caddy for one server (API, worker, web app)
 src/cedesk/
   main.py        app factory, health routes
   settings.py    CEDESK_* environment settings

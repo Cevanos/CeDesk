@@ -2,7 +2,7 @@
 
 ## Checklist
 
-- [ ] `npm run validate` passes
+- [ ] Checks pass: `npm run validate` in `frontend/`, and the backend checks in the README for backend changes
 - [ ] Tests added or updated
 - [ ] No secrets, tokens or real customer data in code, fixtures or logs
 - [ ] No sensitive value in a `NEXT_PUBLIC_` variable

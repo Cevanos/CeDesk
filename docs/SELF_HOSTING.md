@@ -16,7 +16,6 @@ workspace our operators give a cloud plan (`cedesk set-plan`), which you never d
 - An SMTP account to send email (Amazon SES, Gmail or Zoho with an app password, ...), and
   a way for customers' emails to reach CeDesk: a mailbox it reads, or a mail service that
   posts each email to it (see Email).
-- The CeDesk frontend, served from its own address (e.g. `app.example.com`).
 
 ## Install
 
@@ -42,8 +41,8 @@ workspace our operators give a cloud plan (`cedesk set-plan`), which you never d
      `CEDESK_SECRET_KEY`: four different values from `openssl rand -hex 32`.
    - `CEDESK_ENV=production`.
    - `CEDESK_SITE=help.example.com` (your domain; Caddy gets its certificate).
-   - `CEDESK_APP_URL=https://app.example.com` and
-     `CEDESK_CORS_ORIGINS=https://app.example.com` (the frontend's address).
+   - `CEDESK_APP_URL=https://help.example.com` (the same address: it serves the web app,
+     and the API under `/api/v1`). `CEDESK_CORS_ORIGINS` can stay empty.
    - Email: see [Email](#email). Only a developer's machine (`CEDESK_ENV=dev`) accepts `CEDESK_MAIL_BACKEND=log`.
 
    **Keep a copy of `CEDESK_SECRET_KEY` somewhere safe and never change it.** It encrypts
@@ -58,7 +57,7 @@ workspace our operators give a cloud plan (`cedesk set-plan`), which you never d
    ```
 
    This creates the database, runs the migrations (the `migrate` service), then starts the
-   API, the worker and Caddy. Check it:
+   API, the worker, the web app and Caddy. Check it:
 
    ```sh
    curl https://help.example.com/readyz     # {"status":"ok","edition":"self_hosted"}

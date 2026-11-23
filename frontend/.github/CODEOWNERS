@@ -1,9 +1,0 @@
-# Security-sensitive code needs an owner's review.
-*                              @Rakesh69
-/src/proxy.ts                  @Rakesh69
-/src/lib/csp.ts                @Rakesh69
-/src/lib/server/               @Rakesh69
-/src/app/api/                  @Rakesh69
-/next.config.ts                @Rakesh69
-/Dockerfile                    @Rakesh69
-/.github/                      @Rakesh69

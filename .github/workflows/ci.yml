@@ -1,9 +1,12 @@
+# The backend (Python): lint, types, layers, tests and a library audit.
 name: CI
 
 on:
   push:
     branches: [main]
+    paths-ignore: ["frontend/**", ".github/workflows/frontend.yml"]
   pull_request:
+    paths-ignore: ["frontend/**", ".github/workflows/frontend.yml"]
 
 jobs:
   check:

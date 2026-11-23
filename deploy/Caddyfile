@@ -1,4 +1,4 @@
-# CEDESK_SITE is a domain (api.example.com: Caddy gets an HTTPS certificate by itself)
+# CEDESK_SITE is a domain (desk.example.com: Caddy gets an HTTPS certificate by itself)
 # or :80 (plain HTTP on the server's IP, for a short test only).
 {$CEDESK_SITE} {
 	request_body {
@@ -13,9 +13,25 @@
 			flush_interval -1
 		}
 	}
+	# The same streams as the browser opens them, through the web app.
+	@weblive path /api/stream /api/portal/stream
+	handle @weblive {
+		reverse_proxy web:3000 {
+			flush_interval -1
+		}
+	}
 
-	handle {
+	# The API: the web app's server, the mobile app, webhooks (Cevanos, inbound email) and
+	# single sign-on. Its health checks and API docs (/docs) too.
+	@api path /api/v1/* /readyz /healthz /docs /docs/* /openapi.json
+	handle @api {
 		encode gzip
 		reverse_proxy api:8100
+	}
+
+	# Everything else is the web app.
+	handle {
+		encode gzip
+		reverse_proxy web:3000
 	}
 }

@@ -25,6 +25,7 @@ Captured from the app running against the sample data in `e2e/mock-backend.ts`, 
 ## Quick start
 
 ```bash
+cd frontend                   # from the repository root
 cp .env.example .env.local   # set CEDESK_API_URL
 npm install                  # also installs the git hooks
 npm run dev                  # http://localhost:3000
@@ -115,6 +116,9 @@ Unit and component tests sit next to the code they cover (`*.test.ts(x)`).
 
 ## Deploying
 
+The whole product (API, worker, this web app and Caddy) runs with one
+`docker compose up -d --build` in [`deploy/`](../deploy/README.md). To run only the web app:
+
 ```bash
 docker build -t cedesk-frontend .
 docker run -p 3000:3000 -e CEDESK_API_URL=https://api.example.com/api/v1 cedesk-frontend
@@ -139,11 +143,11 @@ There is no published roadmap yet. Planned work and ideas are tracked in GitHub 
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) and the [Code of Conduct](CODE_OF_CONDUCT.md). Changes are listed in [CHANGELOG.md](CHANGELOG.md).
+See [CONTRIBUTING.md](CONTRIBUTING.md) and the [Code of Conduct](../CODE_OF_CONDUCT.md). Changes are listed in [CHANGELOG.md](CHANGELOG.md).
 
 ## License
 
-[MIT](LICENSE) © 2026 Cevanos.
+[MIT](../LICENSE) © 2026 Cevanos.
 
 The CeDesk name and logo are trademarks of Cevanos and are not covered by the MIT License. Cevanos AI, managed CeDesk cloud hosting and future enterprise-only features are separate commercial products and are not part of this repository.
 

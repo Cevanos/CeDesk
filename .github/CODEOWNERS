@@ -1,0 +1,8 @@
+# Security-sensitive frontend code needs an owner's review.
+/frontend/                              @Rakesh69
+/frontend/src/proxy.ts                  @Rakesh69
+/frontend/src/lib/csp.ts                @Rakesh69
+/frontend/src/lib/server/               @Rakesh69
+/frontend/src/app/api/                  @Rakesh69
+/frontend/next.config.ts                @Rakesh69
+/frontend/Dockerfile                    @Rakesh69

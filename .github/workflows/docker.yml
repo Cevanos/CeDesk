@@ -1,6 +1,6 @@
-# Builds the Docker image and runs the stack exactly as deploy/README.md does on a server
+# Builds the Docker images (API and web app) and runs the stack exactly as deploy/README.md does on a server
 # (deploy/docker-compose.yml with a fresh .env), then checks it works: migrations, the API
-# through Caddy, the worker, sign-in and a new ticket. Catches a broken Dockerfile, compose
+# and the web app through Caddy, the worker, sign-in and a new ticket. Catches a broken Dockerfile, compose
 # file or migration before it reaches a server.
 name: Docker
 
@@ -27,13 +27,15 @@ jobs:
           done
           # ClamAV needs 1.5 GB and minutes to download definitions; not what this checks.
           sed -i "s|^CEDESK_SCAN_BACKEND=.*|CEDESK_SCAN_BACKEND=none|" .env
+          # Plain HTTP on localhost: sign-in cookies without the Secure flag.
+          sed -i "s|^CEDESK_ALLOW_INSECURE_HTTP=.*|CEDESK_ALLOW_INSECURE_HTTP=1|" .env
 
-      - name: Build the image
+      - name: Build the images
         run: docker compose build
 
       # Every service but clamav; migrate runs first through depends_on.
       - name: Start the stack
-        run: docker compose up -d db api worker caddy
+        run: docker compose up -d db api worker web caddy
 
       - name: Migrations finished cleanly
         run: |
@@ -46,6 +48,15 @@ jobs:
             sleep 2
           done
           curl -fsS http://localhost/readyz
+
+      - name: The web app answers through Caddy
+        run: |
+          for i in $(seq 1 60); do
+            curl -fsS http://localhost/api/health > /dev/null 2>&1 && break
+            sleep 2
+          done
+          curl -fsS http://localhost/api/health
+          curl -fsS -o /dev/null -w "sign-in page: %{http_code}\n" http://localhost/login
 
       - name: Sign in and create a ticket
         run: |
@@ -60,6 +71,17 @@ jobs:
             -H "idempotency-key: $(cat /proc/sys/kernel/random/uuid)" \
             -d '{"subject":"Docker check","contact":{"email":"customer@example.com","name":"Customer"}}' \
             | jq -e '.label'
+          # The same through the web app, as a browser does: its server keeps the token in
+          # a cookie and calls the API. Changes must come from the page's own origin.
+          curl -fsS -c jar -X POST http://localhost/api/auth/sign-in \
+            -H 'content-type: application/json' -H 'origin: http://localhost' \
+            -d "{\"workspace\":\"acme-store\",\"email\":\"ritesh@acme-store.in\",\"password\":\"$pw\"}" > /dev/null
+          curl -fsS -b jar http://localhost/api/me | jq -e '.member.email'
+          curl -fsS -b jar -X POST http://localhost/api/tickets \
+            -H 'content-type: application/json' -H 'origin: http://localhost' \
+            -H "idempotency-key: $(cat /proc/sys/kernel/random/uuid)" \
+            -d '{"subject":"Web app check","contact":{"email":"customer@example.com","name":"Customer"}}' \
+            | jq -e '.label'
 
       - name: API and worker are still running
         run: |
@@ -69,6 +91,7 @@ jobs:
           done
           test "$(docker compose ps api --format '{{.Health}}')" = "healthy"
           test "$(docker compose ps worker --format '{{.State}}')" = "running"
+          test "$(docker compose ps web --format '{{.State}}')" = "running"
 
       - name: Logs
         if: failure()

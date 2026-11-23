@@ -20,8 +20,12 @@ never a public issue.
 
 ## Set up
 
-Needs Python 3.12 via [uv](https://docs.astral.sh/uv/) and Docker. The steps are in
-[Run it locally](README.md#run-it-locally).
+The repository has two parts:
+
+- **Backend** (this folder): Python 3.12 via [uv](https://docs.astral.sh/uv/) and Docker.
+  The steps are in [Run it locally](README.md#run-it-locally).
+- **Web app** ([frontend/](frontend)): Node 22. Its setup, conventions and checks are in
+  [frontend/CONTRIBUTING.md](frontend/CONTRIBUTING.md).
 
 ## Make a change
 
@@ -31,7 +35,8 @@ Needs Python 3.12 via [uv](https://docs.astral.sh/uv/) and Docker. The steps are
 3. Add or update tests for what you change. A database change needs a migration in
    `migrations/versions/`.
 4. After an API change, run `uv run cedesk openapi` and commit `docs/api/openapi.json`.
-5. Run the same checks as CI before you push:
+5. Run the same checks as CI before you push (for the web app: `npm run validate` in
+   `frontend/`):
 
    ```bash
    uv run ruff check . && uv run ruff format --check .
@@ -49,5 +54,4 @@ Needs Python 3.12 via [uv](https://docs.astral.sh/uv/) and Docker. The steps are
 
 ## Code of conduct
 
-Be respectful and constructive. Harassment or abuse is not accepted in issues, pull
-requests or any other project space.
+See the [Code of Conduct](CODE_OF_CONDUCT.md).
