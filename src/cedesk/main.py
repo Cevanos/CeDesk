@@ -61,6 +61,7 @@ from cedesk.helpdesk.api import replays as replays_api
 from cedesk.helpdesk.api import report_engine as report_engine_api
 from cedesk.helpdesk.api import report_schedules as report_schedules_api
 from cedesk.helpdesk.api import reports as reports_api
+from cedesk.helpdesk.api import resolution as resolution_api
 from cedesk.helpdesk.api import roles as roles_api
 from cedesk.helpdesk.api import routing as routing_api
 from cedesk.helpdesk.api import rules as rules_api
@@ -388,6 +389,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(rules_api.router, prefix="/api/v1")
     app.include_router(flows_api.router, prefix="/api/v1")
     app.include_router(replays_api.router, prefix="/api/v1")
+    app.include_router(resolution_api.router, prefix="/api/v1")
     app.include_router(macros_api.router, prefix="/api/v1")
     app.include_router(email_api.router, prefix="/api/v1")
     app.include_router(email_in_api.router, prefix="/api/v1")

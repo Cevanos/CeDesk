@@ -3,6 +3,34 @@
 `openapi.json` next to this file is the API as served (`uv run cedesk openapi`). Every
 route is under `/api/v1`. Breaking changes only come in v2 (md 2B). Newest first.
 
+## 2026-11-24: Resolution receipts
+
+Additive. Migration 0081. Off by default: nothing changes until an Admin turns it on.
+
+- `GET/PUT /resolution-receipts` (Settings; audited): `mode` is `off` (default),
+  `optional` or `required`; `required_teams` limits `required` to some teams (empty: every
+  team).
+- `POST /tickets/{id}/resolve` takes an optional body `{"resolution": {...}}`:
+  `action_taken` (needed), `request`, `result`, `verified` (`unverified` or `agent`),
+  `customer_notified` (null: yes when a reply went out in the 24 hours before),
+  `pending_item`. With `required` for the ticket's team, resolving without one is 422,
+  also through `PATCH /tickets/{id}` and bulk `set_status`; automatic closes never need
+  one. With receipts `off`, a receipt sent is 422. A new resolve after a reopen replaces
+  the receipt (audited, without its text).
+- `GET /tickets/{id}/resolution`; `PATCH /tickets/{id}/resolution` (only the keys sent;
+  while resolved, for 7 days; audited with field names only).
+- `POST /tickets/{id}/resolution/verify` with `order_id` or `payment_id`: reads the
+  Shopify order or Stripe payment (read-only) and sets `result`, `verified`
+  (`shopify`/`stripe`) and `verified_at`.
+- `TicketOut.resolution`: the receipt, or null.
+- `ticket.resolved` events carry `resolution`: `verified`, `verified_at`,
+  `customer_notified`, `pending` (true/false), never the receipt's text; null without one.
+- `GET /reports/resolutions` (Supervisor, Admin; `format=csv`): resolved vs. with a
+  receipt vs. verified (by agent, Shopify, Stripe), with a pending item, customer told;
+  per team and per assignee.
+- Audit area `resolutions`. The privacy export and the retention export include the
+  receipt; the privacy erase blanks its text.
+
 ## 2026-11-24: Reporting views for BI tools, and read-only reporting logins
 
 No API change. Migration 0080. New CLI command.
