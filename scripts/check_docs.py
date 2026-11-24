@@ -55,7 +55,12 @@ def main() -> int:
             if str(rel) not in rels:
                 errors.append(f"{where}: related article not found: {rel}")
         for link in re.findall(r"\]\(([^)#:]+\.md)\)", p.body):
-            target = f"{p.path.parent.name}/{link.removesuffix('.md')}"
+            # slug.md is in the same topic; ../topic/slug.md is in another one.
+            target = (
+                link.removeprefix("../").removesuffix(".md")
+                if link.startswith("../")
+                else f"{p.path.parent.name}/{link.removesuffix('.md')}"
+            )
             if target not in rels:
                 errors.append(f"{where}: link to an article that does not exist: {link}")
         for img in re.findall(r"!\[[^\]]*\]\(([^)]+)\)", p.body):
