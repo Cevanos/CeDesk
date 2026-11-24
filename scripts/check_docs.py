@@ -14,7 +14,7 @@ import json
 import re
 import sys
 
-from docs_lib import GUIDE, ROOT, load_pages
+from docs_lib import DEV, GUIDE, ROOT, load_pages
 
 REQUIRED = ("title", "slug", "topic", "order", "summary", "status", "updated", "routes", "related")
 RAW_VALUE = re.compile(r"`[a-z]+(?:_[a-z]+)+`")
@@ -69,7 +69,9 @@ def main() -> int:
         if p.meta.get("status") == "published" and "placeholder" in p.body.lower():
             errors.append(f"{where}: published but still has a placeholder")
         prose = re.sub(r"```.*?```", "", p.body, flags=re.S)
-        for raw in sorted(set(RAW_VALUE.findall(prose))):
+        # Developer guides name fields and codes on purpose; only the user guide hides them.
+        raws = [] if DEV in p.path.parents else sorted(set(RAW_VALUE.findall(prose)))
+        for raw in raws:
             errors.append(f"{where}: raw internal value shown to readers: {raw}")
     for e in errors:
         print("ERROR", e)
