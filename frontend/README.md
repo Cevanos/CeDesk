@@ -111,6 +111,7 @@ Before the first e2e run: `npx playwright install chromium`.
 | `ALLOW_INSECURE_HTTP`           | server only | Optional, test/staging only. `1` drops the `Secure` cookie flag and `upgrade-insecure-requests` so the app works over plain HTTP. Never set in production.                       |
 | `NEXT_PUBLIC_DEFAULT_WORKSPACE` | public      | Optional. Pre-fills the workspace field on sign-in.                                                                                                                              |
 | `NEXT_PUBLIC_API_PUBLIC_URL`    | public      | Optional. Backend public address, only used to show the Cevanos webhook URL in Settings.                                                                                         |
+| `SITE_URL`                      | server      | Optional. Public address of this site (no trailing slash). Used for the landing page's canonical URL, sitemap, social cards and structured data. Set it in production.           |
 
 ## Architecture
 

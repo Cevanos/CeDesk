@@ -44,6 +44,15 @@ export function proxy(req: NextRequest) {
     return withCsp(NextResponse.next({ request: { headers } }));
   }
 
+  // The landing page is the one public page at the root; signed-in agents are
+  // redirected to /tickets by the page itself.
+  if (pathname === "/" && !hasSession) {
+    const headers = new Headers(req.headers);
+    headers.set("x-nonce", nonce);
+    headers.set("Content-Security-Policy", csp);
+    return withCsp(NextResponse.next({ request: { headers } }));
+  }
+
   if (!hasSession && !isAuthPage) {
     const url = req.nextUrl.clone();
     url.pathname = "/login";
@@ -69,7 +78,7 @@ export const config = {
   matcher: [
     {
       source:
-        "/((?!api|_next/static|_next/image|favicon.ico|.*\.(?:svg|png|jpg|jpeg|webp|ico|txt|xml)$).*)",
+        "/((?!api|_next/static|_next/image|favicon.ico|opengraph-image|twitter-image|.*\.(?:svg|png|jpg|jpeg|webp|ico|txt|xml)$).*)",
       missing: [
         { type: "header", key: "next-router-prefetch" },
         { type: "header", key: "purpose", value: "prefetch" },
