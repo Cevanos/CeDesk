@@ -10,10 +10,11 @@ from fastapi import APIRouter, Depends, Query, status
 from pydantic import BaseModel, Field, model_validator
 
 from cedesk.helpdesk.api.deps import CallerDep, SessionmakerDep, require_settings
+from cedesk.helpdesk.api.replays import ReplayBody, ReplayOut, replay_out
 from cedesk.helpdesk.api.schemas import Body
 from cedesk.helpdesk.api.workflow_schemas import PerDay, PerHour, RuleName
 from cedesk.helpdesk.domain import paging
-from cedesk.helpdesk.service import flows, run_log
+from cedesk.helpdesk.service import flows, replay, run_log
 from cedesk.helpdesk.service.errors import Invalid
 from cedesk.helpdesk.service.flows import FlowTest, FlowView
 
@@ -224,6 +225,46 @@ async def versions(flow_id: UUID, caller: CallerDep, sm: SessionmakerDep) -> lis
     return [
         FlowVersionOut.model_validate(dict(r)) for r in await flows.versions(sm, caller, flow_id)
     ]
+
+
+@router.post(
+    "/flows/{flow_id}/versions/{version}/restore",
+    response_model=FlowOut,
+    summary="Go back to an older graph: saved as a new version (Admin; audited)",
+    description="History is never rewritten: the older graph becomes the next version. Runs "
+    "waiting on a wait step carry on with the version they started on. 404 for a version "
+    "the workflow never had; 409 when it is the current graph already.",
+)
+async def restore_version(
+    flow_id: UUID, version: int, caller: CallerDep, sm: SessionmakerDep
+) -> FlowOut:
+    return _out(await flows.restore(sm, caller, flow_id, version))
+
+
+class FlowReplayBody(ReplayBody):
+    version: int | None = Field(
+        default=None, ge=1, description="A version to try (GET /flows/{id}/versions); "
+        "null: the current one.",
+    )  # fmt: skip
+
+
+@router.post(
+    "/flows/{flow_id}/replay",
+    response_model=ReplayOut,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Replay: try a workflow version on past tickets; changes and sends nothing (Admin)",
+    description="Each ticket is walked up to the workflow's first wait (counted as "
+    "would_wait). Follow it with GET /replays/{id}. 409 while another replay is queued or "
+    "running.",
+)
+async def replay_flow(
+    flow_id: UUID, body: FlowReplayBody, caller: CallerDep, sm: SessionmakerDep
+) -> ReplayOut:
+    return replay_out(
+        await replay.start_flow(
+            sm, caller, flow_id, ticket_limit=body.ticket_limit, version=body.version
+        )
+    )
 
 
 @router.post(

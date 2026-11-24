@@ -270,6 +270,8 @@ def _worker(once: bool) -> int:
     from cedesk.helpdesk.service.portal_notice import PortalNoticeHandler
     from cedesk.helpdesk.service.privacy import remove_expired_exports
     from cedesk.helpdesk.service.push import push_due
+    from cedesk.helpdesk.service.replay import prune_everywhere as prune_replays
+    from cedesk.helpdesk.service.replay import run_due as run_replays
     from cedesk.helpdesk.service.report_schedules import run_scheduled_reports
     from cedesk.helpdesk.service.scanning import scan_due
     from cedesk.helpdesk.service.security_alerts import SecurityAlertHandler
@@ -483,6 +485,13 @@ def _worker(once: bool) -> int:
                 if resumed:
                     logger.info(f"Workflow runs resumed: {resumed}",
                                 extra={"event": "automation"})  # fmt: skip
+                try:  # rule and workflow replays on past tickets (differentiator #3)
+                    replayed = await run_replays(sm)
+                except Exception:
+                    replayed = 0
+                    logger.exception("Replays failed")
+                if replayed:
+                    logger.info(f"Replay pages: {replayed}", extra={"event": "automation"})
                 if time.monotonic() - alerted_at > SLA_ALERT_EVERY_SECONDS:
                     try:
                         breached = await alert_everywhere(sm)
@@ -550,6 +559,10 @@ def _worker(once: bool) -> int:
                         await prune_runs(sm)
                     except Exception:
                         logger.exception("Pruning the automation run log failed")
+                    try:  # replays past their 30 days (differentiator #3)
+                        await prune_replays(sm)
+                    except Exception:
+                        logger.exception("Pruning old replays failed")
                     swept_at = time.monotonic()
                 if time.monotonic() - retained_at > RETENTION_EVERY_SECONDS:
                     try:  # resolved tickets past the archive age to the archive (md O3)

@@ -308,6 +308,31 @@ class RuleTest:
     ticket_after: dict[str, Any]  # status, priority, type_id, team_id, tags, snoozed
 
 
+async def evaluate(
+    s: AsyncSession,
+    rule: engine.Rule,
+    detail: Mapping[Any, Any],
+    *,
+    now: datetime,
+    targets: engine.Targets | None = None,
+    facts: engine.Facts | None = None,
+    state: engine.State | None = None,
+) -> tuple[engine.State, engine.Explained]:
+    """A rule on one ticket as if its event happened `now`: the ticket's state before, and
+    what each condition and action would do. Read-only. Test mode and replay both use it,
+    so they always agree. A replay passes `facts` and `state` it built once for every rule
+    it tries on the ticket."""
+    if facts is None:
+        facts = await automation.build_facts(s, detail, rule.event, rule.conditions, now=now)
+    if targets is None:
+        targets = await automation.build_targets(s, rule.actions)
+    if state is None:
+        state = await automation.start_state(
+            s, detail, rule.actions, rule.conditions, always_followers=True
+        )
+    return state, engine.explain(rule, facts, state, targets)
+
+
 async def test_rule(
     sm: Sessionmaker,
     caller: Caller,
@@ -342,12 +367,7 @@ async def test_rule(
         if detail is None:
             raise NotFound(NO_TICKET)
         now = datetime.now(UTC)
-        facts = await automation.build_facts(s, detail, rule.event, rule.conditions, now=now)
-        targets = await automation.build_targets(s, rule.actions)
-        state = await automation.start_state(
-            s, detail, rule.actions, rule.conditions, always_followers=True
-        )
-        explained = engine.explain(rule, facts, state, targets)
+        _before, explained = await evaluate(s, rule, detail, now=now)
         reason = None
         if explained.matched:
             depth = await automation.event_depth(s, ticket_id, rule.event, now)

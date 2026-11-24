@@ -250,6 +250,35 @@ async def versions(sm: Sessionmaker, caller: Caller, flow_id: UUID) -> Sequence[
         return await repo.versions(s, flow_id)
 
 
+async def restore(sm: Sessionmaker, caller: Caller, flow_id: UUID, version: int) -> FlowView:
+    """Saves an older version's graph as a new version (differentiator plan #3): history
+    is never rewritten. Runs waiting on a wait step carry on with the version they started
+    on, as after any change. 409 when that version is the current graph already."""
+    require(caller, Action.settings)
+    async with workspace_session(sm, caller.workspace_id) as s:
+        before = await _get(s, flow_id, lock=True)
+        graph = await repo.version_graph(s, flow_id, version)
+        if graph is None:
+            raise NotFound(f"The workflow has no version {version}.")
+        parsed = parse(graph)  # a version saved by older code must still read
+        await automation.check_saved(s, caller, parsed.conditions(), parsed.actions())
+        stored = rules.stored_graph(parsed)
+        if stored == before["graph"]:
+            raise Conflict(f"Version {version} is the workflow's current graph already.")
+        new = int(before["version"]) + 1
+        await repo.update_flow(
+            s, flow_id, {"graph": stored, "trigger": parsed.event.value, "version": new}
+        )
+        await repo.add_version(s, caller.workspace_id, flow_id, new, stored, caller.member_id)
+        row = await _get(s, flow_id)
+        await audit.record(
+            s, caller, Area.flows, "restored", f"Workflow {row['name']}", target_id=flow_id,
+            detail={"from_version": version, "new_version": new,
+                    "previous_version": int(before["version"])},
+        )  # fmt: skip
+        return (await _views(s, [row]))[0]
+
+
 # Test mode (plan 5.5)
 
 
