@@ -56,7 +56,9 @@ def inline(s: str) -> str:
     s = re.sub(r"\*\*([^*]+)\*\*", r"<strong>\1</strong>", s)
     s = re.sub(r"(?<!\*)\*([^*]+)\*(?!\*)", r"<em>\1</em>", s)
     s = re.sub(r"!\[([^\]]*)\]\(([^)]+)\)", r'<img alt="\1" src="\2">', s)
-    return re.sub(r"\[([^\]]+)\]\(([^)]+)\)", r'<a href="\2">\1</a>', s)
+    s = re.sub(r"\[([^\]]+)\]\(([^)]+)\)", r'<a href="\2">\1</a>', s)
+    # A link to another article is written as slug.md; the built page is slug.html.
+    return re.sub(r'href="([^":/]+)\.md"', r'href="\1.html"', s)
 
 
 def slugify(s: str) -> str:
