@@ -67,6 +67,7 @@ class PortalSettings:
     web_form: bool
     updated_at: datetime | None
     updated_by_name: str | None
+    show_owner: bool = True  # the assignee's first name in the portal (plan #9)
 
 
 def _now() -> datetime:
@@ -235,6 +236,7 @@ async def get_settings(sm: Sessionmaker, caller: Caller) -> PortalSettings:
         bool(row["web_form"]),
         row["updated_at"],
         row["updated_by_name"],
+        bool(row["show_owner"]),
     )
 
 
@@ -245,6 +247,7 @@ async def save_settings(
     *,
     csat_survey: bool = True,
     web_form: bool = False,
+    show_owner: bool = True,
 ) -> PortalSettings:
     require(caller, Action.settings)
     try:
@@ -254,8 +257,9 @@ async def save_settings(
     async with workspace_session(sm, caller.workspace_id) as s:
         before = await repo.settings_row(s)
         await repo.save_settings(
-            s, caller.workspace_id, cleaned, csat_survey, web_form, caller.member_id
-        )
+            s, caller.workspace_id, cleaned, csat_survey, web_form, caller.member_id,
+            show_owner=show_owner,
+        )  # fmt: skip
         # Customers already signed in with an email the list no longer allows are signed
         # out now (their open live stream ends too), as a new IP list applies at once.
         # Before, only new sign-ins were refused (live, Phase 3 retest).
@@ -266,9 +270,10 @@ async def save_settings(
             if ended:
                 await repo.revoke_sessions(s, ended)
         changed = audit_rules.changes(
-            before or {"allowed_domains": [], "csat_survey": True, "web_form": False},
+            before
+            or {"allowed_domains": [], "csat_survey": True, "web_form": False, "show_owner": True},
             await repo.settings_row(s),
-            fields=("allowed_domains", "csat_survey", "web_form"),
+            fields=("allowed_domains", "csat_survey", "web_form", "show_owner"),
         )
         if changed:
             detail: dict[str, object] = {"changes": changed}

@@ -182,7 +182,10 @@ class ResolutionOut(BaseModel):
 
     request: str | None = Field(description="What the customer asked, in a few words.")
     action_taken: str = Field(description="What was done.")
-    result: str | None = Field(description="The outcome; from Verify, what the app reported.")
+    result: str | None = Field(
+        description="The outcome; from Verify, what the app reported. Shown to the customer "
+        "in the portal once verified."
+    )
     verified: Literal["unverified", "agent", "shopify", "stripe"] = Field(
         description="agent: checked by the agent. shopify / stripe: read from the order or "
         "payment with Verify (never written to them)."
@@ -192,7 +195,10 @@ class ResolutionOut(BaseModel):
         description="The customer was told: set from a reply in the 24 hours before "
         "resolving, unless the agent said otherwise."
     )
-    pending_item: str | None = Field(description='Still waiting on, e.g. "Bank settlement".')
+    pending_item: str | None = Field(
+        description='Still waiting on, e.g. "Bank settlement". Shown to the customer in the '
+        "portal while the ticket is resolved."
+    )
     resolved_by: UUID | None
     resolved_by_name: str | None
     created_at: datetime

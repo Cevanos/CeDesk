@@ -151,6 +151,42 @@ def author_label(kind: str, author_name: str | None, you: str, workspace_name: s
 
 # Web form (md C2)
 
+# Where a ticket stands (differentiator plan #9): who owns it, what is still pending, and
+# the checked outcome from the resolution receipt (plan #5).
+
+WAITING_ON_YOU = "Waiting on you"
+
+
+def first_name(name: str | None) -> str | None:
+    """A member's first name for customers to see: never the full name or an email."""
+    if not name or "@" in name:
+        return None
+    first = name.split()[0] if name.split() else ""
+    return first[:40] or None
+
+
+def owner(assignee_name: str | None, team_name: str | None, *, show_owner: bool) -> str | None:
+    """The assignee's first name; the team's name when hidden or unassigned."""
+    person = first_name(assignee_name) if show_owner else None
+    return person or team_name or None
+
+
+def pending_step(status: str, pending_item: str | None) -> str | None:
+    """What the ticket waits on: the customer (Pending), or a receipt's pending item."""
+    if status == "pending":
+        return WAITING_ON_YOU
+    if status == "resolved":
+        return pending_item
+    return None
+
+
+def outcome(status: str, result: str | None, verified: str | None) -> str | None:
+    """The receipt's result, shown only once it was checked (by the agent or an app)."""
+    if status != "resolved" or not verified or verified == "unverified":
+        return None
+    return result
+
+
 FORMS_PER_EMAIL_HOUR = 5
 NAME_MAX = 100
 FORM_RECEIVED = "Thanks, we got your message. We'll reply by email."
