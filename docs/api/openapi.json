@@ -29179,6 +29179,12 @@
             "title": "Web Form",
             "description": "The public contact form (`/public/{workspace}/form`) is open. Off: 404.",
             "default": false
+          },
+          "show_owner": {
+            "type": "boolean",
+            "title": "Show Owner",
+            "description": "Portal tickets show the assignee's first name. Off: the team's name only.",
+            "default": true
           }
         },
         "additionalProperties": false,
@@ -29204,6 +29210,11 @@
           "web_form": {
             "type": "boolean",
             "title": "Web Form"
+          },
+          "show_owner": {
+            "type": "boolean",
+            "title": "Show Owner",
+            "description": "Tickets in the portal show the assignee's first name; off: the team's name only."
           },
           "updated_at": {
             "anyOf": [
@@ -29234,6 +29245,7 @@
           "allowed_domains",
           "csat_survey",
           "web_form",
+          "show_owner",
           "updated_at",
           "updated_by_name"
         ],
@@ -29309,6 +29321,42 @@
             "type": "string",
             "format": "date-time",
             "title": "Updated At"
+          },
+          "owner_first_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner First Name",
+            "description": "Who has it: the assignee's first name, or the team's name (unassigned, or the workspace hides names). Null: nobody yet. Never an email address."
+          },
+          "pending_step": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pending Step",
+            "description": "What it waits on: \"Waiting on you\" when Pending; on a resolved ticket, the resolution receipt's pending item (e.g. \"Bank settlement\"). Null: nothing."
+          },
+          "outcome": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Outcome",
+            "description": "Resolved and checked: the receipt's result (e.g. \"Refund issued\"). Null until an agent or Shopify / Stripe verified it."
           },
           "fields": {
             "additionalProperties": {
@@ -29438,6 +29486,42 @@
             "type": "string",
             "format": "date-time",
             "title": "Updated At"
+          },
+          "owner_first_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner First Name",
+            "description": "Who has it: the assignee's first name, or the team's name (unassigned, or the workspace hides names). Null: nobody yet. Never an email address."
+          },
+          "pending_step": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pending Step",
+            "description": "What it waits on: \"Waiting on you\" when Pending; on a resolved ticket, the resolution receipt's pending item (e.g. \"Bank settlement\"). Null: nothing."
+          },
+          "outcome": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Outcome",
+            "description": "Resolved and checked: the receipt's result (e.g. \"Refund issued\"). Null until an agent or Shopify / Stripe verified it."
           }
         },
         "type": "object",
@@ -31011,7 +31095,7 @@
               }
             ],
             "title": "Result",
-            "description": "The outcome; from Verify, what the app reported."
+            "description": "The outcome; from Verify, what the app reported. Shown to the customer in the portal once verified."
           },
           "verified": {
             "type": "string",
@@ -31051,7 +31135,7 @@
               }
             ],
             "title": "Pending Item",
-            "description": "Still waiting on, e.g. \"Bank settlement\"."
+            "description": "Still waiting on, e.g. \"Bank settlement\". Shown to the customer in the portal while the ticket is resolved."
           },
           "resolved_by": {
             "anyOf": [

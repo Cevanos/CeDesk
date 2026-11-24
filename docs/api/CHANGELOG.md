@@ -3,6 +3,23 @@
 `openapi.json` next to this file is the API as served (`uv run cedesk openapi`). Every
 route is under `/api/v1`. Breaking changes only come in v2 (md 2B). Newest first.
 
+## 2026-11-24: Where a ticket stands, in the customer portal
+
+Additive. Migration 0082.
+
+- `PortalTicketRow` and `PortalTicketOut` (`GET /portal/tickets`, `GET
+  /portal/tickets/{id}`) gain:
+  - `owner_first_name`: the assignee's first name, or the team's name (unassigned, or
+    names hidden); null when nobody has it. Never an email address.
+  - `pending_step`: "Waiting on you" when Pending; on a resolved ticket, the resolution
+    receipt's `pending_item`.
+  - `outcome`: on a resolved ticket, the receipt's `result` once verified (by the agent,
+    Shopify or Stripe); else null.
+- `/portal-settings` gains `show_owner` (default true). Off: the team's name instead of
+  a person's. Audited with the other portal settings. Saving the settings without it
+  sets it back to true.
+- A receipt's `pending_item` and verified `result` are now shown to the customer.
+
 ## 2026-11-24: Resolution receipts
 
 Additive. Migration 0081. Off by default: nothing changes until an Admin turns it on.
