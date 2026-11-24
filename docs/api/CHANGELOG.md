@@ -3,6 +3,30 @@
 `openapi.json` next to this file is the API as served (`uv run cedesk openapi`). Every
 route is under `/api/v1`. Breaking changes only come in v2 (md 2B). Newest first.
 
+## 2026-11-24: Replay a rule or workflow on past tickets; restore an older workflow version
+
+New routes, Admin only. Migration 0079 (`hd_rule_replay`). No change to existing routes.
+
+- `POST /rules/replay` (an unsaved rule, as in `POST /rules/test`) and
+  `POST /rules/{rule_id}/replay` (a saved rule, on or off), body `{"ticket_limit": 1-1000}`
+  (default 500): **202** with the replay. The worker tries it on the newest tickets, 100
+  at a time, with the same code as test mode. Nothing on a ticket changes; nothing is
+  sent, queued or logged. **409** while another replay is queued or running in the
+  workspace.
+- `POST /flows/{flow_id}/replay`, body `{"ticket_limit", "version"?}`: a workflow's current
+  or an older version, walked up to its first wait (`would_wait`).
+- `GET /replays/{replay_id}`: `state` (queued, running, done, failed, cancelled), a
+  `summary` line, `checked`, `matched`, `would_change`, `would_wait`, `conflicts`, up to
+  200 `samples` (ticket, the changes field by field, every line it would write) and up to
+  200 `conflict_samples` (another enabled rule setting status, priority, type or team to
+  something else; `winner` is the later one in run order). Poll it while it runs.
+- `POST /replays/{replay_id}/cancel`: stops it; what it found so far stays. **409** when it
+  has finished.
+- `POST /flows/{flow_id}/versions/{version}/restore`: the older graph becomes a new
+  version (history is never rewritten; audit area `flows`, action `restored`). **404** for
+  a version the workflow never had; **409** when it is the current graph already.
+- Finished replays are kept 30 days.
+
 ## 2026-11-24: Before and after a migration: the pre-migration report and the cutover checklist
 
 New routes, Admin only. No migration. No change to existing routes.

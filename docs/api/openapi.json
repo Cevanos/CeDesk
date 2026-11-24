@@ -8845,6 +8845,112 @@
         }
       }
     },
+    "/api/v1/rules/replay": {
+      "post": {
+        "tags": [
+          "rules"
+        ],
+        "summary": "Replay: try an unsaved rule on past tickets; changes and sends nothing (Admin)",
+        "description": "The worker tries it on the newest `ticket_limit` tickets; follow it with GET /replays/{id}. 409 while another replay is queued or running.",
+        "operationId": "replay_draft_api_v1_rules_replay_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuleReplayBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReplayOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/rules/{rule_id}/replay": {
+      "post": {
+        "tags": [
+          "rules"
+        ],
+        "summary": "Replay: try a saved rule on past tickets; changes and sends nothing (Admin)",
+        "description": "As saved now, on or off. Follow it with GET /replays/{id}. 409 while another replay is queued or running.",
+        "operationId": "replay_saved_api_v1_rules__rule_id__replay_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "rule_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Rule Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReplayBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReplayOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/rules/order": {
       "put": {
         "tags": [
@@ -9381,6 +9487,123 @@
         }
       }
     },
+    "/api/v1/flows/{flow_id}/versions/{version}/restore": {
+      "post": {
+        "tags": [
+          "automation"
+        ],
+        "summary": "Go back to an older graph: saved as a new version (Admin; audited)",
+        "description": "History is never rewritten: the older graph becomes the next version. Runs waiting on a wait step carry on with the version they started on. 404 for a version the workflow never had; 409 when it is the current graph already.",
+        "operationId": "restore_version_api_v1_flows__flow_id__versions__version__restore_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "flow_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Flow Id"
+            }
+          },
+          {
+            "name": "version",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Version"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FlowOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/flows/{flow_id}/replay": {
+      "post": {
+        "tags": [
+          "automation"
+        ],
+        "summary": "Replay: try a workflow version on past tickets; changes and sends nothing (Admin)",
+        "description": "Each ticket is walked up to the workflow's first wait (counted as would_wait). Follow it with GET /replays/{id}. 409 while another replay is queued or running.",
+        "operationId": "replay_flow_api_v1_flows__flow_id__replay_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "flow_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Flow Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FlowReplayBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReplayOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/flows/{flow_id}/test": {
       "post": {
         "tags": [
@@ -9676,6 +9899,103 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/cedesk__helpdesk__api__flows__RunOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/replays/{replay_id}": {
+      "get": {
+        "tags": [
+          "rules"
+        ],
+        "summary": "A replay's progress and what it found (Admin)",
+        "operationId": "get_replay_api_v1_replays__replay_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "replay_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Replay Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReplayOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/replays/{replay_id}/cancel": {
+      "post": {
+        "tags": [
+          "rules"
+        ],
+        "summary": "Stop a queued or running replay; what it found so far stays (Admin)",
+        "description": "409 when it has already finished.",
+        "operationId": "cancel_replay_api_v1_replays__replay_id__cancel_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "replay_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Replay Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReplayOut"
                 }
               }
             }
@@ -21683,6 +22003,44 @@
         "type": "object",
         "title": "ChangeMemberBody"
       },
+      "ChangeOut": {
+        "properties": {
+          "field": {
+            "type": "string",
+            "title": "Field",
+            "description": "status, priority, type, team or tags (tags it would add)."
+          },
+          "before": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Before"
+          },
+          "after": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "After"
+          }
+        },
+        "type": "object",
+        "required": [
+          "field",
+          "before",
+          "after"
+        ],
+        "title": "ChangeOut"
+      },
       "ChangePasswordBody": {
         "properties": {
           "current_password": {
@@ -21900,6 +22258,81 @@
           "reason"
         ],
         "title": "ConditionCheck"
+      },
+      "ConflictOut": {
+        "properties": {
+          "ticket_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Ticket Id"
+          },
+          "number": {
+            "type": "integer",
+            "title": "Number"
+          },
+          "field": {
+            "type": "string",
+            "enum": [
+              "status",
+              "priority",
+              "type",
+              "team"
+            ],
+            "title": "Field"
+          },
+          "tested_value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tested Value"
+          },
+          "other_rule_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Other Rule Id"
+          },
+          "other_rule": {
+            "type": "string",
+            "title": "Other Rule"
+          },
+          "other_value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Other Value"
+          },
+          "winner": {
+            "type": "string",
+            "enum": [
+              "tested",
+              "other"
+            ],
+            "title": "Winner",
+            "description": "Which one the ticket would end with: the later one in run order."
+          }
+        },
+        "type": "object",
+        "required": [
+          "ticket_id",
+          "number",
+          "field",
+          "tested_value",
+          "other_rule_id",
+          "other_rule",
+          "other_value",
+          "winner"
+        ],
+        "title": "ConflictOut"
       },
       "ConnectIn": {
         "properties": {
@@ -25211,6 +25644,34 @@
         "type": "object",
         "title": "FlowPatch",
         "description": "Send only what changes. A new graph is a new version; turning it off cancels its\nwaiting runs."
+      },
+      "FlowReplayBody": {
+        "properties": {
+          "ticket_limit": {
+            "type": "integer",
+            "maximum": 1000.0,
+            "minimum": 1.0,
+            "title": "Ticket Limit",
+            "description": "How many of the newest tickets to try it on (1-1000).",
+            "default": 500
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version",
+            "description": "A version to try (GET /flows/{id}/versions); null: the current one."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "FlowReplayBody"
       },
       "FlowTestBody": {
         "properties": {
@@ -29514,6 +29975,202 @@
         ],
         "title": "ReorderBody"
       },
+      "ReplayBody": {
+        "properties": {
+          "ticket_limit": {
+            "type": "integer",
+            "maximum": 1000.0,
+            "minimum": 1.0,
+            "title": "Ticket Limit",
+            "description": "How many of the newest tickets to try it on (1-1000).",
+            "default": 500
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ReplayBody"
+      },
+      "ReplayOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "rule",
+              "flow"
+            ],
+            "title": "Kind"
+          },
+          "target_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Id",
+            "description": "The saved rule or workflow; null: unsaved."
+          },
+          "target_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Version",
+            "description": "The workflow version tried."
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "ticket_limit": {
+            "type": "integer",
+            "title": "Ticket Limit"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "running",
+              "done",
+              "failed",
+              "cancelled"
+            ],
+            "title": "State"
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary",
+            "description": "One line for the screen."
+          },
+          "checked": {
+            "type": "integer",
+            "title": "Checked",
+            "description": "Tickets tried so far."
+          },
+          "matched": {
+            "type": "integer",
+            "title": "Matched",
+            "description": "Tickets its conditions matched (a workflow: it acted)."
+          },
+          "would_change": {
+            "type": "integer",
+            "title": "Would Change",
+            "description": "Tickets it would change or act on."
+          },
+          "would_wait": {
+            "type": "integer",
+            "title": "Would Wait",
+            "description": "A workflow: tickets it would wait on."
+          },
+          "conflicts": {
+            "type": "integer",
+            "title": "Conflicts"
+          },
+          "samples": {
+            "items": {
+              "$ref": "#/components/schemas/SampleOut"
+            },
+            "type": "array",
+            "title": "Samples",
+            "description": "Up to 200 tickets it would change."
+          },
+          "conflict_samples": {
+            "items": {
+              "$ref": "#/components/schemas/ConflictOut"
+            },
+            "type": "array",
+            "title": "Conflict Samples",
+            "description": "Up to 200 conflicts."
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "requested_by_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Requested By Name"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "target_id",
+          "target_version",
+          "name",
+          "ticket_limit",
+          "state",
+          "summary",
+          "checked",
+          "matched",
+          "would_change",
+          "would_wait",
+          "conflicts",
+          "samples",
+          "conflict_samples",
+          "error",
+          "requested_by_name",
+          "created_at",
+          "started_at",
+          "finished_at"
+        ],
+        "title": "ReplayOut"
+      },
       "ReportItemOut": {
         "properties": {
           "key": {
@@ -30373,6 +31030,32 @@
         "type": "object",
         "title": "RulePatch"
       },
+      "RuleReplayBody": {
+        "properties": {
+          "ticket_limit": {
+            "type": "integer",
+            "maximum": 1000.0,
+            "minimum": 1.0,
+            "title": "Ticket Limit",
+            "description": "How many of the newest tickets to try it on (1-1000).",
+            "default": 500
+          },
+          "rule": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RuleDraft"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "An unsaved rule (POST /rules/replay only): what the editor holds now."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "RuleReplayBody"
+      },
       "RuleTestBody": {
         "properties": {
           "ticket_id": {
@@ -30600,6 +31283,48 @@
         },
         "type": "object",
         "title": "RunReportOut"
+      },
+      "SampleOut": {
+        "properties": {
+          "ticket_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Ticket Id"
+          },
+          "number": {
+            "type": "integer",
+            "title": "Number"
+          },
+          "subject": {
+            "type": "string",
+            "title": "Subject",
+            "description": "The first 120 characters."
+          },
+          "changes": {
+            "items": {
+              "$ref": "#/components/schemas/ChangeOut"
+            },
+            "type": "array",
+            "title": "Changes"
+          },
+          "said": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Said",
+            "description": "Every line it would write, effects too: \"Tag vip\", \"Email sent\", ..."
+          }
+        },
+        "type": "object",
+        "required": [
+          "ticket_id",
+          "number",
+          "subject",
+          "changes",
+          "said"
+        ],
+        "title": "SampleOut"
       },
       "SandboxOut": {
         "properties": {

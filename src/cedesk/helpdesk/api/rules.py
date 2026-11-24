@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, status
 from pydantic import BaseModel, Field
 
 from cedesk.helpdesk.api.deps import CallerDep, SessionmakerDep, require_settings
+from cedesk.helpdesk.api.replays import ReplayBody, ReplayOut, replay_out
 from cedesk.helpdesk.api.schemas import Body
 from cedesk.helpdesk.api.workflow_schemas import (
     Actions,
@@ -19,7 +20,7 @@ from cedesk.helpdesk.api.workflow_schemas import (
     RuleOut,
     RulePatch,
 )
-from cedesk.helpdesk.service import rules
+from cedesk.helpdesk.service import replay, rules
 from cedesk.helpdesk.service.errors import Invalid
 from cedesk.helpdesk.service.rules import RuleTest, RuleView
 
@@ -129,6 +130,47 @@ async def test_saved(
     rule_id: UUID, body: RuleTestBody, caller: CallerDep, sm: SessionmakerDep
 ) -> RuleTestOut:
     return _test_out(await rules.test_rule(sm, caller, body.ticket_id, rule_id=rule_id))
+
+
+class RuleReplayBody(ReplayBody):
+    rule: RuleDraft | None = Field(
+        default=None,
+        description="An unsaved rule (POST /rules/replay only): what the editor holds now.",
+    )
+
+
+@router.post(
+    "/rules/replay",
+    response_model=ReplayOut,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Replay: try an unsaved rule on past tickets; changes and sends nothing (Admin)",
+    description="The worker tries it on the newest `ticket_limit` tickets; follow it with "
+    "GET /replays/{id}. 409 while another replay is queued or running.",
+)
+async def replay_draft(body: RuleReplayBody, caller: CallerDep, sm: SessionmakerDep) -> ReplayOut:
+    if body.rule is None:
+        raise Invalid("Send the rule to replay (or use POST /rules/{id}/replay).")
+    return replay_out(
+        await replay.start_rule(
+            sm, caller, ticket_limit=body.ticket_limit, draft=body.rule.model_dump()
+        )
+    )
+
+
+@router.post(
+    "/rules/{rule_id}/replay",
+    response_model=ReplayOut,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Replay: try a saved rule on past tickets; changes and sends nothing (Admin)",
+    description="As saved now, on or off. Follow it with GET /replays/{id}. 409 while "
+    "another replay is queued or running.",
+)
+async def replay_saved(
+    rule_id: UUID, body: ReplayBody, caller: CallerDep, sm: SessionmakerDep
+) -> ReplayOut:
+    return replay_out(
+        await replay.start_rule(sm, caller, ticket_limit=body.ticket_limit, rule_id=rule_id)
+    )
 
 
 @router.put(
