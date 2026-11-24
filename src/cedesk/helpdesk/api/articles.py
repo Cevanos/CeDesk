@@ -7,10 +7,11 @@ from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Query, status
-from pydantic import BaseModel, Field, StringConstraints
+from pydantic import BaseModel, Field, StringConstraints, computed_field
 
 from cedesk.helpdesk.api.deps import CallerDep, SessionmakerDep
 from cedesk.helpdesk.api.schemas import Body
+from cedesk.helpdesk.domain import help_locale
 from cedesk.helpdesk.domain.articles import ArticleStatus
 from cedesk.helpdesk.domain.paging import DEFAULT_LIMIT, MAX_LIMIT
 from cedesk.helpdesk.service import articles
@@ -25,6 +26,9 @@ CategoryName = Annotated[str, StringConstraints(min_length=1, max_length=80)]
 class CategoryOut(BaseModel):
     id: UUID
     name: str
+    name_translations: dict[str, str] = Field(
+        description="The name in other languages, `{language: name}`."
+    )
     position: int
     source: str | None = Field(description="Set on imported categories, e.g. zendesk.")
     article_count: int
@@ -55,6 +59,16 @@ class ArticleOut(BaseModel):
     updated_by_name: str | None
     helpful_count: int = Field(description='"Was this helpful?" yes votes.')
     not_helpful_count: int
+    locales: list[str] = Field(description="The languages it is translated into (any status).")
+    slug: str | None
+    meta_title: str | None
+    meta_description: str | None
+    canonical_url: str | None
+
+    @computed_field(description="A slug made from the title, or null when it gives none.")  # type: ignore[prop-decorator]
+    @property
+    def suggested_slug(self) -> str | None:
+        return help_locale.suggest_slug(self.title)
 
 
 class ArticlesOut(BaseModel):
@@ -62,14 +76,34 @@ class ArticlesOut(BaseModel):
     next_cursor: str | None = Field(description="null with `q` (the best 20 only).")
 
 
-class ArticleIn(Body):
+class SeoIn(Body):
+    slug: Annotated[str, StringConstraints(max_length=100)] | None = Field(
+        default=None,
+        description="The page's address ends `/<id>/<slug>`; the id decides which article, "
+        "so a slug never has to be unique. 3 to 100 of a-z, 0-9 and hyphens.",
+    )
+    meta_title: Annotated[str, StringConstraints(max_length=400)] | None = Field(
+        default=None, description="For the page's title tag; at most 120 characters."
+    )
+    meta_description: Annotated[str, StringConstraints(max_length=1000)] | None = Field(
+        default=None, description="For the page's description tag; at most 320 characters."
+    )
+    canonical_url: Annotated[str, StringConstraints(max_length=1000)] | None = Field(
+        default=None,
+        description="An https address to use as the canonical page instead of this one. "
+        "It belongs to this language only: a translation is its own canonical page unless "
+        "it has its own.",
+    )
+
+
+class ArticleIn(SeoIn):
     title: Title
     body: ArticleBody = ""
     status: ArticleStatus = ArticleStatus.draft
     category_id: UUID | None = None
 
 
-class ArticlePatch(Body):
+class ArticlePatch(SeoIn):
     title: Title | None = None
     body: ArticleBody | None = None
     status: ArticleStatus | None = None
@@ -132,12 +166,16 @@ async def list_articles(
     q: Annotated[str | None, Query(max_length=200, description="Search words")] = None,
     status_filter: Annotated[ArticleStatus | None, Query(alias="status")] = None,
     category_id: UUID | None = None,
+    missing_locale: Annotated[
+        str | None,
+        Query(max_length=11, description="Only articles with no translation in this language."),
+    ] = None,
     cursor: Annotated[str | None, Query(max_length=200)] = None,
     limit: Annotated[int, Query(ge=1, le=MAX_LIMIT)] = DEFAULT_LIMIT,
 ) -> ArticlesOut:
     page = await articles.list_articles(
         sm, caller, q=q, status=status_filter, category_id=category_id, cursor=cursor,
-        limit=limit,
+        limit=limit, missing_locale=missing_locale,
     )  # fmt: skip
     return ArticlesOut(
         articles=[ArticleOut.model_validate(dict(r)) for r in page.articles],
@@ -156,6 +194,7 @@ async def create_article(body: ArticleIn, caller: CallerDep, sm: SessionmakerDep
     row = await articles.create_article(
         sm, caller, title=body.title, body=body.body, status=body.status,
         category_id=body.category_id,
+        seo=body.model_dump(include=set(help_locale.SEO_FIELDS)),
     )  # fmt: skip
     return ArticleOut.model_validate(dict(row))
 

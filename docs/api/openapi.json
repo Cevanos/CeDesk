@@ -12534,6 +12534,25 @@
               "default": 50,
               "title": "Limit"
             }
+          },
+          {
+            "name": "locale",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 11
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A language code such as `hi` or `pt-br`. Each article is shown in that language when it has a published translation, else in the base language (`pt`), else in the default one.",
+              "title": "Locale"
+            },
+            "description": "A language code such as `hi` or `pt-br`. Each article is shown in that language when it has a published translation, else in the base language (`pt`), else in the default one."
           }
         ],
         "responses": {
@@ -12592,6 +12611,25 @@
               "format": "uuid",
               "title": "Article Id"
             }
+          },
+          {
+            "name": "locale",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 11
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A language code such as `hi` or `pt-br`. Each article is shown in that language when it has a published translation, else in the base language (`pt`), else in the default one.",
+              "title": "Locale"
+            },
+            "description": "A language code such as `hi` or `pt-br`. Each article is shown in that language when it has a published translation, else in the base language (`pt`), else in the default one."
           }
         ],
         "responses": {
@@ -12671,6 +12709,55 @@
           },
           "429": {
             "description": "Too many"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/public/{workspace}/sitemap": {
+      "get": {
+        "tags": [
+          "public"
+        ],
+        "summary": "The help center's pages for a sitemap.xml (no sign-in)",
+        "description": "Empty until an Admin makes the help center indexable. Cached for 5 minutes (`Cache-Control`). The frontend turns it into `sitemap.xml` and `robots.txt`.",
+        "operationId": "sitemap_api_v1_public__workspace__sitemap_get",
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Workspace"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SitemapOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown workspace"
+          },
+          "429": {
+            "description": "Too many requests from this IP"
           },
           "422": {
             "description": "Validation Error",
@@ -12943,6 +13030,25 @@
             }
           },
           {
+            "name": "missing_locale",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 11
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only articles with no translation in this language.",
+              "title": "Missing Locale"
+            },
+            "description": "Only articles with no translation in this language."
+          },
+          {
             "name": "cursor",
             "in": "query",
             "required": false,
@@ -13174,6 +13280,577 @@
           },
           "404": {
             "description": "Not found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/help-center/settings": {
+      "get": {
+        "tags": [
+          "help center"
+        ],
+        "summary": "The help center's default language",
+        "operationId": "get_settings_api_v1_help_center_settings_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HelpCenterSettingsOut"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "help center"
+        ],
+        "summary": "Change the default language or the indexable switch (Admin)",
+        "description": "Send only what changes. A new default language is refused (409) while an article has a translation in it.",
+        "operationId": "put_settings_api_v1_help_center_settings_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HelpCenterSettingsIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HelpCenterSettingsOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Admins only"
+          },
+          "409": {
+            "description": "Translations exist in that language"
+          },
+          "422": {
+            "description": "Not a language code"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/articles/{article_id}/translations": {
+      "get": {
+        "tags": [
+          "help center"
+        ],
+        "summary": "An article's translations, drafts included",
+        "operationId": "list_translations_api_v1_articles__article_id__translations_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "article_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Article Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/cedesk__helpdesk__api__article_translations__TranslationOut"
+                  },
+                  "title": "Response List Translations Api V1 Articles  Article Id  Translations Get"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/articles/{article_id}/translations/{locale}": {
+      "put": {
+        "tags": [
+          "help center"
+        ],
+        "summary": "Write an article's translation in one language (Admin)",
+        "description": "Makes it or replaces it. It shows in the public help center when both it and the article are published. Up to 40 languages per article.",
+        "operationId": "put_translation_api_v1_articles__article_id__translations__locale__put",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "article_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Article Id"
+            }
+          },
+          {
+            "name": "locale",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 11,
+              "description": "A language code such as `hi` or `pt-br` (stored lower-case).",
+              "title": "Locale"
+            },
+            "description": "A language code such as `hi` or `pt-br` (stored lower-case)."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TranslationIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/cedesk__helpdesk__api__article_translations__TranslationOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Admins only"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "422": {
+            "description": "Default language, bad code, too long or too many"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "help center"
+        ],
+        "summary": "Delete one translation (Admin)",
+        "operationId": "delete_translation_api_v1_articles__article_id__translations__locale__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "article_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Article Id"
+            }
+          },
+          {
+            "name": "locale",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 11,
+              "description": "A language code such as `hi` or `pt-br` (stored lower-case).",
+              "title": "Locale"
+            },
+            "description": "A language code such as `hi` or `pt-br` (stored lower-case)."
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Admins only"
+          },
+          "404": {
+            "description": "No such article or translation"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/article-categories/{category_id}/translations/{locale}": {
+      "put": {
+        "tags": [
+          "help center"
+        ],
+        "summary": "A category's name in one language (Admin)",
+        "operationId": "put_category_name_api_v1_article_categories__category_id__translations__locale__put",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "category_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Category Id"
+            }
+          },
+          {
+            "name": "locale",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 11,
+              "description": "A language code such as `hi` or `pt-br` (stored lower-case).",
+              "title": "Locale"
+            },
+            "description": "A language code such as `hi` or `pt-br` (stored lower-case)."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CategoryNameIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CategoryNamesOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Admins only"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "422": {
+            "description": "Invalid"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "help center"
+        ],
+        "summary": "Remove a category's name in one language (Admin)",
+        "operationId": "delete_category_name_api_v1_article_categories__category_id__translations__locale__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "category_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Category Id"
+            }
+          },
+          {
+            "name": "locale",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 11,
+              "description": "A language code such as `hi` or `pt-br` (stored lower-case).",
+              "title": "Locale"
+            },
+            "description": "A language code such as `hi` or `pt-br` (stored lower-case)."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CategoryNamesOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Admins only"
+          },
+          "404": {
+            "description": "No such category or name"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/help-center/domain": {
+      "get": {
+        "tags": [
+          "help center"
+        ],
+        "summary": "The help center's custom domain, or null (Admin)",
+        "operationId": "get_domain_api_v1_help_center_domain_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/HelpDomainOut"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Response Get Domain Api V1 Help Center Domain Get"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Admins only"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "help center"
+        ],
+        "summary": "Register the help center's domain (Admin)",
+        "description": "Starts as `pending` with a TXT record to publish; replaces an earlier domain (and its proof). Sending the same domain again changes nothing.",
+        "operationId": "put_domain_api_v1_help_center_domain_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HelpDomainIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HelpDomainOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Admins only"
+          },
+          "422": {
+            "description": "Not a domain, or one of the platform's own"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "help center"
+        ],
+        "summary": "Remove the help center's domain (Admin)",
+        "operationId": "delete_domain_api_v1_help_center_domain_delete",
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Admins only"
+          },
+          "404": {
+            "description": "No domain"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/help-center/domain/check": {
+      "post": {
+        "tags": [
+          "help center"
+        ],
+        "summary": "Read the TXT record now (Admin)",
+        "description": "Verifies the domain when the record holds the token. A verified domain stays verified until it has failed 3 checks in a row (the worker checks daily).",
+        "operationId": "check_domain_api_v1_help_center_domain_check_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HelpDomainOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Admins only"
+          },
+          "404": {
+            "description": "No domain"
+          },
+          "409": {
+            "description": "Another workspace has already proven that domain"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/public-hosts/{host}": {
+      "get": {
+        "tags": [
+          "help center"
+        ],
+        "summary": "Which workspace's help center is served on this host (no sign-in)",
+        "description": "For the frontend: it maps the `Host` of a request to a workspace. Only a verified domain answers; anything else is 404.",
+        "operationId": "host_workspace_api_v1_public_hosts__host__get",
+        "parameters": [
+          {
+            "name": "host",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Host"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No help center on that host"
+          },
+          "429": {
+            "description": "Too many requests from this IP"
           },
           "422": {
             "description": "Validation Error",
@@ -18359,7 +19036,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/TranslationOut"
+                  "$ref": "#/components/schemas/cedesk__helpdesk__api__ai__TranslationOut"
                 }
               }
             }
@@ -19098,6 +19775,31 @@
           "ai"
         ],
         "title": "AiReportOut"
+      },
+      "Alternate": {
+        "properties": {
+          "locale": {
+            "type": "string",
+            "title": "Locale"
+          },
+          "slug": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slug"
+          }
+        },
+        "type": "object",
+        "required": [
+          "locale",
+          "slug"
+        ],
+        "title": "Alternate"
       },
       "App": {
         "type": "string",
@@ -20577,6 +21279,7 @@
           "dashboards",
           "report_schedules",
           "flows",
+          "help_domain",
           "campaigns",
           "resolutions"
         ],
@@ -20585,6 +21288,58 @@
       },
       "ArticleIn": {
         "properties": {
+          "slug": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slug",
+            "description": "The page's address ends `/<id>/<slug>`; the id decides which article, so a slug never has to be unique. 3 to 100 of a-z, 0-9 and hyphens."
+          },
+          "meta_title": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 400
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Meta Title",
+            "description": "For the page's title tag; at most 120 characters."
+          },
+          "meta_description": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Meta Description",
+            "description": "For the page's description tag; at most 320 characters."
+          },
+          "canonical_url": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Canonical Url",
+            "description": "An https address to use as the canonical page instead of this one. It belongs to this language only: a translation is its own canonical page unless it has its own."
+          },
           "title": {
             "type": "string",
             "maxLength": 200,
@@ -20716,6 +21471,71 @@
           "not_helpful_count": {
             "type": "integer",
             "title": "Not Helpful Count"
+          },
+          "locales": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Locales",
+            "description": "The languages it is translated into (any status)."
+          },
+          "slug": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slug"
+          },
+          "meta_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Meta Title"
+          },
+          "meta_description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Meta Description"
+          },
+          "canonical_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Canonical Url"
+          },
+          "suggested_slug": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suggested Slug",
+            "description": "A slug made from the title, or null when it gives none.",
+            "readOnly": true
           }
         },
         "type": "object",
@@ -20732,12 +21552,70 @@
           "updated_at",
           "updated_by_name",
           "helpful_count",
-          "not_helpful_count"
+          "not_helpful_count",
+          "locales",
+          "slug",
+          "meta_title",
+          "meta_description",
+          "canonical_url",
+          "suggested_slug"
         ],
         "title": "ArticleOut"
       },
       "ArticlePatch": {
         "properties": {
+          "slug": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slug",
+            "description": "The page's address ends `/<id>/<slug>`; the id decides which article, so a slug never has to be unique. 3 to 100 of a-z, 0-9 and hyphens."
+          },
+          "meta_title": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 400
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Meta Title",
+            "description": "For the page's title tag; at most 120 characters."
+          },
+          "meta_description": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Meta Description",
+            "description": "For the page's description tag; at most 320 characters."
+          },
+          "canonical_url": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Canonical Url",
+            "description": "An https address to use as the canonical page instead of this one. It belongs to this language only: a translation is its own canonical page unless it has its own."
+          },
           "title": {
             "anyOf": [
               {
@@ -22242,6 +23120,39 @@
         ],
         "title": "CategoryIn"
       },
+      "CategoryNameIn": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Name"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "CategoryNameIn"
+      },
+      "CategoryNamesOut": {
+        "properties": {
+          "name_translations": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Name Translations",
+            "description": "`{language: name}`."
+          }
+        },
+        "type": "object",
+        "required": [
+          "name_translations"
+        ],
+        "title": "CategoryNamesOut"
+      },
       "CategoryOut": {
         "properties": {
           "id": {
@@ -22252,6 +23163,14 @@
           "name": {
             "type": "string",
             "title": "Name"
+          },
+          "name_translations": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Name Translations",
+            "description": "The name in other languages, `{language: name}`."
           },
           "position": {
             "type": "integer",
@@ -22283,6 +23202,7 @@
         "required": [
           "id",
           "name",
+          "name_translations",
           "position",
           "source",
           "article_count",
@@ -24895,6 +25815,30 @@
         ],
         "title": "DnsOut"
       },
+      "DnsStep": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "title": "Type",
+            "description": "TXT, or CNAME."
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "value": {
+            "type": "string",
+            "title": "Value"
+          }
+        },
+        "type": "object",
+        "required": [
+          "type",
+          "name",
+          "value"
+        ],
+        "title": "DnsStep"
+      },
       "DownloadOut": {
         "properties": {
           "url": {
@@ -26454,6 +27398,21 @@
             "type": "string",
             "title": "Workspace Name"
           },
+          "indexable": {
+            "type": "boolean",
+            "title": "Indexable",
+            "description": "True when an Admin allowed search engines to index the help center. Otherwise serve `noindex`."
+          },
+          "default_locale": {
+            "type": "string",
+            "title": "Default Locale",
+            "description": "The language the articles are written in."
+          },
+          "locale": {
+            "type": "string",
+            "title": "Locale",
+            "description": "The language asked for (the default one when none was)."
+          },
           "categories": {
             "items": {
               "$ref": "#/components/schemas/PublicCategoryOut"
@@ -26486,11 +27445,155 @@
         "type": "object",
         "required": [
           "workspace_name",
+          "indexable",
+          "default_locale",
+          "locale",
           "categories",
           "articles",
           "next_cursor"
         ],
         "title": "HelpCenterOut"
+      },
+      "HelpCenterSettingsIn": {
+        "properties": {
+          "default_locale": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 11,
+                "minLength": 2
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Locale"
+          },
+          "seo_indexable": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seo Indexable",
+            "description": "Send only what changes."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "HelpCenterSettingsIn"
+      },
+      "HelpCenterSettingsOut": {
+        "properties": {
+          "default_locale": {
+            "type": "string",
+            "title": "Default Locale",
+            "description": "The language the articles themselves are written in. Every other language is a translation."
+          },
+          "seo_indexable": {
+            "type": "boolean",
+            "title": "Seo Indexable",
+            "description": "Whether search engines may index the public help center. Off until an Admin turns it on; the frontend serves `noindex` and an empty sitemap meanwhile."
+          }
+        },
+        "type": "object",
+        "required": [
+          "default_locale",
+          "seo_indexable"
+        ],
+        "title": "HelpCenterSettingsOut"
+      },
+      "HelpDomainIn": {
+        "properties": {
+          "domain": {
+            "type": "string",
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Domain",
+            "description": "A domain you own, e.g. help.example.com (no https://, port or path)."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "domain"
+        ],
+        "title": "HelpDomainIn"
+      },
+      "HelpDomainOut": {
+        "properties": {
+          "domain": {
+            "type": "string",
+            "title": "Domain"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "description": "`pending` until the TXT record is found, then `verified`. Only a verified domain is served."
+          },
+          "verified_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verified At"
+          },
+          "last_checked_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Checked At"
+          },
+          "failed_checks": {
+            "type": "integer",
+            "title": "Failed Checks",
+            "description": "Checks in a row that did not find the record. A verified domain goes back to pending after 3."
+          },
+          "last_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error"
+          },
+          "dns": {
+            "items": {
+              "$ref": "#/components/schemas/DnsStep"
+            },
+            "type": "array",
+            "title": "Dns",
+            "description": "The records to add at the domain's DNS host."
+          }
+        },
+        "type": "object",
+        "required": [
+          "domain",
+          "status",
+          "verified_at",
+          "last_checked_at",
+          "failed_checks",
+          "last_error",
+          "dns"
+        ],
+        "title": "HelpDomainOut"
       },
       "HistoryOut": {
         "properties": {
@@ -26732,6 +27835,25 @@
         "additionalProperties": false,
         "type": "object",
         "title": "HolidayPatch"
+      },
+      "HostOut": {
+        "properties": {
+          "workspace": {
+            "type": "string",
+            "title": "Workspace",
+            "description": "The workspace's slug: the help center is at `/<slug>/help`."
+          },
+          "default_locale": {
+            "type": "string",
+            "title": "Default Locale"
+          }
+        },
+        "type": "object",
+        "required": [
+          "workspace",
+          "default_locale"
+        ],
+        "title": "HostOut"
       },
       "ImproveIn": {
         "properties": {
@@ -29868,10 +30990,88 @@
             "format": "date-time",
             "title": "Updated At"
           },
+          "locale": {
+            "type": "string",
+            "title": "Locale",
+            "description": "The language this row is in."
+          },
+          "slug": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slug",
+            "description": "Cosmetic: the page is `/help/<id>/<slug>`."
+          },
           "body": {
             "type": "string",
             "title": "Body",
             "description": "Markdown. Render it without raw HTML."
+          },
+          "meta_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Meta Title",
+            "description": "For the title tag; fall back to `title`."
+          },
+          "meta_description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Meta Description"
+          },
+          "canonical_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Canonical Url",
+            "description": "An override for this language's page only; null means this page is its own canonical address."
+          },
+          "alternates": {
+            "items": {
+              "$ref": "#/components/schemas/Alternate"
+            },
+            "type": "array",
+            "title": "Alternates",
+            "description": "Every language the article is published in, this one included: the `hreflang` links."
+          },
+          "default_locale": {
+            "type": "string",
+            "title": "Default Locale"
+          },
+          "fallback": {
+            "type": "boolean",
+            "title": "Fallback",
+            "description": "True when a language was asked for and the article is shown in another."
+          },
+          "available_locales": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Available Locales",
+            "description": "Every language it is published in, for a language switcher.",
+            "readOnly": true
           }
         },
         "type": "object",
@@ -29881,7 +31081,16 @@
           "category_id",
           "category_name",
           "updated_at",
-          "body"
+          "locale",
+          "slug",
+          "body",
+          "meta_title",
+          "meta_description",
+          "canonical_url",
+          "alternates",
+          "default_locale",
+          "fallback",
+          "available_locales"
         ],
         "title": "PublicArticleOut"
       },
@@ -29923,6 +31132,23 @@
             "type": "string",
             "format": "date-time",
             "title": "Updated At"
+          },
+          "locale": {
+            "type": "string",
+            "title": "Locale",
+            "description": "The language this row is in."
+          },
+          "slug": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slug",
+            "description": "Cosmetic: the page is `/help/<id>/<slug>`."
           }
         },
         "type": "object",
@@ -29931,7 +31157,9 @@
           "title",
           "category_id",
           "category_name",
-          "updated_at"
+          "updated_at",
+          "locale",
+          "slug"
         ],
         "title": "PublicArticleRow"
       },
@@ -34120,6 +35348,80 @@
         ],
         "title": "SignupVerifyBody"
       },
+      "SitemapEntryOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "locale": {
+            "type": "string",
+            "title": "Locale"
+          },
+          "slug": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slug"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "alternates": {
+            "items": {
+              "$ref": "#/components/schemas/Alternate"
+            },
+            "type": "array",
+            "title": "Alternates"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "locale",
+          "slug",
+          "updated_at",
+          "alternates"
+        ],
+        "title": "SitemapEntryOut"
+      },
+      "SitemapOut": {
+        "properties": {
+          "indexable": {
+            "type": "boolean",
+            "title": "Indexable",
+            "description": "False: the list is empty on purpose."
+          },
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/SitemapEntryOut"
+            },
+            "type": "array",
+            "title": "Entries",
+            "description": "One per published article and language."
+          },
+          "truncated": {
+            "type": "boolean",
+            "title": "Truncated",
+            "description": "More than 10,000 articles: only the first are listed."
+          }
+        },
+        "type": "object",
+        "required": [
+          "indexable",
+          "entries",
+          "truncated"
+        ],
+        "title": "SitemapOut"
+      },
       "SlaClockOut": {
         "properties": {
           "target_minutes": {
@@ -36932,43 +38234,83 @@
         ],
         "title": "TranslateIn"
       },
-      "TranslationOut": {
+      "TranslationIn": {
         "properties": {
-          "text": {
+          "slug": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slug",
+            "description": "The page's address ends `/<id>/<slug>`; the id decides which article, so a slug never has to be unique. 3 to 100 of a-z, 0-9 and hyphens."
+          },
+          "meta_title": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 400
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Meta Title",
+            "description": "For the page's title tag; at most 120 characters."
+          },
+          "meta_description": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Meta Description",
+            "description": "For the page's description tag; at most 320 characters."
+          },
+          "canonical_url": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Canonical Url",
+            "description": "An https address to use as the canonical page instead of this one. It belongs to this language only: a translation is its own canonical page unless it has its own."
+          },
+          "title": {
             "type": "string",
-            "title": "Text"
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Title"
           },
-          "from": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "From",
-            "description": "The language found, e.g. hi."
+          "body": {
+            "type": "string",
+            "maxLength": 100000,
+            "title": "Body",
+            "default": ""
           },
-          "note": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Note",
-            "description": "Show it to the agent when set, instead of \"Translated from …\": \"This is already in English.\" or \"Cevanos found nothing to translate in this text.\" (`text` is the text as it was). A text Cevanos should have translated but sent back as it was is a 503 instead."
+          "status": {
+            "$ref": "#/components/schemas/ArticleStatus",
+            "default": "draft"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
-          "text",
-          "from"
+          "title"
         ],
-        "title": "TranslationOut"
+        "title": "TranslationIn"
       },
       "TriageSettingsIn": {
         "properties": {
@@ -37502,6 +38844,19 @@
             "minLength": 8,
             "title": "Visitor",
             "description": "A random id the page keeps for this browser (e.g. a UUID in localStorage). One vote per visitor per article; voting again changes it."
+          },
+          "locale": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 11
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Locale",
+            "description": "The language of the page voted on."
           }
         },
         "additionalProperties": false,
@@ -37869,6 +39224,173 @@
           "summary"
         ],
         "title": "SummaryOut"
+      },
+      "cedesk__helpdesk__api__ai__TranslationOut": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "from": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "From",
+            "description": "The language found, e.g. hi."
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note",
+            "description": "Show it to the agent when set, instead of \"Translated from …\": \"This is already in English.\" or \"Cevanos found nothing to translate in this text.\" (`text` is the text as it was). A text Cevanos should have translated but sent back as it was is a 503 instead."
+          }
+        },
+        "type": "object",
+        "required": [
+          "text",
+          "from"
+        ],
+        "title": "TranslationOut"
+      },
+      "cedesk__helpdesk__api__article_translations__TranslationOut": {
+        "properties": {
+          "locale": {
+            "type": "string",
+            "title": "Locale"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "body": {
+            "type": "string",
+            "title": "Body",
+            "description": "Markdown. Render it without raw HTML."
+          },
+          "status": {
+            "$ref": "#/components/schemas/ArticleStatus",
+            "description": "Published only counts when the article is too."
+          },
+          "slug": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slug"
+          },
+          "meta_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Meta Title"
+          },
+          "meta_description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Meta Description"
+          },
+          "canonical_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Canonical Url",
+            "description": "This language's own override; null means it is its own canonical page."
+          },
+          "published_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published At"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "updated_by_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated By Name"
+          },
+          "suggested_slug": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suggested Slug",
+            "description": "A slug made from the title, or null when it gives none.",
+            "readOnly": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "locale",
+          "title",
+          "body",
+          "status",
+          "slug",
+          "meta_title",
+          "meta_description",
+          "canonical_url",
+          "published_at",
+          "created_at",
+          "updated_at",
+          "updated_by_name",
+          "suggested_slug"
+        ],
+        "title": "TranslationOut"
       },
       "cedesk__helpdesk__api__campaigns__RecipientOut": {
         "properties": {

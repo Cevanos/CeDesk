@@ -140,6 +140,64 @@ merged) whose first-reply clock stopped or ran out, the share answered in time. 
 still within its first-reply time counts nowhere yet. The CSV's Teams table gains the
 same two columns. No migration.
 
+## 2026-11-23: Help center: languages, SEO controls, custom domain
+
+Additive only: new routes and fields; nothing existing changed shape (the public routes called
+without `locale` answer as before, with extra fields). Migrations 0083-0085. Feature-gap plan
+phase 4 (4.1, 4.2, 4.3). No new permission: agents read (drafts too), the public reads what is
+published, every write is Admin (Settings), like articles and categories today. New audit area:
+`help_domain` (the others stay under `help_center`).
+
+- **Languages (4.1).** The article row is the workspace's *default-language* version; every
+  other language is a translation beside it. `GET|PUT /help-center/settings` holds the
+  `default_locale` (starts `en`); changing it is **409** while any article has a translation in
+  the new default. `GET /articles/{id}/translations`, `PUT|DELETE
+  /articles/{id}/translations/{locale}` (a PUT makes or replaces one: `title`, `body`, `status`;
+  up to 40 per article; the default language is **422**: edit the article). Codes are like `hi`
+  or `pt-br`, stored lower-case. A translation shows publicly only when the article **and** the
+  translation are published. `GET /articles` rows gain `locales`, and the list a
+  `missing_locale` filter ("what still needs a Hindi version"). Categories gain
+  `name_translations` (`{locale: name}`), set with `PUT|DELETE
+  /article-categories/{id}/translations/{locale}`.
+- **Public routes take `locale`.** `GET /public/{workspace}/articles` and `.../{id}` show each
+  article in that language when it has a published translation, else in the base language
+  (`pt-br`, then `pt`), else the default. Rows and the article carry `locale` (what is shown);
+  the article adds `fallback` (true when it is not what was asked), `default_locale` and
+  `available_locales` (for a language switcher); the list adds `default_locale` and `locale`.
+  Search in a language searches that language's text, and the default text of articles with no
+  published translation, so a draft translation never hides an article. A bad code is **422**.
+  `POST .../vote` takes an optional `locale` (the page voted on); a visitor still has one vote
+  per article.
+- **SEO (4.3).** Articles and translations gain `slug`, `meta_title` (120), `meta_description`
+  (320) and `canonical_url` (https), sent on create, `PATCH`, or the translation `PUT` (a PUT
+  replaces them all); `suggested_slug` is made from the title (null when it gives none, as for
+  a Hindi title). The slug is cosmetic: a page is `/help/{id}/{slug}`, the id decides which
+  article, so slugs need not be unique and changing one breaks no link. The canonical address
+  belongs to its own language only: a translation without one is its own canonical page. Public
+  answers carry these fields plus `alternates` (`[{locale, slug}]`, every published language, for
+  `hreflang`). The settings gain `seo_indexable` (**false** until an Admin turns it on); the
+  public help center answers `indexable`. New `GET /public/{workspace}/sitemap`: one entry per
+  published article and language (`id`, `locale`, `slug`, `updated_at`, `alternates`), empty
+  while not indexable, at most 10,000 articles (`truncated`), `Cache-Control: public,
+  max-age=300`. Meta tags, `sitemap.xml` and `robots.txt` are the frontend's.
+- **Custom domain (4.2), off until `CEDESK_TLS_ASK_KEY` is set.** `GET|PUT|DELETE
+  /help-center/domain`, `POST /help-center/domain/check` (Admin): register `help.example.com`,
+  publish the TXT record shown (`dns`: `_cedesk-verify.<domain>` = `cedesk-verify=<token>`, and
+  a CNAME when `CEDESK_HELP_CNAME_TARGET` is set), then check. Only a **verified** domain is
+  served. One domain per workspace; several workspaces may hold the same domain as pending, the
+  first to prove it wins (**409** for the others); the platform's own hosts are **422**. The
+  worker re-reads each verified domain daily and sends it back to pending after 3 failed daily
+  checks in a row (pressing Check shows a missing record but never counts toward that, so a few
+  clicks while DNS is being moved cannot take a domain down). `GET /public-hosts/{host}` (no
+  sign-in) answers `{workspace, default_locale}` for a verified host, cacheable for 60 seconds:
+  the frontend maps `Host` to a workspace with it. The route Caddy asks before
+  getting a certificate, `GET /internal/tls-ask`, exists only with the key and is not in this
+  file. See `deploy/README.md`.
+- **Settings.** `CEDESK_TLS_ASK_KEY`, `CEDESK_HELP_CNAME_TARGET` (both empty = off); in
+  `docs/SETTINGS.md`.
+- **Going back.** Migration 0083 refuses to go down while a translation exists (delete them
+  first); 0084 and 0085 drop their columns and tables.
+
 ## 2026-11-22: Reporting follow-ups
 
 No new routes or fields; no migration.

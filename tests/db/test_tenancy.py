@@ -15,6 +15,10 @@ GLOBAL_TABLES = {
     # support email address -> workspace id, read when an email arrives (migration 0017).
     # Only addresses; the app can only read it (triggers keep it in step).
     "email_address_directory",
+    # verified help center domain -> workspace id, read before the workspace is known so the
+    # frontend can serve a customer's own domain (0085). Only domains; the app can only read
+    # it (a trigger on hd_help_domain keeps it in step).
+    "help_domain_directory",
     # Self-service sign-ups waiting for their email code, and those code emails (0060):
     # read before any workspace exists. The password is only a hash, the code and the
     # client IP only HMACs; rows are deleted after two days.

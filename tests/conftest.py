@@ -70,6 +70,8 @@ async def empty_archive_async() -> None:
                     "TRUNCATE hd_ticket_archive; END IF; "
                     "IF to_regclass('hd_retention_export') IS NOT NULL THEN "
                     "TRUNCATE hd_retention_export; END IF; "
+                    "IF to_regclass('hd_article_translation') IS NOT NULL THEN "
+                    "TRUNCATE hd_article_translation; END IF; "
                     "IF EXISTS (SELECT 1 FROM information_schema.columns WHERE "
                     "table_name = 'hd_approval' AND column_name = 'cevanos_hold_id') THEN "
                     "ALTER TABLE hd_approval NO FORCE ROW LEVEL SECURITY; "

@@ -322,6 +322,7 @@ def _worker(once: bool) -> int:
     from cedesk.cevanos_client import make_cevanos
     from cedesk.crypto import Sealer
     from cedesk.db import make_engine, make_sessionmaker, notifications
+    from cedesk.dnscheck import DnsLookup
     from cedesk.helpdesk.api.campaigns import config_of as campaign_config
     from cedesk.helpdesk.domain import signup as signup_rules
     from cedesk.helpdesk.domain.limits import parse_plans
@@ -339,6 +340,7 @@ def _worker(once: bool) -> int:
     from cedesk.helpdesk.service.delivery import Handler, deliver_due
     from cedesk.helpdesk.service.email import send_due
     from cedesk.helpdesk.service.email_in import poll
+    from cedesk.helpdesk.service.help_domain import recheck_everywhere
     from cedesk.helpdesk.service.idempotency import sweep_everywhere
     from cedesk.helpdesk.service.imports.framework import make_importers, retry_policy
     from cedesk.helpdesk.service.imports.framework import run_due as run_imports
@@ -662,6 +664,13 @@ def _worker(once: bool) -> int:
                             logger.info(f"retention: {gone} tickets", extra={"event": "retention"})
                     except Exception:
                         logger.exception("Retention failed")
+                    try:  # verified help center domains still hold their TXT record (plan 4.2)
+                        rechecked = await recheck_everywhere(sm, DnsLookup())
+                        if rechecked:
+                            logger.info(f"help center domains checked: {rechecked}",
+                                        extra={"event": "help_domain"})  # fmt: skip
+                    except Exception:
+                        logger.exception("Checking help center domains failed")
                     retained_at = time.monotonic()
                 if once:
                     return

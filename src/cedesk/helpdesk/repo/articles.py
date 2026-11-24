@@ -15,10 +15,17 @@ _VOTES = (
 )
 _ARTICLE = (  # built from the constants above only
     "SELECT a.id, a.category_id, c.name AS category_name, a.title, a.body, a.status, "  # noqa: S608
+    "a.slug, a.meta_title, a.meta_description, a.canonical_url, "
     "a.source, a.published_at, a.created_at, a.updated_at, m.name AS updated_by_name, "
+    "(SELECT coalesce(array_agg(t.locale ORDER BY t.locale), '{}') "
+    "FROM hd_article_translation t WHERE t.article_id = a.id) AS locales, "
     + _VOTES
     + " FROM hd_article a LEFT JOIN hd_article_category c ON c.id = a.category_id "
     "LEFT JOIN member m ON m.id = a.updated_by "
+)
+_MISSING = (  # no translation in the language the translator is looking for
+    "AND (CAST(:missing AS text) IS NULL OR NOT EXISTS (SELECT 1 FROM "
+    "hd_article_translation x WHERE x.article_id = a.id AND x.locale = :missing)) "
 )
 
 
@@ -29,7 +36,7 @@ async def categories(session: AsyncSession, *, published_only: bool) -> Sequence
     """With the number of articles in each (only published ones for the public)."""
     result = await session.execute(
         text(
-            "SELECT c.id, c.name, c.position, c.source, c.created_at, "
+            "SELECT c.id, c.name, c.name_translations, c.position, c.source, c.created_at, "
             "(SELECT count(*) FROM hd_article a WHERE a.category_id = c.id "
             "AND (NOT :published_only OR a.status = 'published')) AS article_count "
             "FROM hd_article_category c ORDER BY c.position, c.name"
@@ -100,18 +107,21 @@ async def list_articles(
     category_id: UUID | None,
     before: tuple[datetime, UUID] | None,
     limit: int,
+    missing_locale: str | None = None,
 ) -> Sequence[RowMapping]:
-    """Newest first."""
+    """Newest first. `missing_locale`: only articles with no translation in that language."""
     result = await session.execute(
         text(
             _ARTICLE + "WHERE (CAST(:status AS text) IS NULL OR a.status = :status) "
             "AND (CAST(:category AS uuid) IS NULL OR a.category_id = :category) "
-            "AND (CAST(:at AS timestamptz) IS NULL OR (a.created_at, a.id) < (:at, :id)) "
+            + _MISSING
+            + "AND (CAST(:at AS timestamptz) IS NULL OR (a.created_at, a.id) < (:at, :id)) "
             "ORDER BY a.created_at DESC, a.id DESC LIMIT :limit"
         ),
         {
             "status": status,
             "category": category_id,
+            "missing": missing_locale,
             "at": before[0] if before else None,
             "id": before[1] if before else None,
             "limit": limit,
@@ -127,6 +137,7 @@ async def search(
     status: str | None,
     category_id: UUID | None,
     limit: int,
+    missing_locale: str | None = None,
 ) -> Sequence[RowMapping]:
     """Best match first (a title match counts more than one in the body)."""
     result = await session.execute(
@@ -134,10 +145,17 @@ async def search(
             _ARTICLE + "WHERE a.search @@ to_tsquery('simple', :q) "
             "AND (CAST(:status AS text) IS NULL OR a.status = :status) "
             "AND (CAST(:category AS uuid) IS NULL OR a.category_id = :category) "
-            "ORDER BY ts_rank(a.search, to_tsquery('simple', :q)) DESC, a.created_at DESC "
+            + _MISSING
+            + "ORDER BY ts_rank(a.search, to_tsquery('simple', :q)) DESC, a.created_at DESC "
             "LIMIT :limit"
         ),
-        {"q": query, "status": status, "category": category_id, "limit": limit},
+        {
+            "q": query,
+            "status": status,
+            "category": category_id,
+            "missing": missing_locale,
+            "limit": limit,
+        },
     )
     return result.mappings().all()
 
@@ -151,11 +169,17 @@ async def insert_article(
     body: str,
     status: str,
     member_id: UUID,
+    slug: str | None = None,
+    meta_title: str | None = None,
+    meta_description: str | None = None,
+    canonical_url: str | None = None,
 ) -> UUID:
     result = await session.execute(
         text(
             "INSERT INTO hd_article (workspace_id, category_id, title, body, status, "
-            "updated_by, published_at) VALUES (:ws, :category, :title, :body, :status, :by, "
+            "updated_by, slug, meta_title, meta_description, canonical_url, published_at) "
+            "VALUES (:ws, :category, :title, :body, :status, :by, :slug, :meta_title, "
+            ":meta_description, :canonical_url, "
             "CASE WHEN :status = 'published' THEN now() END) RETURNING id"
         ),
         {
@@ -165,6 +189,10 @@ async def insert_article(
             "body": body,
             "status": status,
             "by": member_id,
+            "slug": slug,
+            "meta_title": meta_title,
+            "meta_description": meta_description,
+            "canonical_url": canonical_url,
         },
     )
     found: UUID = result.scalar_one()
@@ -180,12 +208,18 @@ async def update_article(
     body: str,
     status: str,
     member_id: UUID,
+    slug: str | None = None,
+    meta_title: str | None = None,
+    meta_description: str | None = None,
+    canonical_url: str | None = None,
 ) -> None:
     """`published_at` is the first time it went live; unpublishing keeps it."""
     await session.execute(
         text(
             "UPDATE hd_article SET category_id = :category, title = :title, body = :body, "
-            "status = :status, updated_by = :by, updated_at = now(), "
+            "status = :status, updated_by = :by, updated_at = now(), slug = :slug, "
+            "meta_title = :meta_title, meta_description = :meta_description, "
+            "canonical_url = :canonical_url, "
             "published_at = CASE WHEN :status = 'published' "
             "THEN coalesce(published_at, now()) ELSE published_at END WHERE id = :id"
         ),
@@ -196,6 +230,10 @@ async def update_article(
             "body": body,
             "status": status,
             "by": member_id,
+            "slug": slug,
+            "meta_title": meta_title,
+            "meta_description": meta_description,
+            "canonical_url": canonical_url,
         },
     )
 
@@ -224,7 +262,8 @@ async def set_body(session: AsyncSession, article_id: UUID, body: str) -> None:
 async def lock_article(session: AsyncSession, article_id: UUID) -> RowMapping | None:
     result = await session.execute(
         text(
-            "SELECT id, category_id, title, body, status FROM hd_article WHERE id = :id FOR UPDATE"
+            "SELECT id, category_id, title, body, status, slug, meta_title, meta_description, "
+            "canonical_url FROM hd_article WHERE id = :id FOR UPDATE"
         ),
         {"id": article_id},
     )
@@ -248,13 +287,23 @@ async def vote(
     article_id: UUID,
     visitor_hash: bytes,
     helpful: bool,
+    locale: str | None = None,
 ) -> None:
+    """One vote per visitor per article; `locale` is the language of the page voted on
+    (the last vote wins, like `helpful`)."""
     await session.execute(
         text(
-            "INSERT INTO hd_article_vote (workspace_id, article_id, visitor_hash, helpful) "
-            "VALUES (:ws, :article, :visitor, :helpful) "
+            "INSERT INTO hd_article_vote (workspace_id, article_id, visitor_hash, helpful, "
+            "locale) VALUES (:ws, :article, :visitor, :helpful, :locale) "
             "ON CONFLICT (workspace_id, article_id, visitor_hash) "
-            "DO UPDATE SET helpful = EXCLUDED.helpful, voted_at = now()"
+            "DO UPDATE SET helpful = EXCLUDED.helpful, locale = EXCLUDED.locale, "
+            "voted_at = now()"
         ),
-        {"ws": workspace_id, "article": article_id, "visitor": visitor_hash, "helpful": helpful},
+        {
+            "ws": workspace_id,
+            "article": article_id,
+            "visitor": visitor_hash,
+            "helpful": helpful,
+            "locale": locale,
+        },
     )
