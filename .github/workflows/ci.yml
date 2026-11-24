@@ -35,6 +35,8 @@ jobs:
       # the upgrade PRs.
       - name: Check libraries for known vulnerabilities
         run: uv export --frozen --no-hashes --no-emit-project --format requirements-txt | uvx pip-audit==2.10.1 --disable-pip --no-deps -r /dev/stdin
+      - name: Check the user guide against the code
+        run: PYTHONPATH=scripts uv run python scripts/check_docs.py
       - run: uv run ruff check .
       - run: uv run ruff format --check .
       - run: uv run mypy
