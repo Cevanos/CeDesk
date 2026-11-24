@@ -27,6 +27,9 @@ BRAND = "#6C55F6"
 SITE = os.environ.get("DOCS_SITE_NAME", "CeDesk Docs")
 BASE_URL = os.environ.get("DOCS_BASE_URL", "").rstrip("/")
 SEARCH = os.environ.get("DOCS_SEARCH") == "1"
+#   DOCS_BASE_PATH   where the site is mounted, for example /docs when it is served inside
+#                    the app. Page links are relative; only search and the 404 page need it.
+BASE_PATH = os.environ.get("DOCS_BASE_PATH", "").rstrip("/")
 PUBLIC = False  # set by --public: only published articles, and search engines may index it
 GLOSSARY = True  # whether the glossary page is part of this build
 
@@ -146,8 +149,8 @@ def render(md: str) -> tuple[str, list[tuple[str, str]]]:
 def shell(title: str, side: str, body: str, root: str) -> str:
     robots = "" if PUBLIC else '<meta name="robots" content="noindex">'
     search_head = (
-        '<link href="/pagefind/pagefind-ui.css" rel="stylesheet">'
-        '<script src="/pagefind/pagefind-ui.js"></script>'
+        f'<link href="{BASE_PATH}/pagefind/pagefind-ui.css" rel="stylesheet">'
+        f'<script src="{BASE_PATH}/pagefind/pagefind-ui.js"></script>'
         if SEARCH
         else ""
     )
@@ -262,8 +265,8 @@ def write_site_files(arts: list[Page], order: list[str]) -> None:
             "Page not found",
             "",
             "<h1>Page not found</h1><p>That page does not exist or has moved. "
-            '<a href="/index.html">Go to the home page</a>.</p>',
-            "/",
+            f'<a href="{BASE_PATH}/index.html">Go to the home page</a>.</p>',
+            f"{BASE_PATH}/",
         ),
         encoding="utf-8",
     )

@@ -133,10 +133,56 @@ image optionally serve it at `/docs` when a folder is mounted.
 
 ## Decisions
 
-1. **The host: Cloudflare Pages.** Decided.
-2. **The address**: domain and subdomain. Still open.
-3. **The name**: the build uses "CeDesk Docs" unless the repository variable
+1. **Where: inside the app, at `<the app's address>/docs`.** Decided 24 Nov 2026: the docs
+   stay on the same website as the app, for now `http://156.67.82.131:6543/docs`. The
+   Cloudflare Pages parts below are **optional and not used**; keep them for later if the
+   docs ever move to their own address.
+2. **The name**: the build uses "CeDesk Docs" unless the repository variable
    `DOCS_SITE_NAME` says otherwise. Still open.
+
+## The chosen setup: inside the app at /docs
+
+The app is a Next.js project (it sends nonce-based security headers and redirects unknown
+paths to the sign-in page). The docs are plain files, so the front end serves them from its
+`public` folder. Nothing runs on the API side.
+
+**What the docs team provides.** The workflow `Docs site` builds the pages for `/docs` and
+uploads them as the artifact `docs-site` on every pull request and every merge to `main`
+(GitHub › Actions › the run › Artifacts). To build by hand:
+
+```
+DOCS_BASE_PATH=/docs PYTHONPATH=scripts uv run python scripts/build_docs.py
+```
+
+The result is the folder `docs/_site/`. Every page link is relative and ends in
+`.html`, so no rewrite rules are needed for pages.
+
+**What the front-end developer does (one time):**
+
+1. Copy the folder's contents to `public/docs/` in the front-end project, so that
+   `public/docs/index.html` exists. Do it in the front end's build, or commit it.
+2. Let `/docs` through the sign-in redirect, or leave it behind sign-in on purpose (see
+   below). Today any unknown path answers a redirect to `/login?next=...`.
+3. Make `/docs` and `/docs/` open `/docs/index.html`, for example with a rewrite in
+   `next.config`: `{ source: "/docs", destination: "/docs/index.html" }`.
+4. Add a **Help** item in the account menu that opens `/docs/`, and the **Learn more** links
+   from the page-to-article map above, as `/docs/<topic>/<slug>.html`.
+
+**Who can read it.** If `/docs` stays behind the sign-in, only signed-in people see the
+docs. That is fine while every article is a draft. Make it open before customers should
+read it.
+
+**Search.** The app's security header allows only scripts with a per-request nonce, and
+static files cannot have one, so the search box would not run on these pages, and the site
+is built without it here. To get search, exempt `/docs` from that header, then build with
+`DOCS_SEARCH=1` and run Pagefind over the folder as the workflow's staging job does.
+
+**Drafts.** The build shows every article with its "Draft" badge and asks search engines not
+to index it. After a topic is reviewed and marked `published`, nothing else changes. When the
+docs become open to everyone, build with `--public` to leave out drafts.
+
+**Updating.** The docs change with each merge. Re-copy the folder when you deploy the
+front end, or from the artifact of the latest `main` run.
 
 ## What is built (Cloudflare Pages)
 
