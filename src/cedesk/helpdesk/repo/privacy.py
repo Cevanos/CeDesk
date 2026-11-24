@@ -119,6 +119,19 @@ async def ratings_of(session: AsyncSession, contact_id: UUID) -> Sequence[RowMap
     return result.mappings().all()
 
 
+async def receipts_of(session: AsyncSession, ids: Sequence[UUID]) -> Sequence[RowMapping]:
+    """The tickets' resolution receipts (differentiator plan #5)."""
+    result = await session.execute(
+        text(
+            "SELECT ticket_id, request, action_taken, result, verified, verified_at, "
+            "customer_notified, pending_item, created_at "
+            "FROM hd_resolution WHERE ticket_id = ANY(:ids)"
+        ),
+        {"ids": list(ids)},
+    )
+    return result.mappings().all()
+
+
 # ---- requests -----------------------------------------------------------------------
 
 
@@ -287,6 +300,12 @@ async def erase_tickets(session: AsyncSession, ids: list[UUID]) -> dict[str, int
             session,
             "UPDATE hd_ticket SET subject = :erased, fields = '{}', handover = NULL "
             "WHERE id = ANY(:ids)",
+            p,
+        ),
+        "resolution_receipts": await _changed(
+            session,
+            "UPDATE hd_resolution SET request = NULL, action_taken = :erased, result = NULL, "
+            "pending_item = NULL WHERE ticket_id = ANY(:ids)",
             p,
         ),
         "messages": await _changed(

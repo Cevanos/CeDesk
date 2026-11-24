@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from cedesk.db import workspace_session
 from cedesk.helpdesk.domain import events, paging
+from cedesk.helpdesk.domain import resolution as receipt_rules
 from cedesk.helpdesk.domain import snooze as snooze_rules
 from cedesk.helpdesk.domain import tickets as rules
 from cedesk.helpdesk.domain.auth import Caller, normalise_email
@@ -38,10 +39,12 @@ from cedesk.helpdesk.domain.tickets import (
 )
 from cedesk.helpdesk.repo import catalog, outbox
 from cedesk.helpdesk.repo import messages as message_repo
+from cedesk.helpdesk.repo import resolution as receipt_repo
 from cedesk.helpdesk.repo import tickets as repo
 from cedesk.helpdesk.repo.tickets import Row
 from cedesk.helpdesk.service import children, followers, idempotency, limits, routing, sla, triage
 from cedesk.helpdesk.service import email as email_service
+from cedesk.helpdesk.service import resolution as receipts
 from cedesk.helpdesk.service import rules as automation
 from cedesk.helpdesk.service import scope as scope_rules
 from cedesk.helpdesk.service.attachments import IncomingFiles, save_incoming
@@ -134,6 +137,7 @@ class TicketView:
     older_messages_cursor: str | None = None
     sla: TicketSla | None = None
     reply_cc: Sequence[str] = ()
+    resolution: Row | None = None  # the receipt (differentiator plan #5)
 
 
 @dataclass(frozen=True)
@@ -312,6 +316,7 @@ async def _view(s: AsyncSession, ticket_id: UUID) -> TicketView:
         older_messages_cursor=older,
         sla=sla.state(ticket, await sla.config(s)),
         reply_cc=await email_service.reply_cc(s, ticket_id, str(ticket["contact_email"])),
+        resolution=await receipt_repo.get(s, ticket_id),
     )
 
 
@@ -762,16 +767,24 @@ async def change_contact(
 
 
 async def resolve_ticket(
-    sm: Sessionmaker, caller: Caller, ticket_id: UUID, *, if_match: str | None = None
+    sm: Sessionmaker,
+    caller: Caller,
+    ticket_id: UUID,
+    *,
+    if_match: str | None = None,
+    resolution: Mapping[str, Any] | None = None,
 ) -> TicketView:
     """Resolves the ticket (T15), the same flow as setting the status to Resolved (T16).
     Resolving a ticket that is already resolved changes nothing.
 
+    `resolution`: the receipt (differentiator plan #5), when the workspace asks for one.
+
     `change_ticket` writes the `ticket.resolved` event; CSAT (Phase 2) hooks in here."""
     require(caller, Action.reply)
     return await change_ticket(
-        sm, caller, ticket_id, {"status": Status.resolved.value}, if_match=if_match
-    )
+        sm, caller, ticket_id, {"status": Status.resolved.value}, if_match=if_match,
+        resolution=resolution,
+    )  # fmt: skip
 
 
 async def change_ticket(
@@ -781,6 +794,7 @@ async def change_ticket(
     changes: Mapping[str, Any],
     *,
     if_match: str | None = None,
+    resolution: Mapping[str, Any] | None = None,
 ) -> TicketView:
     """Applies only the keys present in `changes`:
     subject, status, priority, type_id, team_id, assignee_id,
@@ -790,7 +804,11 @@ async def change_ticket(
     a time.
 
     With `if_match` (the ETag from reading the ticket), the change is refused with
-    Conflict if anyone changed the ticket since (md 2B)."""
+    Conflict if anyone changed the ticket since (md 2B).
+
+    Resolving checks the workspace's resolution receipts setting (plan #5): with
+    `required` for the ticket's team, a resolve without `resolution` is refused, so a
+    status change or a bulk resolve can't skip the receipt."""
     require(caller, Action.read_ticket)
     try:
         expected = rules.parse_if_match(if_match) if if_match is not None else None
@@ -954,6 +972,12 @@ async def change_ticket(
             lines += [f"Tag {t} removed by {who}" for t in current["tags"] if t not in tags]
             new["tags"] = tags
 
+        resolving = new["status"] == Status.resolved.value != current["status"]
+        receipt = None
+        if resolving:
+            receipt = await receipts.check_on_resolve(s, new["team_id"], resolution)
+        elif resolution is not None:
+            raise Conflict(ALREADY_RESOLVED_RECEIPT)
         if lines:
             await repo.update_ticket(s, ticket_id, new)
             if (
@@ -981,17 +1005,27 @@ async def change_ticket(
                 s, caller, ticket_id, new["assignee_id"], current["number"], new["subject"],
                 by=who,
             )  # fmt: skip
-        if new["status"] == Status.resolved.value != current["status"]:
+        saved = None
+        if receipt is not None:
+            saved = await receipts.save_on_resolve(s, caller, current, receipt)
+            await _line(s, caller, ticket_id, f"Resolution receipt added by {who}")
+        if resolving:
             await children.child_resolved(s, caller.workspace_id, current, who, caller.member_id)
         view = await _view(s, ticket_id)
         if lines:
             actor = None if rerouted else caller.member_id
             for event, extra in events.after_change(current, new, actor):
+                if event is events.Event.ticket_resolved:
+                    part = receipt_rules.webhook_part(saved, with_text=False)
+                    extra = {**extra, "resolution": part}
                 await _emit(s, caller, view.ticket, event, extra)
         return view
 
 
 NOT_WAITING = "This ticket isn't waiting to be accepted."
+ALREADY_RESOLVED_RECEIPT = (
+    "This ticket is resolved already: change its receipt with PATCH .../resolution."
+)
 RESOLVED_CANT_SNOOZE = "A resolved ticket can't be snoozed. Reopen it first."
 
 
