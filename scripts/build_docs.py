@@ -12,6 +12,8 @@ import re
 import shutil
 from collections import defaultdict
 
+from api_reference import EXTRA_CSS
+from api_reference import build as build_api
 from docs_lib import ROOT, Page, load_pages
 
 OUT = ROOT / "docs" / "_site"
@@ -48,6 +50,8 @@ color:var(--ink);text-decoration:none}}.card small{{color:var(--mute)}}
 @media (max-width:900px){{aside{{max-width:none;flex-basis:100%;order:2}}main{{order:1;flex-basis:100%;padding:20px}}
 h1{{font-size:28px}}}}
 """
+
+CSS += EXTRA_CSS
 
 
 def inline(s: str) -> str:
@@ -133,7 +137,7 @@ def shell(title: str, side: str, body: str, root: str) -> str:
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>{html.escape(title)} · CeDesk Help Center</title>
 <style>{CSS}</style></head><body><a class="skip" href="#content">Skip to content</a>
 <header><div class="bar"><a class="logo" href="{root}index.html">Ce<b>Desk</b> Help Center</a>
-<nav><a href="{root}index.html">User guide</a><a href="{root}glossary.html">Glossary</a></nav></div></header>
+<nav><a href="{root}index.html">User guide</a><a href="{root}glossary.html">Glossary</a><a href="{root}api/index.html">API reference</a></nav></div></header>
 <div class="wrap">{side}<main id="content">{body}</main></div></body></html>"""
 
 
@@ -197,7 +201,11 @@ def main() -> None:
         shell("Glossary", "", f"<h1>Glossary</h1><p>{gl.meta['summary']}</p>{content}", ""),
         encoding="utf-8",
     )
-    print(f"built {len(arts)} article(s) in {len(order)} topic(s) -> {OUT.relative_to(ROOT)}")
+    routes = build_api(OUT, shell)
+    print(
+        f"built {len(arts)} article(s) in {len(order)} topic(s) and {routes} API route(s)"
+        f" -> {OUT.relative_to(ROOT)}"
+    )
 
 
 if __name__ == "__main__":
