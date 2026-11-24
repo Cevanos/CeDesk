@@ -44,9 +44,9 @@ Every campaign email shows your postal address in its footer, and no campaign ca
 
 Campaign mail comes from one of your support addresses.
 
-1. Go to **Settings › Channels › Email** and open the address.
-2. Run **check forwarding**. This makes sure bounces come back to CeDesk.
-3. Run **check DNS**. SPF and DKIM must both pass.
+1. Go to **Settings › Channels › Email** and open **Deliverability** under the address.
+2. Under **Forwarding**, select **Send check**. This makes sure bounces come back to CeDesk.
+3. Under **DNS records**, select **Check DNS**. SPF and DKIM must both pass.
 
 If DNS is not right, campaign mail lands in spam, and that can hurt your normal support email from the same domain too.
 
@@ -62,7 +62,7 @@ Open a draft campaign. The **Before you can send** box is gone and **Send** is a
 
 | What you see | Why | What to do |
 |--------------|-----|------------|
-| "Verify the support address first" | The forwarding check has not passed. | Run it under Settings › Channels › Email. |
+| "Verify the support address first" | The forwarding check has not passed. | Select Send check under Settings › Channels › Email › Deliverability. |
 | "The support address's domain needs SPF and DKIM passing" | The last DNS check did not find both. | Fix the DNS records, then run the check again. |
 | "Add your postal address" | None is saved. | Campaigns › Settings. |
 | "Unsubscribe links need an https address" | The server's public addresses are not https. | Ask whoever runs the server. |
