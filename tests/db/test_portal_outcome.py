@@ -73,13 +73,21 @@ async def test_owner_pending_step_and_outcome(client: AsyncClient, app_sessionma
     assert ok(await client.put("/api/v1/portal-settings", headers=w["admin"],
                                json=body))["show_owner"] is False  # fmt: skip
     assert (await portal_ticket(client, me, tid))["owner_first_name"] == "Billing"
+    # Saved again without show_owner (an older screen): kept off (review fix).
+    body.pop("show_owner")
+    assert ok(await client.put("/api/v1/portal-settings", headers=w["admin"],
+                               json=body))["show_owner"] is False  # fmt: skip
     audit = ok(await client.get("/api/v1/audit?area=portal", headers=w["admin"]))["entries"]
     assert "show_owner" in audit[0]["detail"]["changes"]
 
-    # Reopened: an old receipt's pending item and outcome no longer show.
+    # Reopened: an old receipt's pending item and outcome no longer show; nor after a
+    # resolve without a new receipt (review fix).
     ok(await client.patch(f"{T}/{tid}", headers=w["admin"], json={"status": "open"}))
     found = await portal_ticket(client, me, tid)
     assert (found["pending_step"], found["outcome"]) == (None, None)
+    ok(await client.post(f"{T}/{tid}/resolve", headers=w["admin"]))
+    found = await portal_ticket(client, me, tid)
+    assert (found["status"], found["pending_step"], found["outcome"]) == ("resolved", None, None)
 
     # Another customer still can't see it.
     other = await customer(client, app_sessionmaker, w, "bo@example.org")

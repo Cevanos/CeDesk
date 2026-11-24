@@ -43,6 +43,10 @@ class Verified(StrEnum):
 READ_FROM_APP = frozenset({Verified.shopify, Verified.stripe})
 
 REQUIRED = "This ticket needs a resolution receipt: say what was done before resolving."
+MACRO_NEEDS_RECEIPT = (
+    "This macro resolves the ticket, and this team needs a resolution receipt. Use the "
+    "macro without resolving, then resolve with a receipt."
+)
 TURNED_OFF = "Resolution receipts are off in this workspace."
 TOO_LATE = "A receipt can be changed for 7 days after resolving, while the ticket is resolved."
 NOT_RESOLVED = "This ticket isn't resolved, so it has no receipt to change."

@@ -5,6 +5,9 @@
 
 CREATE ROLE cedesk_owner LOGIN PASSWORD 'cedesk_owner_dev' NOSUPERUSER NOCREATEROLE NOBYPASSRLS;
 CREATE ROLE cedesk_app   LOGIN PASSWORD 'cedesk_app_dev'   NOSUPERUSER NOCREATEROLE NOBYPASSRLS;
+-- cedesk_reporting: the group of BI logins (`cedesk reporting-user`, migration 0080). Made
+-- here so a database backup that grants to it restores on a new server.
+CREATE ROLE cedesk_reporting NOLOGIN;
 
 ALTER DATABASE cedesk OWNER TO cedesk_owner;
 CREATE DATABASE cedesk_test OWNER cedesk_owner;
