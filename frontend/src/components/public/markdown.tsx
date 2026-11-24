@@ -148,7 +148,7 @@ export function Markdown({ source, className }: { source: string; className?: st
             return (
               <Tag
                 key={key}
-                className={cn("space-y-1.5 pl-6", b.t === "ul" ? "list-disc" : "list-decimal")}
+                className={cn("space-y-1.5 ps-6", b.t === "ul" ? "list-disc" : "list-decimal")}
               >
                 {b.items.map((it, j) => (
                   <li key={j}>{inline(it, `${key}-${j}`)}</li>
@@ -160,7 +160,7 @@ export function Markdown({ source, className }: { source: string; className?: st
             return (
               <blockquote
                 key={key}
-                className="rounded-r-lg border-l-4 border-primary/40 bg-primary-soft/50 px-4 py-2.5 text-foreground-2"
+                className="rounded-e-lg border-s-4 border-primary/40 bg-primary-soft/50 px-4 py-2.5 text-foreground-2"
               >
                 {inline(b.text, key)}
               </blockquote>

@@ -1,6 +1,16 @@
 "use client";
 
-import { ArrowLeft, ArrowRight, BookOpen, Check, FileSearch, Search, ThumbsDown, ThumbsUp } from "lucide-react";
+import {
+  ArrowLeft,
+  ArrowRight,
+  BookOpen,
+  Check,
+  FileSearch,
+  Languages,
+  Search,
+  ThumbsDown,
+  ThumbsUp,
+} from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
@@ -11,16 +21,26 @@ import { prettySlug } from "@/components/public/public-shell";
 import { Badge, Button, Card, EmptyState, Skeleton } from "@/components/ui/primitives";
 import {
   useContactFormOff,
+  useHelpLocale,
   usePublicArticle,
   usePublicHelp,
   useVoteArticle,
   useWorkspaceSlug,
 } from "@/hooks/use-portal";
 import type { Article } from "@/lib/api/types";
+import { isRtl, languageName, toBcp47 } from "@/lib/locale";
 import { cn } from "@/lib/utils";
 
-const articleHref = (ws: string, id: string) =>
-  `/${encodeURIComponent(ws)}/help/${encodeURIComponent(id)}`;
+/** Article address. The id decides the article; the slug is only for people and search engines. */
+const articleHref = (ws: string, a: { id: string; slug?: string | null }, locale = "") => {
+  const base = `/${encodeURIComponent(ws)}/help/${encodeURIComponent(a.id)}`;
+  const path = a.slug ? `${base}/${encodeURIComponent(a.slug)}` : base;
+  return locale ? `${path}?locale=${encodeURIComponent(locale)}` : path;
+};
+
+/** `lang` and `dir` for a block of text in this language. */
+const textProps = (locale: string | undefined) =>
+  locale ? { lang: toBcp47(locale), dir: isRtl(locale) ? ("rtl" as const) : ("ltr" as const) } : {};
 
 /** First readable line of an article body, without Markdown marks, for the card preview. */
 function excerpt(body: string, max = 120) {
@@ -33,10 +53,10 @@ function excerpt(body: string, max = 120) {
   return text.length > max ? `${text.slice(0, max).trimEnd()}…` : text;
 }
 
-function ArticleCard({ ws, a }: { ws: string; a: Article }) {
+function ArticleCard({ ws, a, locale }: { ws: string; a: Article; locale: string }) {
   return (
     <Link
-      href={articleHref(ws, a.id)}
+      href={articleHref(ws, a, locale)}
       className="group flex h-full flex-col rounded-2xl border border-border bg-surface p-5 shadow-card transition-all hover:-translate-y-0.5 hover:border-border-strong hover:shadow-pop focus-visible:ring-4 focus-visible:ring-primary/25 focus-visible:outline-none"
     >
       {a.category_name && (
@@ -48,7 +68,7 @@ function ArticleCard({ ws, a }: { ws: string; a: Article }) {
       {a.body && <p className="mt-1.5 line-clamp-2 text-sm text-muted-foreground">{excerpt(a.body)}</p>}
       <span className="mt-auto inline-flex items-center gap-1 pt-4 text-[13px] font-medium text-primary-ink">
         Read article{" "}
-        <ArrowRight className="size-3.5 transition-transform group-hover:translate-x-0.5" aria-hidden />
+        <ArrowRight className="size-3.5 transition-transform group-hover:translate-x-0.5 rtl:rotate-180 rtl:group-hover:-translate-x-0.5" aria-hidden />
       </span>
     </Link>
   );
@@ -61,7 +81,9 @@ export function HelpHome() {
   const params = useSearchParams();
   const q = params.get("q") ?? "";
   const cat = params.get("category") ?? "";
-  const help = usePublicHelp(ws, q);
+  const { locale: asked } = useHelpLocale();
+  const help = usePublicHelp(ws, q, asked);
+  const served = help.data?.locale ?? asked;
   const formOff = useContactFormOff(ws);
   const [text, setText] = useState(q);
 
@@ -71,6 +93,7 @@ export function HelpHome() {
     const nc = next.category ?? cat;
     if (nq) sp.set("q", nq);
     if (nc) sp.set("category", nc);
+    if (params.get("locale")) sp.set("locale", params.get("locale")!);
     const s = sp.toString();
     router.push(`/${encodeURIComponent(ws)}/help${s ? `?${s}` : ""}`);
   };
@@ -78,7 +101,7 @@ export function HelpHome() {
   const shown = (help.data?.articles ?? []).filter((a) => !cat || a.category_id === cat);
 
   return (
-    <div className="animate-rise">
+    <div className="animate-rise" {...textProps(served)}>
       <section className="mx-auto max-w-2xl text-center">
         <p className="inline-flex items-center gap-1.5 rounded-full border border-border bg-surface/80 px-3 py-1 text-xs font-medium text-muted-foreground backdrop-blur">
           <BookOpen className="size-3.5 text-primary-ink" aria-hidden />
@@ -102,7 +125,7 @@ export function HelpHome() {
             Search the help center
           </label>
           <Search
-            className="pointer-events-none absolute top-1/2 left-4 size-5 -translate-y-1/2 text-subtle-foreground"
+            className="pointer-events-none absolute top-1/2 start-4 size-5 -translate-y-1/2 text-subtle-foreground"
             aria-hidden
           />
           <input
@@ -111,9 +134,9 @@ export function HelpHome() {
             value={text}
             placeholder="Search for answers…"
             onChange={(e) => setText(e.target.value)}
-            className="h-14 w-full rounded-2xl border border-input bg-surface pr-28 pl-12 text-base shadow-pop transition-colors placeholder:text-subtle-foreground hover:border-border-strong focus:border-primary focus:ring-4 focus:ring-primary/15 focus:outline-none"
+            className="h-14 w-full rounded-2xl border border-input bg-surface pe-28 ps-12 text-base shadow-pop transition-colors placeholder:text-subtle-foreground hover:border-border-strong focus:border-primary focus:ring-4 focus:ring-primary/15 focus:outline-none"
           />
-          <Button type="submit" className="absolute top-2 right-2 h-10">
+          <Button type="submit" className="absolute top-2 end-2 h-10">
             Search
           </Button>
         </form>
@@ -168,7 +191,7 @@ export function HelpHome() {
             <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {shown.map((a) => (
                 <li key={a.id}>
-                  <ArticleCard ws={ws} a={a} />
+                  <ArticleCard ws={ws} a={a} locale={asked} />
                 </li>
               ))}
             </ul>
@@ -191,11 +214,12 @@ export function HelpHome() {
   );
 }
 
-/** `/<workspace>/help/<id>`: the article (Markdown, never raw HTML) and a helpful vote. */
+/** `/<workspace>/help/<id>[/<slug>]`: the article (Markdown, never raw HTML) and a helpful vote. */
 export function HelpArticle() {
   const ws = useWorkspaceSlug();
   const { id } = useParams<{ id: string }>();
-  const q = usePublicArticle(ws, id);
+  const { locale: asked, choose } = useHelpLocale();
+  const q = usePublicArticle(ws, id, asked);
 
   if (q.isPending) {
     return (
@@ -215,15 +239,31 @@ export function HelpArticle() {
     );
   }
 
-  const { article, related } = q.data;
+  const { article, related, fallback, available, defaultLocale } = q.data;
+  const served = q.data.locale ?? defaultLocale ?? asked;
+  const switchTo = available.length > 1 ? available : [];
   return (
-    <article className="mx-auto max-w-3xl animate-rise">
-      <Link
-        href={`/${encodeURIComponent(ws)}/help`}
-        className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
-      >
-        <ArrowLeft className="size-4" /> Help center
-      </Link>
+    <article className="mx-auto max-w-3xl animate-rise" {...textProps(served)}>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <Link
+          href={`/${encodeURIComponent(ws)}/help${asked ? `?locale=${encodeURIComponent(asked)}` : ""}`}
+          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
+        >
+          <ArrowLeft className="size-4 rtl:rotate-180" /> Help center
+        </Link>
+        {switchTo.length > 0 && (
+          <LanguageSwitcher locales={switchTo} current={served ?? ""} onChoose={choose} />
+        )}
+      </div>
+      {fallback && asked && served && (
+        <p
+          role="status"
+          className="mt-4 rounded-xl border border-border bg-surface-2 px-4 py-2.5 text-sm text-muted-foreground"
+        >
+          This article is not available in {languageName(asked)} yet. Showing{" "}
+          {languageName(served)}.
+        </p>
+      )}
       {article.category_name && (
         <Badge tone="primary" className="mt-5">
           {article.category_name}
@@ -236,7 +276,7 @@ export function HelpArticle() {
         <Markdown source={article.body ?? ""} />
       </Card>
 
-      <Vote ws={ws} id={article.id ?? id} />
+      <Vote ws={ws} id={article.id ?? id} locale={served ?? ""} />
 
       {related.length > 0 && (
         <section aria-labelledby="related" className="mt-12">
@@ -246,7 +286,7 @@ export function HelpArticle() {
           <ul className="mt-4 grid gap-4 sm:grid-cols-2">
             {related.slice(0, 4).map((a) => (
               <li key={a.id}>
-                <ArticleCard ws={ws} a={a} />
+                <ArticleCard ws={ws} a={a} locale={asked} />
               </li>
             ))}
           </ul>
@@ -256,8 +296,37 @@ export function HelpArticle() {
   );
 }
 
-function Vote({ ws, id }: { ws: string; id: string }) {
-  const vote = useVoteArticle(ws, id);
+/** Shown only when the article exists in more than one published language. */
+function LanguageSwitcher({
+  locales,
+  current,
+  onChoose,
+}: {
+  locales: string[];
+  current: string;
+  onChoose: (l: string) => void;
+}) {
+  return (
+    <label className="inline-flex items-center gap-2 text-sm text-muted-foreground">
+      <Languages className="size-4" aria-hidden />
+      <span className="sr-only">Language</span>
+      <select
+        value={current}
+        onChange={(e) => onChoose(e.target.value)}
+        className="h-9 rounded-lg border border-input bg-surface px-2.5 text-sm text-foreground focus:border-primary focus:ring-4 focus:ring-primary/15 focus:outline-none"
+      >
+        {locales.map((l) => (
+          <option key={l} value={l} lang={toBcp47(l)}>
+            {languageName(l, l)}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+function Vote({ ws, id, locale }: { ws: string; id: string; locale: string }) {
+  const vote = useVoteArticle(ws, id, locale);
   const [voted, setVoted] = useState<boolean | null>(null);
   const [error, setError] = useState<string | null>(null);
 

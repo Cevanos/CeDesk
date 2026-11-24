@@ -27,16 +27,28 @@ import {
   Skeleton,
   Textarea,
 } from "@/components/ui/primitives";
+import {
+  CategoryTranslations,
+  DomainCard,
+  LanguageSettingsCard,
+  LanguagesPanel,
+  LocaleChips,
+  SeoFields,
+  seoFrom,
+  seoPayload,
+} from "@/components/workspace/help-center-languages";
 import { FormError, fieldErrors, LoadError } from "@/components/workspace/list-shared";
 import {
   useArticleCategories,
   useArticles,
   useDeleteArticle,
   useDeleteArticleCategory,
+  useHelpCenterSettings,
   useSaveArticle,
   useSaveArticleCategory,
 } from "@/hooks/use-workspace";
 import type { Article, ArticleCategory, ArticleStatus } from "@/lib/api/types";
+import { COMMON_LOCALES, languageName, nfc } from "@/lib/locale";
 import { cn, timeAgo } from "@/lib/utils";
 
 /** Share of "yes" votes as a whole percent, or null when nobody voted. */
@@ -54,7 +66,10 @@ const STATUS_FILTER = [
 
 export function HelpCenterView() {
   const categories = useArticleCategories();
-  const articles = useArticles();
+  const [missing, setMissing] = useState("");
+  const articles = useArticles(missing);
+  const settings = useHelpCenterSettings();
+  const defaultLocale = settings.data?.default_locale ?? "en";
   const delArticle = useDeleteArticle();
   const delCategory = useDeleteArticleCategory();
   const saveArticle = useSaveArticle();
@@ -65,12 +80,13 @@ export function HelpCenterView() {
   const [editingArticle, setEditingArticle] = useState<Article | "new" | null>(null);
   const [editingCategory, setEditingCategory] = useState<ArticleCategory | "new" | null>(null);
 
-  if (categories.isPending || articles.isPending) return <Skeleton className="h-72" />;
+  if (categories.isPending || (articles.isPending && !articles.isPlaceholderData))
+    return <Skeleton className="h-72" />;
   if (categories.isError) return <LoadError error={categories.error} />;
   if (articles.isError) return <LoadError error={articles.error} />;
 
   const cats = categories.data;
-  const all = articles.data;
+  const all = articles.data ?? [];
   const countIn = (id: string) => all.filter((a) => a.category_id === id).length;
   const nameOf = (id: string | null) => cats.find((c) => c.id === id)?.name ?? "No category";
   const shown = all.filter(
@@ -84,6 +100,9 @@ export function HelpCenterView() {
         Articles customers find on your public help center. Only published articles are visible;
         drafts stay private.
       </p>
+
+      <LanguageSettingsCard />
+      <DomainCard />
 
       <div className="grid gap-4 lg:grid-cols-[15rem_minmax(0,1fr)]">
         <aside aria-label="Categories">
@@ -139,6 +158,20 @@ export function HelpCenterView() {
                 onChange={(e) => setStatus(e.target.value)}
               />
             </div>
+            <div className="w-52">
+              <Select
+                aria-label="Needs a language"
+                value={missing}
+                options={[
+                  { value: "", label: "Needs a language: any" },
+                  ...COMMON_LOCALES.filter((l) => l !== defaultLocale).map((l) => ({
+                    value: l,
+                    label: `Needs ${languageName(l)}`,
+                  })),
+                ]}
+                onChange={(e) => setMissing(e.target.value)}
+              />
+            </div>
             <Button className="ml-auto" onClick={() => setEditingArticle("new")}>
               <Plus className="size-4" /> New article
             </Button>
@@ -164,7 +197,8 @@ export function HelpCenterView() {
                             {a.status === "published" ? "Published" : "Draft"}
                           </Badge>
                         </div>
-                        <div className="mt-0.5 text-xs text-muted-foreground">
+                        <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
+                          <LocaleChips locales={a.locales} />
                           {a.category_name ?? nameOf(a.category_id)}
                           {a.updated_at && ` · Updated ${timeAgo(a.updated_at)}`}
                         </div>
@@ -229,13 +263,18 @@ export function HelpCenterView() {
         className="sm:max-w-5xl"
       >
         {editingArticle !== null && (
-          <ArticleForm
-            key={editingArticle === "new" ? "new" : editingArticle.id}
-            article={editingArticle === "new" ? null : editingArticle}
-            categories={cats}
-            defaultCategory={category}
-            onClose={() => setEditingArticle(null)}
-          />
+          <>
+            <ArticleForm
+              key={editingArticle === "new" ? "new" : editingArticle.id}
+              article={editingArticle === "new" ? null : editingArticle}
+              categories={cats}
+              defaultCategory={category}
+              onClose={() => setEditingArticle(null)}
+            />
+            {editingArticle !== "new" && (
+              <LanguagesPanel article={editingArticle} defaultLocale={defaultLocale} />
+            )}
+          </>
         )}
       </Dialog>
 
@@ -247,7 +286,11 @@ export function HelpCenterView() {
         {editingCategory !== null && (
           <CategoryForm
             key={editingCategory === "new" ? "new" : editingCategory.id}
-            category={editingCategory === "new" ? null : editingCategory}
+            category={
+              editingCategory === "new"
+                ? null
+                : (cats.find((c) => c.id === editingCategory.id) ?? editingCategory)
+            }
             onClose={() => setEditingCategory(null)}
           />
         )}
@@ -354,42 +397,45 @@ function CategoryForm({
   const [name, setName] = useState(category?.name ?? "");
   const [errs, setErrs] = useState<Record<string, string>>({});
   return (
-    <form
-      noValidate
-      className="space-y-4"
-      onSubmit={(e) => {
-        e.preventDefault();
-        if (!name.trim()) return setErrs({ name: "Enter a name" });
-        save.mutate(
-          { id: category?.id, name: name.trim() },
-          {
-            onSuccess: () => {
-              toast.success("Category saved");
-              onClose();
+    <div className="space-y-4">
+      <form
+        noValidate
+        className="space-y-4"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (!name.trim()) return setErrs({ name: "Enter a name" });
+          save.mutate(
+            { id: category?.id, name: nfc(name.trim()) },
+            {
+              onSuccess: () => {
+                toast.success("Category saved");
+                onClose();
+              },
+              onError: (err) => setErrs(fieldErrors(err)),
             },
-            onError: (err) => setErrs(fieldErrors(err)),
-          },
-        );
-      }}
-    >
-      <Field label="Name" htmlFor="cat-name" error={errs.name}>
-        <Input
-          id="cat-name"
-          maxLength={80}
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-        />
-      </Field>
-      <FormError message={errs._form} />
-      <div className="flex justify-end gap-2">
-        <Button variant="ghost" onClick={onClose}>
-          Cancel
-        </Button>
-        <Button type="submit" loading={save.isPending}>
-          Save
-        </Button>
-      </div>
-    </form>
+          );
+        }}
+      >
+        <Field label="Name" htmlFor="cat-name" error={errs.name}>
+          <Input
+            id="cat-name"
+            maxLength={80}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
+        </Field>
+        <FormError message={errs._form} />
+        <div className="flex justify-end gap-2">
+          <Button variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="submit" loading={save.isPending}>
+            Save
+          </Button>
+        </div>
+      </form>
+      {category && <CategoryTranslations category={category} />}
+    </div>
   );
 }
 
@@ -409,6 +455,7 @@ function ArticleForm({
   const [body, setBody] = useState(article?.body ?? "");
   const [categoryId, setCategoryId] = useState(article?.category_id ?? defaultCategory);
   const [status, setStatus] = useState<ArticleStatus>(article?.status ?? "draft");
+  const [seo, setSeo] = useState(() => seoFrom(article));
   const [errs, setErrs] = useState<Record<string, string>>({});
 
   return (
@@ -425,10 +472,11 @@ function ArticleForm({
         save.mutate(
           {
             id: article?.id,
-            title: title.trim(),
-            body,
+            title: nfc(title.trim()),
+            body: nfc(body),
             category_id: categoryId || null,
             status,
+            ...seoPayload(seo),
           },
           {
             onSuccess: () => {
@@ -444,7 +492,7 @@ function ArticleForm({
         <Field label="Title" htmlFor="art-title" error={errs.title}>
           <Input
             id="art-title"
-            maxLength={160}
+            maxLength={200}
             value={title}
             onChange={(e) => setTitle(e.target.value)}
           />
@@ -504,6 +552,8 @@ function ArticleForm({
           </div>
         </div>
       </div>
+
+      <SeoFields idPrefix="art" value={seo} onChange={setSeo} errs={errs} />
 
       <FormError message={errs._form} />
       <div className="flex justify-end gap-2">

@@ -75,6 +75,9 @@ export const queryKeys = {
   helpCenter: {
     categories: ["help-center", "categories"] as const,
     articles: ["help-center", "articles"] as const,
+    settings: ["help-center", "settings"] as const,
+    translations: (id: string) => ["help-center", "translations", id] as const,
+    domain: ["help-center", "domain"] as const,
   },
 
   /** Customer-facing pages. Kept apart from the agent keys on purpose. */
@@ -88,8 +91,9 @@ export const queryKeys = {
     csat: (token: string) => ["public", "csat", token] as const,
     unsubscribe: (token: string) => ["public", "unsubscribe", token] as const,
     form: (ws: string) => ["public", ws, "form"] as const,
-    help: (ws: string, q: string) => ["public", ws, "help", q] as const,
-    article: (ws: string, id: string) => ["public", ws, "article", id] as const,
+    help: (ws: string, q: string, locale: string) => ["public", ws, "help", q, locale] as const,
+    article: (ws: string, id: string, locale: string) =>
+      ["public", ws, "article", id, locale] as const,
   },
 
   tickets: {

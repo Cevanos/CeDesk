@@ -30,6 +30,7 @@ import {
   ReportsMockup,
   RulesMockup,
 } from "@/components/landing/mockups";
+import { ResourcesMenu } from "@/components/layout/resources-menu";
 import { Logo, ThemeToggle } from "@/components/ui/brand";
 import { cn } from "@/lib/utils";
 
@@ -360,6 +361,7 @@ export function LandingPage() {
                 {n.label}
               </a>
             ))}
+            <ResourcesMenu align="left" triggerClassName="rounded-full px-4 py-1.5 h-auto" />
           </nav>
           <div className="flex items-center gap-2">
             <ThemeToggle className="hidden sm:inline-flex" />

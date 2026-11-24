@@ -492,6 +492,8 @@ export interface ArticleCategory {
   id: string;
   name: string;
   position?: number;
+  /** Names in other languages, by language code: `{ hi: "भुगतान" }`. */
+  name_translations?: Record<string, string>;
 }
 export interface Article {
   id: string;
@@ -503,6 +505,53 @@ export interface Article {
   helpful_count?: number;
   not_helpful_count?: number;
   updated_at?: string | null;
+  /** SEO text, in the article's own (default) language. */
+  slug?: string | null;
+  suggested_slug?: string | null;
+  meta_title?: string | null;
+  meta_description?: string | null;
+  canonical_url?: string | null;
+  /** Languages that exist for this article (agent list rows). */
+  locales?: string[];
+  /** Public answers: the language served, and whether it is a fallback. */
+  locale?: string;
+  fallback?: boolean;
+  available_locales?: string[];
+  default_locale?: string;
+  alternates?: ArticleAlternate[];
+}
+
+export interface ArticleAlternate {
+  locale: string;
+  slug?: string | null;
+}
+
+export interface ArticleTranslation {
+  locale: string;
+  title: string;
+  body: string;
+  status: ArticleStatus;
+  slug?: string | null;
+  suggested_slug?: string | null;
+  meta_title?: string | null;
+  meta_description?: string | null;
+  canonical_url?: string | null;
+  updated_at?: string | null;
+  updated_by_name?: string | null;
+}
+
+export interface HelpCenterSettings {
+  default_locale: string;
+  seo_indexable: boolean;
+}
+
+export type DomainStatus = "pending" | "verified" | "failed" | string;
+export interface HelpCenterDomain {
+  domain: string;
+  status: DomainStatus;
+  dns?: { type?: string; name?: string; value?: string } | null;
+  last_error?: string | null;
+  failed_checks?: number;
 }
 
 /* Customer-facing (no agent login) */
@@ -582,6 +631,9 @@ export interface PublicHelp {
   workspace_name?: string | null;
   categories: ArticleCategory[];
   articles: Article[];
+  /** The language served and the workspace default. */
+  locale?: string;
+  default_locale?: string;
 }
 
 /* ---------- Imports from other help desks ---------- */

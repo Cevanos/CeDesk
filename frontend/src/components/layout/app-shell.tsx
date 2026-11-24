@@ -21,6 +21,7 @@ import { useEffect, useRef, useState } from "react";
 import { OfflineBanner } from "@/components/feedback/offline-banner";
 import { CommandPalette } from "@/components/layout/command-palette";
 import { NotificationBell } from "@/components/layout/notification-bell";
+import { ResourcesMenu } from "@/components/layout/resources-menu";
 import { UserMenu } from "@/components/layout/user-menu";
 import { WorkMenu } from "@/components/layout/work-menu";
 import { Logo } from "@/components/ui/brand";
@@ -202,6 +203,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               {t("button")}
               <kbd className="rounded bg-surface-2 px-1.5 py-0.5 font-mono text-[10px]">Ctrl K</kbd>
             </button>
+            <ResourcesMenu label="Help" newTab triggerClassName="hidden sm:inline-flex" />
             <WorkMenu />
             <NotificationBell />
             <UserMenu />
