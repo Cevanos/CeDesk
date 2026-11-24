@@ -1,7 +1,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Check, ChevronDown, KeyRound, LogOut, UserCog } from "lucide-react";
+import { Check, ChevronDown, KeyRound, LifeBuoy, LogOut, UserCog } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
@@ -120,6 +120,15 @@ export function UserMenu() {
               }}
             >
               <KeyRound className="size-4 text-muted-foreground" /> Change password
+            </MenuItem>
+            <MenuItem
+              onClick={() => {
+                close();
+                // New tab, so nobody loses their place in the app. The docs are static files.
+                window.open("/docs/", "_blank", "noopener");
+              }}
+            >
+              <LifeBuoy className="size-4 text-muted-foreground" /> Help
             </MenuItem>
             <MenuItem onClick={() => signOut.mutate()} disabled={signOut.isPending}>
               <LogOut className="size-4 text-muted-foreground" /> Sign out

@@ -1,0 +1,59 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>Security settings · CeDesk Docs</title>
+<meta name="robots" content="noindex"><style>
+:root{--brand:#6C55F6;--ink:#0B1B36;--mute:#4B5563;--line:#E5E7EB;--tint:#F5F3FF;--bg:#F6F8FB}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);
+font:16px/1.65 "Instrument Sans",Inter,system-ui,sans-serif}
+a{color:var(--brand)}a:hover{text-decoration:underline}
+a:focus-visible,input:focus-visible{outline:3px solid var(--brand);outline-offset:2px;border-radius:4px}
+.skip{position:absolute;left:-9999px}.skip:focus{left:0;background:var(--brand);color:#fff;padding:10px}
+header{background:#fff;border-bottom:1px solid var(--line)}
+.bar{max-width:1200px;margin:0 auto;padding:14px 24px;display:flex;flex-wrap:wrap;gap:20px;align-items:center}
+.logo{font-weight:700;font-size:18px;color:var(--ink);text-decoration:none}.logo b{color:var(--brand)}
+.bar nav{margin-left:auto;display:flex;gap:20px}.bar nav a{color:var(--mute);text-decoration:none}
+.wrap{max-width:1200px;margin:0 auto;padding:32px 24px 64px;display:flex;flex-wrap:wrap;gap:40px;align-items:flex-start}
+aside{flex:1 1 220px;max-width:260px;font-size:14px;display:flex;flex-direction:column;gap:2px}
+aside a{padding:6px 10px;border-radius:6px;color:#374151;text-decoration:none}
+aside a.on{background:var(--tint);color:#3B2A9E;font-weight:600}
+main{flex:999 1 560px;min-width:0;max-width:760px;background:#fff;border:1px solid var(--line);
+border-radius:12px;padding:32px}
+h1{margin:0 0 8px;font-size:34px;line-height:1.2}h2{font-size:24px;margin:32px 0 8px}
+.meta{color:var(--mute);font-size:14px;margin-bottom:16px}
+table{width:100%;border-collapse:collapse;font-size:15px;display:block;overflow-x:auto}
+th,td{padding:10px 14px;text-align:left;border:1px solid var(--line)}th{background:#F9FAFB}
+blockquote{margin:16px 0;padding:12px 16px;border-left:4px solid var(--brand);background:var(--tint);border-radius:8px}
+blockquote p{margin:0}code{font:14px "JetBrains Mono",monospace;background:#F3F4F6;padding:1px 6px;border-radius:4px}
+pre{background:#0B1B36;color:#E5E7EB;padding:16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+img{max-width:100%}.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:20px}
+.card{display:block;padding:20px;border:1px solid var(--line);border-radius:12px;background:#fff;
+color:var(--ink);text-decoration:none}.card small{color:var(--mute)}
+.draft{background:#FEF3C7;color:#92400E;padding:2px 8px;border-radius:6px;font-size:12px}
+@media (max-width:900px){aside{max-width:none;flex-basis:100%;order:2}main{order:1;flex-basis:100%;padding:20px}
+h1{font-size:28px}}
+
+.op{border:1px solid var(--line);border-radius:12px;margin:24px 0;padding:20px;background:#fff}
+.op h3{margin:0 0 6px;font-size:18px}.route{font:14px "JetBrains Mono",monospace;word-break:break-all}
+.verb{display:inline-block;min-width:58px;text-align:center;padding:2px 8px;border-radius:6px;color:#fff;
+font:700 12px "JetBrains Mono",monospace;margin-right:8px}
+.get{background:#0E7490}.post{background:#15803D}.put{background:#B45309}.patch{background:#7C3AED}.delete{background:#B91C1C}
+.op h4{margin:18px 0 6px;font-size:13px;text-transform:uppercase;letter-spacing:.04em;color:var(--mute)}
+.op table{font-size:14px}.op td:first-child{font:13px "JetBrains Mono",monospace;white-space:nowrap}
+.op pre{font-size:13px}.req{color:#B91C1C;font-size:12px}
+</style></head><body><a class="skip" href="#content">Skip to content</a>
+<header><div class="bar"><a class="logo" href="../index.html">CeDesk Docs</a>
+<nav><a href="../index.html">User guide</a><a href="../glossary.html">Glossary</a><a href="../api/index.html">API reference</a></nav></div></header>
+<div class="wrap"><aside aria-label='Topics'><a class="" href="../getting-started/index.html">Getting started</a><a class="" href="../working-with-tickets/index.html">Working with tickets</a><a class="" href="../ticket-tools/index.html">Ticket tools</a><a class="" href="../channels/index.html">Channels</a><a class="" href="../customers/index.html">Customers</a><a class="" href="../automation/index.html">Automation</a><a class="" href="../campaigns/index.html">Email campaigns</a><a class="" href="../reports/index.html">Reports</a><a class="on" href="../security-and-privacy/index.html">Security and privacy</a><a class="" href="../account-and-access/index.html">Account and access</a><a class="" href="../integrations/index.html">Integrations</a><a class="" href="../help-center/index.html">Help center</a><a class="" href="../imports/index.html">Moving to CeDesk</a><a class="" href="../best-practices/index.html">Best practices</a><a class="" href="../how-to/index.html">How-to</a><a class="" href="../developers/index.html">Developer guides</a></aside><main id="content" data-pagefind-body><h1>Security settings <span class="draft">Draft</span></h1><div class='meta'>Last updated 2026-11-24 · Who: Admins</div><p>These settings decide how people sign in and what protects your workspace. They apply at once when you save.</p>
+<blockquote><p><strong>Who can do this:</strong> Admins.</p></blockquote>
+<h2 id="the-security-score">The security score</h2>
+<p>Go to <strong>Settings › Security &amp; data › Security</strong>. At the top is a <strong>Security score</strong> out of 100, with a checklist: Single sign-on, Two-factor sign-in for everyone, IP allowlist, Strong password rules, Sensitive data hidden, Short sign-in sessions, Files need sign-in, Email Admins about security events and Customer portal limited to your domains. It updates when you save.</p>
+<h2 id="the-settings">The settings</h2>
+<table><thead><tr><th>Setting</th><th>What it does</th></tr></thead><tbody><tr><td>Minimum password length</td><td>From 8 to 64 characters.</td></tr><tr><td>Password expires</td><td>Never, or after 90 or 180 days. An expired password must be changed at the next sign-in.</td></tr><tr><td>Sign people out after</td><td>An hour without use, or 8 hours, 12 hours or 7 days. A shorter setting also ends longer sessions already open.</td></tr><tr><td>Require two-factor sign-in</td><td>Everyone must use a second step. People without it can only set it up until they do.</td></tr><tr><td>Files need sign-in</td><td>Attachments open only for signed-in people, not for anyone holding the link.</td></tr><tr><td>Email Admins about security events</td><td>Admins get an email when a member is added, deactivated or reactivated, the IP list or the two-factor rule changes, or a member's two-factor is reset.</td></tr><tr><td>IP allowlist</td><td>Only these addresses can sign in.</td></tr></tbody></table>
+<p>Select <strong>Save</strong>.</p>
+<h2 id="before-you-turn-on-two-factor">Before you turn on two-factor</h2>
+<p>Turn it on for yourself first. If someone loses their second step, an Admin can reset it under <strong>Settings › Workspace › Members</strong> with <strong>Reset 2FA</strong>.</p>
+<h2 id="the-ip-allowlist">The IP allowlist</h2>
+<p>Type one address or range per line, up to 100. Empty allows everyone. The list is checked at sign-in and on every request. <strong>It must include your own address, or you lock yourself out.</strong> Select <strong>Test my IP</strong> to see whether your address is on the list before you save.</p>
+<h2 id="check-it-worked">Check it worked</h2>
+<p>The score goes up after saving, and the "Last changed by" line shows your name.</p>
+<h2 id="troubleshooting">Troubleshooting</h2>
+<table><thead><tr><th>What you see</th><th>Why</th><th>What to do</th></tr></thead><tbody><tr><td>Someone is told their password expired</td><td>The expiry setting is on.</td><td>They choose a new password at sign-in.</td></tr><tr><td>Someone can only set up two-factor</td><td>The requirement is on and they have none.</td><td>They finish setup.</td></tr><tr><td>Everyone is refused</td><td>The IP list does not include their address.</td><td>Fix the list from an allowed address, or ask whoever runs your server.</td></tr></tbody></table></main></div></body></html>
