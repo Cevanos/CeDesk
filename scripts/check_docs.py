@@ -34,7 +34,7 @@ def main() -> int:
     errors: list[str] = []
     known = routes_in_openapi()
     pages = load_pages()
-    rels = {p.rel for p in pages}
+    rels = {p.key for p in pages}
     articles = [p for p in pages if not p.path.name.startswith("_")]
     for p in articles:
         where = p.path.relative_to(ROOT).as_posix()
@@ -54,6 +54,10 @@ def main() -> int:
         for rel in p.meta.get("related") or []:
             if str(rel) not in rels:
                 errors.append(f"{where}: related article not found: {rel}")
+        for link in re.findall(r"\]\(([^)#:]+\.md)\)", p.body):
+            target = f"{p.path.parent.name}/{link.removesuffix('.md')}"
+            if target not in rels:
+                errors.append(f"{where}: link to an article that does not exist: {link}")
         for img in re.findall(r"!\[[^\]]*\]\(([^)]+)\)", p.body):
             if not (p.path.parent / img).resolve().exists():
                 errors.append(f"{where}: image not found: {img}")

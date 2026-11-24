@@ -15,9 +15,13 @@ class Page:
     meta: dict[str, object]
     body: str
     rel: str = field(init=False)
+    key: str = field(init=False)
 
     def __post_init__(self) -> None:
         self.rel = self.path.relative_to(GUIDE).with_suffix("").as_posix()
+        stem = self.path.stem
+        slug = stem.split("-", 1)[1] if stem[:2].isdigit() else stem
+        self.key = f"{self.path.parent.name}/{slug}" if self.path.parent != GUIDE else slug
 
 
 def _scalar(v: str) -> object:
