@@ -14346,6 +14346,55 @@
         }
       }
     },
+    "/api/v1/imports/connections/{connection_id}/report": {
+      "get": {
+        "tags": [
+          "imports"
+        ],
+        "summary": "Before importing: what will import, what needs setting up, what can't move (Admin)",
+        "description": "Saves nothing. The source is asked for its counts and groups, like discover. 409 when the connection was closed; 422 or 503 when the source refuses or can't be reached.",
+        "operationId": "pre_migration_report_api_v1_imports_connections__connection_id__report_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "connection_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Connection Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreMigrationOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/imports/connections/{connection_id}/run": {
       "post": {
         "tags": [
@@ -14761,6 +14810,55 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/FailureOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/imports/runs/{run_id}/cutover": {
+      "get": {
+        "tags": [
+          "imports"
+        ],
+        "summary": "Before go-live: the cutover checklist for an import (Admin)",
+        "description": "Read from what CeDesk holds; the source isn't asked. Checks that the import finished, that nothing the source counted is missing, that no record waits to be read again, that the sync looked in the last 15 minutes (when syncing), that every agent matched a member, that every open imported ticket has a team, and that a support address has verified forwarding. 404 for an unknown run.",
+        "operationId": "cutover_api_v1_imports_runs__run_id__cutover_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Run Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CutoverOut"
                 }
               }
             }
@@ -21659,6 +21757,44 @@
         ],
         "title": "ChannelGroup"
       },
+      "CheckOut": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "enum": [
+              "import_finished",
+              "counts_match",
+              "no_open_failures",
+              "sync_fresh",
+              "agents_matched",
+              "teams_set",
+              "email_ready"
+            ],
+            "title": "Key"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "problem",
+              "skipped"
+            ],
+            "title": "Status"
+          },
+          "detail": {
+            "type": "string",
+            "title": "Detail",
+            "description": "What was found, and what to do when it's a problem."
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "status",
+          "detail"
+        ],
+        "title": "CheckOut"
+      },
       "ChildIn": {
         "properties": {
           "team_id": {
@@ -23266,6 +23402,39 @@
           "body"
         ],
         "title": "CustomerReplyBody"
+      },
+      "CutoverOut": {
+        "properties": {
+          "run_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Run Id"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source"
+          },
+          "ready": {
+            "type": "boolean",
+            "title": "Ready",
+            "description": "True when no check is a problem."
+          },
+          "checks": {
+            "items": {
+              "$ref": "#/components/schemas/CheckOut"
+            },
+            "type": "array",
+            "title": "Checks"
+          }
+        },
+        "type": "object",
+        "required": [
+          "run_id",
+          "source",
+          "ready",
+          "checks"
+        ],
+        "title": "CutoverOut"
       },
       "DashboardIn": {
         "properties": {
@@ -28505,6 +28674,41 @@
         ],
         "title": "PortalTypeOut"
       },
+      "PreMigrationOut": {
+        "properties": {
+          "source": {
+            "type": "string",
+            "title": "Source"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ReportItemOut"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "totals": {
+            "$ref": "#/components/schemas/ReportTotalsOut",
+            "description": "How many items have each status."
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings",
+            "description": "The source's own warnings, as in discover."
+          }
+        },
+        "type": "object",
+        "required": [
+          "source",
+          "items",
+          "totals",
+          "warnings"
+        ],
+        "title": "PreMigrationOut"
+      },
       "PresetOut": {
         "properties": {
           "key": {
@@ -29309,6 +29513,77 @@
           "ids"
         ],
         "title": "ReorderBody"
+      },
+      "ReportItemOut": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key",
+            "description": "contacts, tickets, articles, replies, groups, agents, automation, views, email, business_hours or history."
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "imports",
+              "needs_setup",
+              "cannot_move"
+            ],
+            "title": "Status",
+            "description": "imports: CeDesk brings it. needs_setup: CeDesk doesn't bring it; set it up in CeDesk (before importing, for agents and teams). cannot_move: this source can't give it to CeDesk."
+          },
+          "count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Count",
+            "description": "What the source holds (null: not counted)."
+          },
+          "note": {
+            "type": "string",
+            "title": "Note"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "name",
+          "status",
+          "count",
+          "note"
+        ],
+        "title": "ReportItemOut"
+      },
+      "ReportTotalsOut": {
+        "properties": {
+          "imports": {
+            "type": "integer",
+            "title": "Imports"
+          },
+          "needs_setup": {
+            "type": "integer",
+            "title": "Needs Setup"
+          },
+          "cannot_move": {
+            "type": "integer",
+            "title": "Cannot Move"
+          }
+        },
+        "type": "object",
+        "required": [
+          "imports",
+          "needs_setup",
+          "cannot_move"
+        ],
+        "title": "ReportTotalsOut"
       },
       "ResetPasswordBody": {
         "properties": {

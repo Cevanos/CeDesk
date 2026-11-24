@@ -3,6 +3,23 @@
 `openapi.json` next to this file is the API as served (`uv run cedesk openapi`). Every
 route is under `/api/v1`. Breaking changes only come in v2 (md 2B). Newest first.
 
+## 2026-11-24: Before and after a migration: the pre-migration report and the cutover checklist
+
+New routes, Admin only. No migration. No change to existing routes.
+
+- `GET /imports/connections/{connection_id}/report`: before importing, what will import
+  (with the source's counts), what needs setting up in CeDesk (agents, teams for unmatched
+  groups, rules, views, email addresses, business hours) and what this source can't give
+  CeDesk. Each item is `imports`, `needs_setup` or `cannot_move`; `totals` counts them;
+  `warnings` are the source's own, as in discover. Saves nothing; the source is asked like
+  discover. **409** for a closed connection; **422** / **503** when the source refuses or
+  can't be reached.
+- `GET /imports/runs/{run_id}/cutover`: before go-live, seven checks (`import_finished`,
+  `counts_match`, `no_open_failures`, `sync_fresh`, `agents_matched`, `teams_set`,
+  `email_ready`), each `ok`, `problem` or `skipped`, with what to do. `ready` is true when
+  no check is a problem. Read from CeDesk only. **404** for an unknown run.
+- How to use both, and how to roll back: `docs/imports/GO_LIVE_AND_ROLLBACK.md`.
+
 ## 2026-11-23: No survey email to Cevanos chat customers, even with their real address
 
 Fix. No API change; no migration.
