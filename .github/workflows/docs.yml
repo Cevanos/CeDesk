@@ -1,0 +1,66 @@
+name: Docs site
+
+# Builds the docs and publishes them to Cloudflare Pages:
+#   - staging (every article, drafts too, not indexed): a preview for every pull request and
+#     the branch "main" on the staging project;
+#   - public (published articles only): only on a merge to main.
+# Setup: docs/user-guide/HOSTING.md. Without the secrets below, the build still runs and the
+# deploy steps are skipped (pull requests from forks never get secrets).
+
+on:
+  push:
+    branches: [main]
+    paths: ["docs/**", "scripts/**", ".github/workflows/docs.yml"]
+  pull_request:
+    paths: ["docs/**", "scripts/**", ".github/workflows/docs.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      # Repository variables (Settings > Secrets and variables > Actions > Variables).
+      STAGING_PROJECT: ${{ vars.DOCS_STAGING_PROJECT || 'cedesk-docs-staging' }}
+      PUBLIC_PROJECT: ${{ vars.DOCS_PUBLIC_PROJECT || 'cedesk-docs' }}
+      DOCS_SITE_NAME: ${{ vars.DOCS_SITE_NAME || 'CeDesk Docs' }}
+      DOCS_BASE_URL: ${{ vars.DOCS_PUBLIC_URL }}
+      DOCS_SEARCH: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Check the docs against the code
+        run: PYTHONPATH=scripts uv run python scripts/check_docs.py
+
+      - name: Build staging (everything, not indexed)
+        run: |
+          PYTHONPATH=scripts uv run python scripts/build_docs.py
+          npx --yes pagefind@1.2.0 --site docs/_site
+      - name: Publish staging
+        if: env.CLOUDFLARE_API_TOKEN != ''
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+        run: >
+          npx --yes wrangler@3.90.0 pages deploy docs/_site
+          --project-name "$STAGING_PROJECT"
+          --branch "${HEAD_REF:-main}"
+          --commit-dirty=true
+
+      - name: Build public (published articles only)
+        if: github.event_name == 'push'
+        run: |
+          PYTHONPATH=scripts uv run python scripts/build_docs.py --public
+          npx --yes pagefind@1.2.0 --site docs/_site
+      - name: Publish public
+        if: github.event_name == 'push' && env.CLOUDFLARE_API_TOKEN != ''
+        run: >
+          npx --yes wrangler@3.90.0 pages deploy docs/_site
+          --project-name "$PUBLIC_PROJECT" --branch main --commit-dirty=true

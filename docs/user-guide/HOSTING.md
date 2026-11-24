@@ -131,8 +131,46 @@ image optionally serve it at `/docs` when a folder is mounted.
 6. Search, sitemap and the rest of the extras.
 7. Publish the other topics as each is reviewed.
 
-## Decisions needed
+## Decisions
 
-1. **The address**: domain and subdomain.
-2. **The host**: A (recommended), B or C.
-3. **The name**: CeDesk Docs, or another.
+1. **The host: Cloudflare Pages.** Decided.
+2. **The address**: domain and subdomain. Still open.
+3. **The name**: the build uses "CeDesk Docs" unless the repository variable
+   `DOCS_SITE_NAME` says otherwise. Still open.
+
+## What is built (Cloudflare Pages)
+
+- `scripts/build_docs.py` builds the staging site (everything, drafts, not indexed) by
+  default and the public site with `--public` (published articles only, `robots.txt`, and
+  `sitemap.xml` when `DOCS_BASE_URL` is set). Both get a 404 page and a `_headers` file with
+  security headers.
+- `scripts/check_docs.py` now fails when a published article links to, or lists as related,
+  an article that is still a draft, so the public site never has a dead link.
+- `.github/workflows/docs.yml` checks, builds, adds Pagefind search, and deploys with
+  Wrangler. It skips the deploy when the secrets are not set.
+
+## What you do in Cloudflare (once)
+
+1. In Cloudflare, create two **Pages** projects with direct upload (no Git connection):
+   `cedesk-docs-staging` and `cedesk-docs`. Other names work: set the repository variables
+   `DOCS_STAGING_PROJECT` and `DOCS_PUBLIC_PROJECT`.
+2. Make an **API token** with the permission Account › Cloudflare Pages › Edit. Add it to the
+   repository as the secret `CLOUDFLARE_API_TOKEN`, and the account id as
+   `CLOUDFLARE_ACCOUNT_ID`.
+3. Add the repository variable `DOCS_PUBLIC_URL`, for example `https://docs.example.com`,
+   so the sitemap has full addresses.
+4. In the public project, add the **custom domain** (`docs.<your domain>`).
+5. Put **Cloudflare Access** in front of the staging project (Zero Trust › Access ›
+   Applications), allowing your company email domain, so drafts are not public. The preview
+   addresses of pull requests belong to the same project, so they are covered too.
+6. Open a pull request that touches `docs/`. The staging preview appears in the workflow
+   run, and the same workflow publishes the public site when it merges to `main`.
+
+Until an article is `published`, the public site shows only the API reference.
+
+## Not tested yet
+
+The workflow has never run against a real Cloudflare account, so the first run may need a
+small fix (the Wrangler and Pagefind versions are pinned; check they still exist). The
+search box needs the index that Pagefind builds in the workflow, so it only works on the
+deployed sites, not in a local build.

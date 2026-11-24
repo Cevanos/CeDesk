@@ -35,6 +35,7 @@ def main() -> int:
     known = routes_in_openapi()
     pages = load_pages()
     rels = {p.key for p in pages}
+    status = {p.key: p.meta.get("status") for p in pages}
     articles = [p for p in pages if not p.path.name.startswith("_")]
     for p in articles:
         where = p.path.relative_to(ROOT).as_posix()
@@ -51,9 +52,12 @@ def main() -> int:
             method, _, path = str(r).partition(" ")
             if (method, path) not in known:
                 errors.append(f"{where}: route not in openapi.json: {r}")
+        live = p.meta.get("status") == "published"
         for rel in p.meta.get("related") or []:
             if str(rel) not in rels:
                 errors.append(f"{where}: related article not found: {rel}")
+            elif live and status.get(str(rel)) != "published":
+                errors.append(f"{where}: published, but related article is a draft: {rel}")
         for link in re.findall(r"\]\(([^)#:]+\.md)\)", p.body):
             # slug.md is in the same topic; ../topic/slug.md is in another one.
             target = (
@@ -63,6 +67,8 @@ def main() -> int:
             )
             if target not in rels:
                 errors.append(f"{where}: link to an article that does not exist: {link}")
+            elif live and status.get(target) != "published":
+                errors.append(f"{where}: published, but links to a draft: {link}")
         for img in re.findall(r"!\[[^\]]*\]\(([^)]+)\)", p.body):
             if not (p.path.parent / img).resolve().exists():
                 errors.append(f"{where}: image not found: {img}")

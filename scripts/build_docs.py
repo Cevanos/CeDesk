@@ -7,7 +7,9 @@ block quotes, fenced code, images, **bold**, *italic*, `code` and [links](url).
 
 from __future__ import annotations
 
+import argparse
 import html
+import os
 import re
 import shutil
 from collections import defaultdict
@@ -18,6 +20,15 @@ from docs_lib import ROOT, Page, load_pages
 
 OUT = ROOT / "docs" / "_site"
 BRAND = "#6C55F6"
+# Settings from the environment, so the same script builds every site:
+#   DOCS_SITE_NAME   the name in the header and page titles
+#   DOCS_BASE_URL    the site's address (no trailing slash); needed for sitemap.xml
+#   DOCS_SEARCH=1    add the search box (the deploy builds the index with Pagefind)
+SITE = os.environ.get("DOCS_SITE_NAME", "CeDesk Docs")
+BASE_URL = os.environ.get("DOCS_BASE_URL", "").rstrip("/")
+SEARCH = os.environ.get("DOCS_SEARCH") == "1"
+PUBLIC = False  # set by --public: only published articles, and search engines may index it
+GLOSSARY = True  # whether the glossary page is part of this build
 
 CSS = f"""
 :root{{--brand:{BRAND};--ink:#0B1B36;--mute:#4B5563;--line:#E5E7EB;--tint:#F5F3FF;--bg:#F6F8FB}}
@@ -133,18 +144,47 @@ def render(md: str) -> tuple[str, list[tuple[str, str]]]:
 
 
 def shell(title: str, side: str, body: str, root: str) -> str:
+    robots = "" if PUBLIC else '<meta name="robots" content="noindex">'
+    search_head = (
+        '<link href="/pagefind/pagefind-ui.css" rel="stylesheet">'
+        '<script src="/pagefind/pagefind-ui.js"></script>'
+        if SEARCH
+        else ""
+    )
+    search_box = (
+        '<div id="search" style="flex:1 1 240px;max-width:360px"></div>'
+        "<script>window.addEventListener('DOMContentLoaded',()=>new PagefindUI("
+        "{element:'#search',showSubResults:false,showImages:false}))</script>"
+        if SEARCH
+        else ""
+    )
+    name = html.escape(SITE)
+    glossary = f'<a href="{root}glossary.html">Glossary</a>' if GLOSSARY else ""
     return f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1"><title>{html.escape(title)} · CeDesk Help Center</title>
-<style>{CSS}</style></head><body><a class="skip" href="#content">Skip to content</a>
-<header><div class="bar"><a class="logo" href="{root}index.html">Ce<b>Desk</b> Help Center</a>
-<nav><a href="{root}index.html">User guide</a><a href="{root}glossary.html">Glossary</a><a href="{root}api/index.html">API reference</a></nav></div></header>
-<div class="wrap">{side}<main id="content">{body}</main></div></body></html>"""
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>{html.escape(title)} · {name}</title>
+{robots}{search_head}<style>{CSS}</style></head><body><a class="skip" href="#content">Skip to content</a>
+<header><div class="bar"><a class="logo" href="{root}index.html">{name}</a>{search_box}
+<nav><a href="{root}index.html">User guide</a>{glossary}<a href="{root}api/index.html">API reference</a></nav></div></header>
+<div class="wrap">{side}<main id="content" data-pagefind-body>{body}</main></div></body></html>"""
 
 
 def main() -> None:
+    global GLOSSARY, PUBLIC
+    parser = argparse.ArgumentParser(description="Build the docs site into docs/_site/.")
+    parser.add_argument(
+        "--public",
+        action="store_true",
+        help="only published articles, indexable by search engines (default: everything, noindex)",
+    )
+    PUBLIC = parser.parse_args().public
     pages = load_pages()
     topics = {p.path.parent.name: p for p in pages if p.path.name == "_topic.md"}
     arts = [p for p in pages if not p.path.name.startswith("_") and p.meta.get("topic")]
+    glossary_page = next(p for p in pages if p.path.name == "glossary.md")
+    if PUBLIC:
+        arts = [a for a in arts if a.meta.get("status") == "published"]
+        topics = {t: p for t, p in topics.items() if any(a.meta["topic"] == t for a in arts)}
+    GLOSSARY = not PUBLIC or glossary_page.meta.get("status") == "published"
     by_topic: dict[str, list[Page]] = defaultdict(list)
     for a in sorted(arts, key=lambda a: int(str(a.meta["order"]))):
         by_topic[str(a.meta["topic"])].append(a)
@@ -195,17 +235,68 @@ def main() -> None:
         (OUT / t / f"{a.meta['slug']}.html").write_text(
             shell(str(a.meta["title"]), side(t, "../"), body, "../"), encoding="utf-8"
         )
-    gl = next(p for p in pages if p.path.name == "glossary.md")
-    content, _ = render(gl.body)
-    (OUT / "glossary.html").write_text(
-        shell("Glossary", "", f"<h1>Glossary</h1><p>{gl.meta['summary']}</p>{content}", ""),
-        encoding="utf-8",
-    )
+    if GLOSSARY:
+        content, _ = render(glossary_page.body)
+        (OUT / "glossary.html").write_text(
+            shell(
+                "Glossary",
+                "",
+                f"<h1>Glossary</h1><p>{glossary_page.meta['summary']}</p>{content}",
+                "",
+            ),
+            encoding="utf-8",
+        )
     routes = build_api(OUT, shell)
+    write_site_files(arts, order)
+    kind = "public" if PUBLIC else "staging"
     print(
         f"built {len(arts)} article(s) in {len(order)} topic(s) and {routes} API route(s)"
-        f" -> {OUT.relative_to(ROOT)}"
+        f" ({kind}) -> {OUT.relative_to(ROOT)}"
     )
+
+
+def write_site_files(arts: list[Page], order: list[str]) -> None:
+    """404 page, robots.txt, sitemap.xml and the host's headers file (Cloudflare Pages)."""
+    (OUT / "404.html").write_text(
+        shell(
+            "Page not found",
+            "",
+            "<h1>Page not found</h1><p>That page does not exist or has moved. "
+            '<a href="/index.html">Go to the home page</a>.</p>',
+            "/",
+        ),
+        encoding="utf-8",
+    )
+    if PUBLIC:
+        sitemap = f"\nSitemap: {BASE_URL}/sitemap.xml" if BASE_URL else ""
+        robots = f"User-agent: *\nAllow: /{sitemap}\n"
+    else:
+        robots = "User-agent: *\nDisallow: /\n"
+    (OUT / "robots.txt").write_text(robots, encoding="utf-8")
+    if PUBLIC and BASE_URL:
+        urls = ["index.html", *(f"{t}/index.html" for t in order)]
+        urls += [f"{a.meta['topic']}/{a.meta['slug']}.html" for a in arts]
+        urls += sorted(
+            f"api/{p.name}" for p in (OUT / "api").glob("*.html") if p.name != "index.html"
+        )
+        urls.append("api/index.html")
+        body = "".join(f"<url><loc>{BASE_URL}/{u}</loc></url>" for u in urls)
+        (OUT / "sitemap.xml").write_text(
+            '<?xml version="1.0" encoding="UTF-8"?>'
+            f'<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">{body}</urlset>',
+            encoding="utf-8",
+        )
+    headers = [
+        "/*",
+        "  X-Content-Type-Options: nosniff",
+        "  Referrer-Policy: strict-origin-when-cross-origin",
+        "  X-Frame-Options: DENY",
+        "  Content-Security-Policy: default-src 'self'; style-src 'self' 'unsafe-inline'; "
+        "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; img-src 'self' data:",
+    ]
+    if not PUBLIC:
+        headers.append("  X-Robots-Tag: noindex, nofollow")
+    (OUT / "_headers").write_text("\n".join(headers) + "\n", encoding="utf-8")
 
 
 if __name__ == "__main__":
