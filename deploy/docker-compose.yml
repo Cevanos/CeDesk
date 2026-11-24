@@ -57,6 +57,8 @@ services:
       CEDESK_SECRET_KEY: ${CEDESK_SECRET_KEY:?set CEDESK_SECRET_KEY in deploy/.env}
       CEDESK_CORS_ORIGINS: ${CEDESK_CORS_ORIGINS:-}
       CEDESK_APP_URL: ${CEDESK_APP_URL:-http://localhost:3000}
+      # The customer portal (unsubscribe page, CSAT /rate); empty: CEDESK_APP_URL.
+      CEDESK_PORTAL_URL: ${CEDESK_PORTAL_URL:-}
       # The demo data routes: off unless true, never on production.
       CEDESK_DEMO_ENABLED: ${CEDESK_DEMO_ENABLED:-false}
       # Self-service sign-up (off unless true) and its CAPTCHA (Cloudflare Turnstile).
