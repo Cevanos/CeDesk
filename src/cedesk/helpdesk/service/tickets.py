@@ -736,6 +736,9 @@ async def change_contact(
     """Edits the customer card: name and the VIP flag (T19)."""
     require(caller, Action.change_fields)
     async with workspace_session(sm, caller.workspace_id) as s:
+        if await repo.contact_erased(s, contact_id):
+            # As notes and fields: an erased customer's card stays as the erase left it.
+            raise Invalid("This customer was erased.")
         before = await repo.get_contact(s, contact_id)
         if before is None or not await repo.update_contact(s, contact_id, name=name, vip=vip):
             raise NotFound("Customer not found.")

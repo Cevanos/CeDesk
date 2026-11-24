@@ -15845,6 +15845,9 @@
           "404": {
             "description": "No such webhook"
           },
+          "409": {
+            "description": "Its secret can't be read (the server key changed): make a new one"
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -16343,7 +16346,7 @@
             "description": "No such ticket, or no such issue in Jira"
           },
           "409": {
-            "description": "Jira isn't installed, the issue is already on the ticket, or 10 are"
+            "description": "Jira isn't installed, its saved token can't be read (the server key changed: install it again), the issue is already on the ticket, or 10 are"
           },
           "422": {
             "description": "Jira refused (bad key, no access to the project)"
@@ -16406,7 +16409,7 @@
             "description": "No such ticket, or no such issue in Jira"
           },
           "409": {
-            "description": "Jira isn't installed, the issue is already on the ticket, or 10 are"
+            "description": "Jira isn't installed, its saved token can't be read (the server key changed: install it again), the issue is already on the ticket, or 10 are"
           },
           "422": {
             "description": "Jira refused (bad key, no access to the project)"
@@ -17678,7 +17681,7 @@
             }
           },
           "403": {
-            "description": "An API key (AI help is for people), or the role can't"
+            "description": "The role can't see reports (API keys can, like other reports)"
           },
           "409": {
             "description": "`cevanos_not_connected` (connect Cevanos in Settings), `cevanos_scope_missing` (the key lacks a scope; the message names it) or `cevanos_refused`"
@@ -29039,10 +29042,11 @@
               "no_workspace",
               "unreadable",
               "verification",
-              "bounce"
+              "bounce",
+              "side_reply"
             ],
             "title": "Outcome",
-            "description": "created: a new ticket; added / rules_ran / reopened / thanked: on an existing ticket; verification: a support address's forwarding check came back (no ticket); bounce: a campaign email's bounce or spam report (recorded, no ticket); the rest: ignored on purpose."
+            "description": "created: a new ticket; added / rules_ran / reopened / thanked: on an existing ticket; side_reply: an answer in a side conversation (saved there, never on the customer's thread; ticket_id is its ticket); verification: a support address's forwarding check came back (no ticket); bounce: a campaign email's bounce or spam report (recorded, no ticket); the rest: ignored on purpose."
           },
           "ticket_id": {
             "anyOf": [

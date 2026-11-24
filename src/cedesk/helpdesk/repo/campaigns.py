@@ -125,13 +125,21 @@ async def suppress(
     note: str | None = None,
     created_by: UUID | None = None,
 ) -> UUID | None:
-    """Adds the address; None when it was already on the list (that entry is kept: the
-    first reason stays, so an Admin's note can't turn an unsubscribe into something else)."""
+    """Adds the address; None when it was already on the list and that entry is kept as it
+    was. The person's own choice only ever gets stronger: an unsubscribe or spam report
+    replaces a `manual` or `hard_bounce` entry (which an Admin may remove without consent),
+    so asking not to be mailed can't be lost behind an earlier entry. Nothing replaces an
+    unsubscribe, a complaint or an erase (an Admin's entry can't turn one into something
+    else)."""
     result = await session.execute(
         text(
             "INSERT INTO hd_suppression (workspace_id, email_hash, email, reason, source, "
             "campaign_id, note, created_by) VALUES (:ws, :hash, :email, :reason, :source, "
-            ":campaign, :note, :by) ON CONFLICT (workspace_id, email_hash) DO NOTHING "
+            ":campaign, :note, :by) ON CONFLICT (workspace_id, email_hash) DO UPDATE SET "
+            "reason = EXCLUDED.reason, source = EXCLUDED.source, "
+            "campaign_id = EXCLUDED.campaign_id "
+            "WHERE hd_suppression.reason IN ('manual', 'hard_bounce') "
+            "AND EXCLUDED.reason IN ('unsubscribed', 'complaint') "
             "RETURNING id"
         ),
         {
@@ -471,6 +479,22 @@ async def claim(
         {"ws": str(workspace_id), "campaign": campaign_id, "limit": limit, "now": now},
     )
     return result.mappings().all()
+
+
+MERGED = "The customer was merged into another customer."
+
+
+async def skip_merged(session: AsyncSession, contact_id: UUID) -> int:
+    """Before a merged duplicate's row goes: its emails still waiting are skipped with the
+    true reason (its row going would read as an erase at send time)."""
+    result = await session.execute(
+        text(
+            "UPDATE hd_campaign_recipient SET status = 'skipped', error = :reason "
+            "WHERE contact_id = :c AND status = 'queued'"
+        ),
+        {"c": contact_id, "reason": MERGED},
+    )
+    return int(result.rowcount)  # type: ignore[attr-defined]
 
 
 async def skip(session: AsyncSession, recipient_id: UUID, reason: str) -> None:

@@ -289,9 +289,12 @@ async def send_transcript(
     settings: SettingsDep,
     request: Request,
 ) -> TranscriptOut:
-    within(request.app.state.transcript_requests, str(caller.member_id), "transcripts")
-    within(request.app.state.transcript_workspace, str(caller.workspace_id), "transcripts")
+
+    def spend() -> None:
+        within(request.app.state.transcript_requests, str(caller.member_id), "transcripts")
+        within(request.app.state.transcript_workspace, str(caller.workspace_id), "transcripts")
+
     sent = await transcript.send(
-        sm, caller, ticket_id, to=body.to, fallback=fallback_sender(settings)
+        sm, caller, ticket_id, to=body.to, fallback=fallback_sender(settings), spend=spend
     )
     return TranscriptOut(to=sent.to, to_customer=sent.to_customer, messages=sent.messages)

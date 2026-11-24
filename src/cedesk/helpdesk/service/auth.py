@@ -2,7 +2,6 @@
 
 import asyncio
 import logging
-import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -15,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from cedesk.db import workspace_session
 from cedesk.helpdesk.domain import auth as rules
 from cedesk.helpdesk.domain import security as security_rules
+from cedesk.helpdesk.domain import signup as signup_rules
 from cedesk.helpdesk.domain import two_factor as two_factor_rules
 from cedesk.helpdesk.domain.auth import Caller
 from cedesk.helpdesk.domain.permissions import Access, Role, access_of
@@ -35,7 +35,6 @@ logger = logging.getLogger("cedesk.auth")
 # One message for every sign-in failure: unknown workspace, unknown email,
 # wrong password, inactive member or locked account all look the same.
 SIGN_IN_FAILED = "Those details did not match. Check the workspace, email and password."
-SLUG = re.compile(r"^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$")
 
 Sessionmaker = async_sessionmaker[AsyncSession]
 
@@ -225,9 +224,12 @@ async def create_workspace(
 ) -> UUID:
     """A new workspace with its first Admin and, unless `seed` is False, the default
     teams and ticket types from the mock. Used by the CLI and tests."""
-    slug = slug.strip().lower()
-    if not SLUG.match(slug):
-        raise Invalid("The workspace address uses 3-40 lowercase letters, digits or dashes.")
+    slug = signup_rules.clean_slug(slug)
+    # The same address rules as sign-up: no reserved names (the agent app's own pages, or
+    # names that pass for CeDesk) and no double dashes. Only older workspaces keep theirs.
+    slug_problem = signup_rules.slug_problem(slug)
+    if slug_problem:
+        raise Invalid(slug_problem)
     problem = rules.password_problem(admin_password)
     if problem:
         raise Invalid(problem)

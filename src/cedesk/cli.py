@@ -634,7 +634,7 @@ def main(argv: list[str] | None = None) -> int:
         help="Start empty, without the default teams and ticket types",
     )
     demo = sub.add_parser(
-        "seed-demo", help="A demo workspace like the mock: Ritesh (Admin), agents, tickets"
+        "seed-demo", help="A demo workspace like the mock: an Admin (Alex), agents, tickets"
     )
     demo.add_argument("--slug", default="acme-store")
     demo.add_argument("--name", default="Acme Store")

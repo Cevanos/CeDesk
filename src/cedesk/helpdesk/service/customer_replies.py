@@ -1,7 +1,7 @@
 """A customer writes on an existing ticket (md 6.4, W16, W17).
 
-Called by whatever brings the customer's message in: the Cevanos connector and email
-(Pranav), the customer portal (Phase 2 block 2), and the "simulate" route for testing.
+Called by whatever brings the customer's message in: the Cevanos connector and email,
+the customer portal (Phase 2 block 2), and the "simulate" route for testing.
 There is no signed-in member here, so this takes the workspace id directly.
 
 - Resolved, and the message is only a thank-you ("thanks", "thank you", "thx", ...): the
@@ -143,8 +143,11 @@ async def customer_reply(
         )
         if removed:
             await _line(s, workspace_id, ticket_id, triage.removed_line(removed))
-        # Workflow runs waiting for this customer's reply go on now (plan 5.3).
-        await runs.customer_replied(s, ticket_id)
+        # Workflow runs waiting for this customer's reply go on now (plan 5.3). Not for a
+        # thank-you on a resolved ticket: it stays resolved, and a resolved ticket's waiting
+        # runs are cancelled, never moved on by `replied`.
+        if not (before["status"] == Status.resolved.value and is_thanks_only(body)):
+            await runs.customer_replied(s, ticket_id)
         # Topic and language from all they wrote; the mood from this message (I4).
         await triage.retriage(s, ticket_id, newest=body, cfg=cfg)
         await save_incoming(

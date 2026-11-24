@@ -55,7 +55,10 @@ def _out(issue: JiraIssue) -> JiraIssueOut:
 _ERRORS = {
     403: {"description": "Can't reply, or the ticket is another team's (view only)"},
     404: {"description": "No such ticket, or no such issue in Jira"},
-    409: {"description": "Jira isn't installed, the issue is already on the ticket, or 10 are"},
+    409: {
+        "description": "Jira isn't installed, its saved token can't be read (the server "
+        "key changed: install it again), the issue is already on the ticket, or 10 are"
+    },
     422: {"description": "Jira refused (bad key, no access to the project)"},
     503: {"description": "Jira didn't answer"},
 }
