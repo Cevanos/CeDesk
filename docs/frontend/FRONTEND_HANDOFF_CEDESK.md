@@ -67,7 +67,7 @@ its own stream (`/portal/stream`) with only the customer's own messages and stat
 `{{customer.first_name}}` and the like; the API fills them when the reply is sent.
 Show them as they are in the editor.
 
-**234 routes**, all on `main`.
+**238 routes**, all on `main`.
 
 ## 2. Screens
 
@@ -238,6 +238,7 @@ Show them as they are in the editor.
 ### 2.10 Reports
 
 - Supervisors and Admins (`reports`). Team report, more metrics and help-article votes, for a period (`from`, `to`) and a team (`team_id`; not for articles). Each one downloads as CSV with `format=csv`.
+- Team report, Tickets by team: each team row has `first_reply_sla_met_percent` (null when nothing was measured: show "—") and `first_reply_sla_measured`, the same rule as the summary's SLA met.
 - AI card (`GET /reports/ai`, only with `ai: true`): handover rate, resolved by the AI, CSAT of AI answers, from Cevanos for the whole workspace. It downloads as CSV too.
 - **Trends and breakdowns, custom reports** (`reports` right): `GET /reports/options` lists everything the builder can offer (metrics with their `unit` and `kind`, groupings, filters, ranges, and the built-in reports). `POST /reports/run` takes `{preset: "created_per_day"}` (optionally with `range`) or a `definition` `{metric, group_by, filters, range}` and answers `{groups: [{key, label, value, n}], total, timezone, ...}`; `?format=csv` downloads it. A time series (`group_by` day, week or month) is zero-filled and oldest first, bucketed in the workspace's time zone (`timezone`; weeks start Monday): draw it as a line or bars. Other groupings are biggest first, at most 50 (`truncated`). A `tag` grouping counts a ticket in each of its tags (see `notes`). `open_now` is "open now" and can't be grouped by time; `backlog` (open and pending at the end of each day, from snapshots) is grouped by day only. Show `notes`, and a warning when `incomplete` is true (the range reaches back past the archive age: older numbers can be low). 422 = bad definition or "took too long: narrow the range"; 429 with `Retry-After` = too many running (retry).
 - **Backlog over time:** `GET /reports/backlog` (`from`, `to`, `team_id`) lists `{day, open, pending, breaching}` per local day. History starts the day it shipped (`first_day`); a day with no snapshot is missing, not zero: leave a gap.
@@ -432,6 +433,7 @@ Show them as they are in the editor.
 
 - Apps: `GET /apps` lists each app with what to ask for. Build the install form from `fields`, in order: each has `label` (above the box), `hint` (under it), `send_as` (`settings`: send as `settings[key]`; `secret` / `signing_secret`: that field of the install body) and `secret` (a password box). `settings_fields`, `credential` (null when the app needs none) and `second_credential` say the same without labels. Credentials are never shown again, only `secret_hint`. `blocked` explains why an app can't be installed here.
 - API keys and webhook secrets are shown **once**, on creation: say so.
+- Make API key needs a name **and** `access`, which the Admin picks: `read` (GET only), `read_write` (also tickets, customers, notes, tags, tasks, time and customer messages in) or `admin` (also teams, ticket types, saved replies, macros, rules and the help center). Without `access` the answer is 422. The list shows `access` and `hint`; a key with `revoked_at` set is revoked: show it as revoked (by `revoked_by_name`), without the Revoke button.
 - Webhooks: events, delivery log, retry, test ping, new secret. In the log, show `state` (`delivered`, `pending` = will try again at `next_try_at`, `failed`) and `tries` (a number); `attempts` is the list of tries (`at`, `status`, `ms`, `error`). Offer Retry only when `state` is `failed`. Retry answers 409 while the webhook is turned off: show its message. The test ping answers the delivery: show `state` and `last_status` / `last_error`, not just "sent".
 - Cevanos: connect with a key, check, disconnect. Failed events list (outbox). Under "Webhook address" show the full address and list `webhook_events` (the four events to subscribe the webhook to in Cevanos), so the Admin knows exactly what to choose there.
 
@@ -466,18 +468,23 @@ Show them as they are in the editor.
 |---|---|---|
 | `POST` | `/imports/connections` | Connect a help desk to import from (Admin) |
 | `POST` | `/imports/connections/{connection_id}/close` | Delete the stored credentials or file now (Admin) |
+| `POST` | `/imports/connections/{connection_id}/credentials` | Give an open connection new credentials (Admin) |
 | `GET` | `/imports/connections/{connection_id}/discover` | What the source holds, and the team each group probably maps to (Admin) |
 | `POST` | `/imports/connections/{connection_id}/dry-run` | What a run would do, saving nothing (Admin) |
 | `POST` | `/imports/connections/{connection_id}/run` | Start importing (Admin) |
 | `POST` | `/imports/csv` | Upload a CSV file to import (Admin) |
 | `GET` | `/imports/history` | Every import: when, from where, by whom, how it went (Admin) |
 | `GET` | `/imports/runs/{run_id}` | A run's progress (Admin) |
+| `GET` | `/imports/runs/{run_id}/failures` | Records a run could not read and left out (Admin) |
+| `POST` | `/imports/runs/{run_id}/failures/{failure_id}/dismiss` | Accept a record's loss: the failure ends as dismissed (Admin) |
+| `POST` | `/imports/runs/{run_id}/resume` | Resume a failed import where it stopped (Admin) |
 | `POST` | `/imports/runs/{run_id}/sync-now` | Ask the source for changes now instead of in 5 minutes (Admin) |
 | `POST` | `/imports/runs/{run_id}/sync-stop` | Go-live: stop syncing and delete the stored credentials (Admin) |
 
 ### 2.18 Settings: plan, retention, archive and demo
 
 - Usage and plan limits (cloud). Retention: delete resolved tickets after N days, and `export_before_delete` (write them to a file first, kept 30 days: Admins list and download them under Retention exports). Archive age (default 120 days).
+- Retention and the archive age each have their own `updated_at` and `updated_by_name`: show "Last changed by" on each card from its own answer. Retention's are null until retention itself is saved.
 - Demo (not on production servers): load the demo, load sample tickets (for an empty inbox), reset the demo.
 
 | | Route | What it does |

@@ -100,6 +100,10 @@ async def test_the_report_lists_days_with_a_snapshot_and_says_where_history_star
 ) -> None:
     w = await desk(client, app_sessionmaker)
     await ticket(client, w, "a", team="Billing")
+    # Due well after the snapshot: on the real SLA clock it was already past due at 22:30
+    # UTC on some runs, so `breaching` depended on the time of day (CI, 23 Nov).
+    await sql(app_sessionmaker, w["ws"], "UPDATE hd_ticket SET sla_due_at = :at",
+              at=KOLKATA_DAY_AFTER + timedelta(days=2))  # fmt: skip
     empty = ok(await client.get(B, headers=w["sam"]))
     assert (empty["days"], empty["first_day"]) == ([], None)
 

@@ -1,7 +1,8 @@
 """CSAT (md P5, T15) with RLS on: the survey email after resolve (once per event, never
-for chats, merged tickets or when turned off), rating by the emailed link or in the
-portal, one rating per ticket (a new one replaces it), the "Customer rated" line, and
-the rating on the agent's ticket view and customer card."""
+for Cevanos chats, even with the customer's real address, merged tickets or when turned
+off), rating by the emailed link or in the portal, one rating per ticket (a new one
+replaces it), the "Customer rated" line, and the rating on the agent's ticket view and
+customer card."""
 
 import re
 from datetime import UTC, datetime
@@ -200,10 +201,16 @@ async def test_when_no_survey_is_sent(client: AsyncClient, app_sessionmaker: Sm)
     async with workspace_session(app_sessionmaker, w["ws"]) as s:
         await s.execute(text("UPDATE hd_ticket SET merged_into_id = :into WHERE id = :id"),
                         {"into": chat["id"], "id": merged["id"]})  # fmt: skip
+    # A Cevanos chat whose customer Cevanos named (AI6): a real address now, but the widget
+    # still asks them in the chat, so no email either (staging, 23 Nov).
+    named = await resolved(client, w, "dev@example.org")
+    async with workspace_session(app_sessionmaker, w["ws"]) as s:
+        await s.execute(text("UPDATE hd_ticket SET source = 'cevanos', source_id = 'conv-1', "
+                             "channel = 'chat' WHERE id = :id"), {"id": named["id"]})  # fmt: skip
     # Reopened before the worker got to it.
     reopened = await resolved(client, w, "asha@example.org")
     ok(await client.patch(f"{T}/{reopened['id']}", headers=w["admin"], json={"status": "open"}))
-    for t in (chat, merged, reopened):
+    for t in (chat, named, merged, reopened):
         await run_survey(app_sessionmaker, w, t["id"])
         assert await surveys(app_sessionmaker, w, t["id"]) == [], t["contact"]["email"]
 

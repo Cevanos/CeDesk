@@ -3,10 +3,147 @@
 `openapi.json` next to this file is the API as served (`uv run cedesk openapi`). Every
 route is under `/api/v1`. Breaking changes only come in v2 (md 2B). Newest first.
 
+## 2026-11-24: Where a ticket stands, in the customer portal
+
+Additive. Migration 0082.
+
+- `PortalTicketRow` and `PortalTicketOut` (`GET /portal/tickets`, `GET
+  /portal/tickets/{id}`) gain:
+  - `owner_first_name`: the assignee's first name, or the team's name (unassigned, or
+    names hidden); null when nobody has it. Never an email address.
+  - `pending_step`: "Waiting on you" when Pending; on a resolved ticket, the resolution
+    receipt's `pending_item`.
+  - `outcome`: on a resolved ticket, the receipt's `result` once verified (by the agent,
+    Shopify or Stripe); else null.
+- `/portal-settings` gains `show_owner` (default true). Off: the team's name instead of
+  a person's. Audited with the other portal settings. Saving the settings without it
+  sets it back to true.
+- A receipt's `pending_item` and verified `result` are now shown to the customer.
+
+## 2026-11-24: Resolution receipts
+
+Additive. Migration 0081. Off by default: nothing changes until an Admin turns it on.
+
+- `GET/PUT /resolution-receipts` (Settings; audited): `mode` is `off` (default),
+  `optional` or `required`; `required_teams` limits `required` to some teams (empty: every
+  team).
+- `POST /tickets/{id}/resolve` takes an optional body `{"resolution": {...}}`:
+  `action_taken` (needed), `request`, `result`, `verified` (`unverified` or `agent`),
+  `customer_notified` (null: yes when a reply went out in the 24 hours before),
+  `pending_item`. With `required` for the ticket's team, resolving without one is 422,
+  also through `PATCH /tickets/{id}` and bulk `set_status`; automatic closes never need
+  one. With receipts `off`, a receipt sent is 422. A new resolve after a reopen replaces
+  the receipt (audited, without its text).
+- `GET /tickets/{id}/resolution`; `PATCH /tickets/{id}/resolution` (only the keys sent;
+  while resolved, for 7 days; audited with field names only).
+- `POST /tickets/{id}/resolution/verify` with `order_id` or `payment_id`: reads the
+  Shopify order or Stripe payment (read-only) and sets `result`, `verified`
+  (`shopify`/`stripe`) and `verified_at`.
+- `TicketOut.resolution`: the receipt, or null.
+- `ticket.resolved` events carry `resolution`: `verified`, `verified_at`,
+  `customer_notified`, `pending` (true/false), never the receipt's text; null without one.
+- `GET /reports/resolutions` (Supervisor, Admin; `format=csv`): resolved vs. with a
+  receipt vs. verified (by agent, Shopify, Stripe), with a pending item, customer told;
+  per team and per assignee.
+- Audit area `resolutions`. The privacy export and the retention export include the
+  receipt; the privacy erase blanks its text.
+
+## 2026-11-24: Reporting views for BI tools, and read-only reporting logins
+
+No API change. Migration 0080. New CLI command.
+
+- Migration 0080: a `reporting` schema of read-only views (`tickets`, `messages`, `csat`,
+  `members`, `teams`, `team_members`, `ticket_types`, `workspaces`) without personal data
+  (no subjects, message text, CSAT comments, tags, custom fields, or names and emails of
+  people); `hd_reporting_access`; one read-only row-level policy per table the views read.
+  The app's connection is unchanged.
+- `cedesk reporting-user create report_<name> (--workspace <address> | --all)`, `drop`,
+  `list`: a database login for a BI tool that reads those views only, read-only, 5
+  connections, 60 s a query. Needs `CEDESK_ADMIN_DATABASE_URL` (the database superuser),
+  for the command only; the password is asked at a prompt and sent as a SCRAM hash.
+- How to connect Metabase or Power BI: `docs/REPORTING_DATABASE.md`.
+
+## 2026-11-24: Replay a rule or workflow on past tickets; restore an older workflow version
+
+New routes, Admin only. Migration 0079 (`hd_rule_replay`). No change to existing routes.
+
+- `POST /rules/replay` (an unsaved rule, as in `POST /rules/test`) and
+  `POST /rules/{rule_id}/replay` (a saved rule, on or off), body `{"ticket_limit": 1-1000}`
+  (default 500): **202** with the replay. The worker tries it on the newest tickets, 100
+  at a time, with the same code as test mode. Nothing on a ticket changes; nothing is
+  sent, queued or logged. **409** while another replay is queued or running in the
+  workspace.
+- `POST /flows/{flow_id}/replay`, body `{"ticket_limit", "version"?}`: a workflow's current
+  or an older version, walked up to its first wait (`would_wait`).
+- `GET /replays/{replay_id}`: `state` (queued, running, done, failed, cancelled), a
+  `summary` line, `checked`, `matched`, `would_change`, `would_wait`, `conflicts`, up to
+  200 `samples` (ticket, the changes field by field, every line it would write) and up to
+  200 `conflict_samples` (another enabled rule setting status, priority, type or team to
+  something else; `winner` is the later one in run order). Poll it while it runs.
+- `POST /replays/{replay_id}/cancel`: stops it; what it found so far stays. **409** when it
+  has finished.
+- `POST /flows/{flow_id}/versions/{version}/restore`: the older graph becomes a new
+  version (history is never rewritten; audit area `flows`, action `restored`). **404** for
+  a version the workflow never had; **409** when it is the current graph already.
+- Finished replays are kept 30 days.
+
+## 2026-11-24: Before and after a migration: the pre-migration report and the cutover checklist
+
+New routes, Admin only. No migration. No change to existing routes.
+
+- `GET /imports/connections/{connection_id}/report`: before importing, what will import
+  (with the source's counts), what needs setting up in CeDesk (agents, teams for unmatched
+  groups, rules, views, email addresses, business hours) and what this source can't give
+  CeDesk. Each item is `imports`, `needs_setup` or `cannot_move`; `totals` counts them;
+  `warnings` are the source's own, as in discover. Saves nothing; the source is asked like
+  discover. **409** for a closed connection; **422** / **503** when the source refuses or
+  can't be reached.
+- `GET /imports/runs/{run_id}/cutover`: before go-live, seven checks (`import_finished`,
+  `counts_match`, `no_open_failures`, `sync_fresh`, `agents_matched`, `teams_set`,
+  `email_ready`), each `ok`, `problem` or `skipped`, with what to do. `ready` is true when
+  no check is a problem. Read from CeDesk only. **404** for an unknown run.
+- How to use both, and how to roll back: `docs/imports/GO_LIVE_AND_ROLLBACK.md`.
+
+## 2026-11-23: No survey email to Cevanos chat customers, even with their real address
+
+Fix. No API change; no migration.
+
+The satisfaction survey email skipped a Cevanos chat's customer only by their placeholder
+address (`chat-…@cevanos.invalid`). Since a handover fills in the customer's real name
+and email from Cevanos (AI6), resolving such a ticket would have emailed them a survey,
+on top of the rating the Cevanos widget asks for in the chat. Now a ticket that came from
+a Cevanos chat (handed over or converted) never gets the survey email, whatever its
+customer's address.
+
+## 2026-11-23: The archive age and retention each say when they were changed
+
+Fix. No new routes or fields. Migration 0078.
+
+- `GET` / `PUT /archive/settings`: `updated_at` and `updated_by_name` are now the archive
+  age's own (when it was last saved, and by whom). They were shared with retention, so
+  saving the archive age made the Retention card say retention had just been changed.
+- `GET` / `PUT /retention`: `updated_at` and `updated_by_name` move only when retention is
+  saved. Both are null when only the archive age has been saved so far.
+- Migration 0078 fills both from each setting's latest change in the audit log (area
+  `archive` or `retention`, action `changed`).
+- `PUT /retention` with `closed_ticket_days` outside 30 to 3650 is still **422**, now with
+  the message "Keep resolved tickets 30 to 3650 days, or for good (null)." instead of the
+  validator's "Input should be greater than or equal to 30". The schema no longer has
+  `minimum` / `maximum` on that field; its description gives the range.
+
+## 2026-11-23: Team report: first-reply SLA met per team
+
+Additive. In `GET /reports/team`, each row of `teams` gains `first_reply_sla_met_percent`
+(null when none of that team's tickets was measured) and `first_reply_sla_measured`. They
+follow the summary's rule: of the team's tickets created in the period (not imported, not
+merged) whose first-reply clock stopped or ran out, the share answered in time. A ticket
+still within its first-reply time counts nowhere yet. The CSV's Teams table gains the
+same two columns. No migration.
+
 ## 2026-11-23: Help center: languages, SEO controls, custom domain
 
 Additive only: new routes and fields; nothing existing changed shape (the public routes called
-without `locale` answer as before, with extra fields). Migrations 0078-0080. Feature-gap plan
+without `locale` answer as before, with extra fields). Migrations 0083-0085. Feature-gap plan
 phase 4 (4.1, 4.2, 4.3). No new permission: agents read (drafts too), the public reads what is
 published, every write is Admin (Settings), like articles and categories today. New audit area:
 `help_domain` (the others stay under `help_center`).
@@ -58,8 +195,8 @@ published, every write is Admin (Settings), like articles and categories today. 
   file. See `deploy/README.md`.
 - **Settings.** `CEDESK_TLS_ASK_KEY`, `CEDESK_HELP_CNAME_TARGET` (both empty = off); in
   `docs/SETTINGS.md`.
-- **Going back.** Migration 0078 refuses to go down while a translation exists (delete them
-  first); 0079 and 0080 drop their columns and tables.
+- **Going back.** Migration 0083 refuses to go down while a translation exists (delete them
+  first); 0084 and 0085 drop their columns and tables.
 
 ## 2026-11-22: Reporting follow-ups
 

@@ -11,11 +11,11 @@
 - `hd_article_vote.locale`: the language of the page that was voted on (last vote wins). Not
   part of the unique key: a visitor still has one vote per article.
 
-Going below 0078 is refused while a translation exists: dropping the table would lose
+Going below 0083 is refused while a translation exists: dropping the table would lose
 them. Delete them on purpose first (nothing is changed when it refuses).
 
-Revision ID: 0078
-Revises: 0077
+Revision ID: 0083
+Revises: 0082
 """
 
 from collections.abc import Sequence
@@ -25,8 +25,8 @@ from alembic import op
 
 from cedesk.tenancy import tenant_rls_sql
 
-revision: str = "0078"
-down_revision: str | None = "0077"
+revision: str = "0083"
+down_revision: str | None = "0082"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
@@ -98,7 +98,7 @@ def downgrade() -> None:
     )
     if count:
         raise RuntimeError(
-            f"hd_article_translation holds {count} translations; downgrading 0078 would "
+            f"hd_article_translation holds {count} translations; downgrading 0083 would "
             "delete them. Delete them on purpose first (nothing was changed)."
         )
     op.execute("ALTER TABLE hd_article_vote DROP COLUMN locale")

@@ -320,6 +320,7 @@ async def _export(
         built = exports.export_tickets(
             rows, await privacy_repo.messages_of(s, list(ids)),
             await privacy_repo.files_of(s, list(ids)), await repo.ratings_for_export(s, ids),
+            await privacy_repo.receipts_of(s, list(ids)),
         )  # fmt: skip
         tickets = [t | _customer(r) for t, r in zip(built, rows, strict=True)]
     data = {

@@ -13,7 +13,7 @@ from sqlalchemy import text
 from cedesk.db import workspace_session
 from cedesk.helpdesk.service.email_in import Outcome, receive
 from tests.db.helpers import Sm, add, bearer, ok, sign_in
-from tests.db.test_email_in import desk, email
+from tests.db.test_email_in import TOKEN, desk, email, hook  # noqa: F401 (hook: a fixture)
 
 pytestmark = pytest.mark.db
 
@@ -96,6 +96,31 @@ async def test_a_side_conversation_goes_out_and_its_reply_comes_back(
     assert follow["in_reply_to"] not in (None, queued["header_message_id"])
     assert follow["references_ids"][0] == queued["header_message_id"]
     assert follow["in_reply_to"] == follow["references_ids"][-1]
+
+
+async def test_a_side_reply_through_the_email_webhook_answers_200(
+    client: AsyncClient,
+    hook: AsyncClient,  # noqa: F811 (the fixture imported above)
+    app_sessionmaker: Sm,
+) -> None:
+    """The webhook's answer must allow side_reply: it was missing, so the reply was saved but
+    the route answered 500 and the mail service kept sending it again."""
+    sm = app_sessionmaker
+    w = await desk(client, sm)
+    tid = await customer_ticket(client, sm, w)
+    url = f"{T}/{tid}/side-conversations"
+    body = {"to": ["warehouse@acme.com"], "body": "Shipped?"}
+    side = ok(await client.post(url, headers=w["agent"], json=body), 201)
+    queued = (await outbox(sm, w["ws"]))[-1]
+    reply = email(to=w["billing"], sender="Warehouse <warehouse@acme.com>",
+                  subject=f"Re: {side['subject']}", body="Yes, today.",
+                  in_reply_to=queued["header_message_id"])  # fmt: skip
+    headers = {"Content-Type": "message/rfc822", "Authorization": f"Bearer {TOKEN}"}
+    for _ in range(2):  # a retry by the mail service gets the same answer, saved once
+        got = ok(await hook.post("/api/v1/inbound/email", content=reply, headers=headers))
+        assert got == {"outcome": "side_reply", "ticket_id": tid}
+    [after] = ok(await client.get(url, headers=w["agent"]))
+    assert [m["direction"] for m in after["messages"]] == ["out", "in"]
 
 
 async def test_who_and_what_is_refused(client: AsyncClient, app_sessionmaker: Sm) -> None:

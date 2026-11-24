@@ -3070,7 +3070,8 @@
         "tags": [
           "tickets"
         ],
-        "summary": "Resolve a ticket (already resolved: no change)",
+        "summary": "Resolve a ticket, with a resolution receipt when asked for",
+        "description": "Already resolved: no change (409 if a receipt is sent: change it with `PATCH .../resolution`). The body is optional. With the workspace's resolution receipts `required` for the ticket's team, resolving without `resolution` is 422, here and through `PATCH /tickets/{id}` or a bulk change; automatic closes don't need one.",
         "operationId": "resolve_ticket_api_v1_tickets__ticket_id__resolve_post",
         "security": [
           {
@@ -3108,6 +3109,23 @@
             "description": "The ETag from reading the ticket. 409 if the ticket changed since."
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ResolveIn"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -3119,15 +3137,11 @@
               }
             }
           },
+          "409": {
+            "description": "Already resolved and a receipt was sent, or changed since read"
+          },
           "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
+            "description": "A receipt is required, or receipts are off"
           }
         }
       }
@@ -8845,6 +8859,112 @@
         }
       }
     },
+    "/api/v1/rules/replay": {
+      "post": {
+        "tags": [
+          "rules"
+        ],
+        "summary": "Replay: try an unsaved rule on past tickets; changes and sends nothing (Admin)",
+        "description": "The worker tries it on the newest `ticket_limit` tickets; follow it with GET /replays/{id}. 409 while another replay is queued or running.",
+        "operationId": "replay_draft_api_v1_rules_replay_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuleReplayBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReplayOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/rules/{rule_id}/replay": {
+      "post": {
+        "tags": [
+          "rules"
+        ],
+        "summary": "Replay: try a saved rule on past tickets; changes and sends nothing (Admin)",
+        "description": "As saved now, on or off. Follow it with GET /replays/{id}. 409 while another replay is queued or running.",
+        "operationId": "replay_saved_api_v1_rules__rule_id__replay_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "rule_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Rule Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReplayBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReplayOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/rules/order": {
       "put": {
         "tags": [
@@ -9381,6 +9501,123 @@
         }
       }
     },
+    "/api/v1/flows/{flow_id}/versions/{version}/restore": {
+      "post": {
+        "tags": [
+          "automation"
+        ],
+        "summary": "Go back to an older graph: saved as a new version (Admin; audited)",
+        "description": "History is never rewritten: the older graph becomes the next version. Runs waiting on a wait step carry on with the version they started on. 404 for a version the workflow never had; 409 when it is the current graph already.",
+        "operationId": "restore_version_api_v1_flows__flow_id__versions__version__restore_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "flow_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Flow Id"
+            }
+          },
+          {
+            "name": "version",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Version"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FlowOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/flows/{flow_id}/replay": {
+      "post": {
+        "tags": [
+          "automation"
+        ],
+        "summary": "Replay: try a workflow version on past tickets; changes and sends nothing (Admin)",
+        "description": "Each ticket is walked up to the workflow's first wait (counted as would_wait). Follow it with GET /replays/{id}. 409 while another replay is queued or running.",
+        "operationId": "replay_flow_api_v1_flows__flow_id__replay_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "flow_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Flow Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FlowReplayBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReplayOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/flows/{flow_id}/test": {
       "post": {
         "tags": [
@@ -9689,6 +9926,462 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/v1/replays/{replay_id}": {
+      "get": {
+        "tags": [
+          "rules"
+        ],
+        "summary": "A replay's progress and what it found (Admin)",
+        "operationId": "get_replay_api_v1_replays__replay_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "replay_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Replay Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReplayOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/replays/{replay_id}/cancel": {
+      "post": {
+        "tags": [
+          "rules"
+        ],
+        "summary": "Stop a queued or running replay; what it found so far stays (Admin)",
+        "description": "409 when it has already finished.",
+        "operationId": "cancel_replay_api_v1_replays__replay_id__cancel_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "replay_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Replay Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReplayOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/resolution-receipts": {
+      "get": {
+        "tags": [
+          "resolutions"
+        ],
+        "summary": "The resolution receipts setting (Settings)",
+        "operationId": "get_setting_api_v1_resolution_receipts_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReceiptSettingOut"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "resolutions"
+        ],
+        "summary": "Turn resolution receipts off, optional or required (Settings; audited)",
+        "description": "Off by default. With `required`, resolving a ticket without a receipt is refused (422), for the listed teams or every team. Automatic closes (auto-close, rules, Cevanos) never need one.",
+        "operationId": "set_setting_api_v1_resolution_receipts_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReceiptSettingIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReceiptSettingOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/tickets/{ticket_id}/resolution": {
+      "get": {
+        "tags": [
+          "resolutions"
+        ],
+        "summary": "A ticket's resolution receipt",
+        "operationId": "get_receipt_api_v1_tickets__ticket_id__resolution_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "ticket_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Ticket Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResolutionOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such ticket, or it has no receipt"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "resolutions"
+        ],
+        "summary": "Change a ticket's resolution receipt (for 7 days after resolving)",
+        "description": "Only the keys sent change. While the ticket is resolved, for 7 days after resolving; audited (field names only). `verified` can be set to `unverified` or `agent`; Shopify and Stripe come from Verify.",
+        "operationId": "change_receipt_api_v1_tickets__ticket_id__resolution_patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "ticket_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Ticket Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReceiptPatch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResolutionOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such ticket, or it has no receipt"
+          },
+          "409": {
+            "description": "Not resolved, or resolved over 7 days ago"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tickets/{ticket_id}/resolution/verify": {
+      "post": {
+        "tags": [
+          "resolutions"
+        ],
+        "summary": "Verify a receipt from the customer's Shopify order or Stripe payment",
+        "description": "Send one of `order_id` or `payment_id` (as the ticket's orders or payments card lists them). CeDesk reads it from the installed app, read-only, and sets `result` to what it reports (payment and fulfilment state, or refunded), `verified` to shopify or stripe, and `verified_at`. Nothing is written to the shop or Stripe. Same 7-day window as changing the receipt.",
+        "operationId": "verify_receipt_api_v1_tickets__ticket_id__resolution_verify_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "ticket_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Ticket Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReceiptVerifyIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResolutionOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No receipt, or not one of the customer's latest orders"
+          },
+          "409": {
+            "description": "The app isn't installed or couldn't be read; not resolved"
+          },
+          "422": {
+            "description": "Send exactly one of order_id and payment_id"
+          }
+        }
+      }
+    },
+    "/api/v1/reports/resolutions": {
+      "get": {
+        "tags": [
+          "resolutions"
+        ],
+        "summary": "Resolutions: closed vs. with a receipt vs. verified (Supervisor, Admin)",
+        "description": "Tickets resolved within [from, to) and still resolved (merged ones left out): how many have a receipt, how many were verified (by the agent, from Shopify or Stripe), have a pending item, or told the customer. Per team and per assignee.",
+        "operationId": "resolutions_report_api_v1_reports_resolutions_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Default: 30 days before `to`. With a time zone.",
+              "title": "From"
+            },
+            "description": "Default: 30 days before `to`. With a time zone."
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Default: now.",
+              "title": "To"
+            },
+            "description": "Default: now."
+          },
+          {
+            "name": "team_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only this team's tickets.",
+              "title": "Team Id"
+            },
+            "description": "Only this team's tickets."
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "json",
+                "csv"
+              ],
+              "type": "string",
+              "description": "`csv`: the same report as a CSV file (md R7).",
+              "default": "json",
+              "title": "Format"
+            },
+            "description": "`csv`: the same report as a CSV file (md R7)."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The report; with `format=csv`, a CSV file (UTF-8 with a byte order mark, one section per table) sent as an attachment.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResolutionReportOut"
+                }
+              },
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed to see reports"
+          },
+          "422": {
+            "description": "from after to, no time zone, or over 366 days"
+          },
+          "404": {
+            "description": "No such team"
           }
         }
       }
@@ -15023,6 +15716,55 @@
         }
       }
     },
+    "/api/v1/imports/connections/{connection_id}/report": {
+      "get": {
+        "tags": [
+          "imports"
+        ],
+        "summary": "Before importing: what will import, what needs setting up, what can't move (Admin)",
+        "description": "Saves nothing. The source is asked for its counts and groups, like discover. 409 when the connection was closed; 422 or 503 when the source refuses or can't be reached.",
+        "operationId": "pre_migration_report_api_v1_imports_connections__connection_id__report_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "connection_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Connection Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreMigrationOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/imports/connections/{connection_id}/run": {
       "post": {
         "tags": [
@@ -15438,6 +16180,55 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/FailureOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/imports/runs/{run_id}/cutover": {
+      "get": {
+        "tags": [
+          "imports"
+        ],
+        "summary": "Before go-live: the cutover checklist for an import (Admin)",
+        "description": "Read from what CeDesk holds; the source isn't asked. Checks that the import finished, that nothing the source counted is missing, that no record waits to be read again, that the sync looked in the last 15 minutes (when syncing), that every agent matched a member, that every open imported ticket has a team, and that a support address has verified forwarding. 404 for an unknown run.",
+        "operationId": "cutover_api_v1_imports_runs__run_id__cutover_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Run Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CutoverOut"
                 }
               }
             }
@@ -16522,6 +17313,9 @@
           "404": {
             "description": "No such webhook"
           },
+          "409": {
+            "description": "Its secret can't be read (the server key changed): make a new one"
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -17020,7 +17814,7 @@
             "description": "No such ticket, or no such issue in Jira"
           },
           "409": {
-            "description": "Jira isn't installed, the issue is already on the ticket, or 10 are"
+            "description": "Jira isn't installed, its saved token can't be read (the server key changed: install it again), the issue is already on the ticket, or 10 are"
           },
           "422": {
             "description": "Jira refused (bad key, no access to the project)"
@@ -17083,7 +17877,7 @@
             "description": "No such ticket, or no such issue in Jira"
           },
           "409": {
-            "description": "Jira isn't installed, the issue is already on the ticket, or 10 are"
+            "description": "Jira isn't installed, its saved token can't be read (the server key changed: install it again), the issue is already on the ticket, or 10 are"
           },
           "422": {
             "description": "Jira refused (bad key, no access to the project)"
@@ -18355,7 +19149,7 @@
             }
           },
           "403": {
-            "description": "An API key (AI help is for people), or the role can't"
+            "description": "The role can't see reports (API keys can, like other reports)"
           },
           "409": {
             "description": "`cevanos_not_connected` (connect Cevanos in Settings), `cevanos_scope_missing` (the key lacks a scope; the message names it) or `cevanos_refused`"
@@ -20486,7 +21280,8 @@
           "report_schedules",
           "flows",
           "help_domain",
-          "campaigns"
+          "campaigns",
+          "resolutions"
         ],
         "title": "Area",
         "description": "Filter on the audit page. Other teams' features add their own (api_keys,\nwebhooks, apps, retention): the column takes any lower-case name."
@@ -22502,6 +23297,44 @@
         "type": "object",
         "title": "ChangeMemberBody"
       },
+      "ChangeOut": {
+        "properties": {
+          "field": {
+            "type": "string",
+            "title": "Field",
+            "description": "status, priority, type, team or tags (tags it would add)."
+          },
+          "before": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Before"
+          },
+          "after": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "After"
+          }
+        },
+        "type": "object",
+        "required": [
+          "field",
+          "before",
+          "after"
+        ],
+        "title": "ChangeOut"
+      },
       "ChangePasswordBody": {
         "properties": {
           "current_password": {
@@ -22575,6 +23408,44 @@
           "messaging"
         ],
         "title": "ChannelGroup"
+      },
+      "CheckOut": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "enum": [
+              "import_finished",
+              "counts_match",
+              "no_open_failures",
+              "sync_fresh",
+              "agents_matched",
+              "teams_set",
+              "email_ready"
+            ],
+            "title": "Key"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "problem",
+              "skipped"
+            ],
+            "title": "Status"
+          },
+          "detail": {
+            "type": "string",
+            "title": "Detail",
+            "description": "What was found, and what to do when it's a problem."
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "status",
+          "detail"
+        ],
+        "title": "CheckOut"
       },
       "ChildIn": {
         "properties": {
@@ -22667,14 +23538,95 @@
           "matched": {
             "type": "boolean",
             "title": "Matched"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason",
+            "description": "What the ticket has, in plain words (for example \"the ticket is not snoozed\"): the fact behind the verdict."
           }
         },
         "type": "object",
         "required": [
           "condition",
-          "matched"
+          "matched",
+          "reason"
         ],
         "title": "ConditionCheck"
+      },
+      "ConflictOut": {
+        "properties": {
+          "ticket_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Ticket Id"
+          },
+          "number": {
+            "type": "integer",
+            "title": "Number"
+          },
+          "field": {
+            "type": "string",
+            "enum": [
+              "status",
+              "priority",
+              "type",
+              "team"
+            ],
+            "title": "Field"
+          },
+          "tested_value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tested Value"
+          },
+          "other_rule_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Other Rule Id"
+          },
+          "other_rule": {
+            "type": "string",
+            "title": "Other Rule"
+          },
+          "other_value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Other Value"
+          },
+          "winner": {
+            "type": "string",
+            "enum": [
+              "tested",
+              "other"
+            ],
+            "title": "Winner",
+            "description": "Which one the ticket would end with: the later one in run order."
+          }
+        },
+        "type": "object",
+        "required": [
+          "ticket_id",
+          "number",
+          "field",
+          "tested_value",
+          "other_rule_id",
+          "other_rule",
+          "other_value",
+          "winner"
+        ],
+        "title": "ConflictOut"
       },
       "ConnectIn": {
         "properties": {
@@ -24177,6 +25129,39 @@
           "body"
         ],
         "title": "CustomerReplyBody"
+      },
+      "CutoverOut": {
+        "properties": {
+          "run_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Run Id"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source"
+          },
+          "ready": {
+            "type": "boolean",
+            "title": "Ready",
+            "description": "True when no check is a problem."
+          },
+          "checks": {
+            "items": {
+              "$ref": "#/components/schemas/CheckOut"
+            },
+            "type": "array",
+            "title": "Checks"
+          }
+        },
+        "type": "object",
+        "required": [
+          "run_id",
+          "source",
+          "ready",
+          "checks"
+        ],
+        "title": "CutoverOut"
       },
       "DashboardIn": {
         "properties": {
@@ -25977,6 +26962,34 @@
         "type": "object",
         "title": "FlowPatch",
         "description": "Send only what changes. A new graph is a new version; turning it off cancels its\nwaiting runs."
+      },
+      "FlowReplayBody": {
+        "properties": {
+          "ticket_limit": {
+            "type": "integer",
+            "maximum": 1000.0,
+            "minimum": 1.0,
+            "title": "Ticket Limit",
+            "description": "How many of the newest tickets to try it on (1-1000).",
+            "default": 500
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version",
+            "description": "A version to try (GET /flows/{id}/versions); null: the current one."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "FlowReplayBody"
       },
       "FlowTestBody": {
         "properties": {
@@ -29288,6 +30301,12 @@
             "title": "Web Form",
             "description": "The public contact form (`/public/{workspace}/form`) is open. Off: 404.",
             "default": false
+          },
+          "show_owner": {
+            "type": "boolean",
+            "title": "Show Owner",
+            "description": "Portal tickets show the assignee's first name. Off: the team's name only.",
+            "default": true
           }
         },
         "additionalProperties": false,
@@ -29313,6 +30332,11 @@
           "web_form": {
             "type": "boolean",
             "title": "Web Form"
+          },
+          "show_owner": {
+            "type": "boolean",
+            "title": "Show Owner",
+            "description": "Tickets in the portal show the assignee's first name; off: the team's name only."
           },
           "updated_at": {
             "anyOf": [
@@ -29343,6 +30367,7 @@
           "allowed_domains",
           "csat_survey",
           "web_form",
+          "show_owner",
           "updated_at",
           "updated_by_name"
         ],
@@ -29418,6 +30443,42 @@
             "type": "string",
             "format": "date-time",
             "title": "Updated At"
+          },
+          "owner_first_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner First Name",
+            "description": "Who has it: the assignee's first name, or the team's name (unassigned, or the workspace hides names). Null: nobody yet. Never an email address."
+          },
+          "pending_step": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pending Step",
+            "description": "What it waits on: \"Waiting on you\" when Pending; on a resolved ticket, the resolution receipt's pending item (e.g. \"Bank settlement\"). Null: nothing."
+          },
+          "outcome": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Outcome",
+            "description": "Resolved and checked: the receipt's result (e.g. \"Refund issued\"). Null until an agent or Shopify / Stripe verified it."
           },
           "fields": {
             "additionalProperties": {
@@ -29547,6 +30608,42 @@
             "type": "string",
             "format": "date-time",
             "title": "Updated At"
+          },
+          "owner_first_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner First Name",
+            "description": "Who has it: the assignee's first name, or the team's name (unassigned, or the workspace hides names). Null: nobody yet. Never an email address."
+          },
+          "pending_step": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pending Step",
+            "description": "What it waits on: \"Waiting on you\" when Pending; on a resolved ticket, the resolution receipt's pending item (e.g. \"Bank settlement\"). Null: nothing."
+          },
+          "outcome": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Outcome",
+            "description": "Resolved and checked: the receipt's result (e.g. \"Refund issued\"). Null until an agent or Shopify / Stripe verified it."
           }
         },
         "type": "object",
@@ -29617,6 +30714,41 @@
           "fields"
         ],
         "title": "PortalTypeOut"
+      },
+      "PreMigrationOut": {
+        "properties": {
+          "source": {
+            "type": "string",
+            "title": "Source"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ReportItemOut"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "totals": {
+            "$ref": "#/components/schemas/ReportTotalsOut",
+            "description": "How many items have each status."
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings",
+            "description": "The source's own warnings, as in discover."
+          }
+        },
+        "type": "object",
+        "required": [
+          "source",
+          "items",
+          "totals",
+          "warnings"
+        ],
+        "title": "PreMigrationOut"
       },
       "PresetOut": {
         "properties": {
@@ -30245,6 +31377,278 @@
         ],
         "title": "Reason"
       },
+      "ReceiptIn": {
+        "properties": {
+          "request": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 300
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Request"
+          },
+          "action_taken": {
+            "type": "string",
+            "maxLength": 500,
+            "title": "Action Taken"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 300
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result"
+          },
+          "verified": {
+            "type": "string",
+            "enum": [
+              "unverified",
+              "agent"
+            ],
+            "title": "Verified",
+            "description": "agent: the agent checked the result by hand.",
+            "default": "unverified"
+          },
+          "customer_notified": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Customer Notified",
+            "description": "Null: yes when a reply went out in the last 24 hours."
+          },
+          "pending_item": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pending Item"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "action_taken"
+        ],
+        "title": "ReceiptIn",
+        "description": "A resolution receipt typed by the agent. Only `action_taken` is needed."
+      },
+      "ReceiptPatch": {
+        "properties": {
+          "request": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 300
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Request"
+          },
+          "action_taken": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Action Taken"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 300
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result"
+          },
+          "verified": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "unverified",
+                  "agent"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verified"
+          },
+          "customer_notified": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Customer Notified"
+          },
+          "pending_item": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pending Item"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ReceiptPatch",
+        "description": "Only the keys sent change."
+      },
+      "ReceiptSettingIn": {
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "off",
+              "optional",
+              "required"
+            ],
+            "title": "Mode"
+          },
+          "required_teams": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "maxItems": 200,
+            "title": "Required Teams",
+            "description": "With `required` only: the teams whose tickets need a receipt. Empty: every team.",
+            "default": []
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "mode"
+        ],
+        "title": "ReceiptSettingIn"
+      },
+      "ReceiptSettingOut": {
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "off",
+              "optional",
+              "required"
+            ],
+            "title": "Mode",
+            "description": "off (default): no receipts. optional: an agent may add one when resolving. required: resolving needs one (for `required_teams`, or every team)."
+          },
+          "required_teams": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Required Teams"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "updated_by_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated By Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "mode",
+          "required_teams",
+          "updated_at",
+          "updated_by_name"
+        ],
+        "title": "ReceiptSettingOut"
+      },
+      "ReceiptVerifyIn": {
+        "properties": {
+          "order_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Order Id",
+            "description": "A Shopify order, from the orders card."
+          },
+          "payment_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payment Id",
+            "description": "A Stripe payment, from the payments card."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ReceiptVerifyIn"
+      },
       "ReceivedOut": {
         "properties": {
           "outcome": {
@@ -30261,10 +31665,11 @@
               "no_workspace",
               "unreadable",
               "verification",
-              "bounce"
+              "bounce",
+              "side_reply"
             ],
             "title": "Outcome",
-            "description": "created: a new ticket; added / rules_ran / reopened / thanked: on an existing ticket; verification: a support address's forwarding check came back (no ticket); bounce: a campaign email's bounce or spam report (recorded, no ticket); the rest: ignored on purpose."
+            "description": "created: a new ticket; added / rules_ran / reopened / thanked: on an existing ticket; side_reply: an answer in a side conversation (saved there, never on the customer's thread; ticket_id is its ticket); verification: a support address's forwarding check came back (no ticket); bounce: a campaign email's bounce or spam report (recorded, no ticket); the rest: ignored on purpose."
           },
           "ticket_id": {
             "anyOf": [
@@ -30528,6 +31933,273 @@
         ],
         "title": "ReorderBody"
       },
+      "ReplayBody": {
+        "properties": {
+          "ticket_limit": {
+            "type": "integer",
+            "maximum": 1000.0,
+            "minimum": 1.0,
+            "title": "Ticket Limit",
+            "description": "How many of the newest tickets to try it on (1-1000).",
+            "default": 500
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ReplayBody"
+      },
+      "ReplayOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "rule",
+              "flow"
+            ],
+            "title": "Kind"
+          },
+          "target_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Id",
+            "description": "The saved rule or workflow; null: unsaved."
+          },
+          "target_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Version",
+            "description": "The workflow version tried."
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "ticket_limit": {
+            "type": "integer",
+            "title": "Ticket Limit"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "running",
+              "done",
+              "failed",
+              "cancelled"
+            ],
+            "title": "State"
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary",
+            "description": "One line for the screen."
+          },
+          "checked": {
+            "type": "integer",
+            "title": "Checked",
+            "description": "Tickets tried so far."
+          },
+          "matched": {
+            "type": "integer",
+            "title": "Matched",
+            "description": "Tickets its conditions matched (a workflow: it acted)."
+          },
+          "would_change": {
+            "type": "integer",
+            "title": "Would Change",
+            "description": "Tickets it would change or act on."
+          },
+          "would_wait": {
+            "type": "integer",
+            "title": "Would Wait",
+            "description": "A workflow: tickets it would wait on."
+          },
+          "conflicts": {
+            "type": "integer",
+            "title": "Conflicts"
+          },
+          "samples": {
+            "items": {
+              "$ref": "#/components/schemas/SampleOut"
+            },
+            "type": "array",
+            "title": "Samples",
+            "description": "Up to 200 tickets it would change."
+          },
+          "conflict_samples": {
+            "items": {
+              "$ref": "#/components/schemas/ConflictOut"
+            },
+            "type": "array",
+            "title": "Conflict Samples",
+            "description": "Up to 200 conflicts."
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "requested_by_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Requested By Name"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "target_id",
+          "target_version",
+          "name",
+          "ticket_limit",
+          "state",
+          "summary",
+          "checked",
+          "matched",
+          "would_change",
+          "would_wait",
+          "conflicts",
+          "samples",
+          "conflict_samples",
+          "error",
+          "requested_by_name",
+          "created_at",
+          "started_at",
+          "finished_at"
+        ],
+        "title": "ReplayOut"
+      },
+      "ReportItemOut": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key",
+            "description": "contacts, tickets, articles, replies, groups, agents, automation, views, email, business_hours or history."
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "imports",
+              "needs_setup",
+              "cannot_move"
+            ],
+            "title": "Status",
+            "description": "imports: CeDesk brings it. needs_setup: CeDesk doesn't bring it; set it up in CeDesk (before importing, for agents and teams). cannot_move: this source can't give it to CeDesk."
+          },
+          "count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Count",
+            "description": "What the source holds (null: not counted)."
+          },
+          "note": {
+            "type": "string",
+            "title": "Note"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "name",
+          "status",
+          "count",
+          "note"
+        ],
+        "title": "ReportItemOut"
+      },
+      "ReportTotalsOut": {
+        "properties": {
+          "imports": {
+            "type": "integer",
+            "title": "Imports"
+          },
+          "needs_setup": {
+            "type": "integer",
+            "title": "Needs Setup"
+          },
+          "cannot_move": {
+            "type": "integer",
+            "title": "Cannot Move"
+          }
+        },
+        "type": "object",
+        "required": [
+          "imports",
+          "needs_setup",
+          "cannot_move"
+        ],
+        "title": "ReportTotalsOut"
+      },
       "ResetPasswordBody": {
         "properties": {
           "new_password": {
@@ -30569,6 +32241,322 @@
           "new_password"
         ],
         "title": "ResetWithLinkBody"
+      },
+      "ResolutionCountsOut": {
+        "properties": {
+          "resolved": {
+            "type": "integer",
+            "title": "Resolved",
+            "description": "Tickets resolved in the period (still resolved)."
+          },
+          "with_receipt": {
+            "type": "integer",
+            "title": "With Receipt"
+          },
+          "verified": {
+            "type": "integer",
+            "title": "Verified",
+            "description": "Verified by the agent, Shopify or Stripe."
+          },
+          "verified_agent": {
+            "type": "integer",
+            "title": "Verified Agent"
+          },
+          "verified_shopify": {
+            "type": "integer",
+            "title": "Verified Shopify"
+          },
+          "verified_stripe": {
+            "type": "integer",
+            "title": "Verified Stripe"
+          },
+          "pending": {
+            "type": "integer",
+            "title": "Pending",
+            "description": "Receipts with a pending item."
+          },
+          "notified": {
+            "type": "integer",
+            "title": "Notified",
+            "description": "Receipts saying the customer was told."
+          }
+        },
+        "type": "object",
+        "required": [
+          "resolved",
+          "with_receipt",
+          "verified",
+          "verified_agent",
+          "verified_shopify",
+          "verified_stripe",
+          "pending",
+          "notified"
+        ],
+        "title": "ResolutionCountsOut"
+      },
+      "ResolutionOut": {
+        "properties": {
+          "request": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Request",
+            "description": "What the customer asked, in a few words."
+          },
+          "action_taken": {
+            "type": "string",
+            "title": "Action Taken",
+            "description": "What was done."
+          },
+          "result": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result",
+            "description": "The outcome; from Verify, what the app reported. Shown to the customer in the portal once verified."
+          },
+          "verified": {
+            "type": "string",
+            "enum": [
+              "unverified",
+              "agent",
+              "shopify",
+              "stripe"
+            ],
+            "title": "Verified",
+            "description": "agent: checked by the agent. shopify / stripe: read from the order or payment with Verify (never written to them)."
+          },
+          "verified_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verified At"
+          },
+          "customer_notified": {
+            "type": "boolean",
+            "title": "Customer Notified",
+            "description": "The customer was told: set from a reply in the 24 hours before resolving, unless the agent said otherwise."
+          },
+          "pending_item": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pending Item",
+            "description": "Still waiting on, e.g. \"Bank settlement\". Shown to the customer in the portal while the ticket is resolved."
+          },
+          "resolved_by": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolved By"
+          },
+          "resolved_by_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolved By Name"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "request",
+          "action_taken",
+          "result",
+          "verified",
+          "verified_at",
+          "customer_notified",
+          "pending_item",
+          "resolved_by",
+          "resolved_by_name",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ResolutionOut",
+        "description": "A resolution receipt (differentiator plan #5): what was done and whether the\nresult was checked."
+      },
+      "ResolutionReportOut": {
+        "properties": {
+          "from": {
+            "type": "string",
+            "format": "date-time",
+            "title": "From"
+          },
+          "to": {
+            "type": "string",
+            "format": "date-time",
+            "title": "To"
+          },
+          "team_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Team Id"
+          },
+          "total": {
+            "$ref": "#/components/schemas/ResolutionCountsOut"
+          },
+          "teams": {
+            "items": {
+              "$ref": "#/components/schemas/ResolutionReportRowOut"
+            },
+            "type": "array",
+            "title": "Teams"
+          },
+          "agents": {
+            "items": {
+              "$ref": "#/components/schemas/ResolutionReportRowOut"
+            },
+            "type": "array",
+            "title": "Agents"
+          }
+        },
+        "type": "object",
+        "required": [
+          "from",
+          "to",
+          "team_id",
+          "total",
+          "teams",
+          "agents"
+        ],
+        "title": "ResolutionReportOut"
+      },
+      "ResolutionReportRowOut": {
+        "properties": {
+          "resolved": {
+            "type": "integer",
+            "title": "Resolved",
+            "description": "Tickets resolved in the period (still resolved)."
+          },
+          "with_receipt": {
+            "type": "integer",
+            "title": "With Receipt"
+          },
+          "verified": {
+            "type": "integer",
+            "title": "Verified",
+            "description": "Verified by the agent, Shopify or Stripe."
+          },
+          "verified_agent": {
+            "type": "integer",
+            "title": "Verified Agent"
+          },
+          "verified_shopify": {
+            "type": "integer",
+            "title": "Verified Shopify"
+          },
+          "verified_stripe": {
+            "type": "integer",
+            "title": "Verified Stripe"
+          },
+          "pending": {
+            "type": "integer",
+            "title": "Pending",
+            "description": "Receipts with a pending item."
+          },
+          "notified": {
+            "type": "integer",
+            "title": "Notified",
+            "description": "Receipts saying the customer was told."
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id",
+            "description": "Null: no team, or unassigned."
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "resolved",
+          "with_receipt",
+          "verified",
+          "verified_agent",
+          "verified_shopify",
+          "verified_stripe",
+          "pending",
+          "notified",
+          "id",
+          "name"
+        ],
+        "title": "ResolutionReportRowOut"
+      },
+      "ResolveIn": {
+        "properties": {
+          "resolution": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReceiptIn"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The resolution receipt. Needed when the workspace's receipts are `required` for the ticket's team (else 422); refused when receipts are `off`."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ResolveIn"
       },
       "RetentionExportOut": {
         "properties": {
@@ -30614,16 +32602,14 @@
           "closed_ticket_days": {
             "anyOf": [
               {
-                "type": "integer",
-                "maximum": 3650.0,
-                "minimum": 30.0
+                "type": "integer"
               },
               {
                 "type": "null"
               }
             ],
             "title": "Closed Ticket Days",
-            "description": "Delete resolved tickets (and their files) this many days after they were resolved; null keeps them for good. A cloud plan may cap it."
+            "description": "30 to 3650: delete resolved tickets (and their files) this many days after they were resolved; null keeps them for good. A cloud plan may cap it."
           },
           "export_before_delete": {
             "anyOf": [
@@ -31318,6 +33304,32 @@
         "type": "object",
         "title": "RulePatch"
       },
+      "RuleReplayBody": {
+        "properties": {
+          "ticket_limit": {
+            "type": "integer",
+            "maximum": 1000.0,
+            "minimum": 1.0,
+            "title": "Ticket Limit",
+            "description": "How many of the newest tickets to try it on (1-1000).",
+            "default": 500
+          },
+          "rule": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RuleDraft"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "An unsaved rule (POST /rules/replay only): what the editor holds now."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "RuleReplayBody"
+      },
       "RuleTestBody": {
         "properties": {
           "ticket_id": {
@@ -31545,6 +33557,48 @@
         },
         "type": "object",
         "title": "RunReportOut"
+      },
+      "SampleOut": {
+        "properties": {
+          "ticket_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Ticket Id"
+          },
+          "number": {
+            "type": "integer",
+            "title": "Number"
+          },
+          "subject": {
+            "type": "string",
+            "title": "Subject",
+            "description": "The first 120 characters."
+          },
+          "changes": {
+            "items": {
+              "$ref": "#/components/schemas/ChangeOut"
+            },
+            "type": "array",
+            "title": "Changes"
+          },
+          "said": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Said",
+            "description": "Every line it would write, effects too: \"Tag vip\", \"Email sent\", ..."
+          }
+        },
+        "type": "object",
+        "required": [
+          "ticket_id",
+          "number",
+          "subject",
+          "changes",
+          "said"
+        ],
+        "title": "SampleOut"
       },
       "SandboxOut": {
         "properties": {
@@ -33955,6 +36009,18 @@
               }
             ],
             "title": "Said"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason",
+            "description": "Test mode, a condition that said no: what the ticket has instead (for example \"the ticket is not snoozed\")."
           }
         },
         "type": "object",
@@ -34702,6 +36768,23 @@
             ],
             "title": "Avg First Response Minutes"
           },
+          "first_reply_sla_met_percent": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Reply Sla Met Percent",
+            "description": "The summary's first-reply SLA met %, for this team's tickets. null when none of them was measured."
+          },
+          "first_reply_sla_measured": {
+            "type": "integer",
+            "title": "First Reply Sla Measured",
+            "description": "How many tickets that % is out of."
+          },
           "csat_ratings": {
             "type": "integer",
             "title": "Csat Ratings"
@@ -34726,6 +36809,8 @@
           "created",
           "resolved",
           "avg_first_response_minutes",
+          "first_reply_sla_met_percent",
+          "first_reply_sla_measured",
           "csat_ratings",
           "csat_average"
         ],
@@ -35224,6 +37309,17 @@
               }
             ],
             "description": "The customer's rating of this ticket, if any."
+          },
+          "resolution": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResolutionOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The resolution receipt, if one was given."
           },
           "first_reply_at": {
             "anyOf": [

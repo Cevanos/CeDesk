@@ -22,7 +22,7 @@ These are the notes for our own servers. For a customer hosting CeDesk themselve
    `CEDESK_CORS_ORIGINS` (the frontend's addresses).
 4. Start: `docker compose up -d --build`. It creates the database, runs the migrations,
    then starts the API and Caddy. Check: `curl http://<server>/readyz` gives `{"status":"ok",...}`.
-5. Demo workspace (Ritesh as Admin, the agents and tickets from the mock):
+5. Demo workspace (an Admin, the agents and tickets from the mock):
 
    ```sh
    docker compose exec api uv run --no-sync cedesk seed-demo

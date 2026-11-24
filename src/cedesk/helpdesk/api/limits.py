@@ -31,11 +31,12 @@ class UsageOut(BaseModel):
 
 
 class RetentionIn(Body):
+    # The range is checked in the service, so a refusal reads "Keep resolved tickets 30 to
+    # 3650 days, or for good (null)." and not the validator's "Input should be ...".
     closed_ticket_days: int | None = Field(
-        ge=rules.MIN_RETENTION_DAYS,
-        le=rules.MAX_RETENTION_DAYS,
-        description="Delete resolved tickets (and their files) this many days after they "
-        "were resolved; null keeps them for good. A cloud plan may cap it.",
+        description=f"{rules.MIN_RETENTION_DAYS} to {rules.MAX_RETENTION_DAYS}: delete "
+        "resolved tickets (and their files) this many days after they were resolved; null "
+        "keeps them for good. A cloud plan may cap it.",
     )
     export_before_delete: bool | None = Field(
         default=None,

@@ -16,7 +16,7 @@ GLOBAL_TABLES = {
     # Only addresses; the app can only read it (triggers keep it in step).
     "email_address_directory",
     # verified help center domain -> workspace id, read before the workspace is known so the
-    # frontend can serve a customer's own domain (0080). Only domains; the app can only read
+    # frontend can serve a customer's own domain (0085). Only domains; the app can only read
     # it (a trigger on hd_help_domain keeps it in step).
     "help_domain_directory",
     # Self-service sign-ups waiting for their email code, and those code emails (0060):
@@ -24,6 +24,11 @@ GLOBAL_TABLES = {
     # client IP only HMACs; rows are deleted after two days.
     "workspace_signup",
     "auth_email_out",
+    # reporting login -> workspace (or every workspace), read by the reporting policies of
+    # migration 0080 to decide which rows a BI login's views show. Only role names and
+    # workspace ids; the app has no rights on it; `cedesk reporting-user` (the database
+    # superuser) fills it. RLS here would hide the rows those policies need to read.
+    "hd_reporting_access",
 }
 
 TABLES = text(

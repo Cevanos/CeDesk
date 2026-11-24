@@ -358,6 +358,27 @@ async def test_off_deleted_resolved_or_stopped_cancels_waiting_runs(
     assert await runs(client, w, "?state=waiting") == []
 
 
+async def test_a_thank_you_on_a_resolved_ticket_does_not_move_a_waiting_run_on(
+    client: AsyncClient, app_sessionmaker: Sm
+) -> None:
+    """The ticket stays resolved after a thank-you, so its waiting run is cancelled like
+    any on a resolved ticket. The thank-you marked it replied, and its `replied` branch ran
+    (here: a tag) on the resolved ticket."""
+    sm = app_sessionmaker
+    w = await desk(client, sm)
+    made = await flow(client, w, follow_up())
+    t = await new_ticket(client, w)
+    ok(await client.patch(f"{T}/{t['id']}", headers=w["h"], json={"status": "resolved"}))
+    got = await reply(sm, w, t["id"], "Thanks a lot!")
+    assert got.outcome.value == "thanked"
+    await due_now(sm, w)
+    await resume_due(sm)
+    [run] = await runs(client, w, f"?flow_id={made['id']}")
+    assert (run["state"], run["result"]) == ("cancelled", "The ticket was resolved.")
+    after = await detail(client, w, t["id"])
+    assert after["status"] == "resolved" and "answered" not in after["tags"]
+
+
 async def test_test_mode_walks_without_changing_anything(
     client: AsyncClient, app_sessionmaker: Sm
 ) -> None:

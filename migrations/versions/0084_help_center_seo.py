@@ -12,16 +12,16 @@ On `hd_article` and on `hd_article_translation` alike (each language has its own
 `hd_help_center_settings.seo_indexable`: the help center is `noindex` today; becoming
 indexable is an explicit Admin choice, so it starts false.
 
-Revision ID: 0079
-Revises: 0078
+Revision ID: 0084
+Revises: 0083
 """
 
 from collections.abc import Sequence
 
 from alembic import op
 
-revision: str = "0079"
-down_revision: str | None = "0078"
+revision: str = "0084"
+down_revision: str | None = "0083"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

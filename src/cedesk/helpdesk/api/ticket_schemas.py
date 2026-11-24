@@ -176,6 +176,69 @@ class CsatOut(BaseModel):
     rated_at: datetime
 
 
+class ResolutionOut(BaseModel):
+    """A resolution receipt (differentiator plan #5): what was done and whether the
+    result was checked."""
+
+    request: str | None = Field(description="What the customer asked, in a few words.")
+    action_taken: str = Field(description="What was done.")
+    result: str | None = Field(
+        description="The outcome; from Verify, what the app reported. Shown to the customer "
+        "in the portal once verified."
+    )
+    verified: Literal["unverified", "agent", "shopify", "stripe"] = Field(
+        description="agent: checked by the agent. shopify / stripe: read from the order or "
+        "payment with Verify (never written to them)."
+    )
+    verified_at: datetime | None
+    customer_notified: bool = Field(
+        description="The customer was told: set from a reply in the 24 hours before "
+        "resolving, unless the agent said otherwise."
+    )
+    pending_item: str | None = Field(
+        description='Still waiting on, e.g. "Bank settlement". Shown to the customer in the '
+        "portal while the ticket is resolved."
+    )
+    resolved_by: UUID | None
+    resolved_by_name: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class ReceiptIn(Body):
+    """A resolution receipt typed by the agent. Only `action_taken` is needed."""
+
+    request: Annotated[str, StringConstraints(max_length=300)] | None = None
+    action_taken: Annotated[str, StringConstraints(max_length=500)]
+    result: Annotated[str, StringConstraints(max_length=300)] | None = None
+    verified: Literal["unverified", "agent"] = Field(
+        default="unverified", description="agent: the agent checked the result by hand."
+    )
+    customer_notified: bool | None = Field(
+        default=None, description="Null: yes when a reply went out in the last 24 hours."
+    )
+    pending_item: Annotated[str, StringConstraints(max_length=200)] | None = None
+
+
+class ReceiptPatch(Body):
+    """Only the keys sent change."""
+
+    request: Annotated[str, StringConstraints(max_length=300)] | None = None
+    action_taken: Annotated[str, StringConstraints(max_length=500)] | None = None
+    result: Annotated[str, StringConstraints(max_length=300)] | None = None
+    verified: Literal["unverified", "agent"] | None = None
+    customer_notified: bool | None = None
+    pending_item: Annotated[str, StringConstraints(max_length=200)] | None = None
+
+
+class ResolveIn(Body):
+    resolution: ReceiptIn | None = Field(
+        default=None,
+        description="The resolution receipt. Needed when the workspace's receipts are "
+        "`required` for the ticket's team (else 422); refused when receipts are `off`.",
+    )
+
+
 class SlaClockOut(BaseModel):
     target_minutes: int
     due_at: datetime
@@ -294,6 +357,9 @@ class TicketOut(TicketRowOut):
     fields: dict[str, Any]
     csat: CsatOut | None = Field(
         default=None, description="The customer's rating of this ticket, if any."
+    )
+    resolution: ResolutionOut | None = Field(
+        default=None, description="The resolution receipt, if one was given."
     )
     first_reply_at: datetime | None
     reopen_count: int

@@ -42,8 +42,12 @@ async def queue(client: AsyncClient, sm: Sm, w: dict) -> dict[str, dict]:
     await place(sm, w, t["c"]["id"], created=now() - timedelta(hours=1))
     await place(sm, w, t["g"]["id"], resolved=now())
     await place(sm, w, t["h"]["id"], source="zendesk")
+    # Every open ticket's due time is set here: d and e kept the real SLA clock, which
+    # follows business hours, so at some times of day they fell inside a window and the
+    # counts changed (CI, 23 Nov: due_soon had 2 more).
     for key, delta in (("a", timedelta(minutes=20)), ("b", timedelta(hours=5)),
-                       ("c", -timedelta(hours=1)), ("f", -timedelta(days=1)),
+                       ("c", -timedelta(hours=1)), ("d", timedelta(days=3)),
+                       ("e", timedelta(days=3)), ("f", -timedelta(days=1)),
                        ("h", -timedelta(days=3))):  # fmt: skip
         await due(sm, w, t[key]["id"], delta)
     await sql(sm, w["ws"], "UPDATE hd_ticket SET status = 'pending' WHERE id = :id",

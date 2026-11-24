@@ -1,6 +1,6 @@
 """The outbox (md 3.2 step 5): events written in the same transaction as the change.
 
-A worker (the outbox queue, Pranav's part) reads unpublished rows after the commit and
+A worker (the outbox queue) reads unpublished rows after the commit and
 turns each into webhooks, emails, notifications and so on, with an idempotency key per
 effect. So an event exists exactly when its change was committed.
 

@@ -2,6 +2,8 @@
 
 from datetime import timedelta
 
+from cedesk.helpdesk.domain.cevanos import TICKET_SOURCE as CEVANOS_SOURCE
+
 LINK_LIFETIME = timedelta(days=30)
 COMMENT_MAX = 2000
 SCORES = range(1, 6)
@@ -34,6 +36,14 @@ def deliverable(email: str) -> bool:
     """Chat customers from Cevanos have a placeholder address that is never mailed; the
     widget asks them itself (md P7)."""
     return not email.lower().endswith(".invalid")
+
+
+def survey_by_email(source: str | None, email: str) -> bool:
+    """Whether the survey goes out by email. Never for a Cevanos chat, whose widget asks
+    in the chat (md P7): once Cevanos says who the customer is (AI6) their address is real,
+    so the ticket's source decides, not the address (staging, 23 Nov). Never to a
+    placeholder address either."""
+    return source != CEVANOS_SOURCE and deliverable(email)
 
 
 def rate_link(base_url: str, token: str, score: int | None = None) -> str:

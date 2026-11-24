@@ -180,7 +180,11 @@ async def delete_webhook(webhook_id: UUID, caller: CallerDep, sm: SessionmakerDe
     summary="Send a test ping now (Admin)",
     description="Body `{event: 'ping', id, occurred_at, webhook: {id}}`, signed like any "
     "delivery. One try, no retries; waits for the answer (at most 10 s) and logs it.",
-    responses=_ADMIN | {404: {"description": "No such webhook"}},
+    responses=_ADMIN
+    | {
+        404: {"description": "No such webhook"},
+        409: {"description": "Its secret can't be read (the server key changed): make a new one"},
+    },
 )
 async def test_webhook(
     webhook_id: UUID, caller: CallerDep, sm: SessionmakerDep, sealer: SealerDep, client: ClientDep

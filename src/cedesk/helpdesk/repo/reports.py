@@ -53,7 +53,8 @@ GROUP BY GROUPING SETS ((), (t.team_id), (t.assignee_id), (r.score))
 """  # noqa: S608 - fixed strings only
 
 _SLA_FACTS = f"""
-SELECT t.id, t.priority, t.channel, t.created_at, t.first_reply_at, t.resolved_at, c.vip
+SELECT t.id, t.team_id, t.priority, t.channel, t.created_at, t.first_reply_at, t.resolved_at,
+       c.vip
 FROM hd_ticket t JOIN hd_contact c ON c.id = t.contact_id
 WHERE {_CREATED} AND {_LIVE} AND {_TEAM} AND NOT {_IMPORTED}
 """  # noqa: S608 - fixed strings only
@@ -171,7 +172,8 @@ async def sla_facts(
     session: AsyncSession, start: datetime, end: datetime, team_id: UUID | None,
     imported: Sequence[str],
 ) -> Sequence[RowMapping]:  # fmt: skip
-    """Tickets created in the period (not imported), for the first-reply SLA met %."""
+    """Tickets created in the period (not imported), for the first-reply SLA met %, in
+    total and per team (`team_id`)."""
     result = await session.execute(text(_SLA_FACTS), _params(start, end, team_id, imported))
     return result.mappings().all()
 

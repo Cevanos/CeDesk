@@ -13,8 +13,8 @@
 
 Going down drops both tables: domains are typed again and proven again, so nothing refuses.
 
-Revision ID: 0080
-Revises: 0079
+Revision ID: 0085
+Revises: 0084
 """
 
 from collections.abc import Sequence
@@ -23,8 +23,8 @@ from alembic import op
 
 from cedesk.tenancy import tenant_rls_sql
 
-revision: str = "0080"
-down_revision: str | None = "0079"
+revision: str = "0085"
+down_revision: str | None = "0084"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

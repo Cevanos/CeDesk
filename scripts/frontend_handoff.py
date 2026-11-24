@@ -279,6 +279,9 @@ SCREENS: list[Screen] = [
         "- Supervisors and Admins (`reports`). Team report, more metrics and help-article "
         "votes, for a period (`from`, `to`) and a team (`team_id`; not for articles). "
         "Each one downloads as CSV with `format=csv`.\n"
+        "- Team report, Tickets by team: each team row has `first_reply_sla_met_percent` "
+        '(null when nothing was measured: show "—") and `first_reply_sla_measured`, the '
+        "same rule as the summary's SLA met.\n"
         "- AI card (`GET /reports/ai`, only with `ai: true`): handover rate, resolved by "
         "the AI, CSAT of AI answers, from Cevanos for the whole workspace.",
         starts("/reports"),
@@ -291,7 +294,10 @@ SCREENS: list[Screen] = [
         "- Custom roles: name, the five rights, scope (all, team edit, team only) and its "
         "team.\n"
         "- Teams: name, auto-assign, max open per agent, members. Agents: status, channels, "
-        "capacity per channel, skills; workspace defaults in Routing defaults.",
+        "capacity per channel, skills; workspace defaults in Routing defaults.\n"
+        "- Every **Assignee picker** lists only agents with `assignable: true` (from "
+        "`GET /agents`: active, and the role replies), and one with `works_on_team_id` set "
+        "only for that team's tickets.",
         either(starts("/members", "/roles", "/teams", "/agents", "/routing-defaults")),
     ),
     Screen(
@@ -346,6 +352,12 @@ SCREENS: list[Screen] = [
         "`signing_secret`). Credentials are never shown again, only "
         "`secret_hint`. `blocked` explains why an app can't be installed here.\n"
         "- API keys and webhook secrets are shown **once**, on creation: say so.\n"
+        "- Make API key needs a name **and** `access`, which the Admin picks: `read` (GET "
+        "only), `read_write` (also tickets, customers, notes, tags, tasks, time and "
+        "customer messages in) or `admin` (also teams, ticket types, saved replies, macros, "
+        "rules and the help center). Without `access` the answer is 422. The list shows "
+        "`access` and `hint`; a key with `revoked_at` set is revoked: show it as revoked "
+        "(by `revoked_by_name`), without the Revoke button.\n"
         "- Webhooks: events, delivery log, retry, test ping, new secret.\n"
         "- Cevanos: connect with a key, check, disconnect. Failed events list (outbox).",
         starts("/apps", "/api-keys", "/webhooks", "/cevanos/connection", "/outbox"),
@@ -362,6 +374,9 @@ SCREENS: list[Screen] = [
         "- Usage and plan limits (cloud). Retention: delete resolved tickets after N days, "
         "and `export_before_delete` (write them to a file first, kept 30 days: Admins list "
         "and download them under Retention exports). Archive age (default 120 days).\n"
+        "- Retention and the archive age each have their own `updated_at` and "
+        '`updated_by_name`: show "Last changed by" on each card from its own answer. '
+        "Retention's are null until retention itself is saved.\n"
         "- Demo (not on production servers): load the demo, load sample tickets (for an "
         "empty inbox), reset the demo.",
         either(starts("/usage", "/retention", "/archive/settings", "/demo")),

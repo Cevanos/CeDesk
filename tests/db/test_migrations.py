@@ -505,7 +505,59 @@ async def test_0073_to_0077_add_the_reporting_tables_and_go_back_down(owner_engi
             assert forced is True
 
 
-async def test_0078_adds_help_center_languages_and_wont_go_down_while_translations_exist(
+async def test_0078_gives_the_archive_age_its_own_last_change(
+    client: Any, app_sessionmaker: Any, owner_engine: Any
+) -> None:
+    """Before 0078 the archive age and retention wrote one "last changed", so saving the
+    archive age moved retention's (staging, 23 Nov). 0078 takes each one's from its latest
+    change in the audit log, and going back down keeps the newer of the two."""
+    import asyncio
+    from datetime import datetime
+    from uuid import UUID
+
+    from sqlalchemy import text
+
+    from tests.db.helpers import bearer, new_workspace, ok, sign_in
+
+    slug = await new_workspace(app_sessionmaker)
+    h = bearer(await sign_in(client, slug, "admin@example.com"))
+    ws = UUID(ok(await client.get("/api/v1/me", headers=h))["workspace"]["id"])
+    ok(await client.put("/api/v1/retention", headers=h, json={"closed_ticket_days": 30}))
+    ok(await client.put("/api/v1/archive/settings", headers=h, json={"after_days": 200}))
+
+    entries = {
+        area: ok(await client.get("/api/v1/audit", headers=h, params={"area": area}))["entries"]
+        for area in ("retention", "archive")
+    }
+
+    def changed(area: str) -> datetime:
+        return datetime.fromisoformat(entries[area][0]["at"])
+
+    cfg = alembic_config()
+    try:
+        await asyncio.to_thread(command.downgrade, cfg, "0077")
+        async with owner_engine.connect() as conn:
+            await conn.execute(text("ALTER TABLE hd_retention NO FORCE ROW LEVEL SECURITY"))
+            try:
+                merged = await conn.scalar(
+                    text("SELECT updated_at FROM hd_retention WHERE workspace_id = :ws"),
+                    {"ws": ws},
+                )
+            finally:
+                await conn.rollback()
+        # Down, the one pair keeps the newer save: the archive age's, made after retention.
+        assert merged > changed("retention")
+    finally:
+        await asyncio.to_thread(command.upgrade, cfg, "head")
+
+    kept = ok(await client.get("/api/v1/retention", headers=h))
+    age = ok(await client.get("/api/v1/archive/settings", headers=h))
+    assert datetime.fromisoformat(kept["updated_at"]) == changed("retention")
+    assert datetime.fromisoformat(age["updated_at"]) == changed("archive")
+    assert kept["updated_by_name"] and age["updated_by_name"]
+
+
+async def test_0083_adds_help_center_languages_and_wont_go_down_while_translations_exist(
     owner_engine: Any,
 ) -> None:
     """Dropping the translations would lose them: the downgrade refuses and changes nothing;
@@ -535,13 +587,13 @@ async def test_0078_adds_help_center_languages_and_wont_go_down_while_translatio
         for table in ("workspace", "hd_article", "hd_article_translation"):
             await conn.execute(text(f"ALTER TABLE {table} FORCE ROW LEVEL SECURITY"))
     with pytest.raises(RuntimeError, match="holds 1 translations"):
-        await asyncio.to_thread(command.downgrade, cfg, "0077")
+        await asyncio.to_thread(command.downgrade, cfg, "0082")
     async with owner_engine.connect() as conn:  # rolled back: still there, still forced
         for table in tables:
             forced = "SELECT relforcerowsecurity FROM pg_class WHERE relname = :t"
             assert await conn.scalar(text(forced), {"t": table}) is True
     await empty_archive_async()
-    await asyncio.to_thread(command.downgrade, cfg, "0077")
+    await asyncio.to_thread(command.downgrade, cfg, "0082")
     async with owner_engine.connect() as conn:
         for table in tables:
             assert await conn.scalar(text(f"SELECT to_regclass('{table}')")) is None
@@ -559,7 +611,7 @@ async def test_0078_adds_help_center_languages_and_wont_go_down_while_translatio
         assert await conn.scalar(text(columns)) == 2
 
 
-async def test_0079_adds_help_center_seo_columns_and_goes_back_down(owner_engine: Any) -> None:
+async def test_0084_adds_help_center_seo_columns_and_goes_back_down(owner_engine: Any) -> None:
     """Slug, meta text and canonical address on articles and translations (with checks that
     keep them tidy), and the indexable switch, off by default."""
     import asyncio
@@ -610,7 +662,7 @@ async def test_0079_adds_help_center_seo_columns_and_goes_back_down(owner_engine
             await conn.execute(text("DELETE FROM workspace WHERE id = :id"), {"id": ws})
             await conn.execute(text("ALTER TABLE hd_article FORCE ROW LEVEL SECURITY"))
             await conn.execute(text("ALTER TABLE workspace FORCE ROW LEVEL SECURITY"))
-    await asyncio.to_thread(command.downgrade, cfg, "0078")
+    await asyncio.to_thread(command.downgrade, cfg, "0083")
     async with owner_engine.connect() as conn:
         assert await conn.scalar(text(columns)) == 0
         assert await conn.scalar(text(switch)) == 0
@@ -619,7 +671,7 @@ async def test_0079_adds_help_center_seo_columns_and_goes_back_down(owner_engine
         assert await conn.scalar(text(columns)) == 8
 
 
-async def test_0080_adds_help_domains_and_a_trigger_keeps_the_directory_in_step(
+async def test_0085_adds_help_domains_and_a_trigger_keeps_the_directory_in_step(
     owner_engine: Any,
 ) -> None:
     """One domain per workspace; only a verified one is in the global directory, which the app
@@ -702,7 +754,7 @@ async def test_0080_adds_help_domains_and_a_trigger_keeps_the_directory_in_step(
                                {"a": one, "b": two})  # fmt: skip
             await conn.execute(text("ALTER TABLE hd_help_domain FORCE ROW LEVEL SECURITY"))
             await conn.execute(text("ALTER TABLE workspace FORCE ROW LEVEL SECURITY"))
-    await asyncio.to_thread(command.downgrade, cfg, "0079")
+    await asyncio.to_thread(command.downgrade, cfg, "0084")
     async with owner_engine.connect() as conn:
         for table in tables:
             assert await conn.scalar(text(f"SELECT to_regclass('{table}')")) is None

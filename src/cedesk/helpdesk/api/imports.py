@@ -378,6 +378,58 @@ async def dry_run(
     )
 
 
+class ReportItemOut(BaseModel):
+    key: str = Field(
+        description="contacts, tickets, articles, replies, groups, agents, automation, views, "
+        "email, business_hours or history."
+    )
+    name: str
+    status: Literal["imports", "needs_setup", "cannot_move"] = Field(
+        description="imports: CeDesk brings it. needs_setup: CeDesk doesn't bring it; set it "
+        "up in CeDesk (before importing, for agents and teams). cannot_move: this source "
+        "can't give it to CeDesk."
+    )
+    count: int | None = Field(description="What the source holds (null: not counted).")
+    note: str
+
+
+class ReportTotalsOut(BaseModel):
+    imports: int
+    needs_setup: int
+    cannot_move: int
+
+
+class PreMigrationOut(BaseModel):
+    source: str
+    items: list[ReportItemOut]
+    totals: ReportTotalsOut = Field(description="How many items have each status.")
+    warnings: list[str] = Field(description="The source's own warnings, as in discover.")
+
+
+@router.get(
+    "/imports/connections/{connection_id}/report",
+    response_model=PreMigrationOut,
+    summary="Before importing: what will import, what needs setting up, what can't move (Admin)",
+    description="Saves nothing. The source is asked for its counts and groups, like discover. "
+    "409 when the connection was closed; 422 or 503 when the source refuses or can't be "
+    "reached.",
+)
+async def pre_migration_report(
+    connection_id: UUID, request: Request, caller: CallerDep, sm: SessionmakerDep
+) -> PreMigrationOut:
+    found = await framework.pre_migration_report(sm, _importers(request), caller, connection_id)
+    return PreMigrationOut(
+        source=found.source,
+        items=[ReportItemOut(**i.__dict__) for i in found.items],
+        totals=ReportTotalsOut(
+            imports=found.total("imports"),
+            needs_setup=found.total("needs_setup"),
+            cannot_move=found.total("cannot_move"),
+        ),
+        warnings=found.warnings,
+    )
+
+
 @router.post(
     "/imports/connections/{connection_id}/run",
     response_model=RunOut,
@@ -513,6 +565,42 @@ async def dismiss_failure(
 ) -> FailureOut:
     view = await framework.dismiss_failure(sm, caller, run_id, failure_id)
     return FailureOut(**view.__dict__)
+
+
+class CheckOut(BaseModel):
+    key: Literal[
+        "import_finished", "counts_match", "no_open_failures", "sync_fresh",
+        "agents_matched", "teams_set", "email_ready",
+    ]  # fmt: skip
+    status: Literal["ok", "problem", "skipped"]
+    detail: str = Field(description="What was found, and what to do when it's a problem.")
+
+
+class CutoverOut(BaseModel):
+    run_id: UUID
+    source: str
+    ready: bool = Field(description="True when no check is a problem.")
+    checks: list[CheckOut]
+
+
+@router.get(
+    "/imports/runs/{run_id}/cutover",
+    response_model=CutoverOut,
+    summary="Before go-live: the cutover checklist for an import (Admin)",
+    description="Read from what CeDesk holds; the source isn't asked. Checks that the import "
+    "finished, that nothing the source counted is missing, that no record waits to be read "
+    "again, that the sync looked in the last 15 minutes (when syncing), that every agent "
+    "matched a member, that every open imported ticket has a team, and that a support "
+    "address has verified forwarding. 404 for an unknown run.",
+)
+async def cutover(run_id: UUID, caller: CallerDep, sm: SessionmakerDep) -> CutoverOut:
+    found = await framework.cutover(sm, caller, run_id)
+    return CutoverOut(
+        run_id=found.run_id,
+        source=found.source,
+        ready=found.ready,
+        checks=[CheckOut(**c.__dict__) for c in found.checks],
+    )
 
 
 @router.post(

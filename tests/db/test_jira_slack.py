@@ -12,8 +12,10 @@ from uuid import UUID
 import httpx
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import text
 
 from cedesk.crypto import Sealer
+from cedesk.db import workspace_session
 from cedesk.helpdesk.domain import jira as jira_rules
 from cedesk.helpdesk.domain import slack as slack_rules
 from cedesk.helpdesk.service import apps
@@ -250,3 +252,26 @@ async def test_slack_alerts_for_urgent_and_high(client: AsyncClient, app_session
     await ticket(client, other, "Also urgent", "urgent")
     await deliver_due(sm, [handler])
     assert len(fake.slack()) == before
+
+
+async def test_an_unreadable_jira_token_is_a_409_not_a_500(
+    client: AsyncClient, app_sessionmaker: Sm
+) -> None:
+    """CEDESK_SECRET_KEY changed since Jira was installed: the agent is told to install it
+    again (it was a 500), and nothing is sent to Jira."""
+    fake, _ = install_fakes(client)
+    w = await desk(client, app_sessionmaker)
+    t = await ticket(client, w, "Refund stuck")
+    ok(await client.put(f"{A}/jira", headers=w["h"],
+                        json={"settings": JIRA_SETTINGS, "secret": TOKEN}))  # fmt: skip
+    other_key = Sealer("a-different-server-key-0123456789").seal("old", bound_to="old")
+    async with workspace_session(app_sessionmaker, w["ws"]) as s:
+        await s.execute(text("UPDATE hd_app_install SET secret_sealed = :x WHERE app = 'jira'"),
+                        {"x": other_key})  # fmt: skip
+    sent_before = len(fake.seen)
+    for path, body in (("", {"description": "Payout bug"}), ("/link", {"key": "SUP-12"})):
+        r = await client.post(f"{T}/{t['id']}/jira{path}", headers=w["neha"], json=body)
+        assert r.status_code == 409, path
+        assert r.json()["error"]["message"] == (
+            "The saved Jira token can't be read: install the Jira app again.")  # fmt: skip
+    assert len(fake.seen) == sent_before
