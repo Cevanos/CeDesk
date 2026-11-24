@@ -56,6 +56,13 @@ unset PGPW CEDESK_ADMIN_DATABASE_URL
 - `--workspace acme` instead of `--all` limits it to one workspace.
 - `reporting-user list` shows every login; `reporting-user drop report_bi` removes one.
 
+## After restoring a backup
+
+Logins are server-wide roles, so a database backup doesn't hold them (`restore.sh`
+makes the `cedesk_reporting` group first, so the restore works on a new server). On a
+new server, `reporting-user list` still shows the old logins: `drop` each one and
+`create` it again with a new password.
+
 ## Connect the BI tool
 
 The database isn't reachable from outside the server (on purpose). Either:

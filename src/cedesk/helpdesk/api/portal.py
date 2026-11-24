@@ -75,9 +75,10 @@ class PortalSettingsIn(Body):
         default=False,
         description="The public contact form (`/public/{workspace}/form`) is open. Off: 404.",
     )
-    show_owner: bool = Field(
-        default=True,
-        description="Portal tickets show the assignee's first name. Off: the team's name only.",
+    show_owner: bool | None = Field(
+        default=None,
+        description="Portal tickets show the assignee's first name. Off: the team's name "
+        "only. Not sent (or null): kept as it is (on for a new workspace).",
     )
 
 

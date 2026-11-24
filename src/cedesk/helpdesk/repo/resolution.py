@@ -11,11 +11,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 Row = RowMapping
 
+# A receipt belongs to the resolve it was given with: it is current while the ticket stays
+# resolved from then on (saved in the resolve's transaction, so created_at equals
+# resolved_at). Reopened, or resolved again without one (a macro, auto-close, a rule):
+# not current, so the portal, the ticket and the report never show an old one as new.
+CURRENT = "t.resolved_at IS NOT NULL AND r.created_at >= t.resolved_at"
+
 _RECEIPT = (
     "SELECT r.id, r.ticket_id, r.request, r.action_taken, r.result, r.verified, "
     "r.verified_at, r.customer_notified, r.pending_item, r.resolved_by, "
     "m.name AS resolved_by_name, r.created_at, r.updated_at "
     "FROM hd_resolution r LEFT JOIN member m ON m.id = r.resolved_by "
+    "JOIN hd_ticket t ON t.id = r.ticket_id "
     "WHERE r.ticket_id = :t"
 )
 
@@ -55,8 +62,10 @@ async def unknown_teams(session: AsyncSession, teams: Sequence[UUID]) -> list[UU
     return [t for t in teams if t not in found]
 
 
-async def get(session: AsyncSession, ticket_id: UUID) -> Row | None:
-    result = await session.execute(text(_RECEIPT), {"t": ticket_id})
+async def get(session: AsyncSession, ticket_id: UUID, *, current: bool = True) -> Row | None:
+    """The ticket's receipt; `current=False`: also one from an earlier resolve."""
+    query = _RECEIPT + " AND " + CURRENT if current else _RECEIPT
+    result = await session.execute(text(query), {"t": ticket_id})
     return result.mappings().first()
 
 
@@ -137,7 +146,7 @@ _REPORT = """
            count(r.id) FILTER (WHERE r.customer_notified) AS notified,
            GROUPING(t.team_id) AS g_team, GROUPING(t.assignee_id) AS g_agent
     FROM hd_ticket t
-    LEFT JOIN hd_resolution r ON r.ticket_id = t.id
+    LEFT JOIN hd_resolution r ON r.ticket_id = t.id AND r.created_at >= t.resolved_at
     WHERE t.status = 'resolved' AND t.merged_into_id IS NULL
       AND t.resolved_at >= :start AND t.resolved_at < :end
       AND (CAST(:team AS uuid) IS NULL OR t.team_id = CAST(:team AS uuid))

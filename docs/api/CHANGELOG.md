@@ -3,6 +3,24 @@
 `openapi.json` next to this file is the API as served (`uv run cedesk openapi`). Every
 route is under `/api/v1`. Breaking changes only come in v2 (md 2B). Newest first.
 
+## 2026-11-24: Fixes to resolution receipts and the portal (review)
+
+No new routes. No migration.
+
+- A macro that resolves a ticket is refused (422) where a resolution receipt is required
+  for the ticket's team, as a status change or bulk change already was; nothing the
+  macro did is kept. Its `ticket.resolved` event now has `"resolution": null` like the
+  other resolves without a receipt.
+- A receipt belongs to the resolve it was given with. Once the ticket is reopened, or
+  resolved again without a new receipt, the old one is no longer shown on the ticket
+  (`resolution` null, `GET .../resolution` 404), in the portal or in the Resolutions
+  report. It stays in the privacy export, and a new receipt replaces it.
+- `PATCH`/Verify on a receipt of a ticket that isn't resolved: 409 (it was 404 when the
+  receipt was missing too).
+- `PUT /portal-settings` without `show_owner` keeps its value (it went back to true).
+- Restore: `deploy/restore.sh` makes the `cedesk_reporting` role before restoring, so a
+  backup taken after `cedesk reporting-user create` restores on a new server.
+
 ## 2026-11-24: Where a ticket stands, in the customer portal
 
 Additive. Migration 0082.

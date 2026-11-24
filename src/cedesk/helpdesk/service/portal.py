@@ -247,7 +247,7 @@ async def save_settings(
     *,
     csat_survey: bool = True,
     web_form: bool = False,
-    show_owner: bool = True,
+    show_owner: bool | None = None,
 ) -> PortalSettings:
     require(caller, Action.settings)
     try:
@@ -256,6 +256,8 @@ async def save_settings(
         raise Invalid(str(exc)) from exc
     async with workspace_session(sm, caller.workspace_id) as s:
         before = await repo.settings_row(s)
+        if show_owner is None:  # not sent: kept (plan #9; older clients don't send it)
+            show_owner = bool(before["show_owner"]) if before is not None else True
         await repo.save_settings(
             s, caller.workspace_id, cleaned, csat_survey, web_form, caller.member_id,
             show_owner=show_owner,

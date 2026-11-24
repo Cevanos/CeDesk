@@ -194,8 +194,8 @@ async def test_verify_reads_the_order_or_payment_and_never_writes(
     await setting(client, w, "optional")
     tid = w["ticket"]
     url = f"{T}/{tid}/resolution/verify"
-    # No receipt yet.
-    assert (await client.post(url, headers=w["neha"], json={"order_id": "11"})).status_code == 404
+    # Not resolved yet.
+    assert (await client.post(url, headers=w["neha"], json={"order_id": "11"})).status_code == 409
     ok(await resolve(client, w, tid, {"action_taken": "Refunded order #1001"}))
     fake.seen.clear()
 
@@ -279,3 +279,55 @@ async def test_privacy_export_holds_the_receipt_and_erase_blanks_it(
                       "SELECT request, action_taken, result, pending_item, verified "
                       "FROM hd_resolution")  # fmt: skip
     assert tuple(row) == (None, "(erased)", None, None, "unverified")
+
+
+async def test_a_macro_cant_resolve_around_a_required_receipt(
+    client: AsyncClient, app_sessionmaker: Sm
+) -> None:
+    """Review fix: a macro that resolves was a way round `required`."""
+    w = await desk(client, app_sessionmaker)
+    steps = [{"kind": "reply", "text": "Sorted, thanks!"},
+             {"kind": "set_status", "status": "resolved"}]  # fmt: skip
+    macro = ok(await client.post("/api/v1/macros", headers=w["h"],
+                                 json={"name": "Done", "steps": steps}), 201)["id"]  # fmt: skip
+    await setting(client, w, "required", [w["teams"]["Billing"]])
+    tid = await ticket(client, w, "Mug", "Billing", "Neha")
+    r = await client.post(f"{T}/{tid}/macros/{macro}", headers=w["h"])
+    assert r.status_code == 422 and "macro" in r.json()["error"]["message"]
+    after = ok(await client.get(f"{T}/{tid}", headers=w["h"]))
+    assert after["status"] == "open"  # nothing the macro did was kept, the reply neither
+    assert not [m for m in after["messages"] if m["kind"] == "agent"]
+
+    # Not required for Shipping: the macro resolves, and the event says there's no receipt.
+    other = await ticket(client, w, "Cup", "Shipping", "Ravi")
+    assert ok(await client.post(f"{T}/{other}/macros/{macro}", headers=w["h"]))["status"] == (
+        "resolved"
+    )
+    [event] = [e for e in await events(app_sessionmaker, w["ws"], other)
+               if e["event"] == "ticket.resolved"]  # fmt: skip
+    assert "resolution" in event["payload"] and event["payload"]["resolution"] is None
+
+
+async def test_an_old_receipt_isnt_shown_after_a_resolve_without_one(
+    client: AsyncClient, app_sessionmaker: Sm
+) -> None:
+    """Review fix: reopened, then resolved again without a receipt (optional, a macro,
+    auto-close): the old receipt stayed on the ticket, the report and the portal."""
+    w = await desk(client, app_sessionmaker)
+    await setting(client, w, "optional")
+    tid = await ticket(client, w, "Mug", "Billing", "Neha")
+    ok(await resolve(client, w, tid, RECEIPT))
+    ok(await client.patch(f"{T}/{tid}", headers=w["h"], json={"status": "open"}))
+    gone = await client.get(f"{T}/{tid}/resolution", headers=w["h"])
+    assert gone.status_code == 404
+    assert ok(await client.get(f"{T}/{tid}", headers=w["h"]))["resolution"] is None
+    assert ok(await resolve(client, w, tid))["resolution"] is None  # resolved again, bare
+    report = ok(await client.get("/api/v1/reports/resolutions", headers=w["h"]))
+    assert (report["total"]["resolved"], report["total"]["with_receipt"]) == (1, 0)
+    # Still kept for the privacy export, and a new receipt replaces it.
+    assert len(await sql(app_sessionmaker, w["ws"], "SELECT 1 FROM hd_resolution")) == 1
+    ok(await client.patch(f"{T}/{tid}", headers=w["h"], json={"status": "open"}))
+    assert (
+        ok(await resolve(client, w, tid, {"action_taken": "New mug"}))["resolution"]["action_taken"]
+        == "New mug"
+    )

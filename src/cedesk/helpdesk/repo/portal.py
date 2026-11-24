@@ -240,7 +240,7 @@ _TICKET = (
     "FROM hd_ticket t LEFT JOIN hd_ticket_type y ON y.id = t.type_id "
     "LEFT JOIN member am ON am.id = t.assignee_id "
     "LEFT JOIN hd_team tm ON tm.id = t.team_id "
-    "LEFT JOIN hd_resolution rc ON rc.ticket_id = t.id "
+    "LEFT JOIN hd_resolution rc ON rc.ticket_id = t.id AND rc.created_at >= t.resolved_at "
 )
 
 

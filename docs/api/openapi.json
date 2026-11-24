@@ -30303,10 +30303,16 @@
             "default": false
           },
           "show_owner": {
-            "type": "boolean",
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Show Owner",
-            "description": "Portal tickets show the assignee's first name. Off: the team's name only.",
-            "default": true
+            "description": "Portal tickets show the assignee's first name. Off: the team's name only. Not sent (or null): kept as it is (on for a new workspace)."
           }
         },
         "additionalProperties": false,

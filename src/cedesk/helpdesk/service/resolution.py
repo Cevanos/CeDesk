@@ -111,7 +111,7 @@ async def save_on_resolve(
     replaced; the audit log keeps that it was (not its text)."""
     now = datetime.now(UTC)
     ticket_id = UUID(str(ticket["id"]))
-    old = await repo.get(s, ticket_id)
+    old = await repo.get(s, ticket_id, current=False)
     notified = receipt.customer_notified
     if notified is None:
         notified = rules.notified(await repo.last_public_reply(s, ticket_id), now)
@@ -159,10 +159,10 @@ async def editable_ticket(
     s: AsyncSession, caller: Caller, ticket_id: UUID, now: datetime
 ) -> RowMapping:
     ticket = await _ticket(s, caller, ticket_id, edit=True)
-    if await repo.get(s, ticket_id) is None:
-        raise NotFound(NO_RECEIPT)
     if ticket["status"] != "resolved":
         raise Conflict(rules.NOT_RESOLVED)
+    if await repo.get(s, ticket_id) is None:
+        raise NotFound(NO_RECEIPT)
     if not rules.editable(ticket["resolved_at"], ticket["status"], now):
         raise Conflict(rules.TOO_LATE)
     return ticket
