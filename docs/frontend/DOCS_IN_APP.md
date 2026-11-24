@@ -9,6 +9,20 @@ API routes). They are built into plain HTML files. We want them on the **same we
 app**: `http://156.67.82.131:6543/docs/`. The files need no server code, so the front end
 serves them from its `public` folder, and links to them from the app.
 
+## How it renders (read this first)
+
+- The docs are **finished HTML pages**, not app components. The build already turned every
+  article into a normal `.html` file with its own styles.
+- The front end does **not render** them. It copies the files into `public/docs/` and Next.js
+  serves them as they are, like any static website. The browser shows them directly.
+- The pages fetch no data, call no API and run no scripts. Links between pages are plain
+  relative links.
+- What a person sees: **Help** or **Learn more** opens `/docs/...` and replaces the app screen
+  with a docs page that has its own purple header ("CeDesk Docs"), the topics on the left and
+  the article. It has **no app sidebar or top bar**, so it looks like a separate site on the
+  same address. Framing it inside the app is not possible with the current security headers
+  (`frame-src 'none'`, `X-Frame-Options: DENY`).
+
 ## 1. Get the files
 
 Two ways:
@@ -56,11 +70,54 @@ change (every merge to `main` makes a new artifact).
 
 - A **Help** item in the account menu (and the top bar, if you like) that opens `/docs/`.
 - A **Learn more** link on each page, pointing at that page's main article:
-  `/docs/<topic>/<slug>.html`. The full page-to-article map (36 pages) is in
-  `docs/user-guide/HOSTING.md`, section 5. Example: Settings › SLA →
+  `/docs/<topic>/<slug>.html`. The map is below. Example: Settings › SLA →
   `/docs/automation/sla-targets-and-policies.html`.
 
 Open the links in a new tab so people do not lose their place.
+
+### Page-to-article map
+
+Where a page has several articles, this is the main one.
+
+| App page | Link (after `/docs/`) |
+|----------|------------------|
+| Tickets | `working-with-tickets/find-and-sort-tickets.html` |
+| New ticket | `working-with-tickets/create-a-ticket.html` |
+| A ticket | `working-with-tickets/reply-and-add-private-notes.html` |
+| Contacts | `customers/find-customers.html` |
+| A customer | `customers/the-customer-page.html` |
+| Agents | `automation/routing-and-agent-availability.html` |
+| Archive | `ticket-tools/find-archived-tickets.html` |
+| Campaigns | `campaigns/what-email-campaigns-are.html` |
+| Suppression list | `campaigns/unsubscribe-and-suppression-list.html` |
+| Reports (all pages) | `reports/reports-overview.html` |
+| Settings › Members | `account-and-access/add-and-manage-members.html` |
+| Settings › Teams | `account-and-access/teams.html` |
+| Settings › Roles | `account-and-access/roles-and-rights.html` |
+| Settings › Ticket types | `ticket-tools/ticket-types-and-fields.html` |
+| Settings › SLA | `automation/sla-targets-and-policies.html` |
+| Settings › Rules | `automation/rules.html` |
+| Settings › Workflows | `automation/workflows.html` |
+| Settings › Auto-close | `automation/auto-close.html` |
+| Settings › Macros | `working-with-tickets/macros.html` |
+| Settings › Saved replies | `working-with-tickets/saved-replies.html` |
+| Settings › Topics and redaction | `automation/topics-and-card-redaction.html` |
+| Settings › Contact fields | `customers/contact-fields.html` |
+| Settings › Portal | `channels/customer-portal.html` |
+| Settings › Email | `channels/support-email-addresses.html` |
+| Settings › Cevanos | `integrations/connect-cevanos.html` |
+| Settings › Failed events | `channels/retry-failed-emails-and-events.html` |
+| Settings › Imports | `imports/plan-your-move.html` |
+| Settings › Apps | `integrations/install-apps.html` |
+| Settings › API keys | `account-and-access/api-keys.html` |
+| Settings › Webhooks | `integrations/webhooks.html` |
+| Settings › Security | `security-and-privacy/security-settings.html` |
+| Settings › Privacy | `security-and-privacy/export-a-customers-data.html` |
+| Settings › Audit log | `security-and-privacy/audit-log.html` |
+| Settings › Plan and retention | `getting-started/your-plan-and-usage.html` |
+| Settings › Sandbox | `security-and-privacy/sandbox.html` |
+| Settings › Demo data | `getting-started/try-cedesk-with-demo-data.html` |
+| My account | `account-and-access/sign-in-and-passwords.html` |
 
 ## 4. Check it works
 
