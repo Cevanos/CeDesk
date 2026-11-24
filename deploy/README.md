@@ -3,7 +3,8 @@
 One server with Docker. Caddy answers on 80/443 and passes requests to the API; the
 database and the API are not reachable from outside.
 
-These are the notes for our own servers. For a customer hosting CeDesk themselves, see
+These are the notes for our own servers. (Our shared EC2 box, which releases with no
+downtime from `main`, is a different setup: [ec2/README.md](ec2/README.md).) For a customer hosting CeDesk themselves, see
 [../docs/SELF_HOSTING.md](../docs/SELF_HOSTING.md); every setting is in
 [../docs/SETTINGS.md](../docs/SETTINGS.md).
 

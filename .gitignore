@@ -17,3 +17,7 @@ htmlcov/
 deploy/backup.env
 # Emails written by CEDESK_MAIL_BACKEND=log on a developer's machine.
 mail-outbox/
+
+# Blue/green deploy state and the migration login, on the server (deploy/ec2).
+/.deploy/
+.env.migrate

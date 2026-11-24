@@ -1,0 +1,176 @@
+# Deploys main to the EC2 box that runs CeDesk, with no downtime: the API and the web app
+# release blue/green (deploy/ec2/README.md), the worker is recreated in place.
+#
+# **This job runs on a self-hosted runner on that box, in a PUBLIC repository.** Two rules
+# keep that safe, and both are about triggers:
+#   - It runs only on a push to main (merged, reviewed code) or by hand, never on
+#     `pull_request`: a pull request from a fork would otherwise run its own code on the
+#     box. Do not add that trigger, and do not point any other workflow at this runner.
+#   - Every other workflow here runs on GitHub's own `ubuntu-latest`.
+# Settings > Actions > General > "Fork pull request workflows from outside collaborators"
+# should stay on "Require approval for all outside collaborators".
+#
+# ONE-TIME SETUP THIS WORKFLOW ASSUMES, on the box and in the repo (deploy/ec2/README.md):
+#   1. The runner, as a service running as `ubuntu`, a member of the `docker` group, with
+#      Docker Engine and the compose plugin.
+#   2. /home/ubuntu/CeDesk, owned by that user. The first run clones into it.
+#   3. The database and its two logins (deploy/ec2/create-database.sh), reachable from the
+#      containers.
+#   4. The settings in Parameter Store under two prefixes, and these repository variables
+#      (Settings > Secrets and variables > Actions > Variables):
+#        CEDESK_PROD_SSM_PREFIX        /cevanos/prod/cedesk/         what the containers read
+#        CEDESK_PROD_OWNER_SSM_PREFIX  /cevanos/prod/cedesk-owner/   the migration login
+#        CEDESK_PROD_HOST              the site's name, for the smoke test
+#      The box's instance role reads /cevanos/prod/ and nothing else.
+#   5. nginx proxying the site through the upstreams file deploy.sh writes, serving
+#      /_next/static from /var/www/cedesk, and the runner allowed `sudo -n nginx`.
+
+name: cd-ec2
+
+on:
+  push:
+    branches: [main]
+    # Nothing in these runs on the box.
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: >-
+          Release these images instead of building the commit: a SHA whose images are
+          still on the box (the last three are kept). Leave empty to build.
+        required: false
+        default: ""
+
+concurrency:
+  # Never cancelled mid-flight: a release killed between starting a slot and flipping
+  # nginx leaves the state file and the slots disagreeing.
+  group: cd-ec2
+  cancel-in-progress: false
+
+env:
+  IMAGE_TAG: ${{ inputs.image_tag || github.sha }}
+
+jobs:
+  deploy:
+    name: migrate and deploy to the EC2 box
+    # Forks have no such runner; without this their pushes would queue for ever.
+    if: github.repository == 'Cevanos/CeDesk'
+    # The labels GitHub gave the runner when it was registered (a runner belongs to this
+    # repository alone). Add a label of your own to it and list it here to pin the job.
+    runs-on: [self-hosted, linux, x64]
+    timeout-minutes: 60
+    permissions:
+      # All this job's token is for is fetching this repo onto the box.
+      contents: read
+    defaults:
+      run:
+        working-directory: /home/ubuntu/CeDesk
+    steps:
+      - name: reset the deploy checkout to this commit
+        # Exactly the triggering SHA, authenticated by the run's own GITHUB_TOKEN through a
+        # credential helper read from the environment, so no credential is stored on the
+        # box or appears on a command line. Not actions/checkout: its `git clean` would
+        # delete .env, and a fixed directory keeps .deploy (which slot is live) in place.
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          GIT_CONFIG_COUNT: "1"
+          GIT_CONFIG_KEY_0: credential.helper
+          GIT_CONFIG_VALUE_0: '!f() { echo username=x-access-token; echo "password=${GH_TOKEN}"; }; f'
+        run: |
+          if [ ! -d .git ]; then
+            git init -q
+            git remote add origin "https://github.com/${REPO}.git"
+          fi
+          # One commit and no remote-tracking refs, so no other branch's bookkeeping can
+          # fail a release.
+          git fetch --no-tags origin "${{ github.sha }}"
+          git reset --hard FETCH_HEAD
+          git --no-pager log -1 --format='deploying %h %s'
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: false
+
+      - name: write .env and .env.migrate from Parameter Store
+        # Required: there is no hand-kept .env on this box. Each file is one prefix, so
+        # the migration login reaches the one container that runs migrations and no other.
+        env:
+          PREFIX: ${{ vars.CEDESK_PROD_SSM_PREFIX }}
+          OWNER_PREFIX: ${{ vars.CEDESK_PROD_OWNER_SSM_PREFIX }}
+        run: |
+          for p in "$PREFIX" "$OWNER_PREFIX"; do
+            case "$p" in
+              /cevanos/prod/*) ;;
+              *)
+                echo "::error::set the repository variables CEDESK_PROD_SSM_PREFIX and CEDESK_PROD_OWNER_SSM_PREFIX (under /cevanos/prod/), got '$p'"
+                exit 1
+                ;;
+            esac
+          done
+          [ "$PREFIX" != "$OWNER_PREFIX" ] || { echo "::error::the two prefixes must differ"; exit 1; }
+          uv run --frozen --no-dev python deploy/ec2/env_ssm.py pull --prefix "$PREFIX" --out .env
+          uv run --frozen --no-dev python deploy/ec2/env_ssm.py pull --prefix "$OWNER_PREFIX" --out .env.migrate
+
+      - name: the owner login is not in the runtime settings
+        # The API container must never hold it; only .env.migrate may.
+        run: |
+          ! grep -q '^CEDESK_MIGRATION_DATABASE_URL=' .env || {
+            echo "::error::CEDESK_MIGRATION_DATABASE_URL is under the runtime prefix; move it to the owner prefix"
+            exit 1
+          }
+
+      - name: build the images
+        # Built beside the slots that run them, so nothing needs a registry; the layers
+        # come from the box's build cache unless uv.lock or package-lock.json changed.
+        # Building does not touch the running containers.
+        if: ${{ inputs.image_tag == '' }}
+        run: |
+          docker build -t "cedesk-api:$IMAGE_TAG" .
+          docker build -t "cedesk-web:$IMAGE_TAG" frontend
+
+      - name: the images to release are on the box
+        run: |
+          docker image inspect "cedesk-api:$IMAGE_TAG" >/dev/null
+          docker image inspect "cedesk-web:$IMAGE_TAG" >/dev/null
+
+      - name: migrate
+        # Before any container runs the new code. The old slot keeps serving while this
+        # runs and after, so a migration must keep the previous release working: add
+        # now, remove in a later release.
+        run: bash deploy/ec2/deploy.sh migrate "$IMAGE_TAG"
+
+      - name: release the API and the web app blue/green
+        env:
+          CEDESK_SMOKE_HOST: ${{ vars.CEDESK_PROD_HOST }}
+        run: bash deploy/ec2/deploy.sh release "$IMAGE_TAG"
+
+      - name: roll the worker in place
+        # What it was doing waits in the database. One worker at a time: it reads the
+        # support mailbox. Fails the job if it is not running, or has restarted.
+        run: bash deploy/ec2/deploy.sh workers "$IMAGE_TAG"
+
+      - name: the site answers through nginx
+        # The public name resolved to this box: TLS, the server block and the upstreams
+        # the release just wrote, end to end.
+        env:
+          SITE: ${{ vars.CEDESK_PROD_HOST }}
+        run: |
+          [ -n "$SITE" ] || { echo "::error::set the repository variable CEDESK_PROD_HOST"; exit 1; }
+          for path in /readyz /api/health /login; do
+            curl -fsS --max-time 15 -o /dev/null --resolve "$SITE:443:127.0.0.1" "https://$SITE$path"
+            echo "https://$SITE$path answers"
+          done
+
+      - name: drop all but the last three images
+        # The stopped slot's image is in use by its container, so `rmi` refuses it
+        # whatever its age and a rollback always has its images. Only reached when
+        # everything above passed, so a failed deploy keeps what it would need.
+        run: |
+          for image in cedesk-api cedesk-web; do
+            docker images "$image" --format '{{.Tag}}' | tail -n +4 \
+              | xargs -r -I{} docker rmi "$image:{}" 2>/dev/null || true
+          done
+          docker image prune -f

@@ -1,0 +1,226 @@
+# CeDesk on a shared EC2 box, released blue/green by deploy/ec2/deploy.sh.
+#
+# Not the self-hosting stack: that is deploy/docker-compose.yml (its own Postgres and
+# Caddy, one `docker compose up`). Here Postgres is remote (the host's, or RDS), nginx
+# on the host is the only way in and does TLS, and the images are built once per release
+# by .github/workflows/cd-ec2.yml and tagged with the commit, so nothing below builds.
+#
+# Two slots, each an API and the web app that talks to *that* API:
+#   blue  api 8801  web 8802        green  api 8811  web 8812
+# nginx proxies to whichever slot .deploy/active names, through the upstreams file the
+# script writes. The ports never change; a release starts the idle slot, flips nginx,
+# then stops the old one. The worker and clamav are not slotted: the worker is recreated
+# in place (its work waits in the database), clamav is left running.
+#
+# Every port is published on 127.0.0.1 only. Docker's own firewall rules sit ahead of
+# ufw, so a bare `8801:8100` would be reachable from the internet; the bind address is
+# what keeps nginx the single way in. nginx must proxy to 127.0.0.1, not `localhost`.
+#
+# SETTINGS. `.env` (written from Parameter Store by the workflow) is only read by
+# compose to fill the `${...}` below. A container gets exactly the variables listed for
+# it: the web app never sees the database password, the API never sees the SMTP or IMAP
+# credentials, and none of them sees the owner login that runs migrations (it is in
+# `.env.migrate`, read only by the `migrate` service). A setting that is not listed
+# here does nothing, so a new one goes in this file and in Parameter Store.
+name: cedesk-prod
+
+x-hardened: &hardened
+  restart: unless-stopped
+  cap_drop:
+    - ALL
+  security_opt:
+    - no-new-privileges:true
+
+# Settings the API and the worker both read.
+x-shared-env: &shared-env
+  CEDESK_ENV: ${CEDESK_ENV:?set CEDESK_ENV (production or staging)}
+  # self_hosted: no plan limits. cloud: workspaces get the limits of the plan
+  # `cedesk set-plan` gives them (cloud also needs a CAPTCHA when sign-up is on).
+  CEDESK_EDITION: ${CEDESK_EDITION:-self_hosted}
+  CEDESK_DATABASE_URL: ${CEDESK_DATABASE_URL:?set CEDESK_DATABASE_URL (the cedesk_app login)}
+  CEDESK_SECRET_KEY: ${CEDESK_SECRET_KEY:?set CEDESK_SECRET_KEY}
+  CEDESK_APP_URL: ${CEDESK_APP_URL:?set CEDESK_APP_URL (https://<the site>)}
+  CEDESK_PORTAL_URL: ${CEDESK_PORTAL_URL:-}
+  CEDESK_LOG_LEVEL: ${CEDESK_LOG_LEVEL:-INFO}
+  CEDESK_PLANS: ${CEDESK_PLANS:-}
+  CEDESK_MAIL_FROM_ADDRESS: ${CEDESK_MAIL_FROM_ADDRESS:-}
+  CEDESK_MAIL_FROM_NAME: ${CEDESK_MAIL_FROM_NAME:-}
+  CEDESK_SIGNUP_ENABLED: ${CEDESK_SIGNUP_ENABLED:-false}
+  CEDESK_SCAN_BACKEND: ${CEDESK_SCAN_BACKEND:-clamd}
+  CEDESK_CEVANOS_URL: ${CEDESK_CEVANOS_URL:-https://api.cevanos.ai}
+  CEDESK_PUSH_FCM_PROJECT_ID: ${CEDESK_PUSH_FCM_PROJECT_ID:-}
+  # Uploaded files: the `files` volume, or S3 (keys empty: the box's instance role).
+  CEDESK_STORAGE_DRIVER: ${CEDESK_STORAGE_DRIVER:-local}
+  CEDESK_STORAGE_LOCAL_PATH: /data/storage
+  CEDESK_STORAGE_S3_BUCKET: ${CEDESK_STORAGE_S3_BUCKET:-}
+  CEDESK_STORAGE_S3_REGION: ${CEDESK_STORAGE_S3_REGION:-}
+  CEDESK_STORAGE_S3_ENDPOINT_URL: ${CEDESK_STORAGE_S3_ENDPOINT_URL:-}
+  CEDESK_STORAGE_S3_ACCESS_KEY_ID: ${CEDESK_STORAGE_S3_ACCESS_KEY_ID:-}
+  CEDESK_STORAGE_S3_SECRET_ACCESS_KEY: ${CEDESK_STORAGE_S3_SECRET_ACCESS_KEY:-}
+  CEDESK_STORAGE_S3_PATH_STYLE: ${CEDESK_STORAGE_S3_PATH_STYLE:-false}
+
+x-api-env: &api-env
+  CEDESK_CORS_ORIGINS: ${CEDESK_CORS_ORIGINS:-}
+  # The API's public address, for single sign-on.
+  CEDESK_API_URL: ${CEDESK_API_URL:-}
+  CEDESK_CEVANOS_APP_URL: ${CEDESK_CEVANOS_APP_URL:-https://cevanos.ai}
+  CEDESK_DEMO_ENABLED: ${CEDESK_DEMO_ENABLED:-false}
+  CEDESK_SIGNUP_CAPTCHA_SITE_KEY: ${CEDESK_SIGNUP_CAPTCHA_SITE_KEY:-}
+  CEDESK_SIGNUP_CAPTCHA_SECRET: ${CEDESK_SIGNUP_CAPTCHA_SECRET:-}
+  CEDESK_SIGNUP_DEFAULT_PLAN: ${CEDESK_SIGNUP_DEFAULT_PLAN:-free}
+  CEDESK_SIGNUP_PER_IP_HOUR: ${CEDESK_SIGNUP_PER_IP_HOUR:-5}
+  CEDESK_SIGNUP_WORKSPACES_PER_IP_DAY: ${CEDESK_SIGNUP_WORKSPACES_PER_IP_DAY:-3}
+  CEDESK_SIGNUP_HASH_SLOTS: ${CEDESK_SIGNUP_HASH_SLOTS:-4}
+  CEDESK_REPORT_TIMEOUT_SECONDS: ${CEDESK_REPORT_TIMEOUT_SECONDS:-10}
+  CEDESK_REPORT_CONCURRENCY: ${CEDESK_REPORT_CONCURRENCY:-4}
+  CEDESK_MAIL_FORWARD_TO: ${CEDESK_MAIL_FORWARD_TO:-}
+  CEDESK_MAIL_SPF_INCLUDE: ${CEDESK_MAIL_SPF_INCLUDE:-}
+  CEDESK_INBOUND_EMAIL_TOKEN: ${CEDESK_INBOUND_EMAIL_TOKEN:-}
+  CEDESK_CLAMD_HOST: ${CEDESK_CLAMD_HOST:-clamav}
+
+x-worker-env: &worker-env
+  CEDESK_REPORT_SCHEDULE_TIMEOUT_SECONDS: ${CEDESK_REPORT_SCHEDULE_TIMEOUT_SECONDS:-5}
+  CEDESK_REPORT_SCHEDULE_BUDGET_SECONDS: ${CEDESK_REPORT_SCHEDULE_BUDGET_SECONDS:-20}
+  CEDESK_SIGNUP_MAIL_CONCURRENCY: ${CEDESK_SIGNUP_MAIL_CONCURRENCY:-10}
+  CEDESK_MAIL_BACKEND: ${CEDESK_MAIL_BACKEND:-none}
+  CEDESK_SMTP_HOST: ${CEDESK_SMTP_HOST:-}
+  CEDESK_SMTP_PORT: ${CEDESK_SMTP_PORT:-587}
+  CEDESK_SMTP_SECURITY: ${CEDESK_SMTP_SECURITY:-starttls}
+  CEDESK_SMTP_USERNAME: ${CEDESK_SMTP_USERNAME:-}
+  CEDESK_SMTP_PASSWORD: ${CEDESK_SMTP_PASSWORD:-}
+  CEDESK_IMAP_HOST: ${CEDESK_IMAP_HOST:-}
+  CEDESK_IMAP_PORT: ${CEDESK_IMAP_PORT:-993}
+  CEDESK_IMAP_USERNAME: ${CEDESK_IMAP_USERNAME:-}
+  CEDESK_IMAP_PASSWORD: ${CEDESK_IMAP_PASSWORD:-}
+  CEDESK_IMAP_FOLDER: ${CEDESK_IMAP_FOLDER:-INBOX}
+  CEDESK_CLAMD_HOST: ${CEDESK_CLAMD_HOST:-clamav}
+  CEDESK_CLAMD_MAX_BYTES: ${CEDESK_CLAMD_MAX_BYTES:-104857600}
+  CEDESK_PUSH_FCM_SERVICE_ACCOUNT: ${CEDESK_PUSH_FCM_SERVICE_ACCOUNT:-}
+
+x-web-env: &web-env
+  # Caddy is not here; nginx is the one proxy in front and sets X-Forwarded-For itself.
+  TRUSTED_PROXY_HOPS: "1"
+  # Secure cookies: the site is HTTPS. Never 1 on a server.
+  ALLOW_INSECURE_HTTP: "0"
+  AUTH_RATE_LIMIT_PER_MINUTE: ${CEDESK_AUTH_RATE_LIMIT_PER_MINUTE:-10}
+
+x-api: &api
+  <<: *hardened
+  image: "cedesk-api:${IMAGE_TAG:?export IMAGE_TAG first; deploy/ec2/deploy.sh does}"
+  # Behind nginx on this host: take the client's address from X-Forwarded-For, only from
+  # these networks (this machine and Docker's), reading the list from the right. Never
+  # "*": uvicorn would then trust the left-most address, which the client chooses. The
+  # sign-in limit and each workspace's IP allowlist rely on this.
+  # --timeout-graceful-shutdown: the live-update streams (/api/v1/stream) never end by
+  # themselves; without the bound, stopping the old slot would wait out the whole
+  # stop_grace_period. The browser's EventSource reconnects to the new slot.
+  command:
+    - uv
+    - run
+    - --no-sync
+    - uvicorn
+    - cedesk.main:app
+    - --host
+    - 0.0.0.0
+    - --port
+    - "8100"
+    - --proxy-headers
+    - --forwarded-allow-ips
+    - ${CEDESK_FORWARDED_ALLOW_IPS:-127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fd00::/8}
+    - --timeout-graceful-shutdown
+    - "30"
+  stop_grace_period: 60s
+  environment:
+    <<: [*shared-env, *api-env]
+  volumes:
+    - files:/data/storage
+  healthcheck:
+    test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8100/readyz', timeout=3)"]
+    interval: 10s
+    timeout: 5s
+    retries: 5
+    start_period: 10s
+
+x-web: &web
+  <<: *hardened
+  image: "cedesk-web:${IMAGE_TAG:?export IMAGE_TAG first; deploy/ec2/deploy.sh does}"
+  stop_grace_period: 30s
+  # The image has its own HEALTHCHECK (/api/health); it does not call the API, so an API
+  # outage never restarts the web app.
+
+services:
+  # ── blue ────────────────────────────────────────────────────────────────
+  api-blue:
+    <<: *api
+    profiles: [blue]
+    ports: ["127.0.0.1:8801:8100"]
+
+  web-blue:
+    <<: *web
+    profiles: [blue]
+    ports: ["127.0.0.1:8802:3000"]
+    environment:
+      <<: *web-env
+      # The slot's own API, so a page and the API behind it are always one release.
+      CEDESK_API_URL: http://api-blue:8100/api/v1
+
+  # ── green ───────────────────────────────────────────────────────────────
+  api-green:
+    <<: *api
+    profiles: [green]
+    ports: ["127.0.0.1:8811:8100"]
+
+  web-green:
+    <<: *web
+    profiles: [green]
+    ports: ["127.0.0.1:8812:3000"]
+    environment:
+      <<: *web-env
+      CEDESK_API_URL: http://api-green:8100/api/v1
+
+  # ── not slotted ─────────────────────────────────────────────────────────
+  # Reads the support mailbox, sends queued email, delivers outbox events, syncs Cevanos
+  # chats, runs the SLA and report schedules. It has no port. Recreated in place by every
+  # release: a mailbox is read by one worker, so two must never overlap, and what it was
+  # doing waits in the database for the next one.
+  worker:
+    <<: *hardened
+    image: "cedesk-api:${IMAGE_TAG:?export IMAGE_TAG first; deploy/ec2/deploy.sh does}"
+    command: ["uv", "run", "--no-sync", "cedesk", "worker"]
+    stop_grace_period: 60s
+    environment:
+      <<: [*shared-env, *worker-env]
+    volumes:
+      - files:/data/storage
+
+  # Virus scan, on unless CEDESK_SCAN_BACKEND=none. About 1.5 GB of memory (up to 3 GB for
+  # a minute while it reloads definitions); the first start downloads them, and files wait
+  # as "being checked" until then. Never restarted by a release (`--no-recreate`).
+  clamav:
+    image: clamav/clamav:1.4
+    restart: unless-stopped
+    volumes:
+      - clamav:/var/lib/clamav
+    healthcheck:
+      test: ["CMD", "clamdcheck.sh"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 10m
+
+  # One-off, run by the workflow before any container runs the new code:
+  #   compose --env-file .env --env-file .env.migrate run --rm --no-deps migrate
+  # The owner login is the only thing here that can change the schema, so it lives in
+  # its own Parameter Store prefix and its own file, and reaches no other container.
+  migrate:
+    image: "cedesk-api:${IMAGE_TAG:?export IMAGE_TAG first; deploy/ec2/deploy.sh does}"
+    profiles: [tools]
+    restart: "no"
+    command: ["uv", "run", "--no-sync", "cedesk", "migrate"]
+    environment:
+      CEDESK_ENV: ${CEDESK_ENV:?set CEDESK_ENV (production or staging)}
+      CEDESK_MIGRATION_DATABASE_URL: ${CEDESK_MIGRATION_DATABASE_URL:-}
+
+volumes:
+  files:
+  clamav:
