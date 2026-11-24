@@ -20,6 +20,11 @@ GLOBAL_TABLES = {
     # client IP only HMACs; rows are deleted after two days.
     "workspace_signup",
     "auth_email_out",
+    # reporting login -> workspace (or every workspace), read by the reporting policies of
+    # migration 0080 to decide which rows a BI login's views show. Only role names and
+    # workspace ids; the app has no rights on it; `cedesk reporting-user` (the database
+    # superuser) fills it. RLS here would hide the rows those policies need to read.
+    "hd_reporting_access",
 }
 
 TABLES = text(

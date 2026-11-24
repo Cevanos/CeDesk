@@ -3,6 +3,21 @@
 `openapi.json` next to this file is the API as served (`uv run cedesk openapi`). Every
 route is under `/api/v1`. Breaking changes only come in v2 (md 2B). Newest first.
 
+## 2026-11-24: Reporting views for BI tools, and read-only reporting logins
+
+No API change. Migration 0080. New CLI command.
+
+- Migration 0080: a `reporting` schema of read-only views (`tickets`, `messages`, `csat`,
+  `members`, `teams`, `team_members`, `ticket_types`, `workspaces`) without personal data
+  (no subjects, message text, CSAT comments, tags, custom fields, or names and emails of
+  people); `hd_reporting_access`; one read-only row-level policy per table the views read.
+  The app's connection is unchanged.
+- `cedesk reporting-user create report_<name> (--workspace <address> | --all)`, `drop`,
+  `list`: a database login for a BI tool that reads those views only, read-only, 5
+  connections, 60 s a query. Needs `CEDESK_ADMIN_DATABASE_URL` (the database superuser),
+  for the command only; the password is asked at a prompt and sent as a SCRAM hash.
+- How to connect Metabase or Power BI: `docs/REPORTING_DATABASE.md`.
+
 ## 2026-11-24: Replay a rule or workflow on past tickets; restore an older workflow version
 
 New routes, Admin only. Migration 0079 (`hd_rule_replay`). No change to existing routes.

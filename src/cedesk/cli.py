@@ -4,6 +4,7 @@ create a workspace or a demo workspace, prune sessions, or write the OpenAPI fil
 import argparse
 import asyncio
 import getpass
+import os
 import sys
 import time
 from pathlib import Path
@@ -90,6 +91,83 @@ def _seed_workflow(slug: str) -> int:
         print(exc.message, file=sys.stderr)
         return 1
     print(f"Added {added} default(s) to {slug}; anything already there was kept.")
+    return 0
+
+
+ADMIN_URL_ENV = "CEDESK_ADMIN_DATABASE_URL"
+
+
+def _admin_url() -> str | None:
+    """The database superuser's URL, for reporting logins only (making a login needs it).
+    Read from the environment at the moment, never kept in the app's settings."""
+    url = os.environ.get(ADMIN_URL_ENV, "").strip()
+    if not url:
+        return None
+    if url.startswith("postgresql://") or url.startswith("postgres://"):
+        url = "postgresql+asyncpg://" + url.split("://", 1)[1]
+    return url
+
+
+def _reporting_user(args: argparse.Namespace) -> int:
+    """Logins for BI tools that read the `reporting` views (differentiator plan #7)."""
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+    from cedesk.db import make_engine
+    from cedesk.helpdesk.service import reporting_users
+    from cedesk.helpdesk.service.errors import ServiceError
+
+    url = _admin_url()
+    if url is None:
+        print(
+            f"Set {ADMIN_URL_ENV} to the database superuser's URL (the postgres user), "
+            "for this command only.",
+            file=sys.stderr,
+        )
+        return 1
+    if args.action != "list" and not args.name:
+        print("Give the login's name, e.g. report_bi.", file=sys.stderr)
+        return 1
+    password = ""
+    if args.action == "create":
+        if not args.all and not args.workspace:
+            print("Give --workspace <address>, or --all for every workspace.", file=sys.stderr)
+            return 1
+        password = getpass.getpass("Password for the login (16+ characters): ")
+        if password != getpass.getpass("Again: "):
+            print("The passwords differ.", file=sys.stderr)
+            return 1
+
+    async def run() -> object:
+        engine = make_engine(url)
+        admin = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+        try:
+            if args.action == "create":
+                slug = None if args.all else args.workspace
+                return await reporting_users.create(admin, args.name, password, slug)
+            if args.action == "drop":
+                await reporting_users.drop(admin, args.name)
+                return None
+            return await reporting_users.list_logins(admin)
+        finally:
+            await engine.dispose()
+
+    try:
+        found = asyncio.run(run())
+    except ServiceError as exc:
+        print(exc.message, file=sys.stderr)
+        return 1
+    if args.action == "create":
+        scope = "every workspace" if args.all else f"workspace {args.workspace}"
+        print(f"Created {args.name}: reads the reporting views of {scope}, read-only.")
+    elif args.action == "drop":
+        print(f"Dropped {args.name}.")
+    else:
+        rows = list(found)  # type: ignore[call-overload]
+        if not rows:
+            print("No reporting logins.")
+        for row in rows:
+            print(f"{row['role_name']:<32} {row['slug'] or '(every workspace)':<24} "
+                  f"{row['created_at']:%Y-%m-%d}")  # fmt: skip
     return 0
 
 
@@ -672,6 +750,14 @@ def main(argv: list[str] | None = None) -> int:
     plan = sub.add_parser("set-plan", help="Give a workspace its cloud plan (limits, md O4)")
     plan.add_argument("--workspace", required=True, help="Sign-in address, e.g. 'acme-store'")
     plan.add_argument("--plan", required=True, help="free, growth, enterprise, or none")
+    reporting = sub.add_parser(
+        "reporting-user",
+        help="Logins for BI tools (Metabase, Power BI) that read the reporting views only",
+    )
+    reporting.add_argument("action", choices=["create", "drop", "list"])
+    reporting.add_argument("name", nargs="?", default="", help="report_<name>, e.g. report_bi")
+    reporting.add_argument("--workspace", help="Sign-in address, e.g. 'acme-store'")
+    reporting.add_argument("--all", action="store_true", help="Every workspace (self-hosted)")
     spec = sub.add_parser("openapi", help="Write the API description to docs/api/openapi.json")
     spec.add_argument("--out", type=Path, default=ROOT / "docs" / "api" / "openapi.json")
     spec.add_argument("--check", action="store_true", help="Fail if the file is out of date")
@@ -710,6 +796,8 @@ def main(argv: list[str] | None = None) -> int:
         return _articles_markdown()
     if args.command == "set-plan":
         return _set_plan(args.workspace, args.plan)
+    if args.command == "reporting-user":
+        return _reporting_user(args)
     if args.command == "openapi":
         return _openapi(args.out, args.check)
     return _create_workspace(args)
