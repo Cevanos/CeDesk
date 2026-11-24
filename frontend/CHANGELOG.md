@@ -4,6 +4,10 @@ Notable changes are listed here. The format follows [Keep a Changelog](https://k
 
 ## [Unreleased]
 
+### Added
+
+- Public landing page at `/` for signed-out visitors (signed-in agents still go to `/tickets`). It is the only indexable page; `robots.txt` allows `/` and nothing else. SEO: keyword-targeted title, description and headings, canonical URL, Open Graph and Twitter cards with a generated share image, JSON-LD (Organization, WebSite, SoftwareApplication, FAQPage) and `/sitemap.xml`. Set `SITE_URL` in production.
+
 ### Security
 
 - Proxy: the 25 MB upload limit is now enforced on the bytes actually read, so chunked uploads with no `Content-Length` can no longer be buffered without bound (413 once exceeded).
