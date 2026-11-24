@@ -18,6 +18,7 @@ from cedesk.helpdesk.domain import signup as rules
 from cedesk.helpdesk.repo import signup as signup_repo
 from cedesk.helpdesk.service import signup_mail
 from cedesk.helpdesk.service.auth import create_workspace
+from cedesk.helpdesk.service.errors import Invalid
 from cedesk.helpdesk.service.password_reset import Sender
 from cedesk.mail import OutgoingEmail
 from cedesk.main import create_app
@@ -549,3 +550,18 @@ async def test_a_form_cant_put_its_own_message_in_the_code_email(
         ).scalar_one()
     assert body.startswith("Hello,")
     assert "Priya" not in body and "Acme" not in body
+
+
+async def test_the_command_line_keeps_the_same_address_rules(app_sessionmaker: Sm) -> None:
+    """`cedesk create-workspace` (the CLI's service) refuses what sign-up refuses: a name
+    the agent app uses as a page, or a double dash. It let both through."""
+    for slug, said in (
+        ("settings", "That workspace address is reserved. Choose another."),
+        ("admin", "That workspace address is reserved. Choose another."),
+        ("acme--shop", "The workspace address can't have two dashes in a row."),
+    ):
+        with pytest.raises(Invalid, match=re.escape(said)):
+            await create_workspace(
+                app_sessionmaker, name="T", slug=slug, admin_email="a@example.com",
+                admin_name="A", admin_password=PASSWORD, seed=False,
+            )  # fmt: skip

@@ -203,7 +203,7 @@ async def test_when_no_survey_is_sent(client: AsyncClient, app_sessionmaker: Sm)
                         {"into": chat["id"], "id": merged["id"]})  # fmt: skip
     # A Cevanos chat whose customer Cevanos named (AI6): a real address now, but the widget
     # still asks them in the chat, so no email either (staging, 23 Nov).
-    named = await resolved(client, w, "rakesh@example.org")
+    named = await resolved(client, w, "dev@example.org")
     async with workspace_session(app_sessionmaker, w["ws"]) as s:
         await s.execute(text("UPDATE hd_ticket SET source = 'cevanos', source_id = 'conv-1', "
                              "channel = 'chat' WHERE id = :id"), {"id": named["id"]})  # fmt: skip
