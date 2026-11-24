@@ -7,6 +7,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 GUIDE = ROOT / "docs" / "user-guide" / "en"
+DEV = ROOT / "docs" / "developers"  # developer guides, built beside the user guide
 
 
 @dataclass
@@ -18,7 +19,8 @@ class Page:
     key: str = field(init=False)
 
     def __post_init__(self) -> None:
-        self.rel = self.path.relative_to(GUIDE).with_suffix("").as_posix()
+        root = DEV if DEV in self.path.parents else GUIDE
+        self.rel = self.path.relative_to(root).with_suffix("").as_posix()
         stem = self.path.stem
         slug = stem.split("-", 1)[1] if stem[:2].isdigit() else stem
         self.key = f"{self.path.parent.name}/{slug}" if self.path.parent != GUIDE else slug
@@ -57,7 +59,7 @@ def parse(text: str) -> tuple[dict[str, object], str]:
 
 def load_pages() -> list[Page]:
     pages = []
-    for p in sorted(GUIDE.rglob("*.md")):
+    for p in [*sorted(GUIDE.rglob("*.md")), *sorted(DEV.rglob("*.md"))]:
         meta, body = parse(p.read_text(encoding="utf-8"))
         pages.append(Page(p, meta, body))
     return pages
