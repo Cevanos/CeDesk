@@ -22,7 +22,7 @@ This guide makes three calls: check your key, list tickets and create one.
 
 ## Before you start
 
-You need your CeDesk address, such as `https://help.example.com`, and an API key. An Admin makes one under **Settings › Developers › API keys**. See "API keys" in Account and access. The key is shown once, so copy it.
+You need your CeDesk address, such as `https://help.example.com`, and an API key. An Admin makes one under **Settings › Developers › API keys**. See [API keys](../account-and-access/api-keys.md). The key is shown once, so copy it.
 
 Set two variables so the examples work:
 

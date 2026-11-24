@@ -40,5 +40,5 @@ The age groups add up to Open now.
 
 | What you see | Why | What to do |
 |--------------|-----|------------|
-| Time logged is zero | Nobody logged time. | See "Log time on a ticket" in Ticket tools. |
+| Time logged is zero | Nobody logged time. | See [Log time on a ticket](../ticket-tools/log-time.md). |
 | Reopened is high | Customers reply after resolution, or tickets are closed too early. | Look at auto-close and your resolve habits. |

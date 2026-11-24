@@ -40,7 +40,7 @@ CeDesk emails the address a one-time code from itself, to itself. When it comes 
 
 Each shows ok, missing, wrong or not checked, with a note on what to fix. If DNS did not answer, try again. It can take a few seconds.
 
-Campaign email needs both SPF and DKIM to pass. See "Get ready to send campaigns" in Email campaigns.
+Campaign email needs both SPF and DKIM to pass. See [Get ready to send campaigns](../campaigns/get-ready-to-send-campaigns.md).
 
 ## For whoever runs the server
 

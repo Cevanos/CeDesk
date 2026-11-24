@@ -14,7 +14,7 @@ related:
   - imports/plan-your-move
 ---
 
-Use a CSV file when your old help desk is not on the list, or when you only have an export. To import customers alone, see "Import customers from a CSV file" in Customers.
+Use a CSV file when your old help desk is not on the list, or when you only have an export. To import customers alone, see [Import customers from a CSV file](../customers/import-customers-from-a-csv-file.md).
 
 > **Who can do this:** Admins.
 

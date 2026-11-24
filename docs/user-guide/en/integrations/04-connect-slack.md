@@ -29,7 +29,7 @@ Slack alerts posts Urgent and High tickets to a channel.
 
 ## Slack side conversations
 
-This lets agents ask a question in a Slack channel from a ticket. See "Side conversations" in Ticket tools.
+This lets agents ask a question in a Slack channel from a ticket. See [Side conversations](../ticket-tools/side-conversations.md).
 
 1. In Slack, make a Slack app. Give its bot the scopes `chat:write`, `channels:history`, `groups:history`, `users:read` and `files:read`. Only a shared file's name is read, never the file.
 2. Install the app in your Slack. Copy its **bot token** (starts with xoxb-) and its **signing secret**.

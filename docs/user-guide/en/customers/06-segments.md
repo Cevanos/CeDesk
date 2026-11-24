@@ -38,7 +38,7 @@ Open the actions menu next to the segment and choose **Rename**, **Update filter
 
 - A segment is worked out when you open it, so it always shows who matches now. Erased customers are never in it.
 - You can keep up to 200 segments, each with its own name.
-- Customers must have a real email address to receive a campaign. See "What email campaigns are" in Email campaigns.
+- Customers must have a real email address to receive a campaign. See [What email campaigns are](../campaigns/what-email-campaigns-are.md).
 
 ## Check it worked
 
