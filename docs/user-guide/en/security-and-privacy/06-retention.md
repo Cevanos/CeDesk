@@ -28,7 +28,7 @@ Retention removes old resolved tickets so you do not keep customer data longer t
 3. Turn on **Export before delete** if you want a copy first.
 4. Select **Save**.
 
-Once a day, CeDesk deletes resolved tickets and their files that are older than that. Each run is in the audit log. Old resolved tickets move to the archive first; see "Find archived tickets" in Ticket tools.
+Once a day, CeDesk deletes resolved tickets and their files that are older than that. Each run is in the audit log. Old resolved tickets move to the archive first; see [Find archived tickets](../ticket-tools/find-archived-tickets.md).
 
 ## Retention exports
 

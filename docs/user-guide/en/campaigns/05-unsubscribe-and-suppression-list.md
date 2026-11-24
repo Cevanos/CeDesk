@@ -17,6 +17,8 @@ related: []
 
 Every campaign email has an unsubscribe link. A person who unsubscribes goes on the suppression list, and no campaign from your workspace goes to them again. You can also add addresses yourself.
 
+> **Who can do this:** Admins.
+
 ## How it works
 
 - **The link in the footer** opens the unsubscribe page. Opening the page changes nothing, because mail scanners open links. The person presses the button.

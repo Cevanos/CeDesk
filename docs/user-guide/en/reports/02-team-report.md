@@ -49,4 +49,4 @@ Created and Resolved change when you change the period.
 | What you see | Why | What to do |
 |--------------|-----|------------|
 | "No team" has many tickets | They have no team set. | Add a rule that sets a team. |
-| SLA met is low | Many open tickets are past their targets. | See "Response-time targets" in Automation. |
+| SLA met is low | Many open tickets are past their targets. | See [Response-time targets](../automation/sla-targets-and-policies.md). |
