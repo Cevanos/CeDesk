@@ -13450,10 +13450,10 @@
             "schema": {
               "type": "string",
               "maxLength": 11,
-              "description": "A language code such as `hi` or `pt-br` (stored lower-case).",
+              "description": "A language code such as `hi`, `pt-br` or `zh-hant-tw` (stored lower-case).",
               "title": "Locale"
             },
-            "description": "A language code such as `hi` or `pt-br` (stored lower-case)."
+            "description": "A language code such as `hi`, `pt-br` or `zh-hant-tw` (stored lower-case)."
           }
         ],
         "requestBody": {
@@ -13517,10 +13517,10 @@
             "schema": {
               "type": "string",
               "maxLength": 11,
-              "description": "A language code such as `hi` or `pt-br` (stored lower-case).",
+              "description": "A language code such as `hi`, `pt-br` or `zh-hant-tw` (stored lower-case).",
               "title": "Locale"
             },
-            "description": "A language code such as `hi` or `pt-br` (stored lower-case)."
+            "description": "A language code such as `hi`, `pt-br` or `zh-hant-tw` (stored lower-case)."
           }
         ],
         "responses": {
@@ -13576,10 +13576,10 @@
             "schema": {
               "type": "string",
               "maxLength": 11,
-              "description": "A language code such as `hi` or `pt-br` (stored lower-case).",
+              "description": "A language code such as `hi`, `pt-br` or `zh-hant-tw` (stored lower-case).",
               "title": "Locale"
             },
-            "description": "A language code such as `hi` or `pt-br` (stored lower-case)."
+            "description": "A language code such as `hi`, `pt-br` or `zh-hant-tw` (stored lower-case)."
           }
         ],
         "requestBody": {
@@ -13643,10 +13643,10 @@
             "schema": {
               "type": "string",
               "maxLength": 11,
-              "description": "A language code such as `hi` or `pt-br` (stored lower-case).",
+              "description": "A language code such as `hi`, `pt-br` or `zh-hant-tw` (stored lower-case).",
               "title": "Locale"
             },
-            "description": "A language code such as `hi` or `pt-br` (stored lower-case)."
+            "description": "A language code such as `hi`, `pt-br` or `zh-hant-tw` (stored lower-case)."
           }
         ],
         "responses": {

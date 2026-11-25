@@ -127,3 +127,31 @@ def test_all_four_seo_fields_are_cleaned_together() -> None:
         "slug": "hello-world", "meta_title": "T", "meta_description": None, "canonical_url": None
     }  # fmt: skip
     assert h.clean_seo({}) == dict.fromkeys(h.SEO_FIELDS)
+
+
+def test_a_language_may_have_a_script_and_a_region() -> None:
+    assert h.clean_locale("ZH-Hant-TW") == "zh-hant-tw"
+    assert h.clean_locale("sr-latn-rs") == "sr-latn-rs"
+    for bad in ("en-us-x-y", "zh-hant-tw-x", "zh--tw"):
+        with pytest.raises(h.BadLocale):
+            h.clean_locale(bad)
+
+
+def test_a_three_part_language_falls_back_one_step_at_a_time() -> None:
+    assert h.parents_of("zh-hant-tw") == ["zh-hant", "zh"]
+    assert h.parents_of("pt-br") == ["pt"]
+    assert h.parents_of("hi") == []
+    assert h.wanted("zh-Hant-TW", "en") == ["zh-hant-tw", "zh-hant", "zh"]
+
+
+def test_text_in_the_decomposed_form_is_stored_composed() -> None:
+    import unicodedata
+
+    from cedesk.helpdesk.domain import articles as a
+
+    decomposed = unicodedata.normalize("NFD", "Réinitialiser le mot de passe")
+    assert decomposed != "Réinitialiser le mot de passe"
+    assert a.clean_title(decomposed) == "Réinitialiser le mot de passe"
+    assert a.clean_body(decomposed + "  ") == "Réinitialiser le mot de passe"
+    assert a.clean_category(decomposed) == "Réinitialiser le mot de passe"
+    assert a.search_query(decomposed) == "réinitialiser & le & mot & de & passe:*"

@@ -9,13 +9,14 @@ import unicodedata
 from collections.abc import Mapping
 from urllib.parse import urlsplit
 
-from cedesk.helpdesk.domain.articles import CATEGORY_MAX
+from cedesk.helpdesk.domain.articles import CATEGORY_MAX, nfc
 
 DEFAULT_LOCALE = "en"
 MAX_TRANSLATIONS = 40  # per article
 MAX_CATEGORY_NAMES = 40  # per category
 
-_LOCALE = re.compile(r"^[a-z]{2,3}(-[a-z0-9]{2,8})?$")
+# A language, then at most a script and a region ("zh-hant-tw", "sr-latn-rs", "pt-br").
+_LOCALE = re.compile(r"^[a-z]{2,3}(-[a-z0-9]{2,8}){0,2}$")
 
 
 class BadLocale(ValueError):
@@ -34,6 +35,12 @@ def base_of(locale: str) -> str:
     return locale.split("-", 1)[0]
 
 
+def parents_of(locale: str) -> list[str]:
+    """`zh-hant-tw` -> `zh-hant`, `zh`: the broader languages to try when it is missing."""
+    parts = locale.split("-")
+    return ["-".join(parts[:n]) for n in range(len(parts) - 1, 0, -1)]
+
+
 def wanted(requested: str | None, default: str) -> list[str]:
     """The translations to look for, best first: the exact language, then its base
     (`pt-br`, then `pt`). The default language is the article itself, so it is never
@@ -41,7 +48,7 @@ def wanted(requested: str | None, default: str) -> list[str]:
     if not requested:
         return []
     exact = clean_locale(requested)
-    found = [exact] if exact == base_of(exact) else [exact, base_of(exact)]
+    found = [exact, *parents_of(exact)]
     return [loc for loc in found if loc != default]
 
 
@@ -51,7 +58,7 @@ def clean_category_names(names: Mapping[str, str]) -> dict[str, str]:
         raise BadLocale(f"A category can have at most {MAX_CATEGORY_NAMES} translated names.")
     cleaned: dict[str, str] = {}
     for code, name in names.items():
-        value = " ".join(name.split())
+        value = " ".join(nfc(name).split())
         if not 1 <= len(value) <= CATEGORY_MAX:
             raise BadLocale(f"A category name needs 1 to {CATEGORY_MAX} characters.")
         cleaned[clean_locale(code)] = value
@@ -104,7 +111,7 @@ def _plain(value: str | None, limit: int, what: str) -> str | None:
         return None
     if any(unicodedata.category(ch) == "Cc" and ch not in "\t\n\r" for ch in value):
         raise BadSeo(f"The {what} can't contain control characters.")
-    text = " ".join(value.split())
+    text = " ".join(nfc(value).split())
     if not text:
         return None
     if len(text) > limit:

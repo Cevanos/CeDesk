@@ -161,7 +161,7 @@ same two columns. No migration.
 ## 2026-11-23: Help center: languages, SEO controls, custom domain
 
 Additive only: new routes and fields; nothing existing changed shape (the public routes called
-without `locale` answer as before, with extra fields). Migrations 0083-0085. Feature-gap plan
+without `locale` answer as before, with extra fields). Migrations 0083-0086. Feature-gap plan
 phase 4 (4.1, 4.2, 4.3). No new permission: agents read (drafts too), the public reads what is
 published, every write is Admin (Settings), like articles and categories today. New audit area:
 `help_domain` (the others stay under `help_center`).
@@ -213,6 +213,13 @@ published, every write is Admin (Settings), like articles and categories today. 
   file. See `deploy/README.md`.
 - **Settings.** `CEDESK_TLS_ASK_KEY`, `CEDESK_HELP_CNAME_TARGET` (both empty = off); in
   `docs/SETTINGS.md`.
+- **Accents and codes (0086).** Help center search ignores accents: `cafe` finds "Café", and
+  `oublie` finds "oublié" (the `unaccent` extension; scripts without accent rules, such as Hindi
+  or Japanese, are unchanged). A language code may now have a script and a region (`zh-hant-tw`,
+  `sr-latn-rs`); a missing one falls back one step at a time (`zh-hant-tw`, then `zh-hant`, then
+  `zh`, then the default). Titles, bodies and names are stored in the composed Unicode form, so
+  text pasted in the decomposed form is found by search. Migration 0086 refuses to go down while
+  a three-part code is stored.
 - **Going back.** Migration 0083 refuses to go down while a translation exists (delete them
   first); 0084 and 0085 drop their columns and tables.
 

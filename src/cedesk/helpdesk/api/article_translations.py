@@ -23,7 +23,7 @@ LocaleCode = Annotated[
     str,
     Path(
         max_length=11,
-        description="A language code such as `hi` or `pt-br` (stored lower-case).",
+        description="A language code such as `hi`, `pt-br` or `zh-hant-tw` (stored lower-case).",
     ),
 ]
 Title = Annotated[str, StringConstraints(min_length=1, max_length=200)]
