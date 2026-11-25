@@ -1,7 +1,6 @@
 "use client";
 
 import { Trash2 } from "lucide-react";
-import { useState } from "react";
 
 import {
   ExtraCard,
@@ -15,7 +14,20 @@ import { useConfirm } from "@/components/ui/confirm";
 import { Button, Input } from "@/components/ui/primitives";
 import { useCurrentUser } from "@/hooks/use-auth";
 import { useDeleteTime, useLogTime, useTimeLog } from "@/hooks/use-ticket-extras";
+import { bind, fieldError, useFormik, yup } from "@/lib/forms";
 import { formatDateTime } from "@/lib/utils";
+
+const timeSchema = yup.object({
+  minutes: yup
+    .number()
+    .transform((v, o) => (o === "" ? undefined : v))
+    .typeError("Enter minutes as a number")
+    .required("Enter the minutes")
+    .min(1, "At least 1 minute")
+    .max(1440, "At most 1440 minutes (24 hours)"),
+  note: yup.string().max(500),
+  billable: yup.boolean(),
+});
 
 export function TimeCard({ ticketId, canEdit }: ExtraProps) {
   const { user } = useCurrentUser();
@@ -23,26 +35,22 @@ export function TimeCard({ ticketId, canEdit }: ExtraProps) {
   const log = useLogTime(ticketId);
   const del = useDeleteTime(ticketId);
   const { ask, dialog } = useConfirm();
-  const [minutes, setMinutes] = useState("");
-  const [note, setNote] = useState("");
-  const [billable, setBillable] = useState(false);
   const isAdmin = user?.role === "admin";
-
-  const submit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const m = Math.round(Number(minutes));
-    if (!Number.isFinite(m) || m < 1) return;
-    log.mutate(
-      { minutes: m, note: note.trim() || undefined, billable },
-      {
-        onSuccess: () => {
-          setMinutes("");
-          setNote("");
+  const form = useFormik({
+    initialValues: { minutes: "", note: "", billable: false },
+    validationSchema: timeSchema,
+    onSubmit: (v, { resetForm }) => {
+      const m = Math.round(Number(v.minutes));
+      log.mutate(
+        { minutes: m, note: v.note.trim() || undefined, billable: v.billable },
+        {
+          onSuccess: () => resetForm({ values: { minutes: "", note: "", billable: v.billable } }),
+          onError: toastError,
         },
-        onError: toastError,
-      },
-    );
-  };
+      );
+    },
+  });
+  const { minutes } = form.values;
 
   return (
     <ExtraCard title="Time">
@@ -97,50 +105,48 @@ export function TimeCard({ ticketId, canEdit }: ExtraProps) {
           ) : (
             <Muted>No time logged.</Muted>
           )}
-          <form className="mt-3 space-y-2" onSubmit={submit}>
-            <div className="flex gap-2">
-              <Input
-                type="number"
-                min={1}
-                max={1440}
-                value={minutes}
-                onChange={(e) => setMinutes(e.target.value)}
-                placeholder="Minutes"
-                aria-label="Minutes"
-                disabled={!canEdit}
-                className="h-9 w-24 flex-none"
-              />
-              <Input
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-                placeholder="Note (optional)"
-                aria-label="Note"
-                maxLength={500}
-                disabled={!canEdit}
-                className="h-9"
-              />
-            </div>
-            <div className="flex items-center justify-between gap-2">
-              <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  className="size-4 accent-primary"
-                  checked={billable}
-                  disabled={!canEdit}
-                  onChange={(e) => setBillable(e.target.checked)}
+          {canEdit && (
+            <form className="mt-3 space-y-2" onSubmit={form.handleSubmit} noValidate>
+              <div className="flex gap-2">
+                <Input
+                  type="number"
+                  min={1}
+                  max={1440}
+                  {...bind(form, "minutes")}
+                  placeholder="Minutes"
+                  aria-label="Minutes"
+                  className="h-9 w-24 flex-none"
                 />
-                Billable
-              </label>
-              <Button
-                type="submit"
-                size="sm"
-                disabled={!canEdit || !minutes}
-                loading={log.isPending}
-              >
-                Log time
-              </Button>
-            </div>
-          </form>
+                <Input
+                  {...bind(form, "note")}
+                  placeholder="Note (optional)"
+                  aria-label="Note"
+                  maxLength={500}
+                  className="h-9"
+                />
+              </div>
+              {(fieldError(form, "minutes") || fieldError(form, "note")) && (
+                <p role="alert" className="text-xs text-danger">
+                  {fieldError(form, "minutes") ?? fieldError(form, "note")}
+                </p>
+              )}
+              <div className="flex items-center justify-between gap-2">
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    className="size-4 accent-primary"
+                    name="billable"
+                    checked={form.values.billable}
+                    onChange={form.handleChange}
+                  />
+                  Billable
+                </label>
+                <Button type="submit" size="sm" disabled={!minutes} loading={log.isPending}>
+                  Log time
+                </Button>
+              </div>
+            </form>
+          )}
         </>
       )}
     </ExtraCard>

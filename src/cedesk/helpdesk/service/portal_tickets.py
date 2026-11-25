@@ -219,3 +219,15 @@ async def file_content(
 
 def status_label(status: str) -> str:
     return rules.status_label(status)
+
+
+def standing(status: str, raw: Mapping[str, Any]) -> dict[str, str | None]:
+    """Who owns the ticket, what it waits on, and its checked outcome (plan #9)."""
+    show = raw.get("show_owner")
+    return {
+        "owner_first_name": rules.owner(
+            raw.get("assignee_name"), raw.get("team_name"), show_owner=show is not False
+        ),
+        "pending_step": rules.pending_step(status, raw.get("receipt_pending")),
+        "outcome": rules.outcome(status, raw.get("receipt_result"), raw.get("receipt_verified")),
+    }

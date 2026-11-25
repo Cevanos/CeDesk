@@ -16,6 +16,7 @@ import {
 import { useConfirm } from "@/components/ui/confirm";
 import { Badge, Button, Input, Textarea } from "@/components/ui/primitives";
 import { useCreateJira, useJira, useLinkJira, useUnlinkJira } from "@/hooks/use-ticket-extras";
+import { bind, fieldError, useFormik, yup } from "@/lib/forms";
 import { safeHttpUrl } from "@/lib/safe-url";
 
 function JiraForm({
@@ -29,11 +30,38 @@ function JiraForm({
 }) {
   const create = useCreateJira(ticketId);
   const link = useLinkJira(ticketId);
-  const [key, setKey] = useState("");
   const [creating, setCreating] = useState(false);
-  const [summary, setSummary] = useState(subject ?? "");
-  const [description, setDescription] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const linkForm = useFormik({
+    initialValues: { key: "" },
+    validationSchema: yup.object({
+      key: yup
+        .string()
+        .trim()
+        .required("Enter an issue key.")
+        .matches(/^\S+$/, "An issue key has no spaces."),
+    }),
+    onSubmit: (v) => {
+      setError(null);
+      link.mutate({ key: v.key.trim() }, { onSuccess: done, onError: (e) => setError(errText(e)) });
+    },
+  });
+  const createForm = useFormik({
+    initialValues: { summary: subject ?? "", description: "" },
+    validationSchema: yup.object({
+      summary: yup.string().max(255, "Keep the summary under 255 characters."),
+      description: yup.string().max(32000),
+    }),
+    onSubmit: (v) => {
+      setError(null);
+      const s = v.summary.trim();
+      const d = v.description.trim();
+      create.mutate(
+        { ...(s ? { summary: s } : {}), ...(d ? { description: d } : {}) },
+        { onSuccess: done, onError: (err) => setError(errText(err)) },
+      );
+    },
+  });
   const done = () => {
     toast.success("Jira updated");
     close();
@@ -41,30 +69,16 @@ function JiraForm({
 
   if (creating)
     return (
-      <form
-        className="space-y-2"
-        onSubmit={(e) => {
-          e.preventDefault();
-          setError(null);
-          const s = summary.trim();
-          const d = description.trim();
-          create.mutate(
-            { ...(s ? { summary: s } : {}), ...(d ? { description: d } : {}) },
-            { onSuccess: done, onError: (err) => setError(errText(err)) },
-          );
-        }}
-      >
+      <form className="space-y-2" onSubmit={createForm.handleSubmit} noValidate>
         <Input
-          value={summary}
-          onChange={(e) => setSummary(e.target.value)}
+          {...bind(createForm, "summary")}
           placeholder="Summary"
           aria-label="Jira issue summary"
           maxLength={255}
           className="h-9"
         />
         <Textarea
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
+          {...bind(createForm, "description")}
           placeholder="Description (optional)"
           aria-label="Jira issue description"
           rows={4}
@@ -72,16 +86,16 @@ function JiraForm({
         <p className="text-xs text-muted-foreground">
           The customer&apos;s messages aren&apos;t sent. Add what engineering needs.
         </p>
-        {error && (
+        {(error ?? fieldError(createForm, "summary")) && (
           <p role="alert" className="text-sm text-danger">
-            {error}
+            {error ?? fieldError(createForm, "summary")}
           </p>
         )}
         <div className="flex flex-wrap gap-2">
           <Button size="sm" type="submit" loading={create.isPending}>
             Create
           </Button>
-          <Button size="sm" variant="ghost" onClick={() => setCreating(false)}>
+          <Button size="sm" type="button" variant="ghost" onClick={() => setCreating(false)}>
             Cancel
           </Button>
         </div>
@@ -89,36 +103,31 @@ function JiraForm({
     );
 
   return (
-    <div className="space-y-2">
+    <form className="space-y-2" onSubmit={linkForm.handleSubmit} noValidate>
       <Input
-        value={key}
-        onChange={(e) => setKey(e.target.value.toUpperCase())}
+        {...bind(linkForm, "key")}
+        onChange={(e) => void linkForm.setFieldValue("key", e.target.value.toUpperCase())}
         placeholder="Issue key, e.g. ABC-123"
         aria-label="Jira issue key"
         className="h-9"
       />
-      {error && (
+      {(error ?? fieldError(linkForm, "key")) && (
         <p role="alert" className="text-sm text-danger">
-          {error}
+          {error ?? fieldError(linkForm, "key")}
         </p>
       )}
       <div className="flex flex-wrap gap-2">
         <Button
           size="sm"
-          disabled={!key.trim()}
+          type="submit"
+          disabled={!linkForm.values.key.trim()}
           loading={link.isPending}
-          onClick={() => {
-            setError(null);
-            link.mutate(
-              { key: key.trim() },
-              { onSuccess: done, onError: (e) => setError(errText(e)) },
-            );
-          }}
         >
           Link existing
         </Button>
         <Button
           size="sm"
+          type="button"
           variant="outline"
           onClick={() => {
             setError(null);
@@ -127,11 +136,11 @@ function JiraForm({
         >
           Create new issue
         </Button>
-        <Button size="sm" variant="ghost" onClick={close}>
+        <Button size="sm" type="button" variant="ghost" onClick={close}>
           Cancel
         </Button>
       </div>
-    </div>
+    </form>
   );
 }
 

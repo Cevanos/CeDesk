@@ -15,6 +15,7 @@ export function usePortalSettings() {
         allowed_domains: raw?.allowed_domains ?? [],
         csat_survey: raw?.csat_survey === true,
         web_form: raw?.web_form === true,
+        show_owner: raw?.show_owner !== false,
       };
     },
     staleTime: 60_000,

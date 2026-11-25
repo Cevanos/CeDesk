@@ -1,14 +1,29 @@
 "use client";
 
-import { MoreHorizontal, Play, Save, Users } from "lucide-react";
+import {
+  BarChart3,
+  Bookmark,
+  Inbox,
+  LineChart,
+  MoreHorizontal,
+  PieChart,
+  Play,
+  Save,
+  SlidersHorizontal,
+  Sparkles,
+  TrendingUp,
+  Users,
+  type LucideIcon,
+} from "lucide-react";
 import { useSearchParams } from "next/navigation";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { toast } from "sonner";
 
 import { useConfirm } from "@/components/ui/confirm";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Dialog, MenuItem, Popover } from "@/components/ui/overlay";
 import { Button, Card, Field, Input, Select, Skeleton } from "@/components/ui/primitives";
+import { SectionHeader } from "@/components/ui/section";
 import { LoadError } from "@/components/workspace/list-shared";
 import { RunCsvButton } from "@/components/workspace/report-csv";
 import { ResultCard, ResultView } from "@/components/workspace/report-result";
@@ -29,6 +44,7 @@ import {
 } from "@/hooks/workspace/reports-explore";
 import { useTicketTypes } from "@/hooks/workspace/ticket-types";
 import { ApiError } from "@/lib/api/client";
+import { bind, fieldError, useFormik, yup } from "@/lib/forms";
 import { inboxActions } from "@/lib/permissions";
 import {
   RANGE_PRESETS,
@@ -221,7 +237,10 @@ function Trends({ options }: { options: ReportOptions }) {
 
   return (
     <div className="grid gap-6 lg:grid-cols-[18rem_minmax(0,1fr)]">
-      <aside className="space-y-5" aria-label="Reports">
+      <aside
+        className="h-fit space-y-5 rounded-2xl border border-border bg-surface p-3 shadow-card lg:sticky lg:top-4 lg:max-h-[calc(100svh-2rem)] lg:overflow-y-auto"
+        aria-label="Reports"
+      >
         <SavedList
           reports={saved.data}
           loading={saved.isPending}
@@ -233,27 +252,24 @@ function Trends({ options }: { options: ReportOptions }) {
           const items = g.keys
             .map((k) => options.presets.find((p) => p.key === k))
             .filter((p): p is PresetInfo => !!p);
+          const Icon = GROUP_ICON[g.title] ?? BarChart3;
           return (
             <section key={g.title} aria-label={g.title}>
-              <h2 className="mb-1.5 px-1 text-[11px] font-semibold tracking-wider text-subtle-foreground uppercase">
+              <SideHeading icon={Icon} count={items.length}>
                 {g.title}
-              </h2>
+              </SideHeading>
               <ul className="space-y-0.5">
                 {items.map((p) => (
                   <li key={p.key}>
-                    <button
-                      type="button"
-                      onClick={() => openPreset(p)}
-                      className={cn(
-                        "w-full rounded-lg px-2.5 py-1.5 text-left text-sm transition-colors hover:bg-surface-2",
+                    <PresetButton
+                      label={p.label}
+                      active={
                         source?.kind === "body" &&
-                          "preset" in source.body &&
-                          source.body.preset === p.key &&
-                          "bg-primary-soft font-medium text-primary-ink",
-                      )}
-                    >
-                      {p.label}
-                    </button>
+                        "preset" in source.body &&
+                        source.body.preset === p.key
+                      }
+                      onClick={() => openPreset(p)}
+                    />
                   </li>
                 ))}
               </ul>
@@ -266,19 +282,11 @@ function Trends({ options }: { options: ReportOptions }) {
           const extra = options.presets.filter((p) => !known.has(p.key));
           return extra.length ? (
             <section aria-label="More reports">
-              <h2 className="mb-1.5 px-1 text-[11px] font-semibold tracking-wider text-subtle-foreground uppercase">
-                More
-              </h2>
+              <SideHeading icon={Sparkles}>More</SideHeading>
               <ul className="space-y-0.5">
                 {extra.map((p) => (
                   <li key={p.key}>
-                    <button
-                      type="button"
-                      onClick={() => openPreset(p)}
-                      className="w-full rounded-lg px-2.5 py-1.5 text-left text-sm hover:bg-surface-2"
-                    >
-                      {p.label}
-                    </button>
+                    <PresetButton label={p.label} onClick={() => openPreset(p)} />
                   </li>
                 ))}
               </ul>
@@ -287,7 +295,7 @@ function Trends({ options }: { options: ReportOptions }) {
         })()}
       </aside>
 
-      <div className="min-w-0 space-y-4">
+      <div className="min-w-0 space-y-10">
         <Builder
           options={options}
           form={form}
@@ -300,15 +308,31 @@ function Trends({ options }: { options: ReportOptions }) {
         />
 
         {source === null ? (
-          <Card className="p-8 text-center text-sm text-muted-foreground">
-            Pick a report on the left, or set up your own and press Run.
+          <Card className="flex flex-col items-center gap-3 border-dashed px-6 py-14 text-center">
+            <span className="grid size-12 place-items-center rounded-2xl bg-primary-soft text-primary-ink">
+              <LineChart className="size-6" aria-hidden />
+            </span>
+            <div>
+              <p className="text-sm font-semibold">No report running</p>
+              <p className="mt-1 max-w-sm text-sm text-muted-foreground">
+                Pick a report on the left, or set up your own above and press Run.
+              </p>
+            </div>
           </Card>
         ) : result.isPending ? (
           <Skeleton className="h-64 rounded-xl" />
         ) : result.isError ? (
           <LoadError error={result.error} />
         ) : (
-          <div className={cn("transition-opacity", result.isPlaceholderData && "opacity-60")}>
+          <section
+            aria-label="Results"
+            className={cn("transition-opacity", result.isPlaceholderData && "opacity-60")}
+          >
+            <SectionHeader
+              icon={LineChart}
+              title="Results"
+              description="The report you just ran."
+            />
             <ResultCard>
               <ResultView
                 result={result.data}
@@ -321,7 +345,7 @@ function Trends({ options }: { options: ReportOptions }) {
                 }
               />
             </ResultCard>
-          </div>
+          </section>
         )}
       </div>
 
@@ -333,6 +357,68 @@ function Trends({ options }: { options: ReportOptions }) {
         />
       )}
     </div>
+  );
+}
+
+const GROUP_ICON: Record<string, LucideIcon> = {
+  "Over time": TrendingUp,
+  Breakdowns: PieChart,
+  "Open now": Inbox,
+};
+
+function SideHeading({
+  icon: Icon,
+  count,
+  children,
+}: {
+  icon: LucideIcon;
+  count?: number;
+  children: ReactNode;
+}) {
+  return (
+    <h2 className="mb-2 flex items-center gap-2.5 rounded-xl border border-border bg-surface-2 px-2.5 py-2 text-sm font-semibold tracking-tight text-foreground">
+      <span className="grid size-6 shrink-0 place-items-center rounded-lg bg-primary text-primary-foreground shadow-sm">
+        <Icon className="size-3.5" aria-hidden />
+      </span>
+      <span className="min-w-0 flex-1 truncate">{children}</span>
+      {count !== undefined && (
+        <span className="rounded-full bg-surface px-2 py-0.5 text-[11px] font-medium text-muted-foreground tabular-nums ring-1 ring-border">
+          {count}
+        </span>
+      )}
+    </h2>
+  );
+}
+
+function PresetButton({
+  label,
+  active,
+  onClick,
+}: {
+  label: string;
+  active?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-current={active ? "true" : undefined}
+      className={cn(
+        "relative w-full rounded-lg py-1.5 pr-2.5 pl-3 text-left text-[13px] transition-colors",
+        active
+          ? "bg-primary-soft font-semibold text-primary-ink"
+          : "text-foreground-2 hover:bg-surface-2 hover:text-foreground",
+      )}
+    >
+      {active && (
+        <span
+          aria-hidden
+          className="absolute top-1.5 bottom-1.5 left-0 w-0.5 rounded-full bg-primary"
+        />
+      )}
+      {label}
+    </button>
   );
 }
 
@@ -378,191 +464,201 @@ function Builder({
   const teamName = teams.data?.find((t) => t.id === teamId)?.name;
 
   return (
-    <Card className="space-y-4 p-4 sm:p-5">
-      <div className="grid gap-3 sm:grid-cols-3">
-        <Field label="Metric" htmlFor="rb-metric">
-          <Select
-            id="rb-metric"
-            value={form.metric}
-            onChange={(e) => pickMetric(e.target.value)}
-            options={options.metrics.map((m) => ({ value: m.key, label: m.label }))}
-          />
-        </Field>
-        <Field
-          label="Group by"
-          htmlFor="rb-group"
-          hint={kind === "backlog" ? "The backlog is grouped by day." : undefined}
-        >
-          <Select
-            id="rb-group"
-            value={form.group_by}
-            disabled={kind === "backlog"}
-            onChange={(e) => set({ group_by: e.target.value })}
-            options={groups.map((g) => ({ value: g, label: GROUP_LABEL[g] ?? capitalize(g) }))}
-          />
-        </Field>
-        {kind === "now" ? (
-          <Field label="Range" htmlFor="rb-range" hint="As of now">
-            <Input id="rb-range" value="As of now" disabled readOnly />
-          </Field>
-        ) : (
-          <Field label="Range" htmlFor="rb-range">
+    <section aria-label="Report builder">
+      <SectionHeader
+        icon={SlidersHorizontal}
+        title="Report builder"
+        description="Pick a metric, how to group it and the period, then run."
+      />
+      <Card className="space-y-4 p-4 sm:p-5">
+        <div className="grid gap-3 sm:grid-cols-3">
+          <Field label="Metric" htmlFor="rb-metric">
             <Select
-              id="rb-range"
-              value={form.range}
-              onChange={(e) => set({ range: e.target.value as Form["range"] })}
-              options={[
-                ...RANGE_PRESETS.filter((r) => options.ranges.includes(r.value)).map((r) => ({
-                  value: r.value,
-                  label: r.label,
-                })),
-                { value: "custom", label: "Custom" },
-              ]}
+              id="rb-metric"
+              value={form.metric}
+              onChange={(e) => pickMetric(e.target.value)}
+              options={options.metrics.map((m) => ({ value: m.key, label: m.label }))}
             />
           </Field>
-        )}
-      </div>
-
-      {kind !== "now" && form.range === "custom" && (
-        <div className="flex flex-wrap items-center gap-3">
-          <label
-            htmlFor="rb-from"
-            className="flex items-center gap-2 text-sm text-muted-foreground"
+          <Field
+            label="Group by"
+            htmlFor="rb-group"
+            hint={kind === "backlog" ? "The backlog is grouped by day." : undefined}
           >
-            From
-            <DatePicker
-              id="rb-from"
-              type="date"
-              className="w-40"
-              value={form.from}
-              max={form.to || undefined}
-              onChange={(v) => set({ from: v })}
+            <Select
+              id="rb-group"
+              value={form.group_by}
+              disabled={kind === "backlog"}
+              onChange={(e) => set({ group_by: e.target.value })}
+              options={groups.map((g) => ({ value: g, label: GROUP_LABEL[g] ?? capitalize(g) }))}
             />
-          </label>
-          <label htmlFor="rb-to" className="flex items-center gap-2 text-sm text-muted-foreground">
-            To
-            <DatePicker
-              id="rb-to"
-              type="date"
-              className="w-40"
-              value={form.to}
-              min={form.from || undefined}
-              onChange={(v) => set({ to: v })}
-            />
-          </label>
+          </Field>
+          {kind === "now" ? (
+            <Field label="Range" htmlFor="rb-range" hint="As of now">
+              <Input id="rb-range" value="As of now" disabled readOnly />
+            </Field>
+          ) : (
+            <Field label="Range" htmlFor="rb-range">
+              <Select
+                id="rb-range"
+                value={form.range}
+                onChange={(e) => set({ range: e.target.value as Form["range"] })}
+                options={[
+                  ...RANGE_PRESETS.filter((r) => options.ranges.includes(r.value)).map((r) => ({
+                    value: r.value,
+                    label: r.label,
+                  })),
+                  { value: "custom", label: "Custom" },
+                ]}
+              />
+            </Field>
+          )}
         </div>
-      )}
 
-      {showFilters && (
-        <details className="group" open={Object.values(form.filters).some(Boolean)}>
-          <summary className="cursor-pointer text-[13px] font-medium text-foreground-2">
-            Filters
-          </summary>
-          <div className="mt-3 grid gap-3 sm:grid-cols-3">
-            <Field label="Assignee" htmlFor="rf-assignee">
-              <Select
-                id="rf-assignee"
-                value={form.filters.assignee ?? ""}
-                onChange={(e) => setFilter("assignee", e.target.value)}
-                options={[
-                  { value: "", label: "Anyone" },
-                  ...(members.data ?? []).map((m) => ({ value: m.id, label: m.name })),
-                ]}
+        {kind !== "now" && form.range === "custom" && (
+          <div className="flex flex-wrap items-center gap-3">
+            <label
+              htmlFor="rb-from"
+              className="flex items-center gap-2 text-sm text-muted-foreground"
+            >
+              From
+              <DatePicker
+                id="rb-from"
+                type="date"
+                className="w-40"
+                value={form.from}
+                max={form.to || undefined}
+                onChange={(v) => set({ from: v })}
               />
-            </Field>
-            <Field label="Priority" htmlFor="rf-priority">
-              <Select
-                id="rf-priority"
-                value={form.filters.priority ?? ""}
-                onChange={(e) => setFilter("priority", e.target.value)}
-                options={[
-                  { value: "", label: "Any" },
-                  ...PRIORITIES.map((p) => ({ value: p, label: capitalize(p) })),
-                ]}
+            </label>
+            <label
+              htmlFor="rb-to"
+              className="flex items-center gap-2 text-sm text-muted-foreground"
+            >
+              To
+              <DatePicker
+                id="rb-to"
+                type="date"
+                className="w-40"
+                value={form.to}
+                min={form.from || undefined}
+                onChange={(v) => set({ to: v })}
               />
-            </Field>
-            <Field label="Ticket type" htmlFor="rf-type">
-              <Select
-                id="rf-type"
-                value={form.filters.type ?? ""}
-                onChange={(e) => setFilter("type", e.target.value)}
-                options={[
-                  { value: "", label: "Any" },
-                  ...(types.data ?? []).map((t) => ({ value: t.id, label: t.name })),
-                ]}
-              />
-            </Field>
-            <Field label="Channel" htmlFor="rf-channel">
-              <Select
-                id="rf-channel"
-                value={form.filters.channel ?? ""}
-                onChange={(e) => setFilter("channel", e.target.value)}
-                options={[
-                  { value: "", label: "Any" },
-                  ...CHANNELS.map((c) => ({ value: c, label: capitalize(c) })),
-                ]}
-              />
-            </Field>
-            <Field label="Tag" htmlFor="rf-tag">
-              <Input
-                id="rf-tag"
-                maxLength={60}
-                value={form.filters.tag ?? ""}
-                onChange={(e) => setFilter("tag", e.target.value)}
-              />
-            </Field>
-            <Field label="Topic" htmlFor="rf-topic">
-              <Input
-                id="rf-topic"
-                maxLength={60}
-                value={form.filters.topic ?? ""}
-                onChange={(e) => setFilter("topic", e.target.value)}
-              />
-            </Field>
-            <Field label="Sentiment" htmlFor="rf-sentiment">
-              <Select
-                id="rf-sentiment"
-                value={form.filters.sentiment ?? ""}
-                onChange={(e) => setFilter("sentiment", e.target.value)}
-                options={[
-                  { value: "", label: "Any" },
-                  ...SENTIMENTS.map((s) => ({ value: s, label: capitalize(s) })),
-                ]}
-              />
-            </Field>
-            <Field label="Imported tickets" htmlFor="rf-imported">
-              <Select
-                id="rf-imported"
-                value={form.filters.imported ?? "any"}
-                onChange={(e) => setFilter("imported", e.target.value)}
-                options={[
-                  { value: "any", label: "Include" },
-                  { value: "exclude", label: "Leave out" },
-                  { value: "only", label: "Only" },
-                ]}
-              />
-            </Field>
+            </label>
           </div>
-        </details>
-      )}
-      {kind === "backlog" && (
-        <p className="text-xs text-muted-foreground">The backlog can only be filtered by team.</p>
-      )}
-      {teamId && (
-        <p className="text-xs text-muted-foreground">
-          Team: {teamName ?? "selected team"} (from the picker above).
-        </p>
-      )}
+        )}
 
-      <div className="flex flex-wrap gap-2">
-        <Button size="sm" onClick={onRun}>
-          <Play className="size-3.5" aria-hidden /> Run
-        </Button>
-        <Button size="sm" variant="outline" onClick={onSave}>
-          <Save className="size-3.5" aria-hidden /> Save
-        </Button>
-      </div>
-    </Card>
+        {showFilters && (
+          <details className="group" open={Object.values(form.filters).some(Boolean)}>
+            <summary className="cursor-pointer text-[13px] font-medium text-foreground-2">
+              Filters
+            </summary>
+            <div className="mt-3 grid gap-3 sm:grid-cols-3">
+              <Field label="Assignee" htmlFor="rf-assignee">
+                <Select
+                  id="rf-assignee"
+                  value={form.filters.assignee ?? ""}
+                  onChange={(e) => setFilter("assignee", e.target.value)}
+                  options={[
+                    { value: "", label: "Anyone" },
+                    ...(members.data ?? []).map((m) => ({ value: m.id, label: m.name })),
+                  ]}
+                />
+              </Field>
+              <Field label="Priority" htmlFor="rf-priority">
+                <Select
+                  id="rf-priority"
+                  value={form.filters.priority ?? ""}
+                  onChange={(e) => setFilter("priority", e.target.value)}
+                  options={[
+                    { value: "", label: "Any" },
+                    ...PRIORITIES.map((p) => ({ value: p, label: capitalize(p) })),
+                  ]}
+                />
+              </Field>
+              <Field label="Ticket type" htmlFor="rf-type">
+                <Select
+                  id="rf-type"
+                  value={form.filters.type ?? ""}
+                  onChange={(e) => setFilter("type", e.target.value)}
+                  options={[
+                    { value: "", label: "Any" },
+                    ...(types.data ?? []).map((t) => ({ value: t.id, label: t.name })),
+                  ]}
+                />
+              </Field>
+              <Field label="Channel" htmlFor="rf-channel">
+                <Select
+                  id="rf-channel"
+                  value={form.filters.channel ?? ""}
+                  onChange={(e) => setFilter("channel", e.target.value)}
+                  options={[
+                    { value: "", label: "Any" },
+                    ...CHANNELS.map((c) => ({ value: c, label: capitalize(c) })),
+                  ]}
+                />
+              </Field>
+              <Field label="Tag" htmlFor="rf-tag">
+                <Input
+                  id="rf-tag"
+                  maxLength={60}
+                  value={form.filters.tag ?? ""}
+                  onChange={(e) => setFilter("tag", e.target.value)}
+                />
+              </Field>
+              <Field label="Topic" htmlFor="rf-topic">
+                <Input
+                  id="rf-topic"
+                  maxLength={60}
+                  value={form.filters.topic ?? ""}
+                  onChange={(e) => setFilter("topic", e.target.value)}
+                />
+              </Field>
+              <Field label="Sentiment" htmlFor="rf-sentiment">
+                <Select
+                  id="rf-sentiment"
+                  value={form.filters.sentiment ?? ""}
+                  onChange={(e) => setFilter("sentiment", e.target.value)}
+                  options={[
+                    { value: "", label: "Any" },
+                    ...SENTIMENTS.map((s) => ({ value: s, label: capitalize(s) })),
+                  ]}
+                />
+              </Field>
+              <Field label="Imported tickets" htmlFor="rf-imported">
+                <Select
+                  id="rf-imported"
+                  value={form.filters.imported ?? "any"}
+                  onChange={(e) => setFilter("imported", e.target.value)}
+                  options={[
+                    { value: "any", label: "Include" },
+                    { value: "exclude", label: "Leave out" },
+                    { value: "only", label: "Only" },
+                  ]}
+                />
+              </Field>
+            </div>
+          </details>
+        )}
+        {kind === "backlog" && (
+          <p className="text-xs text-muted-foreground">The backlog can only be filtered by team.</p>
+        )}
+        {teamId && (
+          <p className="text-xs text-muted-foreground">
+            Team: {teamName ?? "selected team"} (from the picker above).
+          </p>
+        )}
+
+        <div className="flex flex-wrap gap-2">
+          <Button size="sm" onClick={onRun}>
+            <Play className="size-3.5" aria-hidden /> Run
+          </Button>
+          <Button size="sm" variant="outline" onClick={onSave}>
+            <Save className="size-3.5" aria-hidden /> Save
+          </Button>
+        </div>
+      </Card>
+    </section>
   );
 }
 
@@ -616,13 +712,11 @@ function SavedList({
   const sorted = reports ?? [];
   return (
     <section aria-label="Saved reports">
-      <h2 className="mb-1.5 px-1 text-[11px] font-semibold tracking-wider text-subtle-foreground uppercase">
-        Saved reports
-      </h2>
+      <SideHeading icon={Bookmark}>Saved reports</SideHeading>
       {loading ? (
         <Skeleton className="h-16 rounded-lg" />
       ) : sorted.length === 0 ? (
-        <p className="px-1 text-sm text-muted-foreground">
+        <p className="rounded-lg border border-dashed border-border px-3 py-3 text-xs text-muted-foreground">
           Nothing saved yet. Set up a report and press Save.
         </p>
       ) : (
@@ -632,7 +726,7 @@ function SavedList({
               <button
                 type="button"
                 onClick={() => onOpen(r)}
-                className="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-sm transition-colors hover:bg-surface-2"
+                className="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-3 py-1.5 text-left text-[13px] text-foreground-2 transition-colors hover:bg-surface-2 hover:text-foreground"
               >
                 {r.shared && (
                   <Users
@@ -737,19 +831,24 @@ function SaveDialog({
   const share = inboxActions(user).shareViews;
   const create = useCreateSavedReport();
   const update = useUpdateSavedReport();
-  const [name, setName] = useState(existing?.name ?? "");
+  const form = useFormik({
+    initialValues: { name: existing?.name ?? "" },
+    validationSchema: yup.object({
+      name: yup
+        .string()
+        .trim()
+        .min(1, "A report's name is 1-80 characters.")
+        .max(80, "A report's name is 1-80 characters.")
+        .required("A report's name is 1-80 characters."),
+    }),
+    onSubmit: (v) => save(v.name.trim()),
+  });
   const [shared, setShared] = useState(existing?.shared ?? false);
   const [error, setError] = useState<string | null>(null);
   const busy = create.isPending || update.isPending;
   const customRange = !existing && !!definition.range && !hasPresetRange(definition.range);
 
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const trimmed = name.trim();
-    if (trimmed.length < 1 || trimmed.length > 80) {
-      setError("A report's name is 1-80 characters.");
-      return;
-    }
+  const save = async (trimmed: string) => {
     try {
       if (existing) await update.mutateAsync({ id: existing.id, name: trimmed });
       else
@@ -772,15 +871,19 @@ function SaveDialog({
       title={existing ? "Rename report" : "Save report"}
       description={existing ? undefined : "A saved report keeps its range up to date."}
     >
-      <form onSubmit={submit} className="space-y-4">
-        <Field label="Name" htmlFor="sr-name" error={error ?? undefined}>
+      <form noValidate onSubmit={form.handleSubmit} className="space-y-4">
+        <Field
+          label="Name"
+          htmlFor="sr-name"
+          error={fieldError(form, "name") ?? error ?? undefined}
+        >
           <Input
             id="sr-name"
             maxLength={80}
-            value={name}
-            aria-invalid={!!error}
+            {...bind(form, "name")}
+            aria-invalid={!!(fieldError(form, "name") ?? error)}
             onChange={(e) => {
-              setName(e.target.value);
+              form.handleChange(e);
               setError(null);
             }}
           />

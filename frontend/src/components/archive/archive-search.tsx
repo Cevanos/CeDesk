@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
 import { InfiniteScroll } from "@/components/ui/infinite-scroll";
+import { PageHeader } from "@/components/ui/page-header";
 import { Badge, Button, Card, EmptyState, Input, Skeleton } from "@/components/ui/primitives";
 import {
   ARCHIVE_QUERY_HINT,
@@ -15,6 +16,7 @@ import {
   type ArchiveSearch,
 } from "@/hooks/use-archive";
 import { ApiError } from "@/lib/api/client";
+import { bind, useFormik, yup } from "@/lib/forms";
 import { formatDateTime } from "@/lib/utils";
 
 export function ticketName(t: ArchivedTicketRow): string {
@@ -26,32 +28,33 @@ export function ticketName(t: ArchivedTicketRow): string {
 export function ArchiveSearchView({ initial }: { initial?: ArchiveSearch | null } = {}) {
   const params = useSearchParams();
   const start = params.get("q") ?? "";
-  const [text, setText] = useState(start);
   const ref = useRef<HTMLInputElement>(null);
   useEffect(() => ref.current?.focus(), []);
   const [filters, setFilters] = useState<ArchiveSearch | null>(initial ?? parseArchiveQuery(start));
   const [invalid, setInvalid] = useState(() => !initial && !!start.trim() && !filters);
+  const form = useFormik({
+    initialValues: { text: start },
+    // An unrecognised query still submits: the empty state below explains the accepted forms.
+    validationSchema: yup.object({ text: yup.string().max(200) }),
+    onSubmit: (v) => {
+      const f = parseArchiveQuery(v.text);
+      setFilters(f);
+      setInvalid(!f && !!v.text.trim());
+    },
+  });
+  const text = form.values.text;
   const q = useArchiveSearch(filters);
   const rows = q.data?.pages.flatMap((p) => p.items) ?? [];
 
   return (
     <div className="mx-auto w-full max-w-4xl px-3 py-5 sm:px-6 sm:py-8">
-      <h1 className="text-2xl font-semibold tracking-tight">Archive</h1>
-      <p className="mt-1 text-sm text-muted-foreground">
-        Old resolved tickets live here. Find one by its number or by the customer, then open it to
-        read it. Archived tickets can&apos;t be replied to, changed or reopened.
-      </p>
+      <PageHeader
+        icon={Archive}
+        title="Archive"
+        description="Old resolved tickets live here. Find one by its number or by the customer, then open it to read it. Archived tickets can't be replied to, changed or reopened."
+      />
 
-      <form
-        role="search"
-        className="mt-5 flex gap-2"
-        onSubmit={(e) => {
-          e.preventDefault();
-          const f = parseArchiveQuery(text);
-          setFilters(f);
-          setInvalid(!f && !!text.trim());
-        }}
-      >
+      <form role="search" className="mt-5 flex gap-2" onSubmit={form.handleSubmit} noValidate>
         <div className="relative flex-1">
           <Search
             className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
@@ -59,8 +62,7 @@ export function ArchiveSearchView({ initial }: { initial?: ArchiveSearch | null 
           />
           <Input
             ref={ref}
-            value={text}
-            onChange={(e) => setText(e.target.value)}
+            {...bind(form, "text")}
             aria-label="Search the archive"
             placeholder="Ticket number (1042 or T-1042), customer email or customer id"
             className="pl-9"

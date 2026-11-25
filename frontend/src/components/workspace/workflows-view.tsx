@@ -21,6 +21,7 @@ import { Badge, Button, Card, EmptyState, Skeleton } from "@/components/ui/primi
 import { Switch } from "@/components/ui/switch";
 import { FlowTestDrawer } from "@/components/workspace/automation-test";
 import { LoadError, Problems } from "@/components/workspace/list-shared";
+import { ReplayDialog } from "@/components/workspace/replay-dialog";
 import { EVENT_LABEL, WEBHOOK_LOCKED } from "@/components/workspace/rules-view";
 import {
   flowCallsWebhook,
@@ -45,6 +46,7 @@ export function WorkflowsView() {
   const access = useAutomationAccess();
   const { ask, dialog } = useConfirm();
   const [testing, setTesting] = useState<Flow | null>(null);
+  const [replaying, setReplaying] = useState<Flow | null>(null);
 
   const triggerLabel = (e: string) =>
     catalog.data?.triggers.find((t) => t.event === e)?.label ??
@@ -165,6 +167,14 @@ export function WorkflowsView() {
                           >
                             <FlaskConical className="size-4" aria-hidden /> Test
                           </MenuItem>
+                          <MenuItem
+                            onClick={() => {
+                              close();
+                              setReplaying(f);
+                            }}
+                          >
+                            <History className="size-4" aria-hidden /> Replay on past tickets
+                          </MenuItem>
                           <Link
                             role="menuitem"
                             href={`/settings/workflows/${f.id}?versions=1`}
@@ -215,6 +225,13 @@ export function WorkflowsView() {
         </Card>
       )}
 
+      {replaying && (
+        <ReplayDialog
+          title={replaying.name}
+          target={{ kind: "flow", flowId: replaying.id }}
+          onClose={() => setReplaying(null)}
+        />
+      )}
       {testing && (
         <FlowTestDrawer
           open

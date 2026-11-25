@@ -38,10 +38,13 @@ class ReceivedOut(BaseModel):
     outcome: Literal[
         "created", "added", "rules_ran", "reopened", "thanked", "duplicate",
         "automatic", "from_us", "no_workspace", "unreadable", "verification", "bounce",
+        "side_reply",
     ] = Field(description="created: a new ticket; added / rules_ran / reopened / thanked: on "
-              "an existing ticket; verification: a support address's forwarding check came "
-              "back (no ticket); bounce: a campaign email's bounce or spam report (recorded, "
-              "no ticket); the rest: ignored on purpose.")  # fmt: skip
+              "an existing ticket; side_reply: an answer in a side conversation (saved there, "
+              "never on the customer's thread; ticket_id is its ticket); verification: a "
+              "support address's forwarding check came back (no ticket); bounce: a campaign "
+              "email's bounce or spam report (recorded, no ticket); the rest: ignored on "
+              "purpose.")  # fmt: skip
     ticket_id: UUID | None
 
 

@@ -8,6 +8,7 @@ import { ProgressBar, StateBadge, errorText, percent } from "@/components/campai
 import { useConfirm } from "@/components/ui/confirm";
 import { InfiniteScroll } from "@/components/ui/infinite-scroll";
 import { Badge, Button, Card, EmptyState, Select, Skeleton } from "@/components/ui/primitives";
+import { DataTable, RowTh, TBody, Td, THead, Th, Tr } from "@/components/ui/table";
 import { LoadError } from "@/components/workspace/list-shared";
 import {
   exportCampaignRecipients,
@@ -298,25 +299,25 @@ function Recipients({ campaign }: { campaign: Campaign }) {
           <EmptyState title="No recipients here">Nothing matches this filter.</EmptyState>
         </Card>
       ) : (
-        <Card className="overflow-x-auto">
-          <table className="w-full min-w-[52rem] text-sm">
-            <thead>
-              <tr className="border-b border-border text-left text-xs text-muted-foreground">
-                <th className="px-4 py-2.5 font-medium">Email</th>
-                <th className="px-3 py-2.5 font-medium">Name</th>
-                <th className="px-3 py-2.5 font-medium">Status</th>
-                <th className="px-3 py-2.5 font-medium">Sent at</th>
-                <th className="px-3 py-2.5 font-medium">Opened</th>
-                <th className="px-3 py-2.5 font-medium">Unsubscribed at</th>
-                <th className="px-3 py-2.5 font-medium">Error</th>
+        <Card>
+          <DataTable minWidth="52rem">
+            <THead>
+              <tr>
+                <Th>Email</Th>
+                <Th>Name</Th>
+                <Th>Status</Th>
+                <Th>Sent at</Th>
+                <Th>Opened</Th>
+                <Th>Unsubscribed at</Th>
+                <Th>Error</Th>
               </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
+            </THead>
+            <TBody>
               {rows.map((r) => (
                 <RecipientRow key={r.id} r={r} />
               ))}
-            </tbody>
-          </table>
+            </TBody>
+          </DataTable>
         </Card>
       )}
 
@@ -328,22 +329,24 @@ function Recipients({ campaign }: { campaign: Campaign }) {
 function RecipientRow({ r }: { r: CampaignRecipient }) {
   const erased = r.email === null;
   return (
-    <tr className="align-top">
-      <td className="px-4 py-2.5">
+    <Tr className="align-top">
+      <RowTh className="font-normal">
         {erased ? <span className="text-muted-foreground">—</span> : r.email}
-      </td>
-      <td className="px-3 py-2.5">{erased ? "Erased customer" : (r.name ?? "—")}</td>
-      <td className="px-3 py-2.5">
+      </RowTh>
+      <Td>{erased ? "Erased customer" : (r.name ?? "—")}</Td>
+      <Td>
         <Badge tone={STATUS_TONE[r.status] ?? "neutral"}>{r.status}</Badge>
-      </td>
-      <td className="px-3 py-2.5 whitespace-nowrap text-muted-foreground">
+      </Td>
+      <Td muted className="whitespace-nowrap">
         {formatDateTime(r.sent_at) || "—"}
-      </td>
-      <td className="px-3 py-2.5 tabular-nums">{r.open_count > 0 ? r.open_count : "—"}</td>
-      <td className="px-3 py-2.5 whitespace-nowrap text-muted-foreground">
+      </Td>
+      <Td className="tabular-nums">{r.open_count > 0 ? r.open_count : "—"}</Td>
+      <Td muted className="whitespace-nowrap">
         {formatDateTime(r.unsubscribed_at) || "—"}
-      </td>
-      <td className="max-w-56 px-3 py-2.5 text-xs text-muted-foreground">{r.error ?? ""}</td>
-    </tr>
+      </Td>
+      <Td muted className="max-w-56 text-xs">
+        {r.error ?? ""}
+      </Td>
+    </Tr>
   );
 }

@@ -33,6 +33,8 @@ test.describe("tickets", () => {
 
   test("creates a ticket and lands on it", async ({ page }) => {
     await page.goto("/tickets/new");
+    // Controlled (Formik) inputs are reset on hydration, so wait for it before typing.
+    await page.waitForLoadState("networkidle");
     await page.getByLabel("Subject").fill("Printer on fire");
     await page.locator("#name").fill("Linus T");
     await page.locator("#email").fill("linus@example.com");
@@ -43,6 +45,7 @@ test.describe("tickets", () => {
 
   test("validates the new-ticket form before sending", async ({ page }) => {
     await page.goto("/tickets/new");
+    await page.waitForLoadState("networkidle");
     await createButton(page).click();
     await expect(page.getByText("Enter a subject")).toBeVisible();
   });

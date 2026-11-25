@@ -1,28 +1,26 @@
 "use client";
 
-import { zodResolver } from "@hookform/resolvers/zod";
 import { ArrowLeft, CheckCircle2, LinkIcon } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { useForm, useWatch } from "react-hook-form";
-import { z } from "zod";
 
 import { PasswordInput, PasswordStrength } from "@/components/auth/password-input";
 import { Button, Field } from "@/components/ui/primitives";
 import { useResetPassword } from "@/hooks/use-auth";
 import { ApiError } from "@/lib/api/client";
+import { bind, fieldError, useFormik, yup } from "@/lib/forms";
 import { newPassword, PASSWORD_HINT } from "@/lib/password";
 
-const schema = z
-  .object({
-    new_password: newPassword(),
-    confirm: z.string(),
-  })
-  .refine((v) => v.new_password === v.confirm, {
-    path: ["confirm"],
-    message: "Passwords do not match",
-  });
-type Values = z.infer<typeof schema>;
+const schema = yup.object({
+  new_password: newPassword(),
+  confirm: yup
+    .string()
+    .default("")
+    .test("match", "Passwords do not match", function (v) {
+      return v === this.parent.new_password;
+    }),
+});
+type Values = yup.InferType<typeof schema>;
 
 export function ResetForm() {
   // The emailed link carries the token after `#` so it never reaches server logs.
@@ -50,35 +48,30 @@ export function ResetForm() {
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const {
-    register,
-    handleSubmit,
-    control,
-    formState: { errors },
-  } = useForm<Values>({
-    resolver: zodResolver(schema),
-    defaultValues: { new_password: "", confirm: "" },
-  });
-
-  const pw = useWatch({ control, name: "new_password" }) ?? "";
-  const onSubmit = handleSubmit((v) => {
-    setError(null);
-    reset.mutate(
-      { token: token ?? "", new_password: v.new_password },
-      {
-        onSuccess: () => setDone(true),
-        onError: (e) => {
-          if (e instanceof ApiError) {
-            if (e.status === 400 || e.status === 401 || e.status === 410) {
-              return setError("This link is used or expired. Ask for a new one.");
+  const form = useFormik<Values>({
+    initialValues: { new_password: "", confirm: "" },
+    validationSchema: schema,
+    validateOnBlur: false,
+    onSubmit: (v) => {
+      setError(null);
+      reset.mutate(
+        { token: token ?? "", new_password: v.new_password },
+        {
+          onSuccess: () => setDone(true),
+          onError: (e) => {
+            if (e instanceof ApiError) {
+              if (e.status === 400 || e.status === 401 || e.status === 410) {
+                return setError("This link is used or expired. Ask for a new one.");
+              }
+              return setError(e.fieldMessage("new_password") ?? e.userMessage);
             }
-            return setError(e.fieldMessage("new_password") ?? e.userMessage);
-          }
-          setError("Something went wrong.");
+            setError("Something went wrong.");
+          },
         },
-      },
-    );
+      );
+    },
   });
+  const pw = form.values.new_password ?? "";
 
   if (token === null) return null;
 
@@ -134,25 +127,19 @@ export function ResetForm() {
         </div>
       )}
 
-      <form onSubmit={onSubmit} noValidate className="mt-7 space-y-4">
-        <Field label="New password" htmlFor="new_password" error={errors.new_password?.message}>
+      <form onSubmit={form.handleSubmit} noValidate className="mt-7 space-y-4">
+        <Field label="New password" htmlFor="new_password" error={fieldError(form, "new_password")}>
           <PasswordInput
             id="new_password"
             autoComplete="new-password"
-            aria-invalid={!!errors.new_password}
-            {...register("new_password")}
+            {...bind(form, "new_password")}
           />
           <div className="pt-1.5">
             <PasswordStrength value={pw} />
           </div>
         </Field>
-        <Field label="Confirm password" htmlFor="confirm" error={errors.confirm?.message}>
-          <PasswordInput
-            id="confirm"
-            autoComplete="new-password"
-            aria-invalid={!!errors.confirm}
-            {...register("confirm")}
-          />
+        <Field label="Confirm password" htmlFor="confirm" error={fieldError(form, "confirm")}>
+          <PasswordInput id="confirm" autoComplete="new-password" {...bind(form, "confirm")} />
         </Field>
         <Button type="submit" size="lg" className="w-full" loading={reset.isPending}>
           Update password

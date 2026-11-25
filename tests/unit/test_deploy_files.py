@@ -13,6 +13,8 @@ API_READS = (
     "CEDESK_SECRET_KEY", "CEDESK_CORS_ORIGINS", "CEDESK_APP_URL", "CEDESK_MAIL_FROM_ADDRESS",
     "CEDESK_INBOUND_EMAIL_TOKEN", "CEDESK_MAIL_FORWARD_TO", "CEDESK_MAIL_SPF_INCLUDE",
     "CEDESK_SCAN_BACKEND", "CEDESK_CEVANOS_URL",
+    # Campaign links: the Send check and the unsubscribe page (24 Nov: only the worker had it).
+    "CEDESK_PORTAL_URL", "CEDESK_API_URL",
 )  # fmt: skip
 
 

@@ -26,6 +26,7 @@ from cedesk.helpdesk.api import ai as ai_api
 from cedesk.helpdesk.api import api_keys as api_keys_api
 from cedesk.helpdesk.api import apps as apps_api
 from cedesk.helpdesk.api import archive as archive_api
+from cedesk.helpdesk.api import article_translations as article_translations_api
 from cedesk.helpdesk.api import articles as articles_api
 from cedesk.helpdesk.api import attachments as attachments_api
 from cedesk.helpdesk.api import audit as audit_api
@@ -42,6 +43,7 @@ from cedesk.helpdesk.api import demo as demo_api
 from cedesk.helpdesk.api import email as email_api
 from cedesk.helpdesk.api import email_in as email_in_api
 from cedesk.helpdesk.api import flows as flows_api
+from cedesk.helpdesk.api import help_domain as help_domain_api
 from cedesk.helpdesk.api import imports as imports_api
 from cedesk.helpdesk.api import inbound_api as inbound_api_api
 from cedesk.helpdesk.api import inbox as inbox_api
@@ -57,9 +59,11 @@ from cedesk.helpdesk.api import portal as portal_api
 from cedesk.helpdesk.api import privacy as privacy_api
 from cedesk.helpdesk.api import public as public_api
 from cedesk.helpdesk.api import push as push_api
+from cedesk.helpdesk.api import replays as replays_api
 from cedesk.helpdesk.api import report_engine as report_engine_api
 from cedesk.helpdesk.api import report_schedules as report_schedules_api
 from cedesk.helpdesk.api import reports as reports_api
+from cedesk.helpdesk.api import resolution as resolution_api
 from cedesk.helpdesk.api import roles as roles_api
 from cedesk.helpdesk.api import routing as routing_api
 from cedesk.helpdesk.api import rules as rules_api
@@ -197,6 +201,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         settings.secret_key.get_secret_value(), app.state.store, retry=retry_policy(settings)
     )
     app.state.attempts = SlidingWindowLimiter(
+        settings.sign_in_limit, settings.sign_in_window_seconds
+    )
+    # Wrong keys on Caddy's TLS check (plan 4.2) have their own budget, so a caller guessing
+    # the key can never use up anyone's sign-ins.
+    app.state.tls_attempts = SlidingWindowLimiter(
         settings.sign_in_limit, settings.sign_in_window_seconds
     )
     # The public web form has its own budget, so form posts never use up sign-ins.
@@ -386,6 +395,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(saved_replies_api.router, prefix="/api/v1")
     app.include_router(rules_api.router, prefix="/api/v1")
     app.include_router(flows_api.router, prefix="/api/v1")
+    app.include_router(replays_api.router, prefix="/api/v1")
+    app.include_router(resolution_api.router, prefix="/api/v1")
     app.include_router(macros_api.router, prefix="/api/v1")
     app.include_router(email_api.router, prefix="/api/v1")
     app.include_router(email_in_api.router, prefix="/api/v1")
@@ -394,6 +405,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(portal_api.router, prefix="/api/v1")
     app.include_router(public_api.router, prefix="/api/v1")
     app.include_router(articles_api.router, prefix="/api/v1")
+    app.include_router(article_translations_api.router, prefix="/api/v1")
+    app.include_router(help_domain_api.router, prefix="/api/v1")
+    if settings.tls_ask_key:  # custom help center domains are off until the key is set
+        app.include_router(help_domain_api.internal_router, prefix="/api/v1")
     app.include_router(triage_api.router, prefix="/api/v1")
     app.include_router(reports_api.router, prefix="/api/v1")
     app.include_router(backlog_api.router, prefix="/api/v1")

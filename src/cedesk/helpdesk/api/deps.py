@@ -12,6 +12,7 @@ from cedesk.dnscheck import TxtLookup
 from cedesk.helpdesk.domain import api_keys as api_key_rules
 from cedesk.helpdesk.domain import idempotency as idempotency_rules
 from cedesk.helpdesk.domain.auth import Caller
+from cedesk.helpdesk.domain.permissions import Action
 from cedesk.helpdesk.service import api_keys, auth, portal
 from cedesk.helpdesk.service.auth import Sessionmaker
 from cedesk.helpdesk.service.errors import (
@@ -140,6 +141,15 @@ SealerDep = Annotated[Sealer, Depends(get_sealer)]
 
 
 CallerDep = Annotated[Caller, Depends(get_caller)]
+
+
+async def require_settings(caller: CallerDep) -> None:
+    """For routers that are Admin-only (the `settings` right). A router dependency runs
+    before FastAPI turns a bad body into 422, so a caller without the right gets 403
+    and never learns the shape of the body."""
+    if not caller.can(Action.settings):
+        raise Forbidden("Your role can't do this.")
+
 
 _portal_bearer = HTTPBearer(
     auto_error=False, description="The token from POST /api/v1/portal/{workspace}/session."

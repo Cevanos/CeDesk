@@ -21,6 +21,7 @@ import { useCurrentUser } from "@/hooks/use-auth";
 import { BULK_MAX, useBulkTickets } from "@/hooks/use-inbox-tools";
 import { useAgents, useTeams } from "@/hooks/use-workspace";
 import type { BulkAction, BulkResult, BulkResultItem } from "@/lib/api/types";
+import { bind, fieldError, useFormik, yup } from "@/lib/forms";
 
 /** "Changed 50 tickets" or "Changed 47 of 50 tickets". */
 export function bulkSummary(r: Pick<BulkResult, "succeeded" | "failed">): string {
@@ -77,7 +78,7 @@ export function BulkBar({
 
   // Supervisors and admins may assign anyone; agents only themselves (the server checks too).
   const assignable = (agents.data ?? []).filter(
-    (a) => perms.assignOthers || a.member_id === user?.id,
+    (a) => a.assignable !== false && (perms.assignOthers || a.member_id === user?.id),
   );
 
   const trigger = (icon: React.ReactNode, label: string) =>
@@ -267,30 +268,47 @@ export function BulkBar({
   );
 }
 
+const splitTags = (v: string) =>
+  v
+    .split(/[,\s]+/)
+    .map((t) => t.trim().toLowerCase())
+    .filter(Boolean);
+
 function TagsForm({
   onRun,
 }: {
   onRun: (action: "add_tags" | "remove_tags", tags: string[]) => void;
 }) {
-  const [value, setValue] = useState("");
+  const form = useFormik({
+    initialValues: { value: "" },
+    validationSchema: yup.object({
+      value: yup
+        .string()
+        .test("count", "At most 20 tags at a time.", (v) => splitTags(v ?? "").length <= 20),
+    }),
+    onSubmit: () => {},
+  });
   // Commas or spaces split tags; the ticket page lower-cases them, so do the same here.
-  const tags = value
-    .split(/[,\s]+/)
-    .map((t) => t.trim().toLowerCase())
-    .filter(Boolean);
+  const tags = splitTags(form.values.value);
+  const err =
+    fieldError(form, "value") ?? (tags.length > 20 ? "At most 20 tags at a time." : undefined);
   return (
-    <form className="space-y-2 p-2" onSubmit={(e) => e.preventDefault()}>
+    <form className="space-y-2 p-2" onSubmit={(e) => e.preventDefault()} noValidate>
       <Input
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
+        {...bind(form, "value")}
         placeholder="refund, vip"
         aria-label="Tags, separated by commas"
       />
+      {err && (
+        <p role="alert" className="text-xs text-danger">
+          {err}
+        </p>
+      )}
       <div className="flex gap-2">
         <Button
           size="sm"
           className="flex-1"
-          disabled={tags.length === 0}
+          disabled={tags.length === 0 || tags.length > 20}
           onClick={() => onRun("add_tags", tags)}
         >
           Add tags
@@ -299,7 +317,7 @@ function TagsForm({
           size="sm"
           variant="outline"
           className="flex-1"
-          disabled={tags.length === 0}
+          disabled={tags.length === 0 || tags.length > 20}
           onClick={() => onRun("remove_tags", tags)}
         >
           Remove tags

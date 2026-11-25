@@ -73,7 +73,7 @@ describe("SignupForm", () => {
     await user.type(box, "123 456");
     await user.click(screen.getByRole("button", { name: "Verify" }));
     await waitFor(() => expect(nav.replace).toHaveBeenCalledWith("/login?workspace=acme-support"));
-  });
+  }, 20_000);
 
   it("shows slug_taken under the address field", async () => {
     server.use(

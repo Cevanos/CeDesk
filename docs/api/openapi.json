@@ -3070,7 +3070,8 @@
         "tags": [
           "tickets"
         ],
-        "summary": "Resolve a ticket (already resolved: no change)",
+        "summary": "Resolve a ticket, with a resolution receipt when asked for",
+        "description": "Already resolved: no change (409 if a receipt is sent: change it with `PATCH .../resolution`). The body is optional. With the workspace's resolution receipts `required` for the ticket's team, resolving without `resolution` is 422, here and through `PATCH /tickets/{id}` or a bulk change; automatic closes don't need one.",
         "operationId": "resolve_ticket_api_v1_tickets__ticket_id__resolve_post",
         "security": [
           {
@@ -3108,6 +3109,23 @@
             "description": "The ETag from reading the ticket. 409 if the ticket changed since."
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ResolveIn"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -3119,15 +3137,11 @@
               }
             }
           },
+          "409": {
+            "description": "Already resolved and a receipt was sent, or changed since read"
+          },
           "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
+            "description": "A receipt is required, or receipts are off"
           }
         }
       }
@@ -8845,6 +8859,112 @@
         }
       }
     },
+    "/api/v1/rules/replay": {
+      "post": {
+        "tags": [
+          "rules"
+        ],
+        "summary": "Replay: try an unsaved rule on past tickets; changes and sends nothing (Admin)",
+        "description": "The worker tries it on the newest `ticket_limit` tickets; follow it with GET /replays/{id}. 409 while another replay is queued or running.",
+        "operationId": "replay_draft_api_v1_rules_replay_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuleReplayBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReplayOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/rules/{rule_id}/replay": {
+      "post": {
+        "tags": [
+          "rules"
+        ],
+        "summary": "Replay: try a saved rule on past tickets; changes and sends nothing (Admin)",
+        "description": "As saved now, on or off. Follow it with GET /replays/{id}. 409 while another replay is queued or running.",
+        "operationId": "replay_saved_api_v1_rules__rule_id__replay_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "rule_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Rule Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReplayBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReplayOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/rules/order": {
       "put": {
         "tags": [
@@ -9381,6 +9501,123 @@
         }
       }
     },
+    "/api/v1/flows/{flow_id}/versions/{version}/restore": {
+      "post": {
+        "tags": [
+          "automation"
+        ],
+        "summary": "Go back to an older graph: saved as a new version (Admin; audited)",
+        "description": "History is never rewritten: the older graph becomes the next version. Runs waiting on a wait step carry on with the version they started on. 404 for a version the workflow never had; 409 when it is the current graph already.",
+        "operationId": "restore_version_api_v1_flows__flow_id__versions__version__restore_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "flow_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Flow Id"
+            }
+          },
+          {
+            "name": "version",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Version"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FlowOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/flows/{flow_id}/replay": {
+      "post": {
+        "tags": [
+          "automation"
+        ],
+        "summary": "Replay: try a workflow version on past tickets; changes and sends nothing (Admin)",
+        "description": "Each ticket is walked up to the workflow's first wait (counted as would_wait). Follow it with GET /replays/{id}. 409 while another replay is queued or running.",
+        "operationId": "replay_flow_api_v1_flows__flow_id__replay_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "flow_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Flow Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FlowReplayBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReplayOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/flows/{flow_id}/test": {
       "post": {
         "tags": [
@@ -9689,6 +9926,462 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/v1/replays/{replay_id}": {
+      "get": {
+        "tags": [
+          "rules"
+        ],
+        "summary": "A replay's progress and what it found (Admin)",
+        "operationId": "get_replay_api_v1_replays__replay_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "replay_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Replay Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReplayOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/replays/{replay_id}/cancel": {
+      "post": {
+        "tags": [
+          "rules"
+        ],
+        "summary": "Stop a queued or running replay; what it found so far stays (Admin)",
+        "description": "409 when it has already finished.",
+        "operationId": "cancel_replay_api_v1_replays__replay_id__cancel_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "replay_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Replay Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReplayOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/resolution-receipts": {
+      "get": {
+        "tags": [
+          "resolutions"
+        ],
+        "summary": "The resolution receipts setting (Settings)",
+        "operationId": "get_setting_api_v1_resolution_receipts_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReceiptSettingOut"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "resolutions"
+        ],
+        "summary": "Turn resolution receipts off, optional or required (Settings; audited)",
+        "description": "Off by default. With `required`, resolving a ticket without a receipt is refused (422), for the listed teams or every team. Automatic closes (auto-close, rules, Cevanos) never need one.",
+        "operationId": "set_setting_api_v1_resolution_receipts_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReceiptSettingIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReceiptSettingOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/tickets/{ticket_id}/resolution": {
+      "get": {
+        "tags": [
+          "resolutions"
+        ],
+        "summary": "A ticket's resolution receipt",
+        "operationId": "get_receipt_api_v1_tickets__ticket_id__resolution_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "ticket_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Ticket Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResolutionOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such ticket, or it has no receipt"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "resolutions"
+        ],
+        "summary": "Change a ticket's resolution receipt (for 7 days after resolving)",
+        "description": "Only the keys sent change. While the ticket is resolved, for 7 days after resolving; audited (field names only). `verified` can be set to `unverified` or `agent`; Shopify and Stripe come from Verify.",
+        "operationId": "change_receipt_api_v1_tickets__ticket_id__resolution_patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "ticket_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Ticket Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReceiptPatch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResolutionOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such ticket, or it has no receipt"
+          },
+          "409": {
+            "description": "Not resolved, or resolved over 7 days ago"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tickets/{ticket_id}/resolution/verify": {
+      "post": {
+        "tags": [
+          "resolutions"
+        ],
+        "summary": "Verify a receipt from the customer's Shopify order or Stripe payment",
+        "description": "Send one of `order_id` or `payment_id` (as the ticket's orders or payments card lists them). CeDesk reads it from the installed app, read-only, and sets `result` to what it reports (payment and fulfilment state, or refunded), `verified` to shopify or stripe, and `verified_at`. Nothing is written to the shop or Stripe. Same 7-day window as changing the receipt.",
+        "operationId": "verify_receipt_api_v1_tickets__ticket_id__resolution_verify_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "ticket_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Ticket Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReceiptVerifyIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResolutionOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No receipt, or not one of the customer's latest orders"
+          },
+          "409": {
+            "description": "The app isn't installed or couldn't be read; not resolved"
+          },
+          "422": {
+            "description": "Send exactly one of order_id and payment_id"
+          }
+        }
+      }
+    },
+    "/api/v1/reports/resolutions": {
+      "get": {
+        "tags": [
+          "resolutions"
+        ],
+        "summary": "Resolutions: closed vs. with a receipt vs. verified (Supervisor, Admin)",
+        "description": "Tickets resolved within [from, to) and still resolved (merged ones left out): how many have a receipt, how many were verified (by the agent, from Shopify or Stripe), have a pending item, or told the customer. Per team and per assignee.",
+        "operationId": "resolutions_report_api_v1_reports_resolutions_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Default: 30 days before `to`. With a time zone.",
+              "title": "From"
+            },
+            "description": "Default: 30 days before `to`. With a time zone."
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Default: now.",
+              "title": "To"
+            },
+            "description": "Default: now."
+          },
+          {
+            "name": "team_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only this team's tickets.",
+              "title": "Team Id"
+            },
+            "description": "Only this team's tickets."
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "json",
+                "csv"
+              ],
+              "type": "string",
+              "description": "`csv`: the same report as a CSV file (md R7).",
+              "default": "json",
+              "title": "Format"
+            },
+            "description": "`csv`: the same report as a CSV file (md R7)."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The report; with `format=csv`, a CSV file (UTF-8 with a byte order mark, one section per table) sent as an attachment.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResolutionReportOut"
+                }
+              },
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed to see reports"
+          },
+          "422": {
+            "description": "from after to, no time zone, or over 366 days"
+          },
+          "404": {
+            "description": "No such team"
           }
         }
       }
@@ -11841,6 +12534,25 @@
               "default": 50,
               "title": "Limit"
             }
+          },
+          {
+            "name": "locale",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 11
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A language code such as `hi` or `pt-br`. Each article is shown in that language when it has a published translation, else in the base language (`pt`), else in the default one.",
+              "title": "Locale"
+            },
+            "description": "A language code such as `hi` or `pt-br`. Each article is shown in that language when it has a published translation, else in the base language (`pt`), else in the default one."
           }
         ],
         "responses": {
@@ -11899,6 +12611,25 @@
               "format": "uuid",
               "title": "Article Id"
             }
+          },
+          {
+            "name": "locale",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 11
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A language code such as `hi` or `pt-br`. Each article is shown in that language when it has a published translation, else in the base language (`pt`), else in the default one.",
+              "title": "Locale"
+            },
+            "description": "A language code such as `hi` or `pt-br`. Each article is shown in that language when it has a published translation, else in the base language (`pt`), else in the default one."
           }
         ],
         "responses": {
@@ -11978,6 +12709,55 @@
           },
           "429": {
             "description": "Too many"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/public/{workspace}/sitemap": {
+      "get": {
+        "tags": [
+          "public"
+        ],
+        "summary": "The help center's pages for a sitemap.xml (no sign-in)",
+        "description": "Empty until an Admin makes the help center indexable. Cached for 5 minutes (`Cache-Control`). The frontend turns it into `sitemap.xml` and `robots.txt`.",
+        "operationId": "sitemap_api_v1_public__workspace__sitemap_get",
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Workspace"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SitemapOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown workspace"
+          },
+          "429": {
+            "description": "Too many requests from this IP"
           },
           "422": {
             "description": "Validation Error",
@@ -12250,6 +13030,25 @@
             }
           },
           {
+            "name": "missing_locale",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 11
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only articles with no translation in this language.",
+              "title": "Missing Locale"
+            },
+            "description": "Only articles with no translation in this language."
+          },
+          {
             "name": "cursor",
             "in": "query",
             "required": false,
@@ -12481,6 +13280,577 @@
           },
           "404": {
             "description": "Not found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/help-center/settings": {
+      "get": {
+        "tags": [
+          "help center"
+        ],
+        "summary": "The help center's default language",
+        "operationId": "get_settings_api_v1_help_center_settings_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HelpCenterSettingsOut"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "help center"
+        ],
+        "summary": "Change the default language or the indexable switch (Admin)",
+        "description": "Send only what changes. A new default language is refused (409) while an article has a translation in it.",
+        "operationId": "put_settings_api_v1_help_center_settings_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HelpCenterSettingsIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HelpCenterSettingsOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Admins only"
+          },
+          "409": {
+            "description": "Translations exist in that language"
+          },
+          "422": {
+            "description": "Not a language code"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/articles/{article_id}/translations": {
+      "get": {
+        "tags": [
+          "help center"
+        ],
+        "summary": "An article's translations, drafts included",
+        "operationId": "list_translations_api_v1_articles__article_id__translations_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "article_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Article Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/cedesk__helpdesk__api__article_translations__TranslationOut"
+                  },
+                  "title": "Response List Translations Api V1 Articles  Article Id  Translations Get"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/articles/{article_id}/translations/{locale}": {
+      "put": {
+        "tags": [
+          "help center"
+        ],
+        "summary": "Write an article's translation in one language (Admin)",
+        "description": "Makes it or replaces it. It shows in the public help center when both it and the article are published. Up to 40 languages per article.",
+        "operationId": "put_translation_api_v1_articles__article_id__translations__locale__put",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "article_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Article Id"
+            }
+          },
+          {
+            "name": "locale",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 11,
+              "description": "A language code such as `hi`, `pt-br` or `zh-hant-tw` (stored lower-case).",
+              "title": "Locale"
+            },
+            "description": "A language code such as `hi`, `pt-br` or `zh-hant-tw` (stored lower-case)."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TranslationIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/cedesk__helpdesk__api__article_translations__TranslationOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Admins only"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "422": {
+            "description": "Default language, bad code, too long or too many"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "help center"
+        ],
+        "summary": "Delete one translation (Admin)",
+        "operationId": "delete_translation_api_v1_articles__article_id__translations__locale__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "article_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Article Id"
+            }
+          },
+          {
+            "name": "locale",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 11,
+              "description": "A language code such as `hi`, `pt-br` or `zh-hant-tw` (stored lower-case).",
+              "title": "Locale"
+            },
+            "description": "A language code such as `hi`, `pt-br` or `zh-hant-tw` (stored lower-case)."
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Admins only"
+          },
+          "404": {
+            "description": "No such article or translation"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/article-categories/{category_id}/translations/{locale}": {
+      "put": {
+        "tags": [
+          "help center"
+        ],
+        "summary": "A category's name in one language (Admin)",
+        "operationId": "put_category_name_api_v1_article_categories__category_id__translations__locale__put",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "category_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Category Id"
+            }
+          },
+          {
+            "name": "locale",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 11,
+              "description": "A language code such as `hi`, `pt-br` or `zh-hant-tw` (stored lower-case).",
+              "title": "Locale"
+            },
+            "description": "A language code such as `hi`, `pt-br` or `zh-hant-tw` (stored lower-case)."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CategoryNameIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CategoryNamesOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Admins only"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "422": {
+            "description": "Invalid"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "help center"
+        ],
+        "summary": "Remove a category's name in one language (Admin)",
+        "operationId": "delete_category_name_api_v1_article_categories__category_id__translations__locale__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "category_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Category Id"
+            }
+          },
+          {
+            "name": "locale",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 11,
+              "description": "A language code such as `hi`, `pt-br` or `zh-hant-tw` (stored lower-case).",
+              "title": "Locale"
+            },
+            "description": "A language code such as `hi`, `pt-br` or `zh-hant-tw` (stored lower-case)."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CategoryNamesOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Admins only"
+          },
+          "404": {
+            "description": "No such category or name"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/help-center/domain": {
+      "get": {
+        "tags": [
+          "help center"
+        ],
+        "summary": "The help center's custom domain, or null (Admin)",
+        "operationId": "get_domain_api_v1_help_center_domain_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/HelpDomainOut"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Response Get Domain Api V1 Help Center Domain Get"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Admins only"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "help center"
+        ],
+        "summary": "Register the help center's domain (Admin)",
+        "description": "Starts as `pending` with a TXT record to publish; replaces an earlier domain (and its proof). Sending the same domain again changes nothing.",
+        "operationId": "put_domain_api_v1_help_center_domain_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HelpDomainIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HelpDomainOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Admins only"
+          },
+          "422": {
+            "description": "Not a domain, or one of the platform's own"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "help center"
+        ],
+        "summary": "Remove the help center's domain (Admin)",
+        "operationId": "delete_domain_api_v1_help_center_domain_delete",
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Admins only"
+          },
+          "404": {
+            "description": "No domain"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/help-center/domain/check": {
+      "post": {
+        "tags": [
+          "help center"
+        ],
+        "summary": "Read the TXT record now (Admin)",
+        "description": "Verifies the domain when the record holds the token. A verified domain stays verified until it has failed 3 checks in a row (the worker checks daily).",
+        "operationId": "check_domain_api_v1_help_center_domain_check_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HelpDomainOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Admins only"
+          },
+          "404": {
+            "description": "No domain"
+          },
+          "409": {
+            "description": "Another workspace has already proven that domain"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/public-hosts/{host}": {
+      "get": {
+        "tags": [
+          "help center"
+        ],
+        "summary": "Which workspace's help center is served on this host (no sign-in)",
+        "description": "For the frontend: it maps the `Host` of a request to a workspace. Only a verified domain answers; anything else is 404.",
+        "operationId": "host_workspace_api_v1_public_hosts__host__get",
+        "parameters": [
+          {
+            "name": "host",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Host"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No help center on that host"
+          },
+          "429": {
+            "description": "Too many requests from this IP"
           },
           "422": {
             "description": "Validation Error",
@@ -14346,6 +15716,55 @@
         }
       }
     },
+    "/api/v1/imports/connections/{connection_id}/report": {
+      "get": {
+        "tags": [
+          "imports"
+        ],
+        "summary": "Before importing: what will import, what needs setting up, what can't move (Admin)",
+        "description": "Saves nothing. The source is asked for its counts and groups, like discover. 409 when the connection was closed; 422 or 503 when the source refuses or can't be reached.",
+        "operationId": "pre_migration_report_api_v1_imports_connections__connection_id__report_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "connection_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Connection Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreMigrationOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/imports/connections/{connection_id}/run": {
       "post": {
         "tags": [
@@ -14761,6 +16180,55 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/FailureOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/imports/runs/{run_id}/cutover": {
+      "get": {
+        "tags": [
+          "imports"
+        ],
+        "summary": "Before go-live: the cutover checklist for an import (Admin)",
+        "description": "Read from what CeDesk holds; the source isn't asked. Checks that the import finished, that nothing the source counted is missing, that no record waits to be read again, that the sync looked in the last 15 minutes (when syncing), that every agent matched a member, that every open imported ticket has a team, and that a support address has verified forwarding. 404 for an unknown run.",
+        "operationId": "cutover_api_v1_imports_runs__run_id__cutover_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Run Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CutoverOut"
                 }
               }
             }
@@ -15845,6 +17313,9 @@
           "404": {
             "description": "No such webhook"
           },
+          "409": {
+            "description": "Its secret can't be read (the server key changed): make a new one"
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -16343,7 +17814,7 @@
             "description": "No such ticket, or no such issue in Jira"
           },
           "409": {
-            "description": "Jira isn't installed, the issue is already on the ticket, or 10 are"
+            "description": "Jira isn't installed, its saved token can't be read (the server key changed: install it again), the issue is already on the ticket, or 10 are"
           },
           "422": {
             "description": "Jira refused (bad key, no access to the project)"
@@ -16406,7 +17877,7 @@
             "description": "No such ticket, or no such issue in Jira"
           },
           "409": {
-            "description": "Jira isn't installed, the issue is already on the ticket, or 10 are"
+            "description": "Jira isn't installed, its saved token can't be read (the server key changed: install it again), the issue is already on the ticket, or 10 are"
           },
           "422": {
             "description": "Jira refused (bad key, no access to the project)"
@@ -17565,7 +19036,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/TranslationOut"
+                  "$ref": "#/components/schemas/cedesk__helpdesk__api__ai__TranslationOut"
                 }
               }
             }
@@ -17678,7 +19149,7 @@
             }
           },
           "403": {
-            "description": "An API key (AI help is for people), or the role can't"
+            "description": "The role can't see reports (API keys can, like other reports)"
           },
           "409": {
             "description": "`cevanos_not_connected` (connect Cevanos in Settings), `cevanos_scope_missing` (the key lacks a scope; the message names it) or `cevanos_refused`"
@@ -18304,6 +19775,31 @@
           "ai"
         ],
         "title": "AiReportOut"
+      },
+      "Alternate": {
+        "properties": {
+          "locale": {
+            "type": "string",
+            "title": "Locale"
+          },
+          "slug": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slug"
+          }
+        },
+        "type": "object",
+        "required": [
+          "locale",
+          "slug"
+        ],
+        "title": "Alternate"
       },
       "App": {
         "type": "string",
@@ -19783,13 +21279,67 @@
           "dashboards",
           "report_schedules",
           "flows",
-          "campaigns"
+          "help_domain",
+          "campaigns",
+          "resolutions"
         ],
         "title": "Area",
         "description": "Filter on the audit page. Other teams' features add their own (api_keys,\nwebhooks, apps, retention): the column takes any lower-case name."
       },
       "ArticleIn": {
         "properties": {
+          "slug": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slug",
+            "description": "The page's address ends `/<id>/<slug>`; the id decides which article, so a slug never has to be unique. 3 to 100 of a-z, 0-9 and hyphens."
+          },
+          "meta_title": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 400
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Meta Title",
+            "description": "For the page's title tag; at most 120 characters."
+          },
+          "meta_description": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Meta Description",
+            "description": "For the page's description tag; at most 320 characters."
+          },
+          "canonical_url": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Canonical Url",
+            "description": "An https address to use as the canonical page instead of this one. It belongs to this language only: a translation is its own canonical page unless it has its own."
+          },
           "title": {
             "type": "string",
             "maxLength": 200,
@@ -19921,6 +21471,71 @@
           "not_helpful_count": {
             "type": "integer",
             "title": "Not Helpful Count"
+          },
+          "locales": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Locales",
+            "description": "The languages it is translated into (any status)."
+          },
+          "slug": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slug"
+          },
+          "meta_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Meta Title"
+          },
+          "meta_description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Meta Description"
+          },
+          "canonical_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Canonical Url"
+          },
+          "suggested_slug": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suggested Slug",
+            "description": "A slug made from the title, or null when it gives none.",
+            "readOnly": true
           }
         },
         "type": "object",
@@ -19937,12 +21552,70 @@
           "updated_at",
           "updated_by_name",
           "helpful_count",
-          "not_helpful_count"
+          "not_helpful_count",
+          "locales",
+          "slug",
+          "meta_title",
+          "meta_description",
+          "canonical_url",
+          "suggested_slug"
         ],
         "title": "ArticleOut"
       },
       "ArticlePatch": {
         "properties": {
+          "slug": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slug",
+            "description": "The page's address ends `/<id>/<slug>`; the id decides which article, so a slug never has to be unique. 3 to 100 of a-z, 0-9 and hyphens."
+          },
+          "meta_title": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 400
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Meta Title",
+            "description": "For the page's title tag; at most 120 characters."
+          },
+          "meta_description": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Meta Description",
+            "description": "For the page's description tag; at most 320 characters."
+          },
+          "canonical_url": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Canonical Url",
+            "description": "An https address to use as the canonical page instead of this one. It belongs to this language only: a translation is its own canonical page unless it has its own."
+          },
           "title": {
             "anyOf": [
               {
@@ -21447,6 +23120,39 @@
         ],
         "title": "CategoryIn"
       },
+      "CategoryNameIn": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Name"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "CategoryNameIn"
+      },
+      "CategoryNamesOut": {
+        "properties": {
+          "name_translations": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Name Translations",
+            "description": "`{language: name}`."
+          }
+        },
+        "type": "object",
+        "required": [
+          "name_translations"
+        ],
+        "title": "CategoryNamesOut"
+      },
       "CategoryOut": {
         "properties": {
           "id": {
@@ -21457,6 +23163,14 @@
           "name": {
             "type": "string",
             "title": "Name"
+          },
+          "name_translations": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Name Translations",
+            "description": "The name in other languages, `{language: name}`."
           },
           "position": {
             "type": "integer",
@@ -21488,6 +23202,7 @@
         "required": [
           "id",
           "name",
+          "name_translations",
           "position",
           "source",
           "article_count",
@@ -21582,6 +23297,44 @@
         "type": "object",
         "title": "ChangeMemberBody"
       },
+      "ChangeOut": {
+        "properties": {
+          "field": {
+            "type": "string",
+            "title": "Field",
+            "description": "status, priority, type, team or tags (tags it would add)."
+          },
+          "before": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Before"
+          },
+          "after": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "After"
+          }
+        },
+        "type": "object",
+        "required": [
+          "field",
+          "before",
+          "after"
+        ],
+        "title": "ChangeOut"
+      },
       "ChangePasswordBody": {
         "properties": {
           "current_password": {
@@ -21655,6 +23408,44 @@
           "messaging"
         ],
         "title": "ChannelGroup"
+      },
+      "CheckOut": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "enum": [
+              "import_finished",
+              "counts_match",
+              "no_open_failures",
+              "sync_fresh",
+              "agents_matched",
+              "teams_set",
+              "email_ready"
+            ],
+            "title": "Key"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "problem",
+              "skipped"
+            ],
+            "title": "Status"
+          },
+          "detail": {
+            "type": "string",
+            "title": "Detail",
+            "description": "What was found, and what to do when it's a problem."
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "status",
+          "detail"
+        ],
+        "title": "CheckOut"
       },
       "ChildIn": {
         "properties": {
@@ -21747,14 +23538,95 @@
           "matched": {
             "type": "boolean",
             "title": "Matched"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason",
+            "description": "What the ticket has, in plain words (for example \"the ticket is not snoozed\"): the fact behind the verdict."
           }
         },
         "type": "object",
         "required": [
           "condition",
-          "matched"
+          "matched",
+          "reason"
         ],
         "title": "ConditionCheck"
+      },
+      "ConflictOut": {
+        "properties": {
+          "ticket_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Ticket Id"
+          },
+          "number": {
+            "type": "integer",
+            "title": "Number"
+          },
+          "field": {
+            "type": "string",
+            "enum": [
+              "status",
+              "priority",
+              "type",
+              "team"
+            ],
+            "title": "Field"
+          },
+          "tested_value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tested Value"
+          },
+          "other_rule_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Other Rule Id"
+          },
+          "other_rule": {
+            "type": "string",
+            "title": "Other Rule"
+          },
+          "other_value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Other Value"
+          },
+          "winner": {
+            "type": "string",
+            "enum": [
+              "tested",
+              "other"
+            ],
+            "title": "Winner",
+            "description": "Which one the ticket would end with: the later one in run order."
+          }
+        },
+        "type": "object",
+        "required": [
+          "ticket_id",
+          "number",
+          "field",
+          "tested_value",
+          "other_rule_id",
+          "other_rule",
+          "other_value",
+          "winner"
+        ],
+        "title": "ConflictOut"
       },
       "ConnectIn": {
         "properties": {
@@ -23258,6 +25130,39 @@
         ],
         "title": "CustomerReplyBody"
       },
+      "CutoverOut": {
+        "properties": {
+          "run_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Run Id"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source"
+          },
+          "ready": {
+            "type": "boolean",
+            "title": "Ready",
+            "description": "True when no check is a problem."
+          },
+          "checks": {
+            "items": {
+              "$ref": "#/components/schemas/CheckOut"
+            },
+            "type": "array",
+            "title": "Checks"
+          }
+        },
+        "type": "object",
+        "required": [
+          "run_id",
+          "source",
+          "ready",
+          "checks"
+        ],
+        "title": "CutoverOut"
+      },
       "DashboardIn": {
         "properties": {
           "name": {
@@ -23909,6 +25814,30 @@
           "dmarc"
         ],
         "title": "DnsOut"
+      },
+      "DnsStep": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "title": "Type",
+            "description": "TXT, or CNAME."
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "value": {
+            "type": "string",
+            "title": "Value"
+          }
+        },
+        "type": "object",
+        "required": [
+          "type",
+          "name",
+          "value"
+        ],
+        "title": "DnsStep"
       },
       "DownloadOut": {
         "properties": {
@@ -25034,6 +26963,34 @@
         "title": "FlowPatch",
         "description": "Send only what changes. A new graph is a new version; turning it off cancels its\nwaiting runs."
       },
+      "FlowReplayBody": {
+        "properties": {
+          "ticket_limit": {
+            "type": "integer",
+            "maximum": 1000.0,
+            "minimum": 1.0,
+            "title": "Ticket Limit",
+            "description": "How many of the newest tickets to try it on (1-1000).",
+            "default": 500
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version",
+            "description": "A version to try (GET /flows/{id}/versions); null: the current one."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "FlowReplayBody"
+      },
       "FlowTestBody": {
         "properties": {
           "ticket_id": {
@@ -25441,6 +27398,21 @@
             "type": "string",
             "title": "Workspace Name"
           },
+          "indexable": {
+            "type": "boolean",
+            "title": "Indexable",
+            "description": "True when an Admin allowed search engines to index the help center. Otherwise serve `noindex`."
+          },
+          "default_locale": {
+            "type": "string",
+            "title": "Default Locale",
+            "description": "The language the articles are written in."
+          },
+          "locale": {
+            "type": "string",
+            "title": "Locale",
+            "description": "The language asked for (the default one when none was)."
+          },
           "categories": {
             "items": {
               "$ref": "#/components/schemas/PublicCategoryOut"
@@ -25473,11 +27445,155 @@
         "type": "object",
         "required": [
           "workspace_name",
+          "indexable",
+          "default_locale",
+          "locale",
           "categories",
           "articles",
           "next_cursor"
         ],
         "title": "HelpCenterOut"
+      },
+      "HelpCenterSettingsIn": {
+        "properties": {
+          "default_locale": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 11,
+                "minLength": 2
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Locale"
+          },
+          "seo_indexable": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seo Indexable",
+            "description": "Send only what changes."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "HelpCenterSettingsIn"
+      },
+      "HelpCenterSettingsOut": {
+        "properties": {
+          "default_locale": {
+            "type": "string",
+            "title": "Default Locale",
+            "description": "The language the articles themselves are written in. Every other language is a translation."
+          },
+          "seo_indexable": {
+            "type": "boolean",
+            "title": "Seo Indexable",
+            "description": "Whether search engines may index the public help center. Off until an Admin turns it on; the frontend serves `noindex` and an empty sitemap meanwhile."
+          }
+        },
+        "type": "object",
+        "required": [
+          "default_locale",
+          "seo_indexable"
+        ],
+        "title": "HelpCenterSettingsOut"
+      },
+      "HelpDomainIn": {
+        "properties": {
+          "domain": {
+            "type": "string",
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Domain",
+            "description": "A domain you own, e.g. help.example.com (no https://, port or path)."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "domain"
+        ],
+        "title": "HelpDomainIn"
+      },
+      "HelpDomainOut": {
+        "properties": {
+          "domain": {
+            "type": "string",
+            "title": "Domain"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "description": "`pending` until the TXT record is found, then `verified`. Only a verified domain is served."
+          },
+          "verified_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verified At"
+          },
+          "last_checked_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Checked At"
+          },
+          "failed_checks": {
+            "type": "integer",
+            "title": "Failed Checks",
+            "description": "Checks in a row that did not find the record. A verified domain goes back to pending after 3."
+          },
+          "last_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error"
+          },
+          "dns": {
+            "items": {
+              "$ref": "#/components/schemas/DnsStep"
+            },
+            "type": "array",
+            "title": "Dns",
+            "description": "The records to add at the domain's DNS host."
+          }
+        },
+        "type": "object",
+        "required": [
+          "domain",
+          "status",
+          "verified_at",
+          "last_checked_at",
+          "failed_checks",
+          "last_error",
+          "dns"
+        ],
+        "title": "HelpDomainOut"
       },
       "HistoryOut": {
         "properties": {
@@ -25719,6 +27835,25 @@
         "additionalProperties": false,
         "type": "object",
         "title": "HolidayPatch"
+      },
+      "HostOut": {
+        "properties": {
+          "workspace": {
+            "type": "string",
+            "title": "Workspace",
+            "description": "The workspace's slug: the help center is at `/<slug>/help`."
+          },
+          "default_locale": {
+            "type": "string",
+            "title": "Default Locale"
+          }
+        },
+        "type": "object",
+        "required": [
+          "workspace",
+          "default_locale"
+        ],
+        "title": "HostOut"
       },
       "ImproveIn": {
         "properties": {
@@ -28166,6 +30301,18 @@
             "title": "Web Form",
             "description": "The public contact form (`/public/{workspace}/form`) is open. Off: 404.",
             "default": false
+          },
+          "show_owner": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Show Owner",
+            "description": "Portal tickets show the assignee's first name. Off: the team's name only. Not sent (or null): kept as it is (on for a new workspace)."
           }
         },
         "additionalProperties": false,
@@ -28191,6 +30338,11 @@
           "web_form": {
             "type": "boolean",
             "title": "Web Form"
+          },
+          "show_owner": {
+            "type": "boolean",
+            "title": "Show Owner",
+            "description": "Tickets in the portal show the assignee's first name; off: the team's name only."
           },
           "updated_at": {
             "anyOf": [
@@ -28221,6 +30373,7 @@
           "allowed_domains",
           "csat_survey",
           "web_form",
+          "show_owner",
           "updated_at",
           "updated_by_name"
         ],
@@ -28296,6 +30449,42 @@
             "type": "string",
             "format": "date-time",
             "title": "Updated At"
+          },
+          "owner_first_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner First Name",
+            "description": "Who has it: the assignee's first name, or the team's name (unassigned, or the workspace hides names). Null: nobody yet. Never an email address."
+          },
+          "pending_step": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pending Step",
+            "description": "What it waits on: \"Waiting on you\" when Pending; on a resolved ticket, the resolution receipt's pending item (e.g. \"Bank settlement\"). Null: nothing."
+          },
+          "outcome": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Outcome",
+            "description": "Resolved and checked: the receipt's result (e.g. \"Refund issued\"). Null until an agent or Shopify / Stripe verified it."
           },
           "fields": {
             "additionalProperties": {
@@ -28425,6 +30614,42 @@
             "type": "string",
             "format": "date-time",
             "title": "Updated At"
+          },
+          "owner_first_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner First Name",
+            "description": "Who has it: the assignee's first name, or the team's name (unassigned, or the workspace hides names). Null: nobody yet. Never an email address."
+          },
+          "pending_step": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pending Step",
+            "description": "What it waits on: \"Waiting on you\" when Pending; on a resolved ticket, the resolution receipt's pending item (e.g. \"Bank settlement\"). Null: nothing."
+          },
+          "outcome": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Outcome",
+            "description": "Resolved and checked: the receipt's result (e.g. \"Refund issued\"). Null until an agent or Shopify / Stripe verified it."
           }
         },
         "type": "object",
@@ -28495,6 +30720,41 @@
           "fields"
         ],
         "title": "PortalTypeOut"
+      },
+      "PreMigrationOut": {
+        "properties": {
+          "source": {
+            "type": "string",
+            "title": "Source"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ReportItemOut"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "totals": {
+            "$ref": "#/components/schemas/ReportTotalsOut",
+            "description": "How many items have each status."
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings",
+            "description": "The source's own warnings, as in discover."
+          }
+        },
+        "type": "object",
+        "required": [
+          "source",
+          "items",
+          "totals",
+          "warnings"
+        ],
+        "title": "PreMigrationOut"
       },
       "PresetOut": {
         "properties": {
@@ -28736,10 +30996,88 @@
             "format": "date-time",
             "title": "Updated At"
           },
+          "locale": {
+            "type": "string",
+            "title": "Locale",
+            "description": "The language this row is in."
+          },
+          "slug": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slug",
+            "description": "Cosmetic: the page is `/help/<id>/<slug>`."
+          },
           "body": {
             "type": "string",
             "title": "Body",
             "description": "Markdown. Render it without raw HTML."
+          },
+          "meta_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Meta Title",
+            "description": "For the title tag; fall back to `title`."
+          },
+          "meta_description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Meta Description"
+          },
+          "canonical_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Canonical Url",
+            "description": "An override for this language's page only; null means this page is its own canonical address."
+          },
+          "alternates": {
+            "items": {
+              "$ref": "#/components/schemas/Alternate"
+            },
+            "type": "array",
+            "title": "Alternates",
+            "description": "Every language the article is published in, this one included: the `hreflang` links."
+          },
+          "default_locale": {
+            "type": "string",
+            "title": "Default Locale"
+          },
+          "fallback": {
+            "type": "boolean",
+            "title": "Fallback",
+            "description": "True when a language was asked for and the article is shown in another."
+          },
+          "available_locales": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Available Locales",
+            "description": "Every language it is published in, for a language switcher.",
+            "readOnly": true
           }
         },
         "type": "object",
@@ -28749,7 +31087,16 @@
           "category_id",
           "category_name",
           "updated_at",
-          "body"
+          "locale",
+          "slug",
+          "body",
+          "meta_title",
+          "meta_description",
+          "canonical_url",
+          "alternates",
+          "default_locale",
+          "fallback",
+          "available_locales"
         ],
         "title": "PublicArticleOut"
       },
@@ -28791,6 +31138,23 @@
             "type": "string",
             "format": "date-time",
             "title": "Updated At"
+          },
+          "locale": {
+            "type": "string",
+            "title": "Locale",
+            "description": "The language this row is in."
+          },
+          "slug": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slug",
+            "description": "Cosmetic: the page is `/help/<id>/<slug>`."
           }
         },
         "type": "object",
@@ -28799,7 +31163,9 @@
           "title",
           "category_id",
           "category_name",
-          "updated_at"
+          "updated_at",
+          "locale",
+          "slug"
         ],
         "title": "PublicArticleRow"
       },
@@ -29017,6 +31383,278 @@
         ],
         "title": "Reason"
       },
+      "ReceiptIn": {
+        "properties": {
+          "request": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 300
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Request"
+          },
+          "action_taken": {
+            "type": "string",
+            "maxLength": 500,
+            "title": "Action Taken"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 300
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result"
+          },
+          "verified": {
+            "type": "string",
+            "enum": [
+              "unverified",
+              "agent"
+            ],
+            "title": "Verified",
+            "description": "agent: the agent checked the result by hand.",
+            "default": "unverified"
+          },
+          "customer_notified": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Customer Notified",
+            "description": "Null: yes when a reply went out in the last 24 hours."
+          },
+          "pending_item": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pending Item"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "action_taken"
+        ],
+        "title": "ReceiptIn",
+        "description": "A resolution receipt typed by the agent. Only `action_taken` is needed."
+      },
+      "ReceiptPatch": {
+        "properties": {
+          "request": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 300
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Request"
+          },
+          "action_taken": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Action Taken"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 300
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result"
+          },
+          "verified": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "unverified",
+                  "agent"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verified"
+          },
+          "customer_notified": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Customer Notified"
+          },
+          "pending_item": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pending Item"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ReceiptPatch",
+        "description": "Only the keys sent change."
+      },
+      "ReceiptSettingIn": {
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "off",
+              "optional",
+              "required"
+            ],
+            "title": "Mode"
+          },
+          "required_teams": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "maxItems": 200,
+            "title": "Required Teams",
+            "description": "With `required` only: the teams whose tickets need a receipt. Empty: every team.",
+            "default": []
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "mode"
+        ],
+        "title": "ReceiptSettingIn"
+      },
+      "ReceiptSettingOut": {
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "off",
+              "optional",
+              "required"
+            ],
+            "title": "Mode",
+            "description": "off (default): no receipts. optional: an agent may add one when resolving. required: resolving needs one (for `required_teams`, or every team)."
+          },
+          "required_teams": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Required Teams"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "updated_by_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated By Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "mode",
+          "required_teams",
+          "updated_at",
+          "updated_by_name"
+        ],
+        "title": "ReceiptSettingOut"
+      },
+      "ReceiptVerifyIn": {
+        "properties": {
+          "order_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Order Id",
+            "description": "A Shopify order, from the orders card."
+          },
+          "payment_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payment Id",
+            "description": "A Stripe payment, from the payments card."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ReceiptVerifyIn"
+      },
       "ReceivedOut": {
         "properties": {
           "outcome": {
@@ -29033,10 +31671,11 @@
               "no_workspace",
               "unreadable",
               "verification",
-              "bounce"
+              "bounce",
+              "side_reply"
             ],
             "title": "Outcome",
-            "description": "created: a new ticket; added / rules_ran / reopened / thanked: on an existing ticket; verification: a support address's forwarding check came back (no ticket); bounce: a campaign email's bounce or spam report (recorded, no ticket); the rest: ignored on purpose."
+            "description": "created: a new ticket; added / rules_ran / reopened / thanked: on an existing ticket; side_reply: an answer in a side conversation (saved there, never on the customer's thread; ticket_id is its ticket); verification: a support address's forwarding check came back (no ticket); bounce: a campaign email's bounce or spam report (recorded, no ticket); the rest: ignored on purpose."
           },
           "ticket_id": {
             "anyOf": [
@@ -29300,6 +31939,273 @@
         ],
         "title": "ReorderBody"
       },
+      "ReplayBody": {
+        "properties": {
+          "ticket_limit": {
+            "type": "integer",
+            "maximum": 1000.0,
+            "minimum": 1.0,
+            "title": "Ticket Limit",
+            "description": "How many of the newest tickets to try it on (1-1000).",
+            "default": 500
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ReplayBody"
+      },
+      "ReplayOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "rule",
+              "flow"
+            ],
+            "title": "Kind"
+          },
+          "target_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Id",
+            "description": "The saved rule or workflow; null: unsaved."
+          },
+          "target_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Version",
+            "description": "The workflow version tried."
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "ticket_limit": {
+            "type": "integer",
+            "title": "Ticket Limit"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "running",
+              "done",
+              "failed",
+              "cancelled"
+            ],
+            "title": "State"
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary",
+            "description": "One line for the screen."
+          },
+          "checked": {
+            "type": "integer",
+            "title": "Checked",
+            "description": "Tickets tried so far."
+          },
+          "matched": {
+            "type": "integer",
+            "title": "Matched",
+            "description": "Tickets its conditions matched (a workflow: it acted)."
+          },
+          "would_change": {
+            "type": "integer",
+            "title": "Would Change",
+            "description": "Tickets it would change or act on."
+          },
+          "would_wait": {
+            "type": "integer",
+            "title": "Would Wait",
+            "description": "A workflow: tickets it would wait on."
+          },
+          "conflicts": {
+            "type": "integer",
+            "title": "Conflicts"
+          },
+          "samples": {
+            "items": {
+              "$ref": "#/components/schemas/SampleOut"
+            },
+            "type": "array",
+            "title": "Samples",
+            "description": "Up to 200 tickets it would change."
+          },
+          "conflict_samples": {
+            "items": {
+              "$ref": "#/components/schemas/ConflictOut"
+            },
+            "type": "array",
+            "title": "Conflict Samples",
+            "description": "Up to 200 conflicts."
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "requested_by_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Requested By Name"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "target_id",
+          "target_version",
+          "name",
+          "ticket_limit",
+          "state",
+          "summary",
+          "checked",
+          "matched",
+          "would_change",
+          "would_wait",
+          "conflicts",
+          "samples",
+          "conflict_samples",
+          "error",
+          "requested_by_name",
+          "created_at",
+          "started_at",
+          "finished_at"
+        ],
+        "title": "ReplayOut"
+      },
+      "ReportItemOut": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key",
+            "description": "contacts, tickets, articles, replies, groups, agents, automation, views, email, business_hours or history."
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "imports",
+              "needs_setup",
+              "cannot_move"
+            ],
+            "title": "Status",
+            "description": "imports: CeDesk brings it. needs_setup: CeDesk doesn't bring it; set it up in CeDesk (before importing, for agents and teams). cannot_move: this source can't give it to CeDesk."
+          },
+          "count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Count",
+            "description": "What the source holds (null: not counted)."
+          },
+          "note": {
+            "type": "string",
+            "title": "Note"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "name",
+          "status",
+          "count",
+          "note"
+        ],
+        "title": "ReportItemOut"
+      },
+      "ReportTotalsOut": {
+        "properties": {
+          "imports": {
+            "type": "integer",
+            "title": "Imports"
+          },
+          "needs_setup": {
+            "type": "integer",
+            "title": "Needs Setup"
+          },
+          "cannot_move": {
+            "type": "integer",
+            "title": "Cannot Move"
+          }
+        },
+        "type": "object",
+        "required": [
+          "imports",
+          "needs_setup",
+          "cannot_move"
+        ],
+        "title": "ReportTotalsOut"
+      },
       "ResetPasswordBody": {
         "properties": {
           "new_password": {
@@ -29341,6 +32247,322 @@
           "new_password"
         ],
         "title": "ResetWithLinkBody"
+      },
+      "ResolutionCountsOut": {
+        "properties": {
+          "resolved": {
+            "type": "integer",
+            "title": "Resolved",
+            "description": "Tickets resolved in the period (still resolved)."
+          },
+          "with_receipt": {
+            "type": "integer",
+            "title": "With Receipt"
+          },
+          "verified": {
+            "type": "integer",
+            "title": "Verified",
+            "description": "Verified by the agent, Shopify or Stripe."
+          },
+          "verified_agent": {
+            "type": "integer",
+            "title": "Verified Agent"
+          },
+          "verified_shopify": {
+            "type": "integer",
+            "title": "Verified Shopify"
+          },
+          "verified_stripe": {
+            "type": "integer",
+            "title": "Verified Stripe"
+          },
+          "pending": {
+            "type": "integer",
+            "title": "Pending",
+            "description": "Receipts with a pending item."
+          },
+          "notified": {
+            "type": "integer",
+            "title": "Notified",
+            "description": "Receipts saying the customer was told."
+          }
+        },
+        "type": "object",
+        "required": [
+          "resolved",
+          "with_receipt",
+          "verified",
+          "verified_agent",
+          "verified_shopify",
+          "verified_stripe",
+          "pending",
+          "notified"
+        ],
+        "title": "ResolutionCountsOut"
+      },
+      "ResolutionOut": {
+        "properties": {
+          "request": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Request",
+            "description": "What the customer asked, in a few words."
+          },
+          "action_taken": {
+            "type": "string",
+            "title": "Action Taken",
+            "description": "What was done."
+          },
+          "result": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result",
+            "description": "The outcome; from Verify, what the app reported. Shown to the customer in the portal once verified."
+          },
+          "verified": {
+            "type": "string",
+            "enum": [
+              "unverified",
+              "agent",
+              "shopify",
+              "stripe"
+            ],
+            "title": "Verified",
+            "description": "agent: checked by the agent. shopify / stripe: read from the order or payment with Verify (never written to them)."
+          },
+          "verified_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verified At"
+          },
+          "customer_notified": {
+            "type": "boolean",
+            "title": "Customer Notified",
+            "description": "The customer was told: set from a reply in the 24 hours before resolving, unless the agent said otherwise."
+          },
+          "pending_item": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pending Item",
+            "description": "Still waiting on, e.g. \"Bank settlement\". Shown to the customer in the portal while the ticket is resolved."
+          },
+          "resolved_by": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolved By"
+          },
+          "resolved_by_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolved By Name"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "request",
+          "action_taken",
+          "result",
+          "verified",
+          "verified_at",
+          "customer_notified",
+          "pending_item",
+          "resolved_by",
+          "resolved_by_name",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ResolutionOut",
+        "description": "A resolution receipt (differentiator plan #5): what was done and whether the\nresult was checked."
+      },
+      "ResolutionReportOut": {
+        "properties": {
+          "from": {
+            "type": "string",
+            "format": "date-time",
+            "title": "From"
+          },
+          "to": {
+            "type": "string",
+            "format": "date-time",
+            "title": "To"
+          },
+          "team_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Team Id"
+          },
+          "total": {
+            "$ref": "#/components/schemas/ResolutionCountsOut"
+          },
+          "teams": {
+            "items": {
+              "$ref": "#/components/schemas/ResolutionReportRowOut"
+            },
+            "type": "array",
+            "title": "Teams"
+          },
+          "agents": {
+            "items": {
+              "$ref": "#/components/schemas/ResolutionReportRowOut"
+            },
+            "type": "array",
+            "title": "Agents"
+          }
+        },
+        "type": "object",
+        "required": [
+          "from",
+          "to",
+          "team_id",
+          "total",
+          "teams",
+          "agents"
+        ],
+        "title": "ResolutionReportOut"
+      },
+      "ResolutionReportRowOut": {
+        "properties": {
+          "resolved": {
+            "type": "integer",
+            "title": "Resolved",
+            "description": "Tickets resolved in the period (still resolved)."
+          },
+          "with_receipt": {
+            "type": "integer",
+            "title": "With Receipt"
+          },
+          "verified": {
+            "type": "integer",
+            "title": "Verified",
+            "description": "Verified by the agent, Shopify or Stripe."
+          },
+          "verified_agent": {
+            "type": "integer",
+            "title": "Verified Agent"
+          },
+          "verified_shopify": {
+            "type": "integer",
+            "title": "Verified Shopify"
+          },
+          "verified_stripe": {
+            "type": "integer",
+            "title": "Verified Stripe"
+          },
+          "pending": {
+            "type": "integer",
+            "title": "Pending",
+            "description": "Receipts with a pending item."
+          },
+          "notified": {
+            "type": "integer",
+            "title": "Notified",
+            "description": "Receipts saying the customer was told."
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id",
+            "description": "Null: no team, or unassigned."
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "resolved",
+          "with_receipt",
+          "verified",
+          "verified_agent",
+          "verified_shopify",
+          "verified_stripe",
+          "pending",
+          "notified",
+          "id",
+          "name"
+        ],
+        "title": "ResolutionReportRowOut"
+      },
+      "ResolveIn": {
+        "properties": {
+          "resolution": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReceiptIn"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The resolution receipt. Needed when the workspace's receipts are `required` for the ticket's team (else 422); refused when receipts are `off`."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ResolveIn"
       },
       "RetentionExportOut": {
         "properties": {
@@ -30088,6 +33310,32 @@
         "type": "object",
         "title": "RulePatch"
       },
+      "RuleReplayBody": {
+        "properties": {
+          "ticket_limit": {
+            "type": "integer",
+            "maximum": 1000.0,
+            "minimum": 1.0,
+            "title": "Ticket Limit",
+            "description": "How many of the newest tickets to try it on (1-1000).",
+            "default": 500
+          },
+          "rule": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RuleDraft"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "An unsaved rule (POST /rules/replay only): what the editor holds now."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "RuleReplayBody"
+      },
       "RuleTestBody": {
         "properties": {
           "ticket_id": {
@@ -30315,6 +33563,48 @@
         },
         "type": "object",
         "title": "RunReportOut"
+      },
+      "SampleOut": {
+        "properties": {
+          "ticket_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Ticket Id"
+          },
+          "number": {
+            "type": "integer",
+            "title": "Number"
+          },
+          "subject": {
+            "type": "string",
+            "title": "Subject",
+            "description": "The first 120 characters."
+          },
+          "changes": {
+            "items": {
+              "$ref": "#/components/schemas/ChangeOut"
+            },
+            "type": "array",
+            "title": "Changes"
+          },
+          "said": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Said",
+            "description": "Every line it would write, effects too: \"Tag vip\", \"Email sent\", ..."
+          }
+        },
+        "type": "object",
+        "required": [
+          "ticket_id",
+          "number",
+          "subject",
+          "changes",
+          "said"
+        ],
+        "title": "SampleOut"
       },
       "SandboxOut": {
         "properties": {
@@ -32064,6 +35354,80 @@
         ],
         "title": "SignupVerifyBody"
       },
+      "SitemapEntryOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "locale": {
+            "type": "string",
+            "title": "Locale"
+          },
+          "slug": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slug"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "alternates": {
+            "items": {
+              "$ref": "#/components/schemas/Alternate"
+            },
+            "type": "array",
+            "title": "Alternates"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "locale",
+          "slug",
+          "updated_at",
+          "alternates"
+        ],
+        "title": "SitemapEntryOut"
+      },
+      "SitemapOut": {
+        "properties": {
+          "indexable": {
+            "type": "boolean",
+            "title": "Indexable",
+            "description": "False: the list is empty on purpose."
+          },
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/SitemapEntryOut"
+            },
+            "type": "array",
+            "title": "Entries",
+            "description": "One per published article and language."
+          },
+          "truncated": {
+            "type": "boolean",
+            "title": "Truncated",
+            "description": "More than 10,000 articles: only the first are listed."
+          }
+        },
+        "type": "object",
+        "required": [
+          "indexable",
+          "entries",
+          "truncated"
+        ],
+        "title": "SitemapOut"
+      },
       "SlaClockOut": {
         "properties": {
           "target_minutes": {
@@ -32651,6 +36015,18 @@
               }
             ],
             "title": "Said"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason",
+            "description": "Test mode, a condition that said no: what the ticket has instead (for example \"the ticket is not snoozed\")."
           }
         },
         "type": "object",
@@ -33940,6 +37316,17 @@
             ],
             "description": "The customer's rating of this ticket, if any."
           },
+          "resolution": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResolutionOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The resolution receipt, if one was given."
+          },
           "first_reply_at": {
             "anyOf": [
               {
@@ -34853,43 +38240,83 @@
         ],
         "title": "TranslateIn"
       },
-      "TranslationOut": {
+      "TranslationIn": {
         "properties": {
-          "text": {
+          "slug": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slug",
+            "description": "The page's address ends `/<id>/<slug>`; the id decides which article, so a slug never has to be unique. 3 to 100 of a-z, 0-9 and hyphens."
+          },
+          "meta_title": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 400
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Meta Title",
+            "description": "For the page's title tag; at most 120 characters."
+          },
+          "meta_description": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Meta Description",
+            "description": "For the page's description tag; at most 320 characters."
+          },
+          "canonical_url": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Canonical Url",
+            "description": "An https address to use as the canonical page instead of this one. It belongs to this language only: a translation is its own canonical page unless it has its own."
+          },
+          "title": {
             "type": "string",
-            "title": "Text"
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Title"
           },
-          "from": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "From",
-            "description": "The language found, e.g. hi."
+          "body": {
+            "type": "string",
+            "maxLength": 100000,
+            "title": "Body",
+            "default": ""
           },
-          "note": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Note",
-            "description": "Show it to the agent when set, instead of \"Translated from …\": \"This is already in English.\" or \"Cevanos found nothing to translate in this text.\" (`text` is the text as it was). A text Cevanos should have translated but sent back as it was is a 503 instead."
+          "status": {
+            "$ref": "#/components/schemas/ArticleStatus",
+            "default": "draft"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
-          "text",
-          "from"
+          "title"
         ],
-        "title": "TranslationOut"
+        "title": "TranslationIn"
       },
       "TriageSettingsIn": {
         "properties": {
@@ -35423,6 +38850,19 @@
             "minLength": 8,
             "title": "Visitor",
             "description": "A random id the page keeps for this browser (e.g. a UUID in localStorage). One vote per visitor per article; voting again changes it."
+          },
+          "locale": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 11
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Locale",
+            "description": "The language of the page voted on."
           }
         },
         "additionalProperties": false,
@@ -35790,6 +39230,173 @@
           "summary"
         ],
         "title": "SummaryOut"
+      },
+      "cedesk__helpdesk__api__ai__TranslationOut": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "from": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "From",
+            "description": "The language found, e.g. hi."
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note",
+            "description": "Show it to the agent when set, instead of \"Translated from …\": \"This is already in English.\" or \"Cevanos found nothing to translate in this text.\" (`text` is the text as it was). A text Cevanos should have translated but sent back as it was is a 503 instead."
+          }
+        },
+        "type": "object",
+        "required": [
+          "text",
+          "from"
+        ],
+        "title": "TranslationOut"
+      },
+      "cedesk__helpdesk__api__article_translations__TranslationOut": {
+        "properties": {
+          "locale": {
+            "type": "string",
+            "title": "Locale"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "body": {
+            "type": "string",
+            "title": "Body",
+            "description": "Markdown. Render it without raw HTML."
+          },
+          "status": {
+            "$ref": "#/components/schemas/ArticleStatus",
+            "description": "Published only counts when the article is too."
+          },
+          "slug": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slug"
+          },
+          "meta_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Meta Title"
+          },
+          "meta_description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Meta Description"
+          },
+          "canonical_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Canonical Url",
+            "description": "This language's own override; null means it is its own canonical page."
+          },
+          "published_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published At"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "updated_by_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated By Name"
+          },
+          "suggested_slug": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suggested Slug",
+            "description": "A slug made from the title, or null when it gives none.",
+            "readOnly": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "locale",
+          "title",
+          "body",
+          "status",
+          "slug",
+          "meta_title",
+          "meta_description",
+          "canonical_url",
+          "published_at",
+          "created_at",
+          "updated_at",
+          "updated_by_name",
+          "suggested_slug"
+        ],
+        "title": "TranslationOut"
       },
       "cedesk__helpdesk__api__campaigns__RecipientOut": {
         "properties": {

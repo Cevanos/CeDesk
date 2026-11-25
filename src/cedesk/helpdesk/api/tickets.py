@@ -25,6 +25,7 @@ from cedesk.helpdesk.api.ticket_schemas import (
     ContactTicketsOut,
     Counts,
     MessageOut,
+    ResolveIn,
     SlaClockOut,
     SlaOut,
     TicketIn,
@@ -122,6 +123,7 @@ def _ticket_out(view: TicketView) -> TicketOut:
             "reply_cc": list(view.reply_cc),
             "messages": [MessageOut.model_validate(dict(m)) for m in view.messages],
             "older_messages_cursor": view.older_messages_cursor,
+            "resolution": dict(view.resolution) if view.resolution else None,
         }
     )
 
@@ -257,16 +259,29 @@ async def change_ticket(
 @router.post(
     "/tickets/{ticket_id}/resolve",
     response_model=TicketOut,
-    summary="Resolve a ticket (already resolved: no change)",
+    summary="Resolve a ticket, with a resolution receipt when asked for",
+    description="Already resolved: no change (409 if a receipt is sent: change it with "
+    "`PATCH .../resolution`). The body is optional. With the workspace's resolution "
+    "receipts `required` for the ticket's team, resolving without `resolution` is 422, "
+    "here and through `PATCH /tickets/{id}` or a bulk change; automatic closes don't need "
+    "one.",
+    responses={
+        409: {"description": "Already resolved and a receipt was sent, or changed since read"},
+        422: {"description": "A receipt is required, or receipts are off"},
+    },
 )
 async def resolve_ticket(
     ticket_id: UUID,
     caller: CallerDep,
     sm: SessionmakerDep,
     response: Response,
+    body: ResolveIn | None = None,
     if_match: IfMatch = None,
 ) -> TicketOut:
-    view = await tickets.resolve_ticket(sm, caller, ticket_id, if_match=if_match)
+    receipt = body.resolution.model_dump() if body and body.resolution else None
+    view = await tickets.resolve_ticket(
+        sm, caller, ticket_id, if_match=if_match, resolution=receipt
+    )
     return detail_response(view, response, caller)
 
 

@@ -2,7 +2,6 @@
 
 import { Check, ChevronDown } from "lucide-react";
 import * as React from "react";
-import { type Control, type FieldPath, type FieldValues, useController } from "react-hook-form";
 import ReactSelect, {
   components,
   type ClassNamesConfig,
@@ -148,6 +147,7 @@ export const Select = React.forwardRef<SelectInstance<SelectOption, false>, Sele
   ) {
     const opts = React.useMemo(() => options ?? optionsFromChildren(children), [options, children]);
     const selected = opts.find((o) => o.value === (value ?? "")) ?? null;
+    const menuOpen = React.useRef(!!defaultOpen);
 
     return (
       <div className={cn("w-full min-w-0", className)}>
@@ -174,6 +174,17 @@ export const Select = React.forwardRef<SelectInstance<SelectOption, false>, Sele
           // eslint-disable-next-line jsx-a11y/no-autofocus
           autoFocus={defaultOpen}
           blurInputOnSelect
+          onMenuOpen={() => {
+            menuOpen.current = true;
+          }}
+          onMenuClose={() => {
+            menuOpen.current = false;
+          }}
+          // Escape closes the open menu only. Without this it also reaches the document
+          // listener of an enclosing dialog or drawer and closes that too.
+          onKeyDown={(e) => {
+            if (e.key === "Escape" && menuOpen.current) e.stopPropagation();
+          }}
           onBlur={onBlur}
           onChange={(o) => o && onChange?.({ target: { name, value: o.value } })}
           noOptionsMessage={() => "No matches"}
@@ -199,22 +210,33 @@ export const Select = React.forwardRef<SelectInstance<SelectOption, false>, Sele
   },
 );
 
-export function FormSelect<T extends FieldValues>({
-  control,
+/** A `Select` wired to a Formik form: `<FormSelect form={formik} name="priority" />`. */
+export function FormSelect({
+  form,
   name,
   ...props
 }: Omit<SelectProps, "value" | "onChange" | "onBlur" | "name"> & {
-  control: Control<T>;
-  name: FieldPath<T>;
+  form: {
+    values: unknown;
+    errors: unknown;
+    touched: unknown;
+    handleChange: (e: React.ChangeEvent<unknown>) => void;
+    setFieldTouched: (field: string, touched?: boolean) => unknown;
+  };
+  name: string;
 }) {
-  const { field } = useController({ control, name });
+  const path = name.split(".");
+  const dig = (o: unknown) =>
+    path.reduce<unknown>((a, k) => (a == null ? undefined : (a as Record<string, unknown>)[k]), o);
+  const invalid = !!dig(form.touched) && typeof dig(form.errors) === "string";
   return (
     <Select
+      aria-invalid={invalid || undefined}
       {...props}
-      name={field.name}
-      value={(field.value as string | undefined) ?? ""}
-      onChange={(e) => field.onChange(e.target.value)}
-      onBlur={field.onBlur}
+      name={name}
+      value={(dig(form.values) as string | undefined) ?? ""}
+      onChange={(e) => form.handleChange({ target: { name, value: e.target.value } } as never)}
+      onBlur={() => form.setFieldTouched(name, true)}
     />
   );
 }

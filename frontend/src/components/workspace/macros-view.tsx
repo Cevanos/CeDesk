@@ -23,6 +23,12 @@ import {
 } from "@/components/workspace/list-shared";
 import { useDeleteMacro, useMacros, useReorderMacros, useSaveMacro } from "@/hooks/use-workspace";
 import type { Macro } from "@/lib/api/types";
+import { bind, fieldError, useFormik, yup } from "@/lib/forms";
+
+const macroSchema = yup.object({
+  name: yup.string().trim().required("Enter a name").max(80),
+  steps: yup.array().min(1, "Add at least one step"),
+});
 
 export function MacrosView() {
   const macros = useMacros();
@@ -130,49 +136,48 @@ export function MacrosView() {
 
 function MacroForm({ macro, onClose }: { macro: Macro | null; onClose: () => void }) {
   const save = useSaveMacro();
-  const [name, setName] = useState(macro?.name ?? "");
-  const [steps, setSteps] = useState<Item[]>((macro?.steps as Item[] | undefined) ?? []);
-  const [errs, setErrs] = useState<Record<string, string>>({});
+  const [srv, setSrv] = useState<Record<string, string>>({});
+  const form = useFormik({
+    initialValues: {
+      name: macro?.name ?? "",
+      steps: ((macro?.steps as Item[] | undefined) ?? []) as Item[],
+    },
+    validationSchema: macroSchema,
+    onSubmit: (v) => {
+      setSrv({});
+      save.mutate(
+        { id: macro?.id, name: v.name.trim(), steps: v.steps },
+        {
+          onSuccess: () => {
+            toast.success("Macro saved");
+            onClose();
+          },
+          onError: (err) => setSrv(fieldErrors(err)),
+        },
+      );
+    },
+  });
+  const stepsError =
+    form.submitCount > 0 && typeof form.errors.steps === "string" ? form.errors.steps : undefined;
 
   return (
-    <form
-      noValidate
-      className="space-y-4"
-      onSubmit={(e) => {
-        e.preventDefault();
-        const next: Record<string, string> = {};
-        if (!name.trim()) next.name = "Enter a name";
-        if (steps.length === 0) next.steps = "Add at least one step";
-        setErrs(next);
-        if (Object.keys(next).length) return;
-        save.mutate(
-          { id: macro?.id, name: name.trim(), steps },
-          {
-            onSuccess: () => {
-              toast.success("Macro saved");
-              onClose();
-            },
-            onError: (err) => setErrs(fieldErrors(err)),
-          },
-        );
-      }}
-    >
-      <Field label="Name" htmlFor="m-name" error={errs.name}>
-        <Input id="m-name" value={name} maxLength={80} onChange={(e) => setName(e.target.value)} />
+    <form noValidate className="space-y-4" onSubmit={form.handleSubmit}>
+      <Field label="Name" htmlFor="m-name" error={fieldError(form, "name") ?? srv.name}>
+        <Input id="m-name" maxLength={80} {...bind(form, "name")} />
       </Field>
       <ItemBuilder
         title="Steps"
         addLabel="Add step"
         kinds={MACRO_STEP_KINDS}
-        items={steps}
-        onChange={setSteps}
+        items={form.values.steps}
+        onChange={(steps) => form.setFieldValue("steps", steps)}
       />
-      {(errs.steps || errs.macro) && (
+      {(stepsError || srv.steps || srv.macro) && (
         <p role="alert" className="text-xs text-danger">
-          {errs.steps ?? errs.macro}
+          {stepsError ?? srv.steps ?? srv.macro}
         </p>
       )}
-      <FormError message={errs._form} />
+      <FormError message={srv._form} />
       <div className="flex justify-end gap-2">
         <Button variant="ghost" onClick={onClose}>
           Cancel

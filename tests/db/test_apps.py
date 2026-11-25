@@ -14,6 +14,7 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy import text
 
+from cedesk.crypto import Sealer
 from cedesk.db import workspace_session
 from cedesk.egress import BadAddress
 from cedesk.helpdesk.service.imports.http import SourceHttp
@@ -251,3 +252,22 @@ async def test_with_cevanos_connected_the_apps_step_aside(
     assert listed["shopify"]["blocked"] and listed["stripe"]["installed"] is True
     card = ok(await client.get(f"{T}/{w['ticket']}/payments", headers=w["h"]))
     assert (card["source"], card["available"]) == ("cevanos", False)
+
+
+async def test_an_unreadable_app_key_shows_on_the_card_not_a_500(
+    client: AsyncClient, app_sessionmaker: Sm
+) -> None:
+    """CEDESK_SECRET_KEY changed since Shopify was installed: the orders card says to
+    install it again (it was a 500), and Shopify is not asked."""
+    fake = install_fakes(client)
+    w = await desk(client, app_sessionmaker)
+    ok(await put_app(client, w, "shopify", SHOP_TOKEN, {"shop": "acme"}))
+    other_key = Sealer("a-different-server-key-0123456789").seal("old", bound_to="old")
+    async with workspace_session(app_sessionmaker, w["ws"]) as s:
+        await s.execute(text("UPDATE hd_app_install SET secret_sealed = :x WHERE app = 'shopify'"),
+                        {"x": other_key})  # fmt: skip
+    asked_before = len(fake.seen)
+    card = ok(await client.get(f"{T}/{w['ticket']}/orders", headers=w["neha"]))
+    assert (card["source"], card["available"], card["orders"]) == ("shopify", False, [])
+    assert card["message"] == "The saved Shopify key can't be read: install the Shopify app again."
+    assert len(fake.seen) == asked_before

@@ -1,14 +1,64 @@
 # CeDesk Frontend
 
-Web frontend for CeDesk, a customer support desk. Agents, supervisors and admins use it to work a shared ticket inbox, reply to customers, and manage the workspace. It is a Next.js 16 (App Router) app with React 19, TypeScript, Tailwind CSS 4, TanStack Query, React Hook Form + Zod and next-intl.
+Web frontend for CeDesk, a customer support desk. Agents, supervisors and admins use it to work a shared ticket inbox, reply to customers, and manage the workspace. It is a Next.js 16 (App Router) app with React 19, TypeScript, Tailwind CSS 4, TanStack Query, Formik + Yup and next-intl.
 
 ## Screenshots
 
-Captured from the app running against the demo workspace from `uv run cedesk seed-demo`, not a real one.
+Captured from a demo workspace (Acme Store) with sample data, not a real customer workspace.
 
-![Ticket inbox](docs/images/ticket-inbox.png)
+### Sign in
 
-![Ticket detail](docs/images/ticket-detail.png)
+![Sign in](docs/images/login.png)
+
+### Tickets
+
+| Inbox                                         | Ticket detail                                   |
+| --------------------------------------------- | ----------------------------------------------- |
+| ![Ticket inbox](docs/images/ticket-inbox.png) | ![Ticket detail](docs/images/ticket-detail.png) |
+
+![New ticket](docs/images/new-ticket.png)
+
+### Contacts, agents and campaigns
+
+| Contacts                              | Agents                            |
+| ------------------------------------- | --------------------------------- |
+| ![Contacts](docs/images/contacts.png) | ![Agents](docs/images/agents.png) |
+
+![Campaigns](docs/images/campaigns.png)
+
+### Reports
+
+| Live                                         | Team                                         |
+| -------------------------------------------- | -------------------------------------------- |
+| ![Live report](docs/images/reports-live.png) | ![Team report](docs/images/reports-team.png) |
+
+![Backlog report](docs/images/reports-backlog.png)
+
+![Dashboards](docs/images/reports-dashboards.png)
+
+### Admin settings
+
+| Members                                      | Teams                                    |
+| -------------------------------------------- | ---------------------------------------- |
+| ![Members](docs/images/settings-members.png) | ![Teams](docs/images/settings-teams.png) |
+
+| SLA                                  | Rules                                    |
+| ------------------------------------ | ---------------------------------------- |
+| ![SLA](docs/images/settings-sla.png) | ![Rules](docs/images/settings-rules.png) |
+
+| Workflows                                        | Macros                                     |
+| ------------------------------------------------ | ------------------------------------------ |
+| ![Workflows](docs/images/settings-workflows.png) | ![Macros](docs/images/settings-macros.png) |
+
+| Help center                                                   | Roles                                    |
+| ------------------------------------------------------------- | ---------------------------------------- |
+| ![Help center settings](docs/images/settings-help-center.png) | ![Roles](docs/images/settings-roles.png) |
+
+### Customer-facing pages
+
+| Help center                                        | Portal sign-in                                    |
+| -------------------------------------------------- | ------------------------------------------------- |
+| ![Public help center](docs/images/public-help.png) | ![Customer portal](docs/images/public-portal.png) |
 
 ## What it does
 
@@ -62,6 +112,7 @@ Before the first e2e run: `npx playwright install chromium`.
 | `ALLOW_INSECURE_HTTP`           | server only | Optional, test/staging only. `1` drops the `Secure` cookie flag and `upgrade-insecure-requests` so the app works over plain HTTP. Never set in production.                       |
 | `NEXT_PUBLIC_DEFAULT_WORKSPACE` | public      | Optional. Pre-fills the workspace field on sign-in.                                                                                                                              |
 | `NEXT_PUBLIC_API_PUBLIC_URL`    | public      | Optional. Backend public address, only used to show the Cevanos webhook URL in Settings.                                                                                         |
+| `SITE_URL`                      | server      | Optional. Public address of this site (no trailing slash). Used for the landing page's canonical URL, sitemap, social cards and structured data. Set it in production.           |
 
 ## Architecture
 
@@ -126,16 +177,39 @@ docker run -p 3000:3000 -e CEDESK_API_URL=https://api.example.com/api/v1 cedesk-
 
 `/api/health` returns 200 when the app is configured and 503 when it isn't, so it works as a liveness and readiness probe. Behind a reverse proxy, make sure it sets `X-Forwarded-For` and set `TRUSTED_PROXY_HOPS` to match.
 
+### Running it with your own CeDesk server
+
+The backend is self-hostable too: one Linux server, `docker compose up`, Caddy for HTTPS, every feature and no plan limits. Follow the [self-hosting guide](https://github.com/Cogninest-AI/CDESK/blob/main/docs/SELF_HOSTING.md) for the server, then point this frontend at it.
+
+The two addresses must match:
+
+| Setting                                         | Value                                                |
+| ----------------------------------------------- | ---------------------------------------------------- |
+| Frontend `CEDESK_API_URL`                       | `https://help.example.com/api/v1` (the backend)      |
+| Backend `CEDESK_APP_URL`, `CEDESK_CORS_ORIGINS` | `https://app.example.com` (where this frontend runs) |
+
+Optional settings a self-hoster should set:
+
+| Variable                     | What it does                                                                                           |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `SITE_URL`                   | The public address of this site, for canonical URLs and the sitemap.                                   |
+| `NEXT_PUBLIC_API_PUBLIC_URL` | The backend address shown as the Cevanos webhook address in Settings.                                  |
+| `NEXT_PUBLIC_SWAGGER_URL`    | Adds a Swagger UI link to the Help menu, e.g. `https://help.example.com/docs`.                         |
+| `TRUSTED_PROXY_HOPS`         | Number of reverse proxies in front of this app (default 1).                                            |
+| `CEDESK_LANDING`             | `off` sends `/` to the sign-in page and hides the site from crawlers. Default on (our marketing page). |
+
+Sign-up is off by default on a self-hosted server (`CEDESK_SIGNUP_ENABLED`); the landing page and sign-in screen adapt on their own.
+
 ## Troubleshooting
 
-| Symptom                                                       | Likely cause                                                                                                                                                                                                      |
-| ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| App shows a configuration error, or `/api/health` returns 503 | `CEDESK_API_URL` is missing or not a valid URL. Copy `.env.example` to `.env.local` and set it.                                                                                                                   |
-| Browser requests to the backend fail with a CORS error        | The browser should only call `/api/*` on this app. The backend only allows origins `:3000` and `:5173`, so run the dev server on one of those ports.                                                              |
-| Sign-in works but you are signed out immediately              | The `Secure` cookie flag is set in production builds, so over plain `http://` the browser drops the cookie. Use HTTPS (or, for a throwaway HTTP test server only, `ALLOW_INSECURE_HTTP=1`), or run `npm run dev`. |
-| Rate-limit errors (429) on sign-in behind a proxy             | `TRUSTED_PROXY_HOPS` doesn't match the number of proxies in front of the app.                                                                                                                                     |
-| `npm install` refuses to run                                  | `engine-strict` is on. Use Node 20.19+ (`nvm use`).                                                                                                                                                               |
-| E2E tests can't launch a browser                              | Run `npx playwright install chromium` once.                                                                                                                                                                       |
+| Symptom                                                       | Likely cause                                                                                                                                                                                                                             |
+| ------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| App shows a configuration error, or `/api/health` returns 503 | `CEDESK_API_URL` is missing or not a valid URL. Copy `.env.example` to `.env.local` and set it.                                                                                                                                          |
+| Browser requests to the backend fail with a CORS error        | The browser should only call `/api/*` on this app. On a developer's machine the backend only allows origins `:3000` and `:5173`, so run the dev server on one of those ports. In production the backend's `CEDESK_CORS_ORIGINS` decides. |
+| Sign-in works but you are signed out immediately              | The `Secure` cookie flag is set in production builds, so over plain `http://` the browser drops the cookie. Use HTTPS (or, for a throwaway HTTP test server only, `ALLOW_INSECURE_HTTP=1`), or run `npm run dev`.                        |
+| Rate-limit errors (429) on sign-in behind a proxy             | `TRUSTED_PROXY_HOPS` doesn't match the number of proxies in front of the app.                                                                                                                                                            |
+| `npm install` refuses to run                                  | `engine-strict` is on. Use Node 20.19+ (`nvm use`).                                                                                                                                                                                      |
+| E2E tests can't launch a browser                              | Run `npx playwright install chromium` once.                                                                                                                                                                                              |
 
 ## Roadmap
 
@@ -155,4 +229,4 @@ Third-party dependencies keep their own licenses. All are permissive or weak-cop
 
 ## Acknowledgements
 
-Built with [Next.js](https://nextjs.org), [React](https://react.dev), [Tailwind CSS](https://tailwindcss.com), [TanStack Query](https://tanstack.com/query), [React Hook Form](https://react-hook-form.com), [Zod](https://zod.dev), [next-intl](https://next-intl.dev), [Lucide](https://lucide.dev), [Vitest](https://vitest.dev) and [Playwright](https://playwright.dev).
+Built with [Next.js](https://nextjs.org), [React](https://react.dev), [Tailwind CSS](https://tailwindcss.com), [TanStack Query](https://tanstack.com/query), [Formik](https://formik.org), [Yup](https://github.com/jquense/yup), [Zod](https://zod.dev), [next-intl](https://next-intl.dev), [Lucide](https://lucide.dev), [Vitest](https://vitest.dev) and [Playwright](https://playwright.dev).

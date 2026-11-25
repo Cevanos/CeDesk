@@ -29,6 +29,16 @@ import {
 } from "@/hooks/use-workspace";
 import type { WebhookRow } from "@/hooks/use-workspace";
 import { ApiError } from "@/lib/api/client";
+import { bind, fieldError, useFormik, yup } from "@/lib/forms";
+
+const hookSchema = yup.object({
+  url: yup
+    .string()
+    .trim()
+    .matches(/^https?:\/\/\S+$/i, "Enter a full URL starting with https://")
+    .required("Enter a full URL starting with https://"),
+  events: yup.array(yup.string().required()).min(1, "Pick at least one event").required(),
+});
 
 const EVENTS: { value: string; label: string }[] = [
   { value: "ticket.created", label: "A ticket is created" },
@@ -329,49 +339,42 @@ function WebhookForm({
   onCreated: (secret: string) => void;
 }) {
   const save = useSaveWebhook();
-  const [url, setUrl] = useState(hook?.url ?? "");
-  const [events, setEvents] = useState<string[]>(
-    (hook?.events ?? ["ticket.created"]).filter((e) => EVENTS.some((x) => x.value === e)),
-  );
-  // New webhooks start off, so the Admin can Test before real ticket events flow.
-  const [enabled, setEnabled] = useState(hook ? isOn(hook) : false);
-  const [errs, setErrs] = useState<Record<string, string>>({});
+  const [srv, setSrv] = useState<Record<string, string>>({});
+  const form = useFormik({
+    initialValues: {
+      url: hook?.url ?? "",
+      events: (hook?.events ?? ["ticket.created"]).filter((e) => EVENTS.some((x) => x.value === e)),
+      // New webhooks start off, so the Admin can Test before real ticket events flow.
+      enabled: hook ? isOn(hook) : false,
+    },
+    validationSchema: hookSchema,
+    onSubmit: (v) => {
+      setSrv({});
+      save.mutate(
+        { id: hook?.id, url: v.url.trim(), events: v.events, enabled: v.enabled },
+        {
+          onSuccess: (r) => {
+            if (!hook && r.secret) return onCreated(r.secret);
+            toast.success("Webhook saved");
+            onClose();
+          },
+          onError: (err) => setSrv(fieldErrors(err)),
+        },
+      );
+    },
+  });
+  const { events, enabled } = form.values;
+  const eventsError =
+    (form.submitCount > 0 && typeof form.errors.events === "string" ? form.errors.events : "") ||
+    srv.events;
 
   return (
-    <form
-      noValidate
-      className="space-y-4"
-      onSubmit={(e) => {
-        e.preventDefault();
-        const list = events;
-        const next: Record<string, string> = {};
-        if (!/^https?:\/\/\S+$/i.test(url.trim()))
-          next.url = "Enter a full URL starting with https://";
-        if (list.length === 0) next.events = "Pick at least one event";
-        setErrs(next);
-        if (Object.keys(next).length) return;
-        save.mutate(
-          { id: hook?.id, url: url.trim(), events: list, enabled },
-          {
-            onSuccess: (r) => {
-              if (!hook && r.secret) return onCreated(r.secret);
-              toast.success("Webhook saved");
-              onClose();
-            },
-            onError: (err) => setErrs(fieldErrors(err)),
-          },
-        );
-      }}
-    >
-      <Field label="URL" htmlFor="wh-url" error={errs.url}>
+    <form noValidate className="space-y-4" onSubmit={form.handleSubmit}>
+      <Field label="URL" htmlFor="wh-url" error={fieldError(form, "url") ?? srv.url}>
         <Input
           id="wh-url"
           type="url"
-          value={url}
-          onChange={(e) => {
-            setUrl(e.target.value);
-            setErrs((p) => ({ ...p, url: "" }));
-          }}
+          {...bind(form, "url")}
           placeholder="https://example.com/hooks/cedesk"
           autoCapitalize="none"
           spellCheck={false}
@@ -387,10 +390,10 @@ function WebhookForm({
                 className="mt-0.5 size-4 accent-primary"
                 checked={events.includes(ev.value)}
                 onChange={(e) => {
-                  setEvents((cur) =>
-                    e.target.checked ? [...cur, ev.value] : cur.filter((x) => x !== ev.value),
+                  form.setFieldValue(
+                    "events",
+                    e.target.checked ? [...events, ev.value] : events.filter((x) => x !== ev.value),
                   );
-                  setErrs((p) => ({ ...p, events: "" }));
                 }}
               />
               <span>
@@ -400,9 +403,9 @@ function WebhookForm({
             </label>
           ))}
         </div>
-        {errs.events && (
+        {eventsError && (
           <p role="alert" className="mt-1.5 text-xs text-danger">
-            {errs.events}
+            {eventsError}
           </p>
         )}
       </fieldset>
@@ -415,14 +418,18 @@ function WebhookForm({
               : "Off by default, so you can Test it before real events are sent."}
           </div>
         </div>
-        <Switch label="Active" checked={enabled} onChange={setEnabled} />
+        <Switch
+          label="Active"
+          checked={enabled}
+          onChange={(v) => form.setFieldValue("enabled", v)}
+        />
       </div>
       {!hook && (
         <p className="text-xs text-muted-foreground">
           A secret is made for this webhook. You&apos;ll see it once, right after you save.
         </p>
       )}
-      <FormError message={errs._form} />
+      <FormError message={srv._form} />
       <div className="flex justify-end gap-2">
         <Button variant="ghost" onClick={onClose}>
           Cancel

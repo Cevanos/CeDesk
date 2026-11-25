@@ -1,6 +1,6 @@
 "use client";
 
-import { Inbox, Plus } from "lucide-react";
+import { Inbox, Plus, Ticket } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 
@@ -10,6 +10,7 @@ import { FilterBar, SORTS, activeChips } from "@/components/tickets/list/filter-
 import { StatusTabs } from "@/components/tickets/list/status-tabs";
 import { VirtualTicketList } from "@/components/tickets/list/virtual-ticket-list";
 import { InfiniteScroll } from "@/components/ui/infinite-scroll";
+import { PageHeader } from "@/components/ui/page-header";
 import { Button, Card, EmptyState, Skeleton } from "@/components/ui/primitives";
 import { useCurrentUser } from "@/hooks/use-auth";
 import { useTicketFilters } from "@/hooks/use-ticket-filters";
@@ -75,23 +76,20 @@ export function TicketListView() {
 
   return (
     <div className="mx-auto w-full max-w-6xl px-3 py-5 sm:px-6 sm:py-8">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div className="min-w-0">
-          <h1 className="text-[26px] leading-tight font-semibold tracking-tight sm:text-3xl">
-            Tickets
-          </h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Every conversation, human and AI, in one queue.
-          </p>
-        </div>
-        {perms.createTicket && (
-          <Link href="/tickets/new" className="lg:hidden">
-            <Button size="sm">
-              <Plus className="size-4" /> New
-            </Button>
-          </Link>
-        )}
-      </div>
+      <PageHeader
+        icon={Ticket}
+        title="Tickets"
+        description="Every conversation, human and AI, in one queue."
+        actions={
+          perms.createTicket && (
+            <Link href="/tickets/new" className="lg:hidden">
+              <Button size="sm">
+                <Plus className="size-4" /> New
+              </Button>
+            </Link>
+          )
+        }
+      />
 
       <StatusTabs
         active={filters.snoozed === "true" ? "snoozed" : filters.status}

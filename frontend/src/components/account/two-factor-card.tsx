@@ -21,6 +21,14 @@ import {
 } from "@/hooks/use-account";
 import { useCurrentUser } from "@/hooks/use-auth";
 import { ApiError } from "@/lib/api/client";
+import { bind, fieldError, useFormik, yup } from "@/lib/forms";
+
+const codeSchema = yup.object({
+  code: yup
+    .string()
+    .default("")
+    .test("code", "Enter the code", (v) => (v ?? "").replace(/\s/g, "") !== ""),
+});
 
 /** One code box with its own error line. Used to confirm, turn off and renew codes. */
 export function CodeForm({
@@ -40,34 +48,30 @@ export function CodeForm({
   onCancel?: () => void;
   danger?: boolean;
 }) {
-  const [code, setCode] = useState("");
+  const form = useFormik({
+    initialValues: { code: "" },
+    validationSchema: codeSchema,
+    validateOnBlur: false,
+    onSubmit: (v) => onSubmit(v.code.replace(/\s/g, "")),
+  });
   const ref = useRef<HTMLInputElement>(null);
   useEffect(() => ref.current?.focus(), []);
   const err = error instanceof ApiError ? error : null;
   return (
-    <form
-      noValidate
-      onSubmit={(e) => {
-        e.preventDefault();
-        const v = code.replace(/\s/g, "");
-        if (v) onSubmit(v);
-      }}
-      className="space-y-3"
-    >
+    <form noValidate onSubmit={form.handleSubmit} className="space-y-3">
       <Field
         label={label}
         htmlFor="tf-code"
-        error={err ? (err.fieldMessage("code") ?? err.userMessage) : undefined}
+        error={err ? (err.fieldMessage("code") ?? err.userMessage) : fieldError(form, "code")}
       >
         <Input
           id="tf-code"
           ref={ref}
-          value={code}
-          onChange={(e) => setCode(e.target.value)}
+          {...bind(form, "code")}
           autoComplete="one-time-code"
           inputMode="numeric"
           placeholder="123456"
-          aria-invalid={!!err}
+          aria-invalid={!!err || !!fieldError(form, "code")}
           className="max-w-48"
         />
       </Field>

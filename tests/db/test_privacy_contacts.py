@@ -142,3 +142,9 @@ async def test_erasing_removes_the_contact_data(
     # Her notes can't be added to any more.
     r = await client.post(f"{C}/{c}/notes", headers=w["admin"], json={"body": "x"})
     assert r.status_code == 422
+    # Nor her card renamed or made VIP: it stays as the erase left it (both were allowed).
+    [before] = await sql(sm, w, "SELECT name, vip FROM hd_contact WHERE id = :c", c=c)
+    for change in ({"name": "Ana Hill"}, {"vip": True}):
+        r = await client.patch(f"{C}/{c}/profile", headers=w["admin"], json=change)
+        assert (r.status_code, r.json()["error"]["message"]) == (422, "This customer was erased.")
+    assert (await sql(sm, w, "SELECT name, vip FROM hd_contact WHERE id = :c", c=c)) == [before]

@@ -1,7 +1,5 @@
 "use client";
 
-import { useState } from "react";
-
 import {
   ExtraCard,
   Muted,
@@ -13,6 +11,7 @@ import { DatePicker } from "@/components/ui/date-picker";
 import { Button, Input, Select } from "@/components/ui/primitives";
 import { useAddTask, useTasks, useUpdateTask } from "@/hooks/use-ticket-extras";
 import { useAgents } from "@/hooks/use-workspace";
+import { bind, bindSelect, fieldError, useFormik, yup } from "@/lib/forms";
 import { formatDateTime } from "@/lib/utils";
 
 const QUICK = [
@@ -23,33 +22,41 @@ const QUICK = [
   { v: "date", label: "Pick a date…" },
 ];
 
+const taskSchema = yup.object({
+  title: yup.string().trim().required("Enter a task").max(200, "Keep it under 200 characters"),
+  due: yup.string(),
+  date: yup.string().when("due", {
+    is: "date",
+    then: (s) => s.required("Pick a due date"),
+  }),
+  owner: yup.string(),
+});
+
 export function TasksCard({ ticketId, canEdit }: ExtraProps) {
   const q = useTasks(ticketId);
   const agents = useAgents();
   const add = useAddTask(ticketId);
   const update = useUpdateTask(ticketId);
-  const [title, setTitle] = useState("");
-  const [due, setDue] = useState("");
-  const [date, setDate] = useState("");
-  const [owner, setOwner] = useState("");
-
-  const submit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!title.trim()) return;
-    const dueVal =
-      due === "date" ? (date ? new Date(date).toISOString() : undefined) : due || undefined;
-    add.mutate(
-      { title: title.trim(), due: dueVal, owner_id: owner || undefined },
-      {
-        onSuccess: () => {
-          setTitle("");
-          setDue("");
-          setDate("");
+  const form = useFormik({
+    initialValues: { title: "", due: "", date: "", owner: "" },
+    validationSchema: taskSchema,
+    onSubmit: (v, { resetForm }) => {
+      const dueVal =
+        v.due === "date"
+          ? v.date
+            ? new Date(v.date).toISOString()
+            : undefined
+          : v.due || undefined;
+      add.mutate(
+        { title: v.title.trim(), due: dueVal, owner_id: v.owner || undefined },
+        {
+          onSuccess: () => resetForm({ values: { ...v, title: "", due: "", date: "" } }),
+          onError: toastError,
         },
-        onError: toastError,
-      },
-    );
-  };
+      );
+    },
+  });
+  const { title, due } = form.values;
 
   return (
     <ExtraCard title="Tasks">
@@ -85,27 +92,31 @@ export function TasksCard({ ticketId, canEdit }: ExtraProps) {
           <Muted>No tasks.</Muted>
         ))}
       {q.data && (
-        <form className="mt-3 space-y-2" onSubmit={submit}>
+        <form className="mt-3 space-y-2" onSubmit={form.handleSubmit} noValidate>
           <Input
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
+            {...bind(form, "title")}
             placeholder="Add a task"
             aria-label="Task"
             maxLength={200}
             disabled={!canEdit}
             className="h-9"
           />
+          {fieldError(form, "title") && (
+            <p role="alert" className="text-xs text-danger">
+              {fieldError(form, "title")}
+            </p>
+          )}
           {title && (
             <>
               <div className="grid grid-cols-2 gap-2">
-                <Select value={due} onChange={(e) => setDue(e.target.value)} aria-label="Due">
+                <Select {...bindSelect(form, "due")} aria-label="Due">
                   {QUICK.map((o) => (
                     <option key={o.v} value={o.v}>
                       {o.label}
                     </option>
                   ))}
                 </Select>
-                <Select value={owner} onChange={(e) => setOwner(e.target.value)} aria-label="Owner">
+                <Select {...bindSelect(form, "owner")} aria-label="Owner">
                   <option value="">Me</option>
                   {agents.data?.map((a) => (
                     <option key={a.member_id} value={a.member_id}>
@@ -115,13 +126,20 @@ export function TasksCard({ ticketId, canEdit }: ExtraProps) {
                 </Select>
               </div>
               {due === "date" && (
-                <DatePicker
-                  type="datetime-local"
-                  value={date}
-                  onChange={(v) => setDate(v)}
-                  aria-label="Due date"
-                  className="h-9"
-                />
+                <>
+                  <DatePicker
+                    type="datetime-local"
+                    value={form.values.date}
+                    onChange={(v) => void form.setFieldValue("date", v)}
+                    aria-label="Due date"
+                    className="h-9"
+                  />
+                  {fieldError(form, "date") && (
+                    <p role="alert" className="text-xs text-danger">
+                      {fieldError(form, "date")}
+                    </p>
+                  )}
+                </>
               )}
               <Button type="submit" size="sm" loading={add.isPending} disabled={!canEdit}>
                 Add task

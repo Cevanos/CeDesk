@@ -26,6 +26,7 @@ from cedesk.helpdesk.domain import contact_merge as rules
 from cedesk.helpdesk.domain.audit import Area
 from cedesk.helpdesk.domain.auth import Caller
 from cedesk.helpdesk.domain.permissions import Action
+from cedesk.helpdesk.repo import campaigns as campaign_repo
 from cedesk.helpdesk.repo import contacts as repo
 from cedesk.helpdesk.repo.contacts import Row
 from cedesk.helpdesk.service import audit, sla
@@ -136,6 +137,7 @@ async def merge(
             merged_by=caller.member_id,
             moved=moved,
         )
+        await campaign_repo.skip_merged(s, duplicate_id)
         await repo.delete_contact(s, duplicate_id)
         # Moved tickets now belong to the survivor, whose VIP flag picks their SLA policy.
         if moved["tickets"] or p.vip != survivor["vip"]:

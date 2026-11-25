@@ -1,10 +1,13 @@
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
+import { Inbox, UserCheck, Users } from "lucide-react";
 import Link from "next/link";
 import { useRef, useState } from "react";
 
 import { Badge, Card, EmptyState, Select, Skeleton } from "@/components/ui/primitives";
+import { SectionHeader } from "@/components/ui/section";
+import { DataTable, RowTh, TBody, Td, Th, THead, Tr } from "@/components/ui/table";
 import { LoadError } from "@/components/workspace/list-shared";
 import { GetCsvButton } from "@/components/workspace/report-csv";
 import { useReportFilters } from "@/components/workspace/reports-frame";
@@ -39,7 +42,16 @@ function Tile({
   tone?: "danger" | "warning";
 }) {
   return (
-    <Card className="p-4">
+    <Card className="relative overflow-hidden p-4 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-pop">
+      <span
+        aria-hidden
+        className={cn(
+          "absolute inset-y-0 left-0 w-1 rounded-r-full bg-border-strong",
+          value > 0 && tone === "danger" && "bg-danger",
+          value > 0 && tone === "warning" && "bg-warning",
+          value > 0 && !tone && "bg-primary",
+        )}
+      />
       <p className="text-[11px] font-medium tracking-wider text-subtle-foreground uppercase">
         {label}
       </p>
@@ -93,7 +105,7 @@ export function LiveTab() {
   const now = new Date();
 
   return (
-    <div className={cn("space-y-5 transition-opacity", q.isPlaceholderData && "opacity-60")}>
+    <div className={cn("space-y-10 transition-opacity", q.isPlaceholderData && "opacity-60")}>
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="flex flex-wrap items-end gap-3">
           <div className="w-40">
@@ -127,50 +139,42 @@ export function LiveTab() {
       </section>
 
       <section aria-label="Teams">
-        <h2 className="mb-2 text-base font-semibold">By team</h2>
-        <Card className="overflow-x-auto">
-          <table className="w-full min-w-[28rem] text-sm">
-            <thead>
-              <tr className="border-b border-border text-left text-xs text-muted-foreground">
-                <th scope="col" className="px-4 py-2.5 font-medium">
-                  Team
-                </th>
+        <SectionHeader icon={Users} title="By team" description="Live load per team." />
+        <Card>
+          <DataTable minWidth="28rem">
+            <THead>
+              <tr>
+                <Th>Team</Th>
                 {["Open", "Pending", "Snoozed", "Past SLA", "Due soon"].map((h) => (
-                  <th key={h} scope="col" className="px-4 py-2.5 text-right font-medium">
+                  <Th key={h} right>
                     {h}
-                  </th>
+                  </Th>
                 ))}
               </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
+            </THead>
+            <TBody>
               {d.teams.map((t) => (
-                <tr key={t.team_id ?? "none"} className="hover:bg-surface-2/60">
-                  <th scope="row" className="px-4 py-2.5 text-left font-medium">
-                    {t.name}
-                  </th>
-                  <td className="px-4 py-2.5 text-right tabular-nums">{t.open}</td>
-                  <td className="px-4 py-2.5 text-right tabular-nums">{t.pending}</td>
-                  <td className="px-4 py-2.5 text-right tabular-nums">{t.snoozed}</td>
-                  <td
-                    className={cn(
-                      "px-4 py-2.5 text-right tabular-nums",
-                      t.breached > 0 && "font-medium text-danger",
-                    )}
-                  >
+                <Tr key={t.team_id ?? "none"}>
+                  <RowTh className="py-2.5">{t.name}</RowTh>
+                  <Td right className="py-2.5">
+                    {t.open}
+                  </Td>
+                  <Td right className="py-2.5">
+                    {t.pending}
+                  </Td>
+                  <Td right className="py-2.5">
+                    {t.snoozed}
+                  </Td>
+                  <Td right className={cn("py-2.5", t.breached > 0 && "font-medium text-danger")}>
                     {t.breached}
-                  </td>
-                  <td
-                    className={cn(
-                      "px-4 py-2.5 text-right tabular-nums",
-                      t.at_risk > 0 && "font-medium text-warning",
-                    )}
-                  >
+                  </Td>
+                  <Td right className={cn("py-2.5", t.at_risk > 0 && "font-medium text-warning")}>
                     {t.at_risk}
-                  </td>
-                </tr>
+                  </Td>
+                </Tr>
               ))}
-            </tbody>
-          </table>
+            </TBody>
+          </DataTable>
         </Card>
       </section>
 
@@ -195,7 +199,7 @@ export function LiveTab() {
       </div>
 
       <section aria-label="Agents">
-        <h2 className="mb-2 text-base font-semibold">Agents</h2>
+        <SectionHeader icon={UserCheck} title="Agents" description="Who is available right now." />
         <div className="grid gap-3 sm:grid-cols-4">
           <Tile label="Available" value={d.agents.available} />
           <Tile label="On break" value={d.agents.on_break} />
@@ -226,8 +230,8 @@ function TicketList({
 }) {
   return (
     <section aria-label={title}>
-      <h2 className="mb-2 text-base font-semibold">{title}</h2>
-      <Card className="divide-y divide-border">
+      <SectionHeader icon={Inbox} title={title} />
+      <Card className="h-80 divide-y divide-border overflow-y-auto">
         {tickets.length === 0 ? (
           <EmptyState title={empty} />
         ) : (

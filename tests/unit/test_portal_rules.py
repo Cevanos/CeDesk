@@ -9,7 +9,7 @@ from cedesk.helpdesk.domain.portal import clean_name, contact_name
     ("email", "name"),
     [
         ("priya.shah@example.org", "Priya Shah"),
-        ("pranav.katariya@example.com", "Pranav Katariya"),
+        ("sam.rivera@example.com", "Sam Rivera"),
         ("ravi_k+orders@example.org", "Ravi K"),  # the +tag is not part of the name
         ("j-smith99@example.org", "J Smith99"),
         ("info@acme.com", "Info"),
@@ -19,8 +19,8 @@ from cedesk.helpdesk.domain.portal import clean_name, contact_name
     ],
 )
 def test_a_new_customer_is_named_from_their_email(email: str, name: str) -> None:
-    """Live: a portal reply said "Hi pranav.katariya"; {{customer.first_name}} is the
-    first word of this name, so it now says "Hi Pranav"."""
+    """Live: a portal reply said "Hi sam.rivera"; {{customer.first_name}} is the
+    first word of this name, so it now says "Hi Sam"."""
     assert contact_name(email) == name
 
 
