@@ -30,19 +30,19 @@ class DemoMember:
     channels: tuple[str, ...] = ("email", "chat", "messaging")
 
 
-ADMIN = DemoMember("ritesh", "Ritesh", Role.admin)
+ADMIN = DemoMember("alex", "Alex", Role.admin)
 MEMBERS = (
-    DemoMember("adarsh", "Adarsh Dubey", Role.supervisor, ("refunds",)),
-    DemoMember("neha", "Neha", Role.agent, ("hindi",)),
-    DemoMember("chetan", "Chetan", Role.agent, (), ("email", "chat")),
-    DemoMember("pranav", "Pranav", Role.agent, ("hindi",)),
-    DemoMember("anurag", "Anurag", Role.agent),
-    DemoMember("meena", "Meena", Role.light_agent),
+    DemoMember("sam", "Sam Rao", Role.supervisor, ("refunds",)),
+    DemoMember("jordan", "Jordan", Role.agent, ("hindi",)),
+    DemoMember("casey", "Casey", Role.agent, (), ("email", "chat")),
+    DemoMember("taylor", "Taylor", Role.agent, ("hindi",)),
+    DemoMember("morgan", "Morgan", Role.agent),
+    DemoMember("riley", "Riley", Role.light_agent),
 )
 TEAMS = {
-    "Billing": ("adarsh", "neha"),
-    "Shipping": ("pranav", "anurag"),
-    "Tech": ("chetan", "ritesh"),
+    "Billing": ("sam", "jordan"),
+    "Shipping": ("taylor", "morgan"),
+    "Tech": ("casey", "alex"),
 }
 
 
@@ -85,7 +85,7 @@ async def seed_demo(
         if m.role is not Role.light_agent:
             values["status"] = "available"
         await routing.set_routing(sm, admin, ids[m.key], values)
-    await routing.set_routing(sm, admin, ids["neha"], {"cap_chat": 4})
+    await routing.set_routing(sm, admin, ids["jordan"], {"cap_chat": 4})
 
     team_ids = {t["name"]: t["id"] for t in await catalog.list_teams(sm, admin)}
     for team_name, keys in TEAMS.items():
@@ -113,7 +113,7 @@ async def seed_demo(
         view = await tickets.create_ticket(sm, admin, new)
         return UUID(str(view.ticket["id"]))
 
-    # T-1001: a Cevanos AI handover; routing gives it to Adarsh (skill refunds).
+    # T-1001: a Cevanos AI handover; routing gives it to Sam (skill refunds).
     t1 = await ticket(
         NewTicket(
             subject="Refund for damaged T-shirt (order #1042)",
@@ -142,11 +142,11 @@ async def seed_demo(
     )
     await messages.post_message(
         sm,
-        await as_("neha"),
+        await as_("jordan"),
         t1,
         kind=MessageKind.note,
-        body="@Adarsh Dubey this is above my approval limit, can you approve?",
-        mention_ids=[ids["adarsh"]],
+        body="@Sam Rao this is above my approval limit, can you approve?",
+        mention_ids=[ids["sam"]],
     )
     # T-1002: an email to Billing.
     await ticket(
@@ -195,23 +195,23 @@ async def seed_demo(
             fields={"device": "iPhone", "app_version": "3.8.1", "error": "White screen after Pay"},
         )
     )
-    chetan = await as_("chetan")
-    await tickets.change_ticket(sm, admin, t4, {"assignee_id": str(ids["chetan"])})
+    casey = await as_("casey")
+    await tickets.change_ticket(sm, admin, t4, {"assignee_id": str(ids["casey"])})
     await messages.post_message(
         sm,
-        chetan,
+        casey,
         t4,
         kind=MessageKind.reply,
         body="Thanks {{customer.first_name}}. Which iPhone model and iOS version do you have?",
     )
     await messages.post_message(
         sm,
-        chetan,
+        casey,
         t4,
         kind=MessageKind.note,
         body="Card SDK 4.2 has a known issue on iOS 17.6. Checking with the dev team.",
     )
-    await tickets.change_ticket(sm, chetan, t4, {"status": Status.pending.value})
+    await tickets.change_ticket(sm, casey, t4, {"status": Status.pending.value})
     # T-1005: resolved.
     t5 = await ticket(
         NewTicket(
@@ -225,16 +225,16 @@ async def seed_demo(
             fields={"order_id": "#1019", "courier": "Ekart", "tracking": "FMPC0991"},
         )
     )
-    pranav = await as_("pranav")
-    await tickets.change_ticket(sm, admin, t5, {"assignee_id": str(ids["pranav"])})
+    taylor = await as_("taylor")
+    await tickets.change_ticket(sm, admin, t5, {"assignee_id": str(ids["taylor"])})
     await messages.post_message(
         sm,
-        pranav,
+        taylor,
         t5,
         kind=MessageKind.reply,
         body="Done, {{customer.first_name}}. The courier has the new address.",
     )
-    await tickets.resolve_ticket(sm, pranav, t5)
+    await tickets.resolve_ticket(sm, taylor, t5)
     # T-1006: unassigned, no team.
     await ticket(
         NewTicket(
@@ -246,9 +246,9 @@ async def seed_demo(
             type_id=type_ids["General"],
         )
     )
-    # As in the mock: Adarsh is on a break and Anurag is offline.
-    await routing.set_my_status(sm, await as_("adarsh"), AgentStatus.on_break)
-    await routing.set_my_status(sm, await as_("anurag"), AgentStatus.offline)
+    # As in the mock: Sam is on a break and Morgan is offline.
+    await routing.set_my_status(sm, await as_("sam"), AgentStatus.on_break)
+    await routing.set_my_status(sm, await as_("morgan"), AgentStatus.offline)
 
     for caller in callers.values():
         await auth.sign_out(sm, caller)

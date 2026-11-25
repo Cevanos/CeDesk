@@ -816,15 +816,71 @@ class Explained:
     """Test mode (plan 5.5): each condition and whether it matched, then what each action
     would say (None: it would change nothing)."""
 
-    conditions: list[tuple[dict[str, Any], bool]]
+    conditions: list[tuple[dict[str, Any], bool, str]]  # condition, matched, why
     matched: bool
     actions: list[tuple[dict[str, Any], str | None]]
     state: State
 
 
+def _name(value: object) -> str:
+    return str(getattr(value, "value", value))
+
+
+def _span(delta: timedelta) -> str:
+    minutes = max(0, int(delta.total_seconds() // 60))
+    if minutes < 60:
+        return f"{minutes} min"
+    if minutes < 2880:
+        return f"{minutes // 60} h"
+    return f"{minutes // 1440} days"
+
+
+def why(condition: Condition, facts: Facts, state: State) -> str:
+    """What the ticket actually has, in a few plain words, for test mode ("the ticket is
+    not snoozed"). Says the fact, not the verdict, so it reads right for a pass or a fail."""
+    if isinstance(condition, TextContainsAny):
+        hit = any(word in facts.text.lower() for word in condition.words)
+        return "the message has one of the words" if hit else "the message has none of the words"
+    if isinstance(condition, ChannelIn):
+        return f"the channel is {_name(facts.channel)}"
+    if isinstance(condition, ToAddressContains):
+        return f"the customer wrote to {facts.to_address or 'no address'}"
+    if isinstance(condition, StatusIn):
+        return f"the ticket is {_name(state.status)}"
+    if isinstance(condition, SlaIn):
+        return f"the SLA is {_name(facts.sla) if facts.sla is not None else 'not running'}"
+    if isinstance(condition, ContactFieldIs):
+        value = facts.attributes.get(condition.key)
+        shown = "empty" if value is None or value == "" else str(value)
+        return f"the customer's {condition.key} is {shown}"
+    if isinstance(condition, ContactVip):
+        return "the customer is VIP" if facts.contact_vip else "the customer is not VIP"
+    if isinstance(condition, ContactInSegment):
+        inside = bool(condition.segment_ids & facts.segments)
+        return "the customer is in those segments" if inside else "the customer is not in them"
+    if isinstance(condition, TimeSince):
+        last = (
+            facts.last_customer_at if condition.of is Since.customer_reply else facts.last_agent_at
+        )
+        last = last or facts.created_at
+        who = "customer" if condition.of is Since.customer_reply else "agent"
+        if last is None or facts.now is None:
+            return f"there is no {who} reply time to count from"
+        return f"{_span(facts.now - last)} since the last {who} reply"
+    if isinstance(condition, Snoozed):
+        return "the ticket is snoozed" if state.snoozed else "the ticket is not snoozed"
+    if isinstance(condition, HasFollowers):
+        return "the ticket has followers" if state.followers else "the ticket has no followers"
+    shown = _name(facts.sentiment) if facts.sentiment is not None else "unknown"
+    return f"the sentiment is {shown}"
+
+
 def explain(rule: Rule, facts: Facts, state: State, targets: Targets) -> Explained:
-    checks = [(stored_condition(c), matches(c, facts, state)) for c in rule.conditions]
-    ok = all(m for _, m in checks)
+    checks = [
+        (stored_condition(c), matches(c, facts, state), why(c, facts, state))
+        for c in rule.conditions
+    ]
+    ok = all(m for _, m, _ in checks)
     would: list[tuple[dict[str, Any], str | None]] = []
     if ok:
         for action in rule.actions:

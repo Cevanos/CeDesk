@@ -459,7 +459,7 @@ async def _handover(
         conversation_id=conversation_id,
         accepted=False,
         handover=handover,
-        source="cevanos",
+        source=rules.TICKET_SOURCE,
         source_id=conversation_id,
         history=_history(messages),
     )

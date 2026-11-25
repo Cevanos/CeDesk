@@ -20,11 +20,26 @@ def when(value: datetime | None) -> str | None:
     return value.astimezone(UTC).isoformat() if value else None
 
 
+def _receipt(r: Row) -> dict[str, Any]:
+    """A resolution receipt (differentiator plan #5) in the export."""
+    return {
+        "request": r["request"],
+        "action_taken": r["action_taken"],
+        "result": r["result"],
+        "verified": r["verified"],
+        "verified_at": when(r["verified_at"]),
+        "customer_notified": r["customer_notified"],
+        "pending_item": r["pending_item"],
+        "created_at": when(r["created_at"]),
+    }
+
+
 def export_tickets(
     tickets: Sequence[Row],
     messages: Sequence[Row],
     files: Sequence[Row],
     ratings: Sequence[Row],
+    receipts: Sequence[Row] = (),
 ) -> list[dict[str, Any]]:
     """Live tickets in the export's shape (also the retention export's, md O2)."""
     by_ticket: dict[UUID, list[dict[str, Any]]] = {t["id"]: [] for t in tickets}
@@ -44,6 +59,7 @@ def export_tickets(
             }
         )
     rating_of = {r["ticket_id"]: r for r in ratings}
+    receipt_of = {r["ticket_id"]: _receipt(r) for r in receipts}
     return [
         {
             "number": t["number"],
@@ -66,6 +82,7 @@ def export_tickets(
                 if t["id"] in rating_of
                 else None
             ),
+            "resolution": receipt_of.get(t["id"]),
         }
         for t in tickets
     ]

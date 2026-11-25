@@ -174,7 +174,11 @@ class AiReportOut(BaseModel):
     summary="The AI card: handover rate, AI-resolved, CSAT of AI answers (Cevanos)",
     description="Read live from Cevanos for the period (default: the last 30 days), for "
     "the whole workspace. Needs `reports`. " + _ONLY,
-    responses=_ERRORS | {422: {"description": "A bad period"}},
+    responses=_ERRORS
+    | {
+        403: {"description": "The role can't see reports (API keys can, like other reports)"},
+        422: {"description": "A bad period"},
+    },
 )
 async def ai_report(
     request: Request,

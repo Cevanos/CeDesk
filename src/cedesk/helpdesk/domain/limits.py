@@ -4,8 +4,8 @@ database.
 - Limits apply only on our cloud (`CEDESK_EDITION=cloud`) and only to a workspace that has
   been given a plan (`cedesk set-plan`). A self-hosted install, or a workspace with no
   plan, has no limits (md D2: we charge only for what we provide).
-- The plans' numbers come from config (`CEDESK_PLANS`, JSON); these are the proposal in md
-  D6 until Amol sets them: Free 3 agents, 1,000 tickets a month, 1 GB, 1 year of history;
+- The plans' numbers come from config (`CEDESK_PLANS`, JSON); these are the defaults until
+  an operator sets them: Free 3 agents, 1,000 tickets a month, 1 GB, 1 year of history;
   Growth 50 GB, 3 years; Enterprise no limits.
 - What counts: agents = active members who take tickets (light agents are free seats,
   md A2); tickets = made this calendar month (UTC), not imported; storage = the files'

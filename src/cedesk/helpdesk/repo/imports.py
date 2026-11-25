@@ -568,6 +568,26 @@ async def ticket_count(session: AsyncSession, source: str) -> int:
     return int(result.scalar_one())
 
 
+async def open_without_team(session: AsyncSession, source: str) -> int:
+    """Open or pending tickets imported from `source` that have no team (cutover check)."""
+    result = await session.execute(
+        text(
+            "SELECT count(*) FROM hd_ticket "
+            "WHERE source = :s AND status <> 'resolved' AND team_id IS NULL"
+        ),
+        {"s": source},
+    )
+    return int(result.scalar_one())
+
+
+async def verified_addresses(session: AsyncSession) -> int:
+    """Support addresses whose forwarding was verified (cutover check)."""
+    result = await session.execute(
+        text("SELECT count(*) FROM hd_email_address WHERE forwarding_verified_at IS NOT NULL")
+    )
+    return int(result.scalar_one())
+
+
 # Teams
 
 

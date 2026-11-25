@@ -265,10 +265,35 @@ def dns_ok(result: Mapping[str, Any] | None) -> bool:
     )
 
 
-def cap_problem(recipients: int, sent_today: int, limits: Limits) -> str | None:
-    """`sent_today`: sent in the last 24 hours plus still queued in other campaigns."""
+def _nobody_why(in_segment: int, not_mailable: int, suppressed: int) -> str:
+    """Why a segment with no recipients has none (the three counts are disjoint)."""
+    if in_segment == 0:
+        return "No one to send to: the segment has no customers."
+    parts = []
+    if not_mailable:
+        parts.append(f"{not_mailable} can't be emailed (placeholder or role addresses)")
+    if suppressed:
+        parts.append(f"{suppressed} are suppressed (unsubscribed or bounced)")
+    if not parts:  # counts that don't add up: still say something true
+        return f"No one to send to: none of the {in_segment} in the segment can be emailed."
+    return f"No one to send to: of the {in_segment} in the segment, " + " and ".join(parts) + "."
+
+
+def cap_problem(
+    recipients: int,
+    sent_today: int,
+    limits: Limits,
+    *,
+    in_segment: int | None = None,
+    not_mailable: int = 0,
+    suppressed: int = 0,
+) -> str | None:
+    """`sent_today`: sent in the last 24 hours plus still queued in other campaigns.
+    The keyword counts, when given, let the message say why nobody is left."""
     if recipients == 0:
-        return "No one to send to: the segment is empty once suppressed addresses are left out."
+        if in_segment is None:
+            return "No one to send to: nobody in the segment can be emailed."
+        return _nobody_why(in_segment, not_mailable, suppressed)
     if recipients > limits.max_recipients:
         return (
             f"This campaign would go to {recipients} people; the most is "

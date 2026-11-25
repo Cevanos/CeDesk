@@ -23,7 +23,7 @@ These are the notes for our own servers. For a customer hosting CeDesk themselve
    API (`/api/v1`). With `:80` (plain HTTP, a short test) also set `CEDESK_ALLOW_INSECURE_HTTP=1`.
 4. Start: `docker compose up -d --build`. It creates the database, runs the migrations,
    then starts the API, the worker, the web app and Caddy. Check: `curl http://<server>/readyz` gives `{"status":"ok",...}`.
-5. Demo workspace (Ritesh as Admin, the agents and tickets from the mock):
+5. Demo workspace (an Admin, the agents and tickets from the mock):
 
    ```sh
    docker compose exec api uv run --no-sync cedesk seed-demo
@@ -201,6 +201,41 @@ Supervisors of the ticket's team when a ticket's SLA runs out. Nothing to set.
 Then an Admin adds the support address (Settings › Email, or `POST /api/v1/email-addresses`)
 and uses "Send test" to check it arrives. For real sending the address's domain needs
 SPF and DKIM set up for the mail service, or emails land in spam.
+
+## Custom help-center domains
+
+Off by default. An Admin can point a domain they own (say `help.example.com`) at their help
+center: Settings registers it, shows a TXT record to publish, and "Check" proves control.
+Only a **verified** domain is served. Nothing here changes unless you turn it on.
+
+What it needs, because the pages are the frontend's, not the API's:
+
+1. **A key.** Set `CEDESK_TLS_ASK_KEY` (24+ random characters, `openssl rand -hex 24`) in
+   `deploy/.env`. With it empty the `tls-ask` route does not exist and no certificate is ever
+   requested. Optionally set `CEDESK_HELP_CNAME_TARGET`: the host name customers point their
+   domain at, shown to the Admin.
+2. **Caddy in front of the frontend, with on-demand TLS.** In `deploy/Caddyfile` there are two
+   commented-out blocks: the global `on_demand_tls` block (it has to be the first block of the
+   file, so it is at the top) and an `https://` site block at the bottom. Un-comment both, put
+   the same key in the `ask` URL, and set `CEDESK_FRONTEND_UPSTREAM` (for example
+   `web:3000`). Caddy then asks the API
+   `GET /api/v1/internal/tls-ask?domain=<host>&key=<key>` the first time a host connects, and
+   gets a certificate only when the API says 200: the domain is verified, one per workspace.
+3. **Block `/api/v1/internal/` at any public proxy.** The `ask` call is meant for the network
+   between Caddy and the API. The key is in the URL, so it can show in proxy access logs;
+   treat it as defence in depth, not the only barrier. (The staging server's nginx is set up
+   outside this repo: add `location /api/v1/internal/ { return 404; }` there.)
+4. **The frontend maps the host to a workspace.** It calls `GET /api/v1/public-hosts/<host>`
+   (server side, cached) to find the workspace slug, then serves `/<slug>/help/...`.
+
+DNS records the Admin adds: the TXT record shown on the domain screen (proves control), and a
+CNAME from the domain to your platform host. The worker re-reads every verified domain's TXT
+record daily and turns a domain back to pending after three failed daily checks in a row, so
+a domain the customer let go stops being served. (The Admin pressing Check never counts toward
+that.)
+
+Test it once on a real domain and a real server before telling customers: the API's own
+tests check the rules and the routes, not a certificate being issued.
 
 ## What the API refuses
 

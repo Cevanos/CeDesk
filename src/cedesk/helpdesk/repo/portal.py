@@ -20,7 +20,7 @@ async def allowed_domains(session: AsyncSession) -> list[str]:
 async def settings_row(session: AsyncSession) -> RowMapping | None:
     result = await session.execute(
         text(
-            "SELECT s.allowed_domains, s.csat_survey, s.web_form, s.updated_at, "
+            "SELECT s.allowed_domains, s.csat_survey, s.web_form, s.show_owner, s.updated_at, "
             "m.name AS updated_by_name "
             "FROM hd_portal_settings s LEFT JOIN member m ON m.id = s.updated_by"
         )
@@ -35,14 +35,16 @@ async def save_settings(
     csat_survey: bool,
     web_form: bool,
     member_id: UUID,
+    show_owner: bool = True,
 ) -> None:
     await session.execute(
         text(
             "INSERT INTO hd_portal_settings (workspace_id, allowed_domains, csat_survey, "
-            "web_form, updated_by) VALUES (:ws, :domains, :csat, :form, :by) "
+            "web_form, show_owner, updated_by) VALUES (:ws, :domains, :csat, :form, :owner, :by) "
             "ON CONFLICT (workspace_id) DO UPDATE SET "
             "allowed_domains = EXCLUDED.allowed_domains, csat_survey = EXCLUDED.csat_survey, "
-            "web_form = EXCLUDED.web_form, updated_by = EXCLUDED.updated_by, "
+            "web_form = EXCLUDED.web_form, show_owner = EXCLUDED.show_owner, "
+            "updated_by = EXCLUDED.updated_by, "
             "updated_at = now()"
         ),
         {
@@ -50,6 +52,7 @@ async def save_settings(
             "domains": domains,
             "csat": csat_survey,
             "form": web_form,
+            "owner": show_owner,
             "by": member_id,
         },
     )
@@ -229,8 +232,15 @@ _TICKET = (
     "ELSE t.fields END AS fields, t.created_at, "
     "t.updated_at, t.resolved_at, y.name AS type_name, "
     "(SELECT to_jsonb(r) FROM (SELECT score, comment, source, rated_at FROM hd_csat "
-    "WHERE ticket_id = t.id) r) AS csat "
+    "WHERE ticket_id = t.id) r) AS csat, "
+    # Where it stands (plan #9): worked out in domain.portal, these columns never go out.
+    "am.name AS assignee_name, tm.name AS team_name, rc.pending_item AS receipt_pending, "
+    "rc.result AS receipt_result, rc.verified AS receipt_verified, "
+    "COALESCE((SELECT show_owner FROM hd_portal_settings), true) AS show_owner "
     "FROM hd_ticket t LEFT JOIN hd_ticket_type y ON y.id = t.type_id "
+    "LEFT JOIN member am ON am.id = t.assignee_id "
+    "LEFT JOIN hd_team tm ON tm.id = t.team_id "
+    "LEFT JOIN hd_resolution rc ON rc.ticket_id = t.id AND rc.created_at >= t.resolved_at "
 )
 
 

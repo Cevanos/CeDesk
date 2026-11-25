@@ -123,3 +123,17 @@ async def test_the_rate_limit(client: AsyncClient, app_sessionmaker: Sm) -> None
              for _ in range(11)]  # fmt: skip
     assert codes[:10] == [202] * 10 and codes[10] == 429
     assert len(await outgoing(app_sessionmaker, w)) == 10
+
+
+async def test_refused_requests_use_none_of_the_limit(
+    client: AsyncClient, app_sessionmaker: Sm
+) -> None:
+    """The limit was spent before the checks, so refused tries (here a support address,
+    422) used it up: now only a transcript that goes out counts, as bulk changes."""
+    w = await setup(client, app_sessionmaker)
+    for _ in range(12):
+        r = await client.post(X(w["t"]), headers=w["neha"], json={"to": f"help@{w['slug']}.test"})
+        assert r.status_code == 422
+    codes = [(await client.post(X(w["t"]), headers=w["neha"], json={})).status_code
+             for _ in range(11)]  # fmt: skip
+    assert codes[:10] == [202] * 10 and codes[10] == 429

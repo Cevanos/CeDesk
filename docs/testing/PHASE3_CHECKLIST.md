@@ -1,6 +1,6 @@
 # CeDesk: the 42 checklist items, with the tests that prove them
 
-Item 9 of the Phase 3 list (End of Phase 3 check, step 1), and the list to show Amol in
+Item 9 of the Phase 3 list (End of Phase 3 check, step 1), and the list to show the product owner in
 item 10. The 42 items are the mock's test checklist (feature doc, section 11: 19 core,
 21 enterprise, plus 41 and 42). Each one works through the API, and the tests linked
 next to it prove it. The tests call the API with a real Postgres (row-level security
@@ -75,7 +75,7 @@ on), except the few unit tests marked *unit*.
 | # | Item | Status | Proved by | Notes |
 |---|---|---|---|---|
 | 41 | CeDesk's own channels (email, portal, web form, API) | Pass | [test_a_new_email_becomes_a_ticket](../../tests/db/test_email_in.py#L83), [test_a_customer_opens_a_ticket_like_any_other_channel](../../tests/db/test_portal_tickets.py#L73), [test_a_form_post_is_a_web_ticket_answered_by_email](../../tests/db/test_web_form.py#L84), [test_another_system_opens_a_ticket_for_its_customer](../../tests/db/test_api_keys.py#L223) | One test per channel |
-| 42 | Self-hosted CeDesk without Cevanos | **Partial** | [test_not_connected_changes_nothing](../../tests/db/test_cevanos.py#L758), [test_the_sidebar_reads_orders_and_payments](../../tests/db/test_apps.py#L161), [test_every_setting_in_env_example_reaches_a_container](../../tests/unit/test_deploy_files.py#L26) *unit* | Runs without Cevanos, with its own apps, from `docs/SELF_HOSTING.md` (edition `self_hosted`). `GET /me` says `ai: false`, so the frontend hides the AI buttons. Still to come: the licence headers (item 8, waits on Amol confirming AGPL) |
+| 42 | Self-hosted CeDesk without Cevanos | **Partial** | [test_not_connected_changes_nothing](../../tests/db/test_cevanos.py#L758), [test_the_sidebar_reads_orders_and_payments](../../tests/db/test_apps.py#L161), [test_every_setting_in_env_example_reaches_a_container](../../tests/unit/test_deploy_files.py#L26) *unit* | Runs without Cevanos, with its own apps, from `docs/SELF_HOSTING.md` (edition `self_hosted`). `GET /me` says `ai: false`, so the frontend hides the AI buttons. Still to come: the licence headers (item 8, waits on the licence being confirmed (AGPL)) |
 
 ---
 
@@ -93,7 +93,7 @@ on), except the few unit tests marked *unit*.
 
 | Step | What | Waits on |
 |---|---|---|
-| 1 | The open part of 42 (licence); 18, 28 and 39 against the real Cevanos | Item 8 (Amol); Cevanos deploying its `development` branch (the routes are merged there, PR #1040, 17 Nov) |
+| 1 | The open part of 42 (licence); 18, 28 and 39 against the real Cevanos | Item 8 (product owner); Cevanos deploying its `development` branch (the routes are merged there, PR #1040, 17 Nov) |
 | 3 | `uv run cx check --full`: **done** | This repo has no `cx` command. The same checks here are `uv run ruff check`, `uv run ruff format --check`, `uv run mypy`, `uv run lint-imports` and `CEDESK_REQUIRE_DB=1 uv run pytest`; all pass on `main` |
 | 4 | Load test: list, open ticket, reply and live updates under load | Can start now |
 | 5 | The AI routes in `docs/frontend/FRONTEND_HANDOFF_CEDESK.md` and `openapi.json` | Item 1 |

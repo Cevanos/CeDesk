@@ -555,3 +555,270 @@ async def test_0078_gives_the_archive_age_its_own_last_change(
     assert datetime.fromisoformat(kept["updated_at"]) == changed("retention")
     assert datetime.fromisoformat(age["updated_at"]) == changed("archive")
     assert kept["updated_by_name"] and age["updated_by_name"]
+
+
+async def test_0083_adds_help_center_languages_and_wont_go_down_while_translations_exist(
+    owner_engine: Any,
+) -> None:
+    """Dropping the translations would lose them: the downgrade refuses and changes nothing;
+    once they are gone it goes down and back up with row-level security forced."""
+    import asyncio
+
+    from sqlalchemy import text
+
+    cfg = alembic_config()
+    await empty_archive_async()
+    tables = ("hd_help_center_settings", "hd_article_translation")
+    async with owner_engine.begin() as conn:
+        for table in ("workspace", "hd_article", "hd_article_translation"):
+            await conn.execute(text(f"ALTER TABLE {table} NO FORCE ROW LEVEL SECURITY"))
+        ws = await conn.scalar(text("INSERT INTO workspace (name) VALUES ('P4') RETURNING id"))
+        article = await conn.scalar(
+            text("INSERT INTO hd_article (workspace_id, title) VALUES (:ws, 'A') RETURNING id"),
+            {"ws": ws},
+        )
+        await conn.execute(
+            text(
+                "INSERT INTO hd_article_translation (workspace_id, article_id, locale, title) "
+                "VALUES (:ws, :a, 'hi', 'ए')"
+            ),
+            {"ws": ws, "a": article},
+        )
+        for table in ("workspace", "hd_article", "hd_article_translation"):
+            await conn.execute(text(f"ALTER TABLE {table} FORCE ROW LEVEL SECURITY"))
+    with pytest.raises(RuntimeError, match="holds 1 translations"):
+        await asyncio.to_thread(command.downgrade, cfg, "0082")
+    async with owner_engine.connect() as conn:  # rolled back: still there, still forced
+        for table in tables:
+            forced = "SELECT relforcerowsecurity FROM pg_class WHERE relname = :t"
+            assert await conn.scalar(text(forced), {"t": table}) is True
+    await empty_archive_async()
+    await asyncio.to_thread(command.downgrade, cfg, "0082")
+    async with owner_engine.connect() as conn:
+        for table in tables:
+            assert await conn.scalar(text(f"SELECT to_regclass('{table}')")) is None
+        columns = (
+            "SELECT count(*) FROM information_schema.columns WHERE "
+            "(table_name = 'hd_article_category' AND column_name = 'name_translations') OR "
+            "(table_name = 'hd_article_vote' AND column_name = 'locale')"
+        )
+        assert await conn.scalar(text(columns)) == 0
+    await asyncio.to_thread(command.upgrade, cfg, "head")
+    async with owner_engine.connect() as conn:
+        for table in tables:
+            forced = "SELECT relforcerowsecurity FROM pg_class WHERE relname = :t"
+            assert await conn.scalar(text(forced), {"t": table}) is True
+        assert await conn.scalar(text(columns)) == 2
+
+
+async def test_0084_adds_help_center_seo_columns_and_goes_back_down(owner_engine: Any) -> None:
+    """Slug, meta text and canonical address on articles and translations (with checks that
+    keep them tidy), and the indexable switch, off by default."""
+    import asyncio
+
+    from sqlalchemy import text
+    from sqlalchemy.exc import IntegrityError
+
+    cfg = alembic_config()
+    columns = (
+        "SELECT count(*) FROM information_schema.columns WHERE column_name IN "
+        "('slug', 'meta_title', 'meta_description', 'canonical_url') "
+        "AND table_name IN ('hd_article', 'hd_article_translation')"
+    )
+    switch = (
+        "SELECT count(*) FROM information_schema.columns WHERE "
+        "table_name = 'hd_help_center_settings' AND column_name = 'seo_indexable'"
+    )
+    async with owner_engine.connect() as conn:
+        assert await conn.scalar(text(columns)) == 8
+        assert await conn.scalar(text(switch)) == 1
+    async with owner_engine.begin() as conn:
+        await conn.execute(text("ALTER TABLE workspace NO FORCE ROW LEVEL SECURITY"))
+        await conn.execute(text("ALTER TABLE hd_article NO FORCE ROW LEVEL SECURITY"))
+        ws = await conn.scalar(text("INSERT INTO workspace (name) VALUES ('P4S') RETURNING id"))
+        art = await conn.scalar(
+            text("INSERT INTO hd_article (workspace_id, title) VALUES (:ws, 'A') RETURNING id"),
+            {"ws": ws},
+        )
+    try:
+        for column, bad in (
+            ("slug", "Bad Slug"), ("slug", "ab"), ("slug", "double--hyphen"),
+            ("meta_title", ""), ("meta_description", "x" * 321),
+            ("canonical_url", "http://example.com/"), ("canonical_url", "https://exa mple.com/"),
+        ):  # fmt: skip
+            with pytest.raises(IntegrityError):
+                async with owner_engine.begin() as conn:
+                    await conn.execute(
+                        text(f"UPDATE hd_article SET {column} = :v WHERE id = :id"),  # noqa: S608
+                        {"v": bad, "id": art},
+                    )
+        async with owner_engine.begin() as conn:  # a good one is accepted
+            await conn.execute(
+                text("UPDATE hd_article SET slug = 'refund-policy' WHERE id = :id"), {"id": art}
+            )
+    finally:
+        async with owner_engine.begin() as conn:
+            await conn.execute(text("DELETE FROM hd_article WHERE id = :id"), {"id": art})
+            await conn.execute(text("DELETE FROM workspace WHERE id = :id"), {"id": ws})
+            await conn.execute(text("ALTER TABLE hd_article FORCE ROW LEVEL SECURITY"))
+            await conn.execute(text("ALTER TABLE workspace FORCE ROW LEVEL SECURITY"))
+    await asyncio.to_thread(command.downgrade, cfg, "0083")
+    async with owner_engine.connect() as conn:
+        assert await conn.scalar(text(columns)) == 0
+        assert await conn.scalar(text(switch)) == 0
+    await asyncio.to_thread(command.upgrade, cfg, "head")
+    async with owner_engine.connect() as conn:
+        assert await conn.scalar(text(columns)) == 8
+
+
+async def test_0085_adds_help_domains_and_a_trigger_keeps_the_directory_in_step(
+    owner_engine: Any,
+) -> None:
+    """One domain per workspace; only a verified one is in the global directory, which the app
+    role can read but not write; two workspaces can both hold a domain as pending, only one can
+    have it verified; going down drops both tables."""
+    import asyncio
+
+    from sqlalchemy import text
+    from sqlalchemy.exc import IntegrityError
+
+    cfg = alembic_config()
+    tables = ("hd_help_domain", "help_domain_directory")
+    async with owner_engine.connect() as conn:
+        forced = "SELECT relforcerowsecurity FROM pg_class WHERE relname = 'hd_help_domain'"
+        assert await conn.scalar(text(forced)) is True
+        for table, right, expected in (
+            ("help_domain_directory", "SELECT", True),
+            ("help_domain_directory", "INSERT", False),
+            ("help_domain_directory", "UPDATE", False),
+            ("help_domain_directory", "DELETE", False),
+            ("hd_help_domain", "INSERT", True),
+        ):
+            query = "SELECT has_table_privilege('cedesk_app', CAST(:t AS text), CAST(:r AS text))"
+            assert await conn.scalar(text(query), {"t": table, "r": right}) is expected
+    token = "t" * 24
+
+    async def directory(conn: Any) -> list[tuple[str, Any]]:
+        rows = await conn.execute(text("SELECT domain, workspace_id FROM help_domain_directory"))
+        return [(r[0], r[1]) for r in rows]
+
+    async with owner_engine.begin() as conn:
+        await conn.execute(text("TRUNCATE hd_help_domain, help_domain_directory"))
+        await conn.execute(text("ALTER TABLE workspace NO FORCE ROW LEVEL SECURITY"))
+        await conn.execute(text("ALTER TABLE hd_help_domain NO FORCE ROW LEVEL SECURITY"))
+        one = await conn.scalar(text("INSERT INTO workspace (name) VALUES ('P4a') RETURNING id"))
+        two = await conn.scalar(text("INSERT INTO workspace (name) VALUES ('P4b') RETURNING id"))
+    insert = (
+        "INSERT INTO hd_help_domain (workspace_id, domain, verify_token) "
+        "VALUES (:ws, 'help.example.com', :t)"
+    )
+    verify = (
+        "UPDATE hd_help_domain SET status = 'verified', verified_at = now() "
+        "WHERE workspace_id = :ws"
+    )
+    try:
+        async with owner_engine.begin() as conn:  # pending: not in the directory
+            await conn.execute(text(insert), {"ws": one, "t": token})
+            await conn.execute(text(insert), {"ws": two, "t": token + "2"})  # a second claim
+            assert await directory(conn) == []
+        async with owner_engine.begin() as conn:  # verified: in it
+            await conn.execute(text(verify), {"ws": one})
+            assert await directory(conn) == [("help.example.com", one)]
+        with pytest.raises(IntegrityError):  # the other cannot verify the same domain
+            async with owner_engine.begin() as conn:
+                await conn.execute(text(verify), {"ws": two})
+        async with owner_engine.begin() as conn:
+            assert await directory(conn) == [("help.example.com", one)]  # nothing changed
+            await conn.execute(  # a domain changed to another and pending: out of it
+                text("UPDATE hd_help_domain SET status = 'pending', verified_at = NULL "
+                     "WHERE workspace_id = :ws"), {"ws": one})  # fmt: skip
+            assert await directory(conn) == []
+            await conn.execute(text(verify), {"ws": two})  # now the other can have it
+            assert await directory(conn) == [("help.example.com", two)]
+            await conn.execute(text("DELETE FROM hd_help_domain WHERE workspace_id = :ws"),
+                               {"ws": two})  # fmt: skip
+            assert await directory(conn) == []
+        with pytest.raises(IntegrityError):  # status and verified_at must agree
+            async with owner_engine.begin() as conn:
+                await conn.execute(
+                    text("UPDATE hd_help_domain SET status = 'verified' WHERE workspace_id = :ws"),
+                    {"ws": one},
+                )
+        with pytest.raises(IntegrityError):  # one domain per workspace
+            async with owner_engine.begin() as conn:
+                await conn.execute(text(insert), {"ws": one, "t": token})
+    finally:
+        async with owner_engine.begin() as conn:
+            await conn.execute(text("DELETE FROM hd_help_domain"))
+            await conn.execute(text("DELETE FROM workspace WHERE id IN (:a, :b)"),
+                               {"a": one, "b": two})  # fmt: skip
+            await conn.execute(text("ALTER TABLE hd_help_domain FORCE ROW LEVEL SECURITY"))
+            await conn.execute(text("ALTER TABLE workspace FORCE ROW LEVEL SECURITY"))
+    await asyncio.to_thread(command.downgrade, cfg, "0084")
+    async with owner_engine.connect() as conn:
+        for table in tables:
+            assert await conn.scalar(text(f"SELECT to_regclass('{table}')")) is None
+    await asyncio.to_thread(command.upgrade, cfg, "head")
+    async with owner_engine.connect() as conn:
+        for table in tables:
+            assert await conn.scalar(text(f"SELECT to_regclass('{table}')")) is not None
+
+
+async def test_0086_ignores_accents_in_search_and_wont_go_down_with_a_three_part_code(
+    owner_engine: Any,
+) -> None:
+    """The search column folds accents; three-part language codes are accepted. Going down
+    refuses while one is stored (nothing changes), then goes down and back up."""
+    import asyncio
+
+    from sqlalchemy import text
+
+    cfg = alembic_config()
+    await empty_archive_async()
+    tables = ("workspace", "hd_article", "hd_article_translation")
+    async with owner_engine.begin() as conn:
+        for table in tables:
+            await conn.execute(text(f"ALTER TABLE {table} NO FORCE ROW LEVEL SECURITY"))
+        ws = await conn.scalar(text("INSERT INTO workspace (name) VALUES ('P4A') RETURNING id"))
+        article = await conn.scalar(
+            text(
+                "INSERT INTO hd_article (workspace_id, title) "
+                "VALUES (:ws, 'Café Münster') RETURNING id"
+            ),
+            {"ws": ws},
+        )
+        await conn.execute(
+            text(
+                "INSERT INTO hd_article_translation (workspace_id, article_id, locale, title) "
+                "VALUES (:ws, :a, 'zh-hant-tw', '退款')"
+            ),
+            {"ws": ws, "a": article},
+        )
+        for table in tables:
+            await conn.execute(text(f"ALTER TABLE {table} FORCE ROW LEVEL SECURITY"))
+    async with owner_engine.begin() as conn:
+        await conn.execute(text("ALTER TABLE hd_article NO FORCE ROW LEVEL SECURITY"))
+        for word in ("cafe", "munster", "CAFÉ"):
+            hit = await conn.scalar(
+                text(
+                    "SELECT count(*) FROM hd_article "
+                    "WHERE search @@ to_tsquery('simple', cedesk_unaccent(:q))"
+                ),
+                {"q": word},
+            )
+            assert hit == 1, word
+        await conn.execute(text("ALTER TABLE hd_article FORCE ROW LEVEL SECURITY"))
+    with pytest.raises(RuntimeError, match="three parts"):
+        await asyncio.to_thread(command.downgrade, cfg, "0085")
+    async with owner_engine.connect() as conn:  # rolled back: the function is still there
+        assert await conn.scalar(text("SELECT to_regproc('cedesk_unaccent')")) is not None
+    await empty_archive_async()
+    await asyncio.to_thread(command.downgrade, cfg, "0085")
+    async with owner_engine.connect() as conn:
+        assert await conn.scalar(text("SELECT to_regproc('cedesk_unaccent')")) is None
+    await asyncio.to_thread(command.upgrade, cfg, "head")
+    async with owner_engine.connect() as conn:
+        assert await conn.scalar(text("SELECT to_regproc('cedesk_unaccent')")) is not None
+        for table in ("hd_article", "hd_article_translation", "hd_help_center_settings"):
+            forced = "SELECT relforcerowsecurity FROM pg_class WHERE relname = :t"
+            assert await conn.scalar(text(forced), {"t": table}) is True

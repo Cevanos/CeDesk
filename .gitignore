@@ -17,3 +17,6 @@ htmlcov/
 deploy/backup.env
 # Emails written by CEDESK_MAIL_BACKEND=log on a developer's machine.
 mail-outbox/
+
+# Built help center (scripts/build_docs.py).
+/docs/_site/
