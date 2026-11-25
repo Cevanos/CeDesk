@@ -1,6 +1,6 @@
 "use client";
 
-import { LogOut, Pencil, Plus, Trash2 } from "lucide-react";
+import { CalendarClock, LogOut, Pencil, Plus, Trash2 } from "lucide-react";
 import { Fragment, useState } from "react";
 import { toast } from "sonner";
 
@@ -15,7 +15,9 @@ import {
   Select,
   Skeleton,
 } from "@/components/ui/primitives";
+import { SectionHeader } from "@/components/ui/section";
 import { Switch } from "@/components/ui/switch";
+import { DataTable, RowTh, TBody, Td, Th, THead, Tr } from "@/components/ui/table";
 import { LoadError } from "@/components/workspace/list-shared";
 import { useCurrentUser } from "@/hooks/use-auth";
 import { useMemberOptions } from "@/hooks/use-workspace";
@@ -30,6 +32,7 @@ import {
   type ScheduleInput,
 } from "@/hooks/workspace/reports-explore";
 import { ApiError } from "@/lib/api/client";
+import { bind, fieldError, useFormik, yup } from "@/lib/forms";
 import {
   DASH,
   RANGE_PRESETS,
@@ -61,14 +64,16 @@ export function SchedulesTab() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-sm text-muted-foreground">
-          Email a report to your team on a schedule. Each email has the numbers and a link here.
-        </p>
-        <Button size="sm" onClick={() => setEditing("new")}>
-          <Plus className="size-3.5" aria-hidden /> New schedule
-        </Button>
-      </div>
+      <SectionHeader
+        icon={CalendarClock}
+        title="Scheduled reports"
+        description="Email a report to your team on a schedule. Each email has the numbers and a link here."
+        aside={
+          <Button size="sm" onClick={() => setEditing("new")}>
+            <Plus className="size-3.5" aria-hidden /> New schedule
+          </Button>
+        }
+      />
 
       {list.length === 0 ? (
         <Card>
@@ -77,48 +82,33 @@ export function SchedulesTab() {
           </EmptyState>
         </Card>
       ) : (
-        <Card className="overflow-x-auto">
-          <table className="w-full min-w-[56rem] text-sm">
-            <thead>
-              <tr className="border-b border-border text-left text-xs text-muted-foreground">
+        <Card>
+          <DataTable minWidth="56rem">
+            <THead>
+              <tr>
                 {["Name", "Report", "When", "Recipients", "Next run", "Last sent", "Owner"].map(
                   (h) => (
-                    <th key={h} scope="col" className="px-3 py-2.5 font-medium">
-                      {h}
-                    </th>
+                    <Th key={h}>{h}</Th>
                   ),
                 )}
-                <th scope="col" className="px-3 py-2.5 font-medium">
-                  On
-                </th>
-                <th scope="col" className="px-3 py-2.5 text-right font-medium">
+                <Th>On</Th>
+                <Th right>
                   <span className="sr-only">Actions</span>
-                </th>
+                </Th>
               </tr>
-            </thead>
-            <tbody>
+            </THead>
+            <TBody className="divide-y-0">
               {list.map((s) => (
                 <Fragment key={s.id}>
-                  <tr
-                    className={cn(
-                      "hover:bg-surface-2/60",
-                      !s.last_error && "border-b border-border",
-                    )}
-                  >
-                    <th scope="row" className="px-3 py-3 text-left font-medium">
-                      {s.name}
-                    </th>
-                    <td className="px-3 py-3">{s.target.label}</td>
-                    <td className="px-3 py-3">{describeSchedule(s)}</td>
-                    <td className="px-3 py-3">
-                      {s.recipients.map((r) => r.name).join(", ") || DASH}
-                    </td>
-                    <td className="px-3 py-3 whitespace-nowrap">
-                      {s.enabled ? when(s.next_run_at) : DASH}
-                    </td>
-                    <td className="px-3 py-3 whitespace-nowrap">{when(s.last_sent_at)}</td>
-                    <td className="px-3 py-3">{s.owner_name ?? DASH}</td>
-                    <td className="px-3 py-3">
+                  <Tr className={cn(!s.last_error && "border-b border-border")}>
+                    <RowTh>{s.name}</RowTh>
+                    <Td>{s.target.label}</Td>
+                    <Td>{describeSchedule(s)}</Td>
+                    <Td>{s.recipients.map((r) => r.name).join(", ") || DASH}</Td>
+                    <Td className="whitespace-nowrap">{s.enabled ? when(s.next_run_at) : DASH}</Td>
+                    <Td className="whitespace-nowrap">{when(s.last_sent_at)}</Td>
+                    <Td>{s.owner_name ?? DASH}</Td>
+                    <Td>
                       <Switch
                         checked={s.enabled}
                         disabled={!s.can_edit || update.isPending}
@@ -129,8 +119,8 @@ export function SchedulesTab() {
                             .catch((e) => toast.error(msg(e)))
                         }
                       />
-                    </td>
-                    <td className="px-3 py-3">
+                    </Td>
+                    <Td>
                       <div className="flex justify-end gap-1">
                         {s.can_edit && (
                           <>
@@ -181,19 +171,19 @@ export function SchedulesTab() {
                           </Button>
                         )}
                       </div>
-                    </td>
-                  </tr>
+                    </Td>
+                  </Tr>
                   {s.last_error && (
-                    <tr className="border-b border-border">
-                      <td colSpan={9} className="px-3 pb-3 text-xs text-danger">
+                    <Tr className="border-b border-border">
+                      <Td colSpan={9} className="pt-0 pb-3 text-xs text-danger">
                         <span role="alert">{s.last_error}</span>
-                      </td>
-                    </tr>
+                      </Td>
+                    </Tr>
                   )}
                 </Fragment>
               ))}
-            </tbody>
-          </table>
+            </TBody>
+          </DataTable>
         </Card>
       )}
 
@@ -232,7 +222,18 @@ function ScheduleDialog({
       ? `r:${schedule.target.report_id}`
       : `p:${schedule.target.preset ?? ""}`
     : "";
-  const [name, setName] = useState(schedule?.name ?? "");
+  const form = useFormik({
+    initialValues: { name: schedule?.name ?? "" },
+    validationSchema: yup.object({
+      name: yup
+        .string()
+        .trim()
+        .min(1, "A schedule's name is 1-80 characters.")
+        .max(80, "A schedule's name is 1-80 characters.")
+        .required("A schedule's name is 1-80 characters."),
+    }),
+    onSubmit: (v) => save(v.name.trim()),
+  });
   const [target, setTarget] = useState(initialTarget);
   const [cadence, setCadence] = useState<Cadence>(schedule?.cadence ?? "weekly");
   const [range, setRange] = useState<RangePreset>(schedule?.range ?? "last_7d");
@@ -262,11 +263,7 @@ function ScheduleDialog({
     .filter((m) => m.is_active)
     .sort((a, b) => roleRank(a.role) - roleRank(b.role) || a.name.localeCompare(b.name));
 
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const trimmed = name.trim();
-    if (trimmed.length < 1 || trimmed.length > 80)
-      return setError("A schedule's name is 1-80 characters.");
+  const save = async (trimmed: string) => {
     if (!target) return setError("Pick a report.");
     if (recipients.length < 1 || recipients.length > MAX_RECIPIENTS)
       return setError("A schedule goes to 1 to 10 members.");
@@ -302,14 +299,9 @@ function ScheduleDialog({
       title={schedule ? "Edit schedule" : "New schedule"}
       className="sm:max-w-xl"
     >
-      <form onSubmit={submit} className="space-y-4">
-        <Field label="Name" htmlFor="sc-name">
-          <Input
-            id="sc-name"
-            maxLength={80}
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-          />
+      <form noValidate onSubmit={form.handleSubmit} className="space-y-4">
+        <Field label="Name" htmlFor="sc-name" error={fieldError(form, "name")}>
+          <Input id="sc-name" maxLength={80} {...bind(form, "name")} />
         </Field>
         <Field label="Report" htmlFor="sc-target">
           <Select

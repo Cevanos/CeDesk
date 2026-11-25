@@ -96,8 +96,9 @@ export function AiBadge({ source }: { source?: string | null }) {
     return <Badge tone="neutral">Imported · {name}</Badge>;
   }
   return (
-    <Badge tone="primary">
-      <Sparkles className="size-3" /> {source ? `AI · ${sourceLabel(source)}` : "AI"}
+    <Badge tone="neutral" className="ai-frame bg-transparent">
+      <Sparkles className="size-3 text-ai-via" aria-hidden />
+      <span className="text-ai-gradient">{source ? `AI · ${sourceLabel(source)}` : "AI"}</span>
     </Badge>
   );
 }

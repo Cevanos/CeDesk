@@ -63,6 +63,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from cedesk.crypto import CannotOpen, Sealer
 from cedesk.db import workspace_session
+from cedesk.helpdesk.domain import import_readiness as readiness
 from cedesk.helpdesk.domain import imports as rules
 from cedesk.helpdesk.domain import paging
 from cedesk.helpdesk.domain import saved_replies as reply_rules
@@ -691,6 +692,70 @@ def _estimate_warnings(
                 "already here are updated, none are copied twice."
             )
     return out
+
+
+# Before and after a migration (differentiator plan #4)
+
+
+async def pre_migration_report(
+    sm: Sessionmaker, importers: Importers, caller: Caller, connection_id: UUID
+) -> readiness.PreMigrationReport:
+    """What will import, what needs setting up in CeDesk, and what can't move, before any
+    import starts. Saves nothing. The source is asked for its counts and groups (outside
+    any transaction), like `discover`."""
+    require(caller, Action.settings)
+    ws = caller.workspace_id
+    async with workspace_session(sm, ws) as s:
+        row = await _connection(s, connection_id)
+    if row["state"] == "closed":
+        raise Conflict("This connection was closed. Connect again.")
+    connector = await _open(importers, ws, row)
+    found = await _asked(connector.discover())
+    groups = await _asked(connector.groups())
+    async with workspace_session(sm, ws) as s:
+        views = await _group_views(s, groups)
+    counts = {
+        "contacts": found.contacts, "tickets": found.tickets,
+        "articles": found.articles, "replies": found.replies,
+    }  # fmt: skip
+    unmatched = [v.name for v in views if v.suggested_team_id is None]
+    return readiness.pre_migration_report(
+        row["source"], counts, len(views), unmatched, _warnings(connector)
+    )
+
+
+@dataclass(frozen=True)
+class Cutover:
+    run_id: UUID
+    source: str
+    ready: bool
+    checks: list[readiness.Check]
+
+
+async def cutover(sm: Sessionmaker, caller: Caller, run_id: UUID) -> Cutover:
+    """The go-live checklist for a run: read from what CeDesk holds; the source isn't asked."""
+    require(caller, Action.settings)
+    async with workspace_session(sm, caller.workspace_id) as s:
+        row = await repo.run(s, run_id)
+        if row is None:
+            raise NotFound("No such run.")
+        without_team = await repo.open_without_team(s, row["source"])
+        addresses = await repo.verified_addresses(s)
+    report = run_report(row)
+    tickets = (row["counts"] or {}).get("tickets") or {}
+    facts = readiness.CutoverFacts(
+        source=row["source"],
+        state=row["state"],
+        sync_on=bool(row["sync_on"]),
+        last_sync_at=row["last_sync_at"],
+        open_failures=report["open_failures"],
+        missing=sum(int(r["difference"] or 0) for r in report["reconciliation"].values()),
+        unknown_agent_messages=int(tickets.get("unknown_agent_messages") or 0),
+        open_without_team=without_team,
+        verified_addresses=addresses,
+    )
+    checks = readiness.cutover_checks(facts, datetime.now(UTC))
+    return Cutover(run_id, row["source"], readiness.ready(checks), checks)
 
 
 # Start and read a run

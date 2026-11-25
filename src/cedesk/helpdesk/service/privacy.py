@@ -90,6 +90,7 @@ def build_export(
     fields: Sequence[RowMapping] = (),
     other_emails: Sequence[str] = (),
     merges: Sequence[RowMapping] = (),
+    receipts: Sequence[RowMapping] = (),
 ) -> dict[str, Any]:
     labels = {str(f["key"]): str(f["label"]) for f in fields}
     attributes = contact.get("attributes") or {}
@@ -134,7 +135,7 @@ def build_export(
             }
             for m in merges
         ],
-        "tickets": export_tickets(tickets, messages, files, ratings),
+        "tickets": export_tickets(tickets, messages, files, ratings, receipts),
     }
 
 
@@ -167,6 +168,7 @@ async def export(
             fields=await field_repo.all_fields(s),
             other_emails=await contact_repo.aliases(s, contact["id"]),
             merges=await contact_repo.merges_for_export(s, contact["id"]),
+            receipts=await repo.receipts_of(s, ids),
         )
         archived = await archive_repo.for_contact(s, contact["id"])
         data["tickets"] += [archived_export(a) for a in archived]  # md O3

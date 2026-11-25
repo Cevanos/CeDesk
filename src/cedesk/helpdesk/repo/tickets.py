@@ -343,6 +343,17 @@ async def snoozed_count(session: AsyncSession, visible_team: UUID | None = None)
     return int(result.scalar_one())
 
 
+async def contact_erased(session: AsyncSession, contact_id: UUID) -> bool | None:
+    """Whether the customer was erased; None when there is no such customer. Locks the
+    row, so an erase can't land between this check and a change."""
+    result = await session.execute(
+        text("SELECT erased_at IS NOT NULL FROM hd_contact WHERE id = :id FOR UPDATE"),
+        {"id": contact_id},
+    )
+    found = result.scalar_one_or_none()
+    return None if found is None else bool(found)
+
+
 async def get_contact(session: AsyncSession, contact_id: UUID) -> Row | None:
     result = await session.execute(
         text(

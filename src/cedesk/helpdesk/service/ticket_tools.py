@@ -481,6 +481,8 @@ async def change_task(
         task = await repo.get_task(s, task_id, lock=True)
         if task is None:
             raise NotFound("Task not found.")
+        # The same team scope as every other change on the ticket (md A3).
+        await scope.check(s, caller, task["ticket_id"], edit=True)
         mine = caller.member_id in (task["owner_id"], task["created_by"])
         if not mine and not caller.can(Action.assign_others):
             raise Forbidden("Only the task's owner or the person who added it can change it.")
@@ -603,6 +605,7 @@ async def delete_time(sm: Sessionmaker, caller: Caller, entry_id: UUID) -> None:
         entry = await repo.get_time(s, entry_id)
         if entry is None:
             raise NotFound("Time entry not found.")
+        await scope.check(s, caller, entry["ticket_id"], edit=True)  # as logging it (md A3)
         if entry["member_id"] != caller.member_id and not caller.can(Action.settings):
             raise Forbidden("You can remove only your own time entries.")
         await repo.delete_time(s, entry_id)

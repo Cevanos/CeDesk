@@ -95,21 +95,21 @@ async def test_sign_in_attempts_are_limited_per_address(app_sessionmaker: Sm) ->
 async def test_demo_workspace(client: AsyncClient, app_sessionmaker: Sm) -> None:
     slug = f"demo-{uuid4().hex[:8]}"
     accounts = await seed_demo(app_sessionmaker, slug=slug, name="Acme Store", password=PASSWORD)
-    assert accounts[0] == ("Ritesh", "ritesh@acme-store.in", "admin")
+    assert accounts[0] == ("Alex", "alex@acme-store.in", "admin")
     assert len(accounts) == 7
-    ritesh = await sign_in(client, slug, "ritesh@acme-store.in")
-    page = (await client.get("/api/v1/tickets", headers=bearer(ritesh))).json()
+    admin = await sign_in(client, slug, "alex@acme-store.in")
+    page = (await client.get("/api/v1/tickets", headers=bearer(admin))).json()
     by_subject = {t["subject"]: t for t in page["tickets"]}
     assert len(by_subject) == 6
-    rows = (await client.get("/api/v1/agents", headers=bearer(ritesh))).json()
+    rows = (await client.get("/api/v1/agents", headers=bearer(admin))).json()
     agents = {a["id"]: a for a in rows}
     refund = by_subject["Refund for damaged T-shirt (order #1042)"]
-    assert agents[refund["assignee_id"]]["name"] == "Adarsh Dubey"  # skill refunds
+    assert agents[refund["assignee_id"]]["name"] == "Sam Rao"  # skill refunds
     statuses = {a["name"]: a["status"] for a in agents.values()}
-    assert statuses["Adarsh Dubey"] == "on_break" and statuses["Anurag"] == "offline"
-    # Neha's @mention reached Adarsh.
-    adarsh = await sign_in(client, slug, "adarsh@acme-store.in")
-    inbox = (await client.get("/api/v1/notifications", headers=bearer(adarsh))).json()
+    assert statuses["Sam Rao"] == "on_break" and statuses["Morgan"] == "offline"
+    # Jordan's @mention reached Sam.
+    sam = await sign_in(client, slug, "sam@acme-store.in")
+    inbox = (await client.get("/api/v1/notifications", headers=bearer(sam))).json()
     assert any(n["kind"] == "mention" for n in inbox["notifications"])
     # Running it again for the same address fails cleanly.
     with pytest.raises(Exception, match="taken"):

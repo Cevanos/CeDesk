@@ -219,6 +219,34 @@ async def test_team_edit_views_other_tickets_read_only(
     assert ok(await client.get(f"{T}/{mine['id']}", headers=w["h"]))["can_edit"] is True
 
 
+async def test_tasks_and_time_on_another_teams_ticket_follow_the_scope(
+    client: AsyncClient, app_sessionmaker: Sm
+) -> None:
+    """Changing a task or removing a time entry is a change on its ticket: once the ticket
+    moved to a team the role only views (team_edit) or can't see (team_only), both are
+    refused, like adding them. They were allowed by id before."""
+    w = await desk(client, app_sessionmaker)
+    for scope, refused in (("team_edit", 403), ("team_only", 404)):
+        made = await role(client, w, name=f"Billing {scope}", reply=True, scope=scope,
+                          team_id=w["teams"]["Billing"])  # fmt: skip
+        ravi = await give(client, w, made["id"])
+        t = await ticket(client, w, f"Refund {scope}", "Billing")
+        task = ok(await client.post(f"{T}/{t['id']}/tasks", headers=ravi,
+                                    json={"text": "Call back"}), 201)  # fmt: skip
+        entry = ok(await client.post(f"{T}/{t['id']}/time", headers=ravi,
+                                     json={"minutes": 5}), 201)  # fmt: skip
+        ok(await client.patch(f"{T}/{t['id']}", headers=w["h"],
+                              json={"team_id": w["teams"]["Shipping"]}))  # fmt: skip
+        r = await client.patch(f"/api/v1/tasks/{task['id']}", headers=ravi, json={"done": True})
+        assert r.status_code == refused, scope
+        r = await client.delete(f"/api/v1/time/{entry['id']}", headers=ravi)
+        assert r.status_code == refused, scope
+        # Both are untouched, and the Admin (every team) still can.
+        ok(await client.patch(f"/api/v1/tasks/{task['id']}", headers=w["h"], json={"done": True}))
+        r = await client.delete(f"/api/v1/time/{entry['id']}", headers=w["h"])
+        assert r.status_code == 204
+
+
 async def test_a_role_without_reply_takes_no_tickets_and_changes_apply_at_once(
     client: AsyncClient, app_sessionmaker: Sm
 ) -> None:

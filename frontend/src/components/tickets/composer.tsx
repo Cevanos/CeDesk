@@ -1,11 +1,27 @@
 "use client";
 
-import { AtSign, Loader2, Lock, Maximize2, Minimize2, Paperclip, Send, X, Zap } from "lucide-react";
+import {
+  AlertTriangle,
+  AtSign,
+  Loader2,
+  Lock,
+  Maximize2,
+  Minimize2,
+  Paperclip,
+  Send,
+  X,
+  Zap,
+} from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { ComposerAi } from "@/components/tickets/ai-assist";
 import { formatBytes } from "@/components/tickets/message-files";
+import {
+  collided,
+  describeCollision,
+  type LatestMessage,
+} from "@/components/tickets/reply-collision";
 import { Badge, Button, Select } from "@/components/ui/primitives";
 import { useEscape } from "@/hooks/use-escape";
 import { useSendMessage, useUploadAttachment } from "@/hooks/use-tickets";
@@ -78,6 +94,9 @@ export function Composer({
   accepted = true,
   channel = null,
   replyCc = [],
+  latest = null,
+  myId,
+  onCheck,
 }: {
   ticketId: string;
   canReply: boolean;
@@ -86,6 +105,11 @@ export function Composer({
   channel?: string | null;
   /** Who the reply will copy, shown read-only above the text box. */
   replyCc?: string[];
+  /** Newest message on the ticket now, so the composer can warn when someone answers first. */
+  latest?: LatestMessage | null;
+  myId?: string;
+  /** Re-reads the ticket just before sending and returns its newest message. */
+  onCheck?: () => Promise<LatestMessage | null>;
 }) {
   const send = useSendMessage(ticketId);
   const upload = useUploadAttachment(ticketId);
@@ -173,9 +197,17 @@ export function Composer({
   // Files can't go on chat replies (422): switching to Reply with files attached blocks sending.
   const filesBlocked = kind === "reply" && isChat && files.length > 0;
 
-  const submit = () => {
+  // Reply collision: remember the newest message when typing began. If someone else answers
+  // before this is sent, hold the send and ask, so two agents don't both reply.
+  const [baseline, setBaseline] = useState<string | null>(null);
+  const [ackId, setAckId] = useState<string | null>(null);
+  const [found, setFound] = useState<LatestMessage | null>(null);
+  const [checking, setChecking] = useState(false);
+  const live = kind === "reply" && collided(baseline, latest, myId) ? latest : null;
+  const clash = [found, live].find((m) => m && m.id !== ackId) ?? null;
+
+  const doSend = () => {
     const text = body.trim();
-    if ((!text && files.length === 0) || uploading > 0 || filesBlocked) return;
     send.mutate(
       {
         kind,
@@ -188,6 +220,8 @@ export function Composer({
           setBody("");
           setFiles([]);
           setMentions([]);
+          setBaseline(null);
+          setFound(null);
           if (composerRef.current) composerRef.current.style.height = "auto";
           toast.success(kind === "reply" ? "Reply sent" : "Note added");
         },
@@ -195,7 +229,30 @@ export function Composer({
     );
   };
 
-  const people = (agents.data ?? []).filter((a) => !mentions.some((m) => m.id === a.member_id));
+  const submit = async () => {
+    const text = body.trim();
+    if ((!text && files.length === 0) || uploading > 0 || filesBlocked || checking) return;
+    if (kind === "reply" && baseline !== null) {
+      setChecking(true);
+      let fresh: LatestMessage | null | undefined = latest;
+      try {
+        fresh = onCheck ? await onCheck() : latest;
+      } catch {
+        // Offline check: fall back to what we already know and let the send report its own error.
+      } finally {
+        setChecking(false);
+      }
+      if (collided(baseline, fresh, myId) && fresh.id !== ackId) {
+        setFound(fresh);
+        return;
+      }
+    }
+    doSend();
+  };
+
+  const people = (agents.data ?? []).filter(
+    (a) => a.is_active !== false && !mentions.some((m) => m.id === a.member_id),
+  );
 
   const [full, setFull] = useState(false);
   useEscape(full, () => setFull(false));
@@ -270,6 +327,38 @@ export function Composer({
         <p className="px-2 pb-1.5 text-xs text-muted-foreground" data-testid="reply-cc">
           <span className="font-medium">Cc:</span> {replyCc.join(", ")}
         </p>
+      )}
+      {kind === "reply" && clash && (
+        <div
+          role="alert"
+          data-testid="reply-collision"
+          className="mx-1 mb-1.5 flex flex-wrap items-center gap-2 rounded-xl border border-warning/30 bg-warning-soft px-3 py-2 text-sm text-warning"
+        >
+          <AlertTriangle className="size-4 flex-none" aria-hidden />
+          <span className="min-w-0 flex-1">
+            {describeCollision(clash)} while you were writing. Check the thread before sending.
+          </span>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              setAckId(clash.id);
+              setFound(null);
+            }}
+          >
+            Keep editing
+          </Button>
+          <Button
+            size="sm"
+            onClick={() => {
+              setAckId(clash.id);
+              setFound(null);
+              doSend();
+            }}
+          >
+            Send anyway
+          </Button>
+        </div>
       )}
       {isNote && mentions.length > 0 && (
         <div className="flex flex-wrap gap-1.5 px-1 pb-1.5">
@@ -398,6 +487,10 @@ export function Composer({
           ref={composerRef}
           onChange={(e) => {
             setBody(e.target.value);
+            if (!e.target.value && files.length === 0) {
+              setBaseline(null);
+              setFound(null);
+            } else if (baseline === null) setBaseline(latest?.id ?? "");
             setCaret(e.target.selectionStart);
             setClosed(false);
             setHi(0);
@@ -426,7 +519,7 @@ export function Composer({
                 return setClosed(true);
               }
             }
-            if ((e.metaKey || e.ctrlKey) && e.key === "Enter") submit();
+            if ((e.metaKey || e.ctrlKey) && e.key === "Enter") void submit();
           }}
           role={kind === "reply" ? "combobox" : undefined}
           aria-autocomplete={kind === "reply" ? "list" : undefined}
@@ -448,8 +541,8 @@ export function Composer({
         <Button
           size="icon"
           className={cn("mb-0.5 size-9 rounded-full", full && "mt-auto")}
-          onClick={submit}
-          loading={send.isPending}
+          onClick={() => void submit()}
+          loading={send.isPending || checking}
           disabled={(!body.trim() && files.length === 0) || uploading > 0 || filesBlocked}
           aria-label={isNote ? "Add note" : "Send reply"}
         >

@@ -70,6 +70,12 @@ if [ -n "$db_file" ]; then
         "${compose[@]}" exec -T db psql -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -c "CREATE DATABASE $db_name"
     fi
+    # The reporting group (cedesk reporting-user, migration 0080) is a server-wide role a
+    # database backup grants to but doesn't hold: made here first, so a backup restores on
+    # a new server too. Reporting logins themselves are made again after a restore.
+    "${compose[@]}" exec -T db psql -U postgres -d postgres -v ON_ERROR_STOP=1 -q -c \
+        "DO \$\$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'cedesk_reporting')
+         THEN CREATE ROLE cedesk_reporting NOLOGIN; END IF; END \$\$"
     gunzip -c "$db_file" | "${compose[@]}" exec -T db psql -U postgres -d "$db_name" \
         -v ON_ERROR_STOP=1 -q
     echo "database restored into: $db_name"

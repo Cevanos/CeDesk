@@ -44,6 +44,8 @@ import {
   Problems,
   ReorderButtons,
 } from "@/components/workspace/list-shared";
+import { ReplayDialog } from "@/components/workspace/replay-dialog";
+import { useContactFields } from "@/hooks/use-contacts";
 import {
   callsWebhook,
   useAutomationAccess,
@@ -53,6 +55,7 @@ import {
   useSaveRule,
 } from "@/hooks/use-workspace";
 import type { Rule, RuleEvent } from "@/lib/api/types";
+import { bind, fieldError, useFormik } from "@/lib/forms";
 
 export const EVENT_LABEL: Record<RuleEvent, string> = {
   created: "When a ticket is created",
@@ -70,6 +73,7 @@ const DEFAULT_PER_DAY = 10000;
 export const WEBHOOK_LOCKED = "Only an Admin can change this (it calls a webhook)";
 
 export function RulesView() {
+  const contactFields = useContactFields().data;
   const rules = useRules();
   const del = useDeleteRule();
   const reorder = useReorderRules();
@@ -78,6 +82,7 @@ export function RulesView() {
   const { ask, dialog } = useConfirm();
   const [editing, setEditing] = useState<Rule | "new" | null>(null);
   const [testing, setTesting] = useState<Rule | null>(null);
+  const [replaying, setReplaying] = useState<Rule | null>(null);
 
   const move = (i: number, dir: -1 | 1) => {
     const ids = movedIds(
@@ -141,7 +146,9 @@ export function RulesView() {
                       <div className="text-xs text-muted-foreground">
                         {EVENT_LABEL[r.event] ?? r.event} ·{" "}
                         {r.conditions
-                          .map((c) => summarize(c as Item, AUTOMATION_CONDITION_KINDS))
+                          .map((c) =>
+                            summarize(c as Item, AUTOMATION_CONDITION_KINDS, contactFields),
+                          )
                           .join(" and ")}{" "}
                         →{" "}
                         {r.actions
@@ -215,6 +222,14 @@ export function RulesView() {
                           >
                             <FlaskConical className="size-4" aria-hidden /> Test on a ticket
                           </MenuItem>
+                          <MenuItem
+                            onClick={() => {
+                              close();
+                              setReplaying(r);
+                            }}
+                          >
+                            <History className="size-4" aria-hidden /> Replay on past tickets
+                          </MenuItem>
                           <Link
                             role="menuitem"
                             href={`/settings/automation/log?rule_id=${r.id}`}
@@ -258,79 +273,101 @@ export function RulesView() {
           ruleId={testing.id}
         />
       )}
+      {replaying && (
+        <ReplayDialog
+          title={replaying.name}
+          target={{ kind: "rule", ruleId: replaying.id }}
+          onClose={() => setReplaying(null)}
+        />
+      )}
     </div>
   );
 }
 
+const limit = (text: string, min: number, max: number): number | undefined | "bad" => {
+  if (text.trim() === "") return undefined;
+  const n = Number(text);
+  return Number.isInteger(n) && n >= min && n <= max ? n : "bad";
+};
+
 function RuleForm({ rule, onClose }: { rule: Rule | null; onClose: () => void }) {
   const save = useSaveRule();
   const access = useAutomationAccess();
-  const [name, setName] = useState(rule?.name ?? "");
-  const [event, setEvent] = useState<RuleEvent>(rule?.event ?? "created");
-  const [enabled, setEnabled] = useState(rule?.enabled ?? true);
-  const [conditions, setConditions] = useState<Item[]>(
-    (rule?.conditions as Item[] | undefined) ?? [],
-  );
-  const [actions, setActions] = useState<Item[]>((rule?.actions as Item[] | undefined) ?? []);
-  const [perHour, setPerHour] = useState(rule?.max_runs_per_hour?.toString() ?? "");
-  const [perDay, setPerDay] = useState(rule?.max_runs_per_day?.toString() ?? "");
-  const [errs, setErrs] = useState<Record<string, string>>({});
+  const [srv, setSrv] = useState<Record<string, string>>({});
   const [testOpen, setTestOpen] = useState(false);
+  const [replayOpen, setReplayOpen] = useState(false);
+
+  const form = useFormik({
+    initialValues: {
+      name: rule?.name ?? "",
+      event: (rule?.event ?? "created") as RuleEvent,
+      enabled: rule?.enabled ?? true,
+      conditions: ((rule?.conditions as Item[] | undefined) ?? []) as Item[],
+      actions: ((rule?.actions as Item[] | undefined) ?? []) as Item[],
+      max_runs_per_hour: rule?.max_runs_per_hour?.toString() ?? "",
+      max_runs_per_day: rule?.max_runs_per_day?.toString() ?? "",
+    },
+    validate: (v) => {
+      const next: Record<string, string> = {};
+      if (!v.name.trim()) next.name = "Enter a name";
+      if (v.conditions.length === 0) next.conditions = "Add at least one condition";
+      if (v.actions.length === 0) next.actions = "Add at least one action";
+      const hour = limit(v.max_runs_per_hour, 1, 100_000);
+      const day = limit(v.max_runs_per_day, 1, 1_000_000);
+      if (hour === "bad") next.max_runs_per_hour = "Use a whole number from 1 to 100000";
+      if (day === "bad") next.max_runs_per_day = "Use a whole number from 1 to 1000000";
+      if (
+        typeof hour !== "string" &&
+        typeof day !== "string" &&
+        (day ?? DEFAULT_PER_DAY) < (hour ?? DEFAULT_PER_HOUR)
+      ) {
+        next.max_runs_per_day = "The daily limit can't be lower than the hourly one";
+      }
+      return next;
+    },
+    onSubmit: (v) => {
+      if (readOnly) return;
+      setSrv({});
+      const hour = limit(v.max_runs_per_hour, 1, 100_000);
+      const day = limit(v.max_runs_per_day, 1, 1_000_000);
+      save.mutate(
+        {
+          id: rule?.id,
+          name: v.name.trim(),
+          event: v.event,
+          enabled: v.enabled,
+          conditions: v.conditions,
+          actions: v.actions,
+          ...(typeof hour === "number" ? { max_runs_per_hour: hour } : {}),
+          ...(typeof day === "number" ? { max_runs_per_day: day } : {}),
+        },
+        {
+          onSuccess: () => {
+            toast.success("Rule saved");
+            onClose();
+          },
+          onError: (err) => setSrv(fieldErrors(err)),
+        },
+      );
+    },
+  });
+  const { name, event, enabled, conditions, actions } = form.values;
+  const perHour = form.values.max_runs_per_hour;
+  const perDay = form.values.max_runs_per_day;
+  const setConditions = (next: Item[] | ((cs: Item[]) => Item[])) =>
+    form.setFieldValue(
+      "conditions",
+      typeof next === "function" ? next(form.values.conditions) : next,
+    );
+  const setActions = (next: Item[] | ((cs: Item[]) => Item[])) =>
+    form.setFieldValue("actions", typeof next === "function" ? next(form.values.actions) : next);
+  const errs = (k: string) => fieldError(form, k) ?? srv[k];
 
   // Someone without `manage_access` may look at a webhook rule but not change it.
   const readOnly = callsWebhook(actions) && !access.manageAccess;
 
-  const limit = (text: string, min: number, max: number): number | undefined | "bad" => {
-    if (text.trim() === "") return undefined;
-    const n = Number(text);
-    return Number.isInteger(n) && n >= min && n <= max ? n : "bad";
-  };
-
   return (
-    <form
-      noValidate
-      className="space-y-4"
-      onSubmit={(e) => {
-        e.preventDefault();
-        if (readOnly) return;
-        const next: Record<string, string> = {};
-        if (!name.trim()) next.name = "Enter a name";
-        if (conditions.length === 0) next.conditions = "Add at least one condition";
-        if (actions.length === 0) next.actions = "Add at least one action";
-        const hour = limit(perHour, 1, 100_000);
-        const day = limit(perDay, 1, 1_000_000);
-        if (hour === "bad") next.max_runs_per_hour = "Use a whole number from 1 to 100000";
-        if (day === "bad") next.max_runs_per_day = "Use a whole number from 1 to 1000000";
-        if (
-          typeof hour !== "string" &&
-          typeof day !== "string" &&
-          (day ?? DEFAULT_PER_DAY) < (hour ?? DEFAULT_PER_HOUR)
-        ) {
-          next.max_runs_per_day = "The daily limit can't be lower than the hourly one";
-        }
-        setErrs(next);
-        if (Object.keys(next).length) return;
-        save.mutate(
-          {
-            id: rule?.id,
-            name: name.trim(),
-            event,
-            enabled,
-            conditions,
-            actions,
-            ...(typeof hour === "number" ? { max_runs_per_hour: hour } : {}),
-            ...(typeof day === "number" ? { max_runs_per_day: day } : {}),
-          },
-          {
-            onSuccess: () => {
-              toast.success("Rule saved");
-              onClose();
-            },
-            onError: (err) => setErrs(fieldErrors(err)),
-          },
-        );
-      }}
-    >
+    <form noValidate className="space-y-4" onSubmit={form.handleSubmit}>
       {readOnly && (
         <p
           role="note"
@@ -340,22 +377,17 @@ function RuleForm({ rule, onClose }: { rule: Rule | null; onClose: () => void })
         </p>
       )}
       <div inert={readOnly} className="space-y-4">
-        <Field label="Name" htmlFor="r-name" error={errs.name}>
-          <Input
-            id="r-name"
-            value={name}
-            maxLength={80}
-            onChange={(e) => setName(e.target.value)}
-          />
+        <Field label="Name" htmlFor="r-name" error={errs("name")}>
+          <Input id="r-name" maxLength={80} {...bind(form, "name")} />
         </Field>
-        <Field label="When" htmlFor="r-event" error={errs.event}>
+        <Field label="When" htmlFor="r-event" error={errs("event")}>
           <Select
             id="r-event"
             value={event}
             options={EVENT_OPTIONS}
             onChange={(e) => {
               const next = e.target.value as RuleEvent;
-              setEvent(next);
+              form.setFieldValue("event", next);
               // "SLA is …" makes no sense on a brand new ticket, so drop it.
               if (next === "created" && conditions.some((c) => c.kind === "sla_in")) {
                 setConditions((cs) => cs.filter((c) => c.kind !== "sla_in"));
@@ -377,9 +409,9 @@ function RuleForm({ rule, onClose }: { rule: Rule | null; onClose: () => void })
           items={conditions}
           onChange={setConditions}
         />
-        {errs.conditions && (
+        {errs("conditions") && (
           <p role="alert" className="text-xs text-danger">
-            {errs.conditions}
+            {errs("conditions")}
           </p>
         )}
         <ItemBuilder
@@ -389,9 +421,9 @@ function RuleForm({ rule, onClose }: { rule: Rule | null; onClose: () => void })
           items={actions}
           onChange={setActions}
         />
-        {errs.actions && (
+        {errs("actions") && (
           <p role="alert" className="text-xs text-danger">
-            {errs.actions}
+            {errs("actions")}
           </p>
         )}
         <details className="rounded-lg border border-border px-3 py-2">
@@ -407,7 +439,7 @@ function RuleForm({ rule, onClose }: { rule: Rule | null; onClose: () => void })
               <Field
                 label="At most … runs an hour"
                 htmlFor="r-hour"
-                error={errs.max_runs_per_hour}
+                error={errs("max_runs_per_hour")}
                 hint={`Default ${DEFAULT_PER_HOUR}`}
               >
                 <Input
@@ -417,13 +449,14 @@ function RuleForm({ rule, onClose }: { rule: Rule | null; onClose: () => void })
                   max={100000}
                   value={perHour}
                   placeholder={String(DEFAULT_PER_HOUR)}
-                  onChange={(e) => setPerHour(e.target.value)}
+                  onChange={form.handleChange}
+                  name="max_runs_per_hour"
                 />
               </Field>
               <Field
                 label="… runs a day"
                 htmlFor="r-day"
-                error={errs.max_runs_per_day}
+                error={errs("max_runs_per_day")}
                 hint={`Default ${DEFAULT_PER_DAY}. Not lower than the hourly limit.`}
               >
                 <Input
@@ -433,7 +466,8 @@ function RuleForm({ rule, onClose }: { rule: Rule | null; onClose: () => void })
                   max={1000000}
                   value={perDay}
                   placeholder={String(DEFAULT_PER_DAY)}
-                  onChange={(e) => setPerDay(e.target.value)}
+                  onChange={form.handleChange}
+                  name="max_runs_per_day"
                 />
               </Field>
             </div>
@@ -443,17 +477,25 @@ function RuleForm({ rule, onClose }: { rule: Rule | null; onClose: () => void })
           <input
             type="checkbox"
             className="size-4 accent-[var(--primary)]"
+            name="enabled"
             checked={enabled}
-            onChange={(e) => setEnabled(e.target.checked)}
+            onChange={form.handleChange}
           />
           Enabled
         </label>
       </div>
-      <FormError message={errs._form} />
+      <FormError message={srv._form} />
       <div className="flex flex-wrap justify-between gap-2">
-        <Button variant="outline" onClick={() => setTestOpen(true)}>
-          <FlaskConical className="size-4" /> Test on a ticket
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" onClick={() => setTestOpen(true)}>
+            <FlaskConical className="size-4" /> Test on a ticket
+          </Button>
+          {access.settings && (
+            <Button variant="outline" onClick={() => setReplayOpen(true)}>
+              <History className="size-4" /> Replay on past tickets
+            </Button>
+          )}
+        </div>
         <div className="flex gap-2">
           <Button variant="ghost" onClick={onClose}>
             {readOnly ? "Close" : "Cancel"}
@@ -465,6 +507,16 @@ function RuleForm({ rule, onClose }: { rule: Rule | null; onClose: () => void })
           )}
         </div>
       </div>
+      {replayOpen && (
+        <ReplayDialog
+          title={name.trim() || "Draft rule"}
+          target={{
+            kind: "draft",
+            draft: { name: name.trim() || "Draft", event, conditions, actions },
+          }}
+          onClose={() => setReplayOpen(false)}
+        />
+      )}
       {testOpen && (
         <RuleTestDrawer
           open

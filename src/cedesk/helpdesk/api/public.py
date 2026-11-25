@@ -6,8 +6,8 @@ from datetime import datetime
 from typing import Annotated, Any
 from uuid import UUID
 
-from fastapi import APIRouter, Query, status
-from pydantic import BaseModel, Field, StringConstraints
+from fastapi import APIRouter, Query, Response, status
+from pydantic import BaseModel, Field, StringConstraints, computed_field
 
 from cedesk.helpdesk.api.deps import FormLimit, PublicLimit, SessionmakerDep, VoteLimit
 from cedesk.helpdesk.api.schemas import Body
@@ -112,17 +112,49 @@ class PublicArticleRow(BaseModel):
     category_id: UUID | None
     category_name: str | None
     updated_at: datetime
+    locale: str = Field(description="The language this row is in.")
+    slug: str | None = Field(description="Cosmetic: the page is `/help/<id>/<slug>`.")
 
 
 class HelpCenterOut(BaseModel):
     workspace_name: str
+    indexable: bool = Field(
+        description="True when an Admin allowed search engines to index the help center. "
+        "Otherwise serve `noindex`."
+    )
+    default_locale: str = Field(description="The language the articles are written in.")
+    locale: str = Field(description="The language asked for (the default one when none was).")
     categories: list[PublicCategoryOut] = Field(description="Only ones with articles.")
     articles: list[PublicArticleRow] = Field(description="Newest first; with `q`, best first.")
     next_cursor: str | None = Field(description="null with `q` (the best 20 only).")
 
 
+class Alternate(BaseModel):
+    locale: str
+    slug: str | None
+
+
 class PublicArticleOut(PublicArticleRow):
     body: str = Field(description="Markdown. Render it without raw HTML.")
+    meta_title: str | None = Field(description="For the title tag; fall back to `title`.")
+    meta_description: str | None
+    canonical_url: str | None = Field(
+        description="An override for this language's page only; null means this page is "
+        "its own canonical address."
+    )
+    alternates: list[Alternate] = Field(
+        description="Every language the article is published in, this one included: the "
+        "`hreflang` links."
+    )
+    default_locale: str
+    fallback: bool = Field(
+        description="True when a language was asked for and the article is shown in another."
+    )
+
+    @computed_field(description="Every language it is published in, for a language switcher.")  # type: ignore[prop-decorator]
+    @property
+    def available_locales(self) -> list[str]:
+        return [a.locale for a in self.alternates]
 
 
 class VoteIn(Body):
@@ -131,9 +163,16 @@ class VoteIn(Body):
         description="A random id the page keeps for this browser (e.g. a UUID in "
         "localStorage). One vote per visitor per article; voting again changes it."
     )
+    locale: Annotated[str | None, StringConstraints(max_length=11)] = Field(
+        default=None, description="The language of the page voted on."
+    )
 
 
 _NO_CENTER: dict[int | str, dict[str, Any]] = {404: {"description": "Unknown workspace"}}
+LOCALE_HELP = (
+    "A language code such as `hi` or `pt-br`. Each article is shown in that language when it "
+    "has a published translation, else in the base language (`pt`), else in the default one."
+)
 
 
 @router.get(
@@ -150,12 +189,16 @@ async def help_center(
     category_id: UUID | None = None,
     cursor: Annotated[str | None, Query(max_length=200)] = None,
     limit: Annotated[int, Query(ge=1, le=MAX_LIMIT)] = DEFAULT_LIMIT,
+    locale: Annotated[str | None, Query(max_length=11, description=LOCALE_HELP)] = None,
 ) -> HelpCenterOut:
     found = await articles.help_center(
-        sm, workspace, q=q, category_id=category_id, cursor=cursor, limit=limit
+        sm, workspace, q=q, category_id=category_id, cursor=cursor, limit=limit, locale=locale
     )
     return HelpCenterOut(
         workspace_name=found.workspace_name,
+        indexable=found.indexable,
+        default_locale=found.default_locale,
+        locale=found.locale,
         categories=[PublicCategoryOut.model_validate(dict(c)) for c in found.categories],
         articles=[PublicArticleRow.model_validate(dict(a)) for a in found.page.articles],
         next_cursor=found.page.next_cursor,
@@ -172,9 +215,16 @@ async def help_center(
     },
     dependencies=[PublicLimit],
 )
-async def public_article(workspace: str, article_id: UUID, sm: SessionmakerDep) -> PublicArticleOut:
-    row = await articles.public_article(sm, workspace, article_id)
-    return PublicArticleOut.model_validate(dict(row))
+async def public_article(
+    workspace: str,
+    article_id: UUID,
+    sm: SessionmakerDep,
+    locale: Annotated[str | None, Query(max_length=11, description=LOCALE_HELP)] = None,
+) -> PublicArticleOut:
+    found = await articles.public_article(sm, workspace, article_id, locale=locale)
+    return PublicArticleOut.model_validate(
+        {**dict(found.row), "default_locale": found.default_locale, "fallback": found.fallback}
+    )
 
 
 @router.post(
@@ -185,4 +235,39 @@ async def public_article(workspace: str, article_id: UUID, sm: SessionmakerDep) 
     dependencies=[VoteLimit],
 )
 async def vote(workspace: str, article_id: UUID, body: VoteIn, sm: SessionmakerDep) -> None:
-    await articles.vote(sm, workspace, article_id, helpful=body.helpful, visitor=body.visitor)
+    await articles.vote(
+        sm, workspace, article_id, helpful=body.helpful, visitor=body.visitor, locale=body.locale
+    )
+
+
+class SitemapEntryOut(BaseModel):
+    id: UUID
+    locale: str
+    slug: str | None
+    updated_at: datetime
+    alternates: list[Alternate]
+
+
+class SitemapOut(BaseModel):
+    indexable: bool = Field(description="False: the list is empty on purpose.")
+    entries: list[SitemapEntryOut] = Field(description="One per published article and language.")
+    truncated: bool = Field(description="More than 10,000 articles: only the first are listed.")
+
+
+@router.get(
+    "/public/{workspace}/sitemap",
+    response_model=SitemapOut,
+    summary="The help center's pages for a sitemap.xml (no sign-in)",
+    description="Empty until an Admin makes the help center indexable. Cached for 5 minutes "
+    "(`Cache-Control`). The frontend turns it into `sitemap.xml` and `robots.txt`.",
+    responses={**_NO_CENTER, 429: {"description": "Too many requests from this IP"}},
+    dependencies=[PublicLimit],
+)
+async def sitemap(workspace: str, sm: SessionmakerDep, response: Response) -> SitemapOut:
+    found = await articles.sitemap(sm, workspace)
+    response.headers["Cache-Control"] = "public, max-age=300"
+    return SitemapOut(
+        indexable=found.indexable,
+        entries=[SitemapEntryOut.model_validate(vars(e)) for e in found.entries],
+        truncated=found.truncated,
+    )

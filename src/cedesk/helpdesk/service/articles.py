@@ -20,18 +20,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from cedesk.db import workspace_session
 from cedesk.helpdesk.domain import articles as rules
 from cedesk.helpdesk.domain import audit as audit_rules
-from cedesk.helpdesk.domain import markdown, paging
+from cedesk.helpdesk.domain import help_locale, markdown, paging
 from cedesk.helpdesk.domain.audit import Area
 from cedesk.helpdesk.domain.auth import Caller
 from cedesk.helpdesk.domain.permissions import Action
 from cedesk.helpdesk.repo import articles as repo
 from cedesk.helpdesk.repo import auth as auth_repo
+from cedesk.helpdesk.repo import help_locale as locale_repo
 from cedesk.helpdesk.service import audit
 from cedesk.helpdesk.service.auth import Sessionmaker
 from cedesk.helpdesk.service.errors import Conflict, Invalid, NotFound
 from cedesk.helpdesk.service.members import require
 
-ARTICLE_FIELDS = ("title", "status", "category_id", "body")
+ARTICLE_FIELDS = ("title", "status", "category_id", "body", *help_locale.SEO_FIELDS)
 
 NO_ARTICLE = "Article not found."
 NO_CATEGORY = "Category not found."
@@ -53,6 +54,27 @@ def _checked(clean: Callable[[str], str], value: str) -> str:
         raise Invalid(str(exc)) from exc
 
 
+def _clean_locale(code: str) -> str:
+    try:
+        return help_locale.clean_locale(code)
+    except help_locale.BadLocale as exc:
+        raise Invalid(str(exc)) from exc
+
+
+def _wanted(requested: str | None, default: str) -> list[str]:
+    try:
+        return help_locale.wanted(requested, default)
+    except help_locale.BadLocale as exc:
+        raise Invalid(str(exc)) from exc
+
+
+def _seo(values: Mapping[str, str | None]) -> dict[str, str | None]:
+    try:
+        return help_locale.clean_seo(values)
+    except help_locale.BadSeo as exc:
+        raise Invalid(str(exc)) from exc
+
+
 def _before(cursor: str | None) -> tuple[datetime, UUID] | None:
     if not cursor:
         return None
@@ -70,18 +92,21 @@ async def _page(
     category_id: UUID | None,
     cursor: str | None,
     limit: int,
+    missing_locale: str | None = None,
 ) -> ArticlePage:
     if q is not None and q.strip():
         query = rules.search_query(q)
         if query is None:
             return ArticlePage([], None)
         found = await repo.search(
-            s, query, status=status, category_id=category_id, limit=rules.SEARCH_RESULTS
-        )
+            s, query, status=status, category_id=category_id, limit=rules.SEARCH_RESULTS,
+            missing_locale=missing_locale,
+        )  # fmt: skip
         return ArticlePage(found, None)
     rows = await repo.list_articles(
-        s, status=status, category_id=category_id, before=_before(cursor), limit=limit + 1
-    )
+        s, status=status, category_id=category_id, before=_before(cursor), limit=limit + 1,
+        missing_locale=missing_locale,
+    )  # fmt: skip
     page, next_cursor = paging.time_page(rows, limit, CURSOR_KIND)
     return ArticlePage(page, next_cursor)
 
@@ -174,8 +199,10 @@ async def list_articles(
     category_id: UUID | None = None,
     cursor: str | None = None,
     limit: int = paging.DEFAULT_LIMIT,
+    missing_locale: str | None = None,
 ) -> ArticlePage:
     require(caller, Action.read_ticket)
+    missing = _clean_locale(missing_locale) if missing_locale else None
     async with workspace_session(sm, caller.workspace_id) as s:
         return await _page(
             s,
@@ -184,6 +211,7 @@ async def list_articles(
             category_id=category_id,
             cursor=cursor,
             limit=limit,
+            missing_locale=missing,
         )
 
 
@@ -204,10 +232,12 @@ async def create_article(
     body: str,
     status: rules.ArticleStatus,
     category_id: UUID | None,
+    seo: Mapping[str, str | None] | None = None,
 ) -> RowMapping:
     require(caller, Action.settings)
     clean_title = _checked(rules.clean_title, title)
     clean_body = _checked(rules.clean_body, body)
+    clean_seo = _seo(seo or {})
     async with workspace_session(sm, caller.workspace_id) as s:
         await _known_category(s, category_id)
         article_id = await repo.insert_article(
@@ -218,6 +248,7 @@ async def create_article(
             body=clean_body,
             status=status.value,
             member_id=caller.member_id,
+            **clean_seo,
         )
         found = await repo.article(s, article_id)
         await audit.record(
@@ -236,7 +267,8 @@ async def create_article(
 async def update_article(
     sm: Sessionmaker, caller: Caller, article_id: UUID, changes: Mapping[str, Any]
 ) -> RowMapping:
-    """Only the keys present change: title, body, status, category_id (None: no category)."""
+    """Only the keys present change: title, body, status, category_id (None: no category)
+    and the SEO fields (None: not set)."""
     require(caller, Action.settings)
     async with workspace_session(sm, caller.workspace_id) as s:
         current = await repo.lock_article(s, article_id)
@@ -254,6 +286,7 @@ async def update_article(
             body=_checked(rules.clean_body, changes.get("body", current["body"])),
             status=str(getattr(status, "value", status)),
             member_id=caller.member_id,
+            **_seo({key: changes.get(key, current[key]) for key in help_locale.SEO_FIELDS}),
         )
         found = await repo.article(s, article_id)
         assert found is not None
@@ -320,8 +353,38 @@ async def _workspace(sm: Sessionmaker, slug: str) -> UUID:
 @dataclass(frozen=True)
 class HelpCenter:
     workspace_name: str
+    default_locale: str
+    locale: str  # the language asked for (the default one when none was)
+    indexable: bool  # the Admin allowed search engines to index the help center
     categories: Sequence[RowMapping]  # with published article counts
     page: ArticlePage
+
+
+async def _public_page(
+    s: AsyncSession,
+    want: Sequence[str],
+    default: str,
+    *,
+    q: str | None,
+    category_id: UUID | None,
+    cursor: str | None,
+    limit: int,
+) -> ArticlePage:
+    """The published articles in the best language: the same paging and search as the
+    agents' list, but each article is shown in its translation when there is one."""
+    if q is not None and q.strip():
+        query = rules.search_query(q)
+        if query is None:
+            return ArticlePage([], None)
+        found = await locale_repo.public_search(
+            s, want, default, query, category_id=category_id, limit=rules.SEARCH_RESULTS
+        )
+        return ArticlePage(found, None)
+    rows = await locale_repo.public_list(
+        s, want, default, category_id=category_id, before=_before(cursor), limit=limit + 1
+    )
+    page, next_cursor = paging.time_page(rows, limit, CURSOR_KIND)
+    return ArticlePage(page, next_cursor)
 
 
 async def help_center(
@@ -332,37 +395,56 @@ async def help_center(
     category_id: UUID | None = None,
     cursor: str | None = None,
     limit: int = paging.DEFAULT_LIMIT,
+    locale: str | None = None,
 ) -> HelpCenter:
     workspace_id = await _workspace(sm, slug)
     async with workspace_session(sm, workspace_id) as s:
         workspace = await auth_repo.workspace_row(s)
-        categories = await repo.categories(s, published_only=True)
-        page = await _page(
-            s,
-            q=q,
-            status=rules.ArticleStatus.published.value,
-            category_id=category_id,
-            cursor=cursor,
-            limit=limit,
+        default, indexable = await locale_repo.settings(s)
+        want = _wanted(locale, default)
+        categories = await locale_repo.public_categories(s, want, default)
+        page = await _public_page(
+            s, want, default, q=q, category_id=category_id, cursor=cursor, limit=limit
         )
     name = str(workspace["name"]) if workspace else ""
-    return HelpCenter(name, [c for c in categories if c["article_count"]], page)
+    asked = _clean_locale(locale) if locale else default
+    shown = [c for c in categories if c["article_count"]]
+    return HelpCenter(name, default, asked, indexable, shown, page)
 
 
-async def public_article(sm: Sessionmaker, slug: str, article_id: UUID) -> RowMapping:
+@dataclass(frozen=True)
+class PublicArticle:
+    row: RowMapping
+    default_locale: str
+    fallback: bool  # a language was asked for and the article is shown in another
+
+
+async def public_article(
+    sm: Sessionmaker, slug: str, article_id: UUID, *, locale: str | None = None
+) -> PublicArticle:
     workspace_id = await _workspace(sm, slug)
     async with workspace_session(sm, workspace_id) as s:
-        found = await repo.article(s, article_id, published_only=True)
+        default = await locale_repo.default_locale(s)
+        found = await locale_repo.public_article(s, article_id, _wanted(locale, default), default)
     if found is None:
         raise NotFound(NO_ARTICLE)
-    return found
+    fallback = bool(locale) and found["locale"] != _clean_locale(str(locale))
+    return PublicArticle(found, default, fallback)
 
 
 async def vote(
-    sm: Sessionmaker, slug: str, article_id: UUID, *, helpful: bool, visitor: str
+    sm: Sessionmaker,
+    slug: str,
+    article_id: UUID,
+    *,
+    helpful: bool,
+    visitor: str,
+    locale: str | None = None,
 ) -> None:
-    """One vote per visitor per article; voting again changes it."""
+    """One vote per visitor per article; voting again changes it. `locale` is the language
+    of the page the visitor voted on."""
     workspace_id = await _workspace(sm, slug)
+    page_locale = _clean_locale(locale) if locale else None
     async with workspace_session(sm, workspace_id) as s:
         if await repo.article(s, article_id, published_only=True) is None:
             raise NotFound(NO_ARTICLE)
@@ -372,4 +454,51 @@ async def vote(
             article_id=article_id,
             visitor_hash=rules.visitor_hash(visitor),
             helpful=helpful,
+            locale=page_locale,
         )
+
+
+SITEMAP_ARTICLES = (
+    10_000  # the sitemap protocol allows 50,000 addresses; a help center is far smaller
+)
+
+
+@dataclass(frozen=True)
+class SitemapEntry:
+    id: UUID
+    locale: str
+    slug: str | None
+    updated_at: datetime
+    alternates: list[dict[str, str | None]]  # every language of the article, for hreflang
+
+
+@dataclass(frozen=True)
+class Sitemap:
+    indexable: bool
+    entries: list[SitemapEntry]
+    truncated: bool
+
+
+async def sitemap(sm: Sessionmaker, slug: str) -> Sitemap:
+    """One entry per published article and language. Empty until the Admin makes the help
+    center indexable, so nothing is advertised to search engines by accident."""
+    workspace_id = await _workspace(sm, slug)
+    async with workspace_session(sm, workspace_id) as s:
+        default, indexable = await locale_repo.settings(s)
+        if not indexable:
+            return Sitemap(False, [], False)
+        rows = await locale_repo.sitemap(s, default, limit=SITEMAP_ARTICLES + 1)
+    entries: list[SitemapEntry] = []
+    for row in rows[:SITEMAP_ARTICLES]:
+        translations = list(row["translations"])
+        alternates: list[dict[str, str | None]] = [
+            {"locale": str(row["locale"]), "slug": row["slug"]},
+            *({"locale": t["locale"], "slug": t["slug"]} for t in translations),
+        ]
+        entries.append(
+            SitemapEntry(row["id"], str(row["locale"]), row["slug"], row["updated_at"], alternates)
+        )
+        for t in translations:
+            when = datetime.fromisoformat(t["updated_at"])
+            entries.append(SitemapEntry(row["id"], t["locale"], t["slug"], when, alternates))
+    return Sitemap(True, entries, len(rows) > SITEMAP_ARTICLES)

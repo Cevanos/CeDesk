@@ -11,6 +11,7 @@ const AGENT_AREAS = new Set([
   "campaigns",
   "customers",
   "dev",
+  "docs",
   "forgot-password",
   "login",
   "rate",
@@ -31,6 +32,8 @@ const AGENT_AREAS = new Set([
  * three-segment `/<workspace>/tickets/<id>` cannot clash with them.
  */
 export function isPublicPage(pathname: string): boolean {
+  // The documentation is public; it is not a workspace slug.
+  if (pathname === "/docs" || pathname.startsWith("/docs/")) return true;
   if (pathname === "/rate" || pathname.startsWith("/rate/")) return true;
   // The footer link of every campaign email: `/unsubscribe#token=...`.
   if (pathname === "/unsubscribe" || pathname === "/unsubscribe/") return true;

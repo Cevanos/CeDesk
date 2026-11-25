@@ -75,12 +75,21 @@ class PortalSettingsIn(Body):
         default=False,
         description="The public contact form (`/public/{workspace}/form`) is open. Off: 404.",
     )
+    show_owner: bool | None = Field(
+        default=None,
+        description="Portal tickets show the assignee's first name. Off: the team's name "
+        "only. Not sent (or null): kept as it is (on for a new workspace).",
+    )
 
 
 class PortalSettingsOut(BaseModel):
     allowed_domains: list[str]
     csat_survey: bool
     web_form: bool
+    show_owner: bool = Field(
+        description="Tickets in the portal show the assignee's first name; off: the team's "
+        "name only."
+    )
     updated_at: datetime | None
     updated_by_name: str | None
 
@@ -188,8 +197,9 @@ async def save_settings(
     body: PortalSettingsIn, caller: CallerDep, sm: SessionmakerDep
 ) -> PortalSettingsOut:
     found = await portal.save_settings(
-        sm, caller, body.allowed_domains, csat_survey=body.csat_survey, web_form=body.web_form
-    )
+        sm, caller, body.allowed_domains, csat_survey=body.csat_survey, web_form=body.web_form,
+        show_owner=body.show_owner,
+    )  # fmt: skip
     return PortalSettingsOut(**found.__dict__)
 
 
@@ -205,6 +215,21 @@ class PortalTicketRow(BaseModel):
     type_name: str | None
     created_at: datetime
     updated_at: datetime
+    owner_first_name: str | None = Field(
+        default=None,
+        description="Who has it: the assignee's first name, or the team's name (unassigned, "
+        "or the workspace hides names). Null: nobody yet. Never an email address.",
+    )
+    pending_step: str | None = Field(
+        default=None,
+        description='What it waits on: "Waiting on you" when Pending; on a resolved ticket, '
+        'the resolution receipt\'s pending item (e.g. "Bank settlement"). Null: nothing.',
+    )
+    outcome: str | None = Field(
+        default=None,
+        description='Resolved and checked: the receipt\'s result (e.g. "Refund issued"). '
+        "Null until an agent or Shopify / Stripe verified it.",
+    )
 
 
 class PortalTicketsOut(BaseModel):
@@ -274,12 +299,20 @@ class PortalDownloadOut(BaseModel):
     file: PortalFileOut
 
 
+# Columns read to work out where a ticket stands; never sent to the customer as they are.
+_INTERNAL = ("assignee_name", "team_name", "receipt_pending", "receipt_result",
+             "receipt_verified", "show_owner")  # fmt: skip
+
+
 def _row(r: dict[str, object]) -> dict[str, object]:
     status_value = str(r["status"])
+    raw = {k: r.get(k) for k in _INTERNAL}
+    shown = {k: v for k, v in r.items() if k not in _INTERNAL}
     return {
-        **r,
+        **shown,
         "label": label(int(str(r["number"]))),
         "status_label": portal_tickets.status_label(status_value),
+        **portal_tickets.standing(status_value, raw),
     }
 
 

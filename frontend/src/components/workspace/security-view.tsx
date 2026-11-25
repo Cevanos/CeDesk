@@ -22,6 +22,7 @@ import {
   type SessionLength,
   type SsoSettings,
 } from "@/hooks/use-workspace";
+import { bind, bindSelect, fieldError, useFormik, yup } from "@/lib/forms";
 
 export function SecurityView() {
   return (
@@ -171,67 +172,70 @@ const sameList = (a: string[], b: string[]) =>
 function SettingsForm({ initial }: { initial: SecuritySettings }) {
   const save = useSaveSecuritySettings();
   const testIp = useTestMyIp();
-  const [minLen, setMinLen] = useState(String(initial.password_min));
-  const [expiry, setExpiry] = useState(
-    initial.password_expiry_days ? String(initial.password_expiry_days) : "",
-  );
-  const [session, setSession] = useState<SessionLength>(initial.session_length);
-  const [twoFa, setTwoFa] = useState(initial.require_2fa);
-  const [ips, setIps] = useState(initial.ip_allowlist.join("\n"));
-  const [filesAuth, setFilesAuth] = useState(initial.attachments_need_sign_in);
-  const [alerts, setAlerts] = useState(initial.admin_alerts);
-  const [errs, setErrs] = useState<Record<string, string>>({});
+  const [srv, setSrv] = useState<Record<string, string>>({});
   const [ipResult, setIpResult] = useState<{ ip: string; allowed: boolean } | null>(null);
+  const form = useFormik({
+    initialValues: {
+      password_min: String(initial.password_min),
+      expiry: initial.password_expiry_days ? String(initial.password_expiry_days) : "",
+      session: initial.session_length as SessionLength,
+      two_fa: initial.require_2fa,
+      ips: initial.ip_allowlist.join("\n"),
+      files_auth: initial.attachments_need_sign_in,
+      alerts: initial.admin_alerts,
+    },
+    validate: (v) =>
+      parseIntIn(v.password_min, 8, 64) === null
+        ? { password_min: "Minimum password length is 8 to 64." }
+        : {},
+    onSubmit: (v) => {
+      setSrv({});
+      const min = parseIntIn(v.password_min, 8, 64);
+      if (min === null) return;
+      const ipList = parseIpList(v.ips);
+      // Send only what changed; anything left out keeps its value.
+      const body: SecuritySettingsInput = {};
+      if (min !== initial.password_min) body.password_min = min;
+      const exp = v.expiry ? Number(v.expiry) : null;
+      if (exp !== initial.password_expiry_days) body.password_expiry_days = exp;
+      if (v.session !== initial.session_length) body.session_length = v.session;
+      if (v.two_fa !== initial.require_2fa) body.require_2fa = v.two_fa;
+      if (v.files_auth !== initial.attachments_need_sign_in)
+        body.attachments_need_sign_in = v.files_auth;
+      if (v.alerts !== initial.admin_alerts) body.admin_alerts = v.alerts;
+      if (!sameList(ipList, initial.ip_allowlist)) body.ip_allowlist = ipList;
+      if (Object.keys(body).length === 0) {
+        toast.info("Nothing has changed.");
+        return;
+      }
 
-  const list = parseIpList(ips);
+      save.mutate(body, {
+        onSuccess: () => toast.success("Security settings saved"),
+        // 422 messages come back ready to show, such as the "your own address" warning.
+        onError: (err) => setSrv(fieldErrors(err)),
+      });
+    },
+  });
+  const errs: Record<string, string | undefined> = {
+    ...srv,
+    password_min: fieldError(form, "password_min") ?? srv.password_min,
+  };
+
+  const list = parseIpList(form.values.ips);
 
   function runTest() {
-    setErrs({});
+    setSrv({});
     // An empty box tests the saved list.
     testIp.mutate(list.length ? list : undefined, {
       onSuccess: setIpResult,
-      onError: (e) => setErrs(fieldErrors(e)),
+      onError: (e) => setSrv(fieldErrors(e)),
     });
   }
 
   return (
     <Card className="p-5">
       <h2 className="mb-4 text-[15px] font-semibold">Security settings</h2>
-      <form
-        noValidate
-        className="space-y-5"
-        onSubmit={(e) => {
-          e.preventDefault();
-          const min = parseIntIn(minLen, 8, 64);
-          if (min === null) {
-            setErrs({ password_min: "Minimum password length is 8 to 64." });
-            return;
-          }
-          setErrs({});
-
-          // Send only what changed; anything left out keeps its value.
-          const body: SecuritySettingsInput = {};
-          if (min !== initial.password_min) body.password_min = min;
-          const exp = expiry ? Number(expiry) : null;
-          if (exp !== initial.password_expiry_days) body.password_expiry_days = exp;
-          if (session !== initial.session_length) body.session_length = session;
-          if (twoFa !== initial.require_2fa) body.require_2fa = twoFa;
-          if (filesAuth !== initial.attachments_need_sign_in)
-            body.attachments_need_sign_in = filesAuth;
-          if (alerts !== initial.admin_alerts) body.admin_alerts = alerts;
-          if (!sameList(list, initial.ip_allowlist)) body.ip_allowlist = list;
-          if (Object.keys(body).length === 0) {
-            toast.info("Nothing has changed.");
-            return;
-          }
-
-          save.mutate(body, {
-            onSuccess: () => toast.success("Security settings saved"),
-            // 422 messages come back ready to show, such as the "your own address" warning.
-            onError: (err) => setErrs(fieldErrors(err)),
-          });
-        }}
-      >
+      <form noValidate className="space-y-5" onSubmit={form.handleSubmit}>
         <div className="grid gap-4 sm:grid-cols-3">
           <Field
             label="Minimum password length"
@@ -239,28 +243,13 @@ function SettingsForm({ initial }: { initial: SecuritySettings }) {
             error={errs.password_min}
             hint="8 to 64."
           >
-            <Input
-              id="sec-min"
-              inputMode="numeric"
-              value={minLen}
-              onChange={(e) => setMinLen(e.target.value)}
-            />
+            <Input id="sec-min" inputMode="numeric" {...bind(form, "password_min")} />
           </Field>
           <Field label="Password expires" htmlFor="sec-exp" error={errs.password_expiry_days}>
-            <Select
-              id="sec-exp"
-              value={expiry}
-              options={EXPIRY_OPTIONS}
-              onChange={(e) => setExpiry(e.target.value)}
-            />
+            <Select id="sec-exp" {...bindSelect(form, "expiry")} options={EXPIRY_OPTIONS} />
           </Field>
           <Field label="Sign people out after" htmlFor="sec-ses" error={errs.session_length}>
-            <Select
-              id="sec-ses"
-              value={session}
-              options={SESSION_OPTIONS}
-              onChange={(e) => setSession(e.target.value as SessionLength)}
-            />
+            <Select id="sec-ses" {...bindSelect(form, "session")} options={SESSION_OPTIONS} />
           </Field>
         </div>
 
@@ -268,22 +257,22 @@ function SettingsForm({ initial }: { initial: SecuritySettings }) {
           id="sec-2fa"
           title="Require two-factor sign-in"
           body="Everyone on the team must use a second step to sign in."
-          checked={twoFa}
-          onChange={setTwoFa}
+          checked={form.values.two_fa}
+          onChange={(v) => form.setFieldValue("two_fa", v)}
         />
         <ToggleRow
           id="sec-files"
           title="Files need sign-in"
           body="Attachments can only be opened by signed-in people."
-          checked={filesAuth}
-          onChange={setFilesAuth}
+          checked={form.values.files_auth}
+          onChange={(v) => form.setFieldValue("files_auth", v)}
         />
         <ToggleRow
           id="sec-alerts"
           title="Email Admins about security events"
           body="Admins get an email when something looks wrong."
-          checked={alerts}
-          onChange={setAlerts}
+          checked={form.values.alerts}
+          onChange={(v) => form.setFieldValue("alerts", v)}
         />
 
         <Field
@@ -295,9 +284,9 @@ function SettingsForm({ initial }: { initial: SecuritySettings }) {
           <Textarea
             id="sec-ips"
             rows={4}
-            value={ips}
+            {...bind(form, "ips")}
             onChange={(e) => {
-              setIps(e.target.value);
+              form.handleChange(e);
               setIpResult(null);
             }}
             spellCheck={false}
@@ -359,12 +348,42 @@ function CopyRow({ label, value }: { label: string; value?: string }) {
 
 function SsoForm({ initial }: { initial: SsoSettings }) {
   const save = useSaveSsoSettings();
-  const [enabled, setEnabled] = useState(initial.enabled);
-  const [enforced, setEnforced] = useState(initial.enforced);
-  const [entityId, setEntityId] = useState(initial.idp_entity_id ?? "");
-  const [ssoUrl, setSsoUrl] = useState(initial.idp_sso_url ?? "");
-  const [cert, setCert] = useState(initial.idp_cert ?? "");
-  const [errs, setErrs] = useState<Record<string, string>>({});
+  const [srv, setSrv] = useState<Record<string, string>>({});
+  const form = useFormik({
+    initialValues: {
+      enabled: initial.enabled,
+      enforced: initial.enforced,
+      idp_entity_id: initial.idp_entity_id ?? "",
+      idp_sso_url: initial.idp_sso_url ?? "",
+      idp_cert: initial.idp_cert ?? "",
+    },
+    validationSchema: yup.object({
+      idp_sso_url: yup
+        .string()
+        .trim()
+        .matches(/^(https?:\/\/\S+)?$/i, "Enter a full URL starting with https://"),
+    }),
+    onSubmit: (v) => {
+      setSrv({});
+      save.mutate(
+        {
+          enabled: v.enabled,
+          enforced: v.enforced,
+          idp_entity_id: v.idp_entity_id.trim() || null,
+          idp_sso_url: v.idp_sso_url.trim() || null,
+          idp_cert: v.idp_cert.trim() || null,
+        },
+        {
+          onSuccess: () => toast.success("Single sign-on saved"),
+          onError: (err) => setSrv(fieldErrors(err)),
+        },
+      );
+    },
+  });
+  const errs: Record<string, string | undefined> = {
+    ...srv,
+    idp_sso_url: fieldError(form, "idp_sso_url") ?? srv.idp_sso_url,
+  };
 
   return (
     <Card className="p-5">
@@ -381,49 +400,28 @@ function SsoForm({ initial }: { initial: SsoSettings }) {
         <CopyRow label="Metadata URL" value={initial.metadata_url} />
       </div>
 
-      <form
-        noValidate
-        className="space-y-4"
-        onSubmit={(e) => {
-          e.preventDefault();
-          setErrs({});
-          save.mutate(
-            {
-              enabled,
-              enforced,
-              idp_entity_id: entityId.trim() || null,
-              idp_sso_url: ssoUrl.trim() || null,
-              idp_cert: cert.trim() || null,
-            },
-            {
-              onSuccess: () => toast.success("Single sign-on saved"),
-              onError: (err) => setErrs(fieldErrors(err)),
-            },
-          );
-        }}
-      >
+      <form noValidate className="space-y-4" onSubmit={form.handleSubmit}>
         <ToggleRow
           id="sso-on"
           title="Enable single sign-on"
           body="Let people sign in with your identity provider."
-          checked={enabled}
-          onChange={setEnabled}
+          checked={form.values.enabled}
+          onChange={(v) => form.setFieldValue("enabled", v)}
         />
         <ToggleRow
           id="sso-enforced"
           title="Only allow SSO"
           body="Password sign-in is turned off for everyone except Admins."
-          checked={enforced}
-          onChange={setEnforced}
+          checked={form.values.enforced}
+          onChange={(v) => form.setFieldValue("enforced", v)}
         />
         <Field label="Identity provider entity ID" htmlFor="sso-entity" error={errs.idp_entity_id}>
-          <Input id="sso-entity" value={entityId} onChange={(e) => setEntityId(e.target.value)} />
+          <Input id="sso-entity" {...bind(form, "idp_entity_id")} />
         </Field>
         <Field label="Identity provider sign-in URL" htmlFor="sso-url" error={errs.idp_sso_url}>
           <Input
             id="sso-url"
-            value={ssoUrl}
-            onChange={(e) => setSsoUrl(e.target.value)}
+            {...bind(form, "idp_sso_url")}
             placeholder="https://login.example.com/saml"
           />
         </Field>
@@ -436,8 +434,7 @@ function SsoForm({ initial }: { initial: SsoSettings }) {
           <Textarea
             id="sso-cert"
             rows={5}
-            value={cert}
-            onChange={(e) => setCert(e.target.value)}
+            {...bind(form, "idp_cert")}
             spellCheck={false}
             className="font-mono"
           />

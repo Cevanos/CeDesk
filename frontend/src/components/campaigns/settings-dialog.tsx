@@ -9,6 +9,7 @@ import { Button, Field, Skeleton, Textarea } from "@/components/ui/primitives";
 import { FormError, LoadError, fieldErrors } from "@/components/workspace/list-shared";
 import { useCampaignSettings, useSaveCampaignSettings } from "@/hooks/use-workspace";
 import type { CampaignSettings } from "@/lib/api/types";
+import { bind, fieldError, useFormik, yup } from "@/lib/forms";
 
 export function CampaignSettingsDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const settings = useCampaignSettings(open);
@@ -33,41 +34,43 @@ export function CampaignSettingsDialog({ open, onClose }: { open: boolean; onClo
 
 function SettingsForm({ settings, onClose }: { settings: CampaignSettings; onClose: () => void }) {
   const save = useSaveCampaignSettings();
-  const [address, setAddress] = useState(settings.postal_address ?? "");
   const [err, setErr] = useState<string>();
+  const formik = useFormik({
+    initialValues: { address: settings.postal_address ?? "" },
+    validationSchema: yup.object({
+      address: yup
+        .string()
+        .trim()
+        .required("Enter your postal address, 10 to 300 characters.")
+        .min(10, "Enter your postal address, 10 to 300 characters.")
+        .max(300, "Enter your postal address, 10 to 300 characters."),
+    }),
+    onSubmit: (v) => {
+      setErr(undefined);
+      save.mutate(v.address.trim(), {
+        onSuccess: () => {
+          toast.success("Postal address saved");
+          onClose();
+        },
+        onError: (e2) => setErr(fieldErrors(e2)._form ?? errorText(e2)),
+      });
+    },
+  });
 
   return (
-    <form
-      noValidate
-      className="space-y-4"
-      onSubmit={(e) => {
-        e.preventDefault();
-        const value = address.trim();
-        if (value.length < 10 || value.length > 300) {
-          return setErr("Enter your postal address, 10 to 300 characters.");
-        }
-        setErr(undefined);
-        save.mutate(value, {
-          onSuccess: () => {
-            toast.success("Postal address saved");
-            onClose();
-          },
-          onError: (e2) => setErr(fieldErrors(e2)._form ?? errorText(e2)),
-        });
-      }}
-    >
+    <form noValidate className="space-y-4" onSubmit={formik.handleSubmit}>
       <Field
         label="Postal address"
         htmlFor="cs-address"
+        error={fieldError(formik, "address")}
         hint="The law (CAN-SPAM and others) needs your company's postal address in every marketing email. It shows in the footer."
       >
         <Textarea
           id="cs-address"
           rows={4}
           maxLength={300}
-          value={address}
-          onChange={(e) => setAddress(e.target.value)}
-          aria-invalid={err ? true : undefined}
+          {...bind(formik, "address")}
+          aria-invalid={err || fieldError(formik, "address") ? true : undefined}
         />
       </Field>
       <FormError message={err} />

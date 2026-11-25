@@ -105,6 +105,17 @@ def test_caps_pause_and_schedule() -> None:
     assert rules.cap_problem(10, 10, limits) is None
     assert "the most is 10" in (rules.cap_problem(11, 0, limits) or "")
     assert "daily limit" in (rules.cap_problem(5, 16, limits) or "")
+
+
+def test_nobody_to_send_to_says_why() -> None:
+    limits = Limits(max_recipients=10, daily_cap=20, per_minute=5)
+    why = rules.cap_problem(0, 0, limits, in_segment=0)
+    assert why is not None and "no customers" in why
+    why = rules.cap_problem(0, 0, limits, in_segment=2, not_mailable=2)
+    assert why is not None and "2 can't be emailed" in why and "suppressed" not in why
+    why = rules.cap_problem(0, 0, limits, in_segment=5, not_mailable=1, suppressed=4)
+    assert why is not None and "1 can't be emailed" in why and "4 are suppressed" in why
+    assert rules.cap_problem(3, 0, limits, in_segment=5, not_mailable=1, suppressed=1) is None
     assert not rules.should_pause(40, 10)  # too few sent to judge
     assert not rules.should_pause(100, 5) and rules.should_pause(100, 6)
     assert rules.retry_wait(1) == timedelta(minutes=5) and rules.retry_wait(3) is None

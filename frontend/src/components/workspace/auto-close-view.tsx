@@ -10,6 +10,7 @@ import { useCurrentUser } from "@/hooks/use-auth";
 import { useAutoClose, useSaveAutoClose } from "@/hooks/use-workspace";
 import { apiMessage } from "@/lib/api/messages";
 import type { AutoCloseSettings } from "@/lib/api/types";
+import { bind, fieldError, useFormik } from "@/lib/forms";
 import { hasAction } from "@/lib/permissions";
 import { formatDateTime } from "@/lib/utils";
 
@@ -48,37 +49,45 @@ export function AutoCloseView() {
 
 function AutoCloseForm({ data }: { data: AutoCloseSettings }) {
   const save = useSaveAutoClose();
-  const [enabled, setEnabled] = useState(data.enabled);
-  const [days, setDays] = useState(String(data.after_days));
-  const [notice, setNotice] = useState(data.notice ?? "");
-  const [errs, setErrs] = useState<Record<string, string>>({});
+  const [srv, setSrv] = useState<Record<string, string>>({});
+  const form = useFormik({
+    initialValues: {
+      enabled: data.enabled,
+      after_days: String(data.after_days),
+      notice: data.notice ?? "",
+    },
+    // The same checks as before (and their tests); Formik runs them on change, blur and submit.
+    validate: (v) => validateAutoClose(v.after_days, v.notice),
+    onSubmit: (v) => {
+      setSrv({});
+      save.mutate(
+        { enabled: v.enabled, after_days: Number(v.after_days), notice: v.notice.trim() || null },
+        {
+          onSuccess: () => toast.success("Auto-close saved"),
+          onError: (err) => setSrv({ ...fieldErrors(err), _form: apiMessage(err) }),
+        },
+      );
+    },
+  });
+  const { enabled, after_days: days, notice } = form.values;
+  const errs = {
+    after_days: fieldError(form, "after_days") ?? srv.after_days,
+    notice: fieldError(form, "notice") ?? srv.notice,
+    _form: srv._form,
+  };
 
   const dirty =
     enabled !== data.enabled ||
     days !== String(data.after_days) ||
     notice.trim() !== (data.notice ?? "");
 
-  const submit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const local = validateAutoClose(days, notice);
-    setErrs(local);
-    if (Object.keys(local).length) return;
-    save.mutate(
-      { enabled, after_days: Number(days), notice: notice.trim() || null },
-      {
-        onSuccess: () => toast.success("Auto-close saved"),
-        onError: (err) => setErrs({ ...fieldErrors(err), _form: apiMessage(err) }),
-      },
-    );
-  };
-
   return (
     <Card className="p-5 sm:p-6">
-      <form noValidate onSubmit={submit} className="space-y-5">
+      <form noValidate onSubmit={form.handleSubmit} className="space-y-5">
         <div className="flex items-start gap-3">
           <Switch
             checked={enabled}
-            onChange={setEnabled}
+            onChange={(v) => form.setFieldValue("enabled", v)}
             labelledBy="auto-close-label"
             describedBy="auto-close-hint"
           />
@@ -107,8 +116,7 @@ function AutoCloseForm({ data }: { data: AutoCloseSettings }) {
               inputMode="numeric"
               min={AFTER_DAYS_MIN}
               max={AFTER_DAYS_MAX}
-              value={days}
-              onChange={(e) => setDays(e.target.value)}
+              {...bind(form, "after_days")}
               aria-invalid={errs.after_days ? true : undefined}
               aria-describedby={errs.after_days ? "ac-days-error" : undefined}
               className="w-28"
@@ -126,8 +134,7 @@ function AutoCloseForm({ data }: { data: AutoCloseSettings }) {
           <Textarea
             id="ac-notice"
             rows={5}
-            value={notice}
-            onChange={(e) => setNotice(e.target.value)}
+            {...bind(form, "notice")}
             placeholder="Hi {{customer.first_name}}, we're closing this for now. Just reply to reopen it."
             aria-invalid={errs.notice ? true : undefined}
           />

@@ -4,6 +4,7 @@ create a workspace or a demo workspace, prune sessions, or write the OpenAPI fil
 import argparse
 import asyncio
 import getpass
+import os
 import sys
 import time
 from pathlib import Path
@@ -90,6 +91,83 @@ def _seed_workflow(slug: str) -> int:
         print(exc.message, file=sys.stderr)
         return 1
     print(f"Added {added} default(s) to {slug}; anything already there was kept.")
+    return 0
+
+
+ADMIN_URL_ENV = "CEDESK_ADMIN_DATABASE_URL"
+
+
+def _admin_url() -> str | None:
+    """The database superuser's URL, for reporting logins only (making a login needs it).
+    Read from the environment at the moment, never kept in the app's settings."""
+    url = os.environ.get(ADMIN_URL_ENV, "").strip()
+    if not url:
+        return None
+    if url.startswith("postgresql://") or url.startswith("postgres://"):
+        url = "postgresql+asyncpg://" + url.split("://", 1)[1]
+    return url
+
+
+def _reporting_user(args: argparse.Namespace) -> int:
+    """Logins for BI tools that read the `reporting` views (differentiator plan #7)."""
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+    from cedesk.db import make_engine
+    from cedesk.helpdesk.service import reporting_users
+    from cedesk.helpdesk.service.errors import ServiceError
+
+    url = _admin_url()
+    if url is None:
+        print(
+            f"Set {ADMIN_URL_ENV} to the database superuser's URL (the postgres user), "
+            "for this command only.",
+            file=sys.stderr,
+        )
+        return 1
+    if args.action != "list" and not args.name:
+        print("Give the login's name, e.g. report_bi.", file=sys.stderr)
+        return 1
+    password = ""
+    if args.action == "create":
+        if not args.all and not args.workspace:
+            print("Give --workspace <address>, or --all for every workspace.", file=sys.stderr)
+            return 1
+        password = getpass.getpass("Password for the login (16+ characters): ")
+        if password != getpass.getpass("Again: "):
+            print("The passwords differ.", file=sys.stderr)
+            return 1
+
+    async def run() -> object:
+        engine = make_engine(url)
+        admin = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+        try:
+            if args.action == "create":
+                slug = None if args.all else args.workspace
+                return await reporting_users.create(admin, args.name, password, slug)
+            if args.action == "drop":
+                await reporting_users.drop(admin, args.name)
+                return None
+            return await reporting_users.list_logins(admin)
+        finally:
+            await engine.dispose()
+
+    try:
+        found = asyncio.run(run())
+    except ServiceError as exc:
+        print(exc.message, file=sys.stderr)
+        return 1
+    if args.action == "create":
+        scope = "every workspace" if args.all else f"workspace {args.workspace}"
+        print(f"Created {args.name}: reads the reporting views of {scope}, read-only.")
+    elif args.action == "drop":
+        print(f"Dropped {args.name}.")
+    else:
+        rows = list(found)  # type: ignore[call-overload]
+        if not rows:
+            print("No reporting logins.")
+        for row in rows:
+            print(f"{row['role_name']:<32} {row['slug'] or '(every workspace)':<24} "
+                  f"{row['created_at']:%Y-%m-%d}")  # fmt: skip
     return 0
 
 
@@ -233,7 +311,7 @@ def _worker(once: bool) -> int:
     connected Cevanos chats for new customer messages, sends queued emails, delivers
     outbox events (Cevanos take-overs and replies), alerts SLA breaches and overdue tasks,
     sends email campaigns within each workspace's limits (after the ticket emails),
-    wakes snoozed tickets and resumes waiting workflow runs (once a minute), auto-closes
+    wakes snoozed tickets (once a minute), resumes waiting workflow runs, auto-closes
     inactive tickets (daily, before the archive pass), and drops expired idempotency keys.
     Run one next to the API (sending and delivering are safe with several; reading a
     mailbox is meant for one)."""
@@ -244,6 +322,7 @@ def _worker(once: bool) -> int:
     from cedesk.cevanos_client import make_cevanos
     from cedesk.crypto import Sealer
     from cedesk.db import make_engine, make_sessionmaker, notifications
+    from cedesk.dnscheck import DnsLookup
     from cedesk.helpdesk.api.campaigns import config_of as campaign_config
     from cedesk.helpdesk.domain import signup as signup_rules
     from cedesk.helpdesk.domain.limits import parse_plans
@@ -261,6 +340,7 @@ def _worker(once: bool) -> int:
     from cedesk.helpdesk.service.delivery import Handler, deliver_due
     from cedesk.helpdesk.service.email import send_due
     from cedesk.helpdesk.service.email_in import poll
+    from cedesk.helpdesk.service.help_domain import recheck_everywhere
     from cedesk.helpdesk.service.idempotency import sweep_everywhere
     from cedesk.helpdesk.service.imports.framework import make_importers, retry_policy
     from cedesk.helpdesk.service.imports.framework import run_due as run_imports
@@ -270,6 +350,8 @@ def _worker(once: bool) -> int:
     from cedesk.helpdesk.service.portal_notice import PortalNoticeHandler
     from cedesk.helpdesk.service.privacy import remove_expired_exports
     from cedesk.helpdesk.service.push import push_due
+    from cedesk.helpdesk.service.replay import prune_everywhere as prune_replays
+    from cedesk.helpdesk.service.replay import run_due as run_replays
     from cedesk.helpdesk.service.report_schedules import run_scheduled_reports
     from cedesk.helpdesk.service.scanning import scan_due
     from cedesk.helpdesk.service.security_alerts import SecurityAlertHandler
@@ -473,6 +555,23 @@ def _worker(once: bool) -> int:
                             f"retrying, {hooks.failed} failed",
                             extra={"event": "webhook"},
                         )
+                # Workflow runs whose wait is over (feature-gap plan 5.3). Every tick, not every
+                # minute, so a wait ends within seconds of its time; the query is indexed.
+                try:
+                    resumed = await resume_due(sm)
+                except Exception:
+                    resumed = 0
+                    logger.exception("Resuming workflow runs failed")
+                if resumed:
+                    logger.info(f"Workflow runs resumed: {resumed}",
+                                extra={"event": "automation"})  # fmt: skip
+                try:  # rule and workflow replays on past tickets (differentiator #3)
+                    replayed = await run_replays(sm)
+                except Exception:
+                    replayed = 0
+                    logger.exception("Replays failed")
+                if replayed:
+                    logger.info(f"Replay pages: {replayed}", extra={"event": "automation"})
                 if time.monotonic() - alerted_at > SLA_ALERT_EVERY_SECONDS:
                     try:
                         breached = await alert_everywhere(sm)
@@ -510,14 +609,6 @@ def _worker(once: bool) -> int:
                         logger.info(
                             f"Report emails queued: {reports_sent}", extra={"event": "reports"}
                         )
-                    try:  # workflow runs whose wait is over (feature-gap plan 5.3)
-                        resumed = await resume_due(sm)
-                    except Exception:
-                        resumed = 0
-                        logger.exception("Resuming workflow runs failed")
-                    if resumed:
-                        logger.info(f"Workflow runs resumed: {resumed}",
-                                    extra={"event": "automation"})  # fmt: skip
                     alerted_at = time.monotonic()
                 if time.monotonic() - swept_at > SWEEP_EVERY_SECONDS:
                     await sweep_everywhere(sm)
@@ -548,6 +639,10 @@ def _worker(once: bool) -> int:
                         await prune_runs(sm)
                     except Exception:
                         logger.exception("Pruning the automation run log failed")
+                    try:  # replays past their 30 days (differentiator #3)
+                        await prune_replays(sm)
+                    except Exception:
+                        logger.exception("Pruning old replays failed")
                     swept_at = time.monotonic()
                 if time.monotonic() - retained_at > RETENTION_EVERY_SECONDS:
                     try:  # resolved tickets past the archive age to the archive (md O3)
@@ -569,6 +664,13 @@ def _worker(once: bool) -> int:
                             logger.info(f"retention: {gone} tickets", extra={"event": "retention"})
                     except Exception:
                         logger.exception("Retention failed")
+                    try:  # verified help center domains still hold their TXT record (plan 4.2)
+                        rechecked = await recheck_everywhere(sm, DnsLookup())
+                        if rechecked:
+                            logger.info(f"help center domains checked: {rechecked}",
+                                        extra={"event": "help_domain"})  # fmt: skip
+                    except Exception:
+                        logger.exception("Checking help center domains failed")
                     retained_at = time.monotonic()
                 if once:
                     return
@@ -632,7 +734,7 @@ def main(argv: list[str] | None = None) -> int:
         help="Start empty, without the default teams and ticket types",
     )
     demo = sub.add_parser(
-        "seed-demo", help="A demo workspace like the mock: Ritesh (Admin), agents, tickets"
+        "seed-demo", help="A demo workspace like the mock: an Admin (Alex), agents, tickets"
     )
     demo.add_argument("--slug", default="acme-store")
     demo.add_argument("--name", default="Acme Store")
@@ -657,6 +759,14 @@ def main(argv: list[str] | None = None) -> int:
     plan = sub.add_parser("set-plan", help="Give a workspace its cloud plan (limits, md O4)")
     plan.add_argument("--workspace", required=True, help="Sign-in address, e.g. 'acme-store'")
     plan.add_argument("--plan", required=True, help="free, growth, enterprise, or none")
+    reporting = sub.add_parser(
+        "reporting-user",
+        help="Logins for BI tools (Metabase, Power BI) that read the reporting views only",
+    )
+    reporting.add_argument("action", choices=["create", "drop", "list"])
+    reporting.add_argument("name", nargs="?", default="", help="report_<name>, e.g. report_bi")
+    reporting.add_argument("--workspace", help="Sign-in address, e.g. 'acme-store'")
+    reporting.add_argument("--all", action="store_true", help="Every workspace (self-hosted)")
     spec = sub.add_parser("openapi", help="Write the API description to docs/api/openapi.json")
     spec.add_argument("--out", type=Path, default=ROOT / "docs" / "api" / "openapi.json")
     spec.add_argument("--check", action="store_true", help="Fail if the file is out of date")
@@ -695,6 +805,8 @@ def main(argv: list[str] | None = None) -> int:
         return _articles_markdown()
     if args.command == "set-plan":
         return _set_plan(args.workspace, args.plan)
+    if args.command == "reporting-user":
+        return _reporting_user(args)
     if args.command == "openapi":
         return _openapi(args.out, args.check)
     return _create_workspace(args)

@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, FlaskConical, History, Lock, Save } from "lucide-react";
+import { ArrowLeft, FlaskConical, History, Lock, Rewind, Save } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useRef, useState } from "react";
@@ -14,6 +14,7 @@ import {
   formatWhen,
 } from "@/components/workspace/automation-test";
 import { LoadError } from "@/components/workspace/list-shared";
+import { ReplayDialog } from "@/components/workspace/replay-dialog";
 import { WEBHOOK_LOCKED } from "@/components/workspace/rules-view";
 import { WorkflowCanvas } from "@/components/workspace/workflow-canvas";
 import { useDebouncedValue } from "@/hooks/use-global-search";
@@ -24,12 +25,14 @@ import {
   useFlow,
   useFlowValidation,
   useFlowVersions,
+  useRestoreFlowVersion,
   useSaveFlow,
 } from "@/hooks/use-workspace";
 import type { Flow, FlowGraph, FlowTestResult, FlowVersion } from "@/lib/api/automation-types";
 import { ApiError } from "@/lib/api/client";
 import type { TicketSummary } from "@/lib/api/types";
 import { fromCanvas, graphKey, startGraph, toCanvas } from "@/lib/automation/graph";
+import { bind, fieldError, useFormik } from "@/lib/forms";
 
 const DEFAULT_PER_HOUR = 1000;
 const DEFAULT_PER_DAY = 10000;
@@ -51,6 +54,12 @@ const normalise = (g: FlowGraph): FlowGraph => {
   return fromCanvas(c.nodes, c.edges);
 };
 
+const limit = (text: string, min: number, max: number): number | undefined | "bad" => {
+  if (text.trim() === "") return undefined;
+  const n = Number(text);
+  return Number.isInteger(n) && n >= min && n <= max ? n : "bad";
+};
+
 export function WorkflowEditor({
   id,
   openVersions = false,
@@ -62,7 +71,12 @@ export function WorkflowEditor({
   if (id && flow.isPending) return <Skeleton className="h-80" />;
   if (id && flow.isError) return <LoadError error={flow.error} />;
   return (
-    <EditorBody key={flow.data?.id ?? "new"} flow={flow.data ?? null} openVersions={openVersions} />
+    // A restore saves a new version: remount so the canvas shows the restored graph.
+    <EditorBody
+      key={`${flow.data?.id ?? "new"}:${flow.data?.version ?? 0}`}
+      flow={flow.data ?? null}
+      openVersions={openVersions}
+    />
   );
 }
 
@@ -71,15 +85,36 @@ function EditorBody({ flow, openVersions }: { flow: Flow | null; openVersions: b
   const access = useAutomationAccess();
   const save = useSaveFlow();
 
-  const [name, setName] = useState(flow?.name ?? "");
-  const [perHour, setPerHour] = useState(flow?.max_runs_per_hour?.toString() ?? "");
-  const [perDay, setPerDay] = useState(flow?.max_runs_per_day?.toString() ?? "");
+  // Name and run limits are Formik values; the graph is edited on the canvas.
+  const form = useFormik({
+    initialValues: {
+      name: flow?.name ?? "",
+      perHour: flow?.max_runs_per_hour?.toString() ?? "",
+      perDay: flow?.max_runs_per_day?.toString() ?? "",
+    },
+    validate: (v) => {
+      const next: Record<string, string> = {};
+      const trimmed = v.name.trim();
+      if (trimmed.length < 1 || trimmed.length > 80)
+        next.name = "Enter a name of 1 to 80 characters";
+      const hour = limit(v.perHour, 1, 100_000);
+      const day = limit(v.perDay, 1, 1_000_000);
+      if (hour === "bad") next.limits = "The hourly limit is a whole number from 1 to 100000.";
+      else if (day === "bad") next.limits = "The daily limit is a whole number from 1 to 1000000.";
+      else if ((day ?? DEFAULT_PER_DAY) < (hour ?? DEFAULT_PER_HOUR))
+        next.limits = "The daily limit can't be lower than the hourly one.";
+      return next;
+    },
+    onSubmit: () => doSave(),
+  });
+  const { name, perHour, perDay } = form.values;
   const [startFrom, setStartFrom] = useState<FlowGraph>(() => flow?.graph ?? startGraph());
   const [graph, setGraph] = useState<FlowGraph>(startFrom);
   const [editKey, setEditKey] = useState(0);
   const [viewing, setViewing] = useState<FlowVersion | null>(null);
   const [versionsOpen, setVersionsOpen] = useState(openVersions);
   const [testOpen, setTestOpen] = useState(false);
+  const [replay, setReplay] = useState<number | "current" | null>(null);
   const [test, setTest] = useState<{ result: FlowTestResult; ticket: TicketSummary } | null>(null);
   const [errors, setErrors] = useState<{ name?: string; limits?: string; form?: string }>({});
   const lastKey = useRef("");
@@ -103,6 +138,11 @@ function EditorBody({ flow, openVersions }: { flow: Flow | null; openVersions: b
   const check = useFlowValidation(shape);
   const shapeError = !readOnly && check.data && !check.data.valid ? check.data.error : null;
 
+  const limitsError =
+    form.submitCount > 0 && typeof (form.errors as Record<string, unknown>).limits === "string"
+      ? ((form.errors as Record<string, unknown>).limits as string)
+      : undefined;
+
   const nodeName = (nodeId: string) => graph.nodes.find((n) => n.id === nodeId)?.label || nodeId;
 
   const onGraph = (g: FlowGraph) => {
@@ -113,24 +153,11 @@ function EditorBody({ flow, openVersions }: { flow: Flow | null; openVersions: b
     setTest(null); // the path no longer matches what is drawn
   };
 
-  const limit = (text: string, min: number, max: number): number | undefined | "bad" => {
-    if (text.trim() === "") return undefined;
-    const n = Number(text);
-    return Number.isInteger(n) && n >= min && n <= max ? n : "bad";
-  };
-
-  const submit = () => {
-    const next: typeof errors = {};
+  const doSave = () => {
     const trimmed = name.trim();
-    if (trimmed.length < 1 || trimmed.length > 80) next.name = "Enter a name of 1 to 80 characters";
     const hour = limit(perHour, 1, 100_000);
     const day = limit(perDay, 1, 1_000_000);
-    if (hour === "bad") next.limits = "The hourly limit is a whole number from 1 to 100000.";
-    else if (day === "bad") next.limits = "The daily limit is a whole number from 1 to 1000000.";
-    else if ((day ?? DEFAULT_PER_DAY) < (hour ?? DEFAULT_PER_HOUR))
-      next.limits = "The daily limit can't be lower than the hourly one.";
-    setErrors(next);
-    if (Object.keys(next).length) return;
+    setErrors({});
 
     const limits = {
       ...(typeof hour === "number" ? { max_runs_per_hour: hour } : {}),
@@ -205,14 +232,13 @@ function EditorBody({ flow, openVersions }: { flow: Flow | null; openVersions: b
 
       <Card className="space-y-4 p-4">
         <div className="flex flex-wrap items-end gap-3">
-          <Field label="Name" htmlFor="wf-name" error={errors.name} className="min-w-56 flex-1">
-            <Input
-              id="wf-name"
-              value={name}
-              maxLength={80}
-              disabled={readOnly}
-              onChange={(e) => setName(e.target.value)}
-            />
+          <Field
+            label="Name"
+            htmlFor="wf-name"
+            error={fieldError(form, "name") ?? errors.name}
+            className="min-w-56 flex-1"
+          >
+            <Input id="wf-name" {...bind(form, "name")} maxLength={80} disabled={readOnly} />
           </Field>
           <div className="flex flex-wrap gap-2">
             {flow && (
@@ -223,8 +249,13 @@ function EditorBody({ flow, openVersions }: { flow: Flow | null; openVersions: b
             <Button variant="outline" disabled={!!viewing} onClick={() => setTestOpen(true)}>
               <FlaskConical className="size-4" /> Test
             </Button>
+            {flow && (
+              <Button variant="outline" onClick={() => setReplay("current")}>
+                <Rewind className="size-4" /> Replay on past tickets
+              </Button>
+            )}
             {!readOnly && (
-              <Button loading={save.isPending} onClick={submit}>
+              <Button loading={save.isPending} onClick={() => form.submitForm()}>
                 <Save className="size-4" /> Save
               </Button>
             )}
@@ -260,12 +291,12 @@ function EditorBody({ flow, openVersions }: { flow: Flow | null; openVersions: b
             </span>
           </div>
         )}
-        {(shapeError || errors.form || errors.limits) && (
+        {(shapeError || errors.form || limitsError) && (
           <p
             role="alert"
             className="rounded-lg border border-danger/25 bg-danger-soft px-3 py-2 text-sm text-danger"
           >
-            {shapeError ?? errors.form ?? errors.limits}
+            {shapeError ?? errors.form ?? limitsError}
           </p>
         )}
 
@@ -313,9 +344,10 @@ function EditorBody({ flow, openVersions }: { flow: Flow | null; openVersions: b
                   type="number"
                   min={1}
                   max={100000}
+                  name="perHour"
                   value={perHour}
                   placeholder={String(DEFAULT_PER_HOUR)}
-                  onChange={(e) => setPerHour(e.target.value)}
+                  onChange={form.handleChange}
                 />
               </Field>
               <Field
@@ -328,9 +360,10 @@ function EditorBody({ flow, openVersions }: { flow: Flow | null; openVersions: b
                   type="number"
                   min={1}
                   max={1000000}
+                  name="perDay"
                   value={perDay}
                   placeholder={String(DEFAULT_PER_DAY)}
-                  onChange={(e) => setPerDay(e.target.value)}
+                  onChange={form.handleChange}
                 />
               </Field>
             </div>
@@ -351,10 +384,26 @@ function EditorBody({ flow, openVersions }: { flow: Flow | null; openVersions: b
         onResult={(result, ticket) => setTest({ result, ticket })}
       />
 
+      {flow && replay !== null && (
+        <ReplayDialog
+          title={name.trim() || flow.name}
+          target={{
+            kind: "flow",
+            flowId: flow.id,
+            ...(replay === "current" ? {} : { version: replay }),
+          }}
+          onClose={() => setReplay(null)}
+        />
+      )}
+
       {flow && versionsOpen && (
         <VersionsDialog
           flowId={flow.id}
           current={flow.version}
+          onReplay={(v) => {
+            setVersionsOpen(false);
+            setReplay(v.version);
+          }}
           onClose={() => setVersionsOpen(false)}
           onView={(v) => {
             setViewing(v);
@@ -371,20 +420,29 @@ function VersionsDialog({
   current,
   onClose,
   onView,
+  onReplay,
 }: {
   flowId: string;
   current: number;
   onClose: () => void;
   onView: (v: FlowVersion) => void;
+  onReplay: (v: FlowVersion) => void;
 }) {
   const versions = useFlowVersions(flowId);
+  const restore = useRestoreFlowVersion(flowId);
+  const [error, setError] = useState<string>();
   return (
     <Dialog
       open
       onClose={onClose}
       title="Versions"
-      description="Open one to see its graph. To go back to it, load it into the editor and save."
+      description="Open one to see its graph, or restore an older one. A restore is saved as a new version; history is never rewritten."
     >
+      {error && (
+        <p role="alert" className="mb-3 rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger">
+          {error}
+        </p>
+      )}
       {versions.isPending ? (
         <Skeleton className="h-24" />
       ) : versions.isError ? (
@@ -392,11 +450,11 @@ function VersionsDialog({
       ) : (
         <ul className="divide-y divide-border">
           {versions.data.map((v) => (
-            <li key={v.version}>
+            <li key={v.version} className="flex flex-wrap items-center gap-2 py-1">
               <button
                 type="button"
                 onClick={() => onView(v)}
-                className="flex w-full items-center gap-2 px-1 py-2.5 text-left text-sm hover:bg-surface-2"
+                className="flex min-w-0 flex-1 items-center gap-2 px-1 py-1.5 text-left text-sm hover:bg-surface-2"
               >
                 <span className="font-medium">Version {v.version}</span>
                 {v.version === current && <Badge tone="primary">Current</Badge>}
@@ -405,6 +463,30 @@ function VersionsDialog({
                   {v.created_by_name ? ` · ${v.created_by_name}` : ""}
                 </span>
               </button>
+              <Button size="sm" variant="ghost" onClick={() => onReplay(v)}>
+                Replay
+              </Button>
+              {v.version !== current && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  loading={restore.isPending && restore.variables === v.version}
+                  disabled={restore.isPending}
+                  onClick={() => {
+                    setError(undefined);
+                    restore.mutate(v.version, {
+                      onSuccess: (f) => {
+                        toast.success(`Version ${v.version} restored as version ${f.version}`);
+                        onClose();
+                      },
+                      onError: (e) =>
+                        setError(e instanceof ApiError ? e.userMessage : "Couldn't restore."),
+                    });
+                  }}
+                >
+                  Restore this version
+                </Button>
+              )}
             </li>
           ))}
         </ul>

@@ -25,7 +25,7 @@ from uuid import UUID
 from sqlalchemy.exc import IntegrityError
 
 from cedesk.cevanos_client import Cevanos
-from cedesk.crypto import Sealer
+from cedesk.crypto import CannotOpen, Sealer
 from cedesk.db import workspace_session
 from cedesk.egress import BadAddress, account_host, account_label
 from cedesk.helpdesk.domain import ai as ai_rules
@@ -401,7 +401,12 @@ async def _card_source(
         return Card(None, False, f"Install the {name} app to see them here."), email, None, ""
     if not email or email.endswith(".invalid"):
         return Card(app.value, False, NO_EMAIL), email, row, ""
-    secret = sealer.open(bytes(row["secret_sealed"]), bound_to=_bound(caller.workspace_id, app))
+    try:
+        secret = sealer.open(bytes(row["secret_sealed"]), bound_to=_bound(caller.workspace_id, app))
+    except CannotOpen:  # CEDESK_SECRET_KEY changed since it was saved: a card message
+        name = rules.CATALOG[app].name
+        return Card(app.value, False, f"The saved {name} key can't be read: install the "
+                    f"{name} app again."), email, None, ""  # fmt: skip
     return None, email, row, secret
 
 

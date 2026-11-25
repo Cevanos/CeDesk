@@ -1,11 +1,12 @@
 "use client";
 
-import { ChevronRight, RefreshCw, Search, UserSearch, X } from "lucide-react";
+import { ChevronRight, RefreshCw, Search, UserSearch, UsersRound, X } from "lucide-react";
 import dynamic from "next/dynamic";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { STATUS_META } from "@/components/layout/user-menu";
+import { PageHeader } from "@/components/ui/page-header";
 import {
   Badge,
   Button,
@@ -75,23 +76,22 @@ export function AgentsView() {
 
   return (
     <div className="mx-auto w-full max-w-6xl px-3 py-5 sm:px-6 sm:py-8">
-      <header className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Agents</h1>
-          <p className="text-sm text-muted-foreground">
-            Who is online, how busy they are and what they handle. Refreshes every 30 seconds.
-          </p>
-        </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => agents.refetch()}
-          disabled={agents.isFetching}
-          aria-label="Refresh agents"
-        >
-          <RefreshCw className={cn("size-3.5", agents.isFetching && "animate-spin")} /> Refresh
-        </Button>
-      </header>
+      <PageHeader
+        icon={UsersRound}
+        title="Agents"
+        description="Who is online, how busy they are and what they handle. Refreshes every 30 seconds."
+        actions={
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => agents.refetch()}
+            disabled={agents.isFetching}
+            aria-label="Refresh agents"
+          >
+            <RefreshCw className={cn("size-3.5", agents.isFetching && "animate-spin")} /> Refresh
+          </Button>
+        }
+      />
 
       <div className="mt-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
         {[

@@ -40,6 +40,7 @@ from cedesk.webhook_client import Answer, WebhookClient
 logger = logging.getLogger("cedesk.webhooks")
 
 NOT_FOUND = "Webhook not found."
+UNREADABLE_SECRET = "The secret can't be read: make a new one."  # noqa: S105 (a message)
 CURSOR = "webhook_delivery"
 BATCH = 50
 LEASE_SECONDS = 60
@@ -352,6 +353,10 @@ async def ping(
         if hook is None:
             raise NotFound(NOT_FOUND)
         sealed = await repo.sealed_secret(s, webhook_id)
+        try:  # before the ping is logged: nothing is left behind when it can't go
+            secret = sealer.open(sealed, bound_to=_bound(caller.workspace_id, webhook_id))
+        except CannotOpen as exc:  # CEDESK_SECRET_KEY changed since it was saved
+            raise Conflict(UNREADABLE_SECRET) from exc
         delivery_id = uuid4()
         body = {
             "event": rules.PING,
@@ -360,7 +365,6 @@ async def ping(
             "webhook": {"id": str(webhook_id)},
         }
         await repo.add_ping(s, caller.workspace_id, delivery_id, webhook_id, body)
-    secret = sealer.open(sealed, bound_to=_bound(caller.workspace_id, webhook_id))
     got = await client.send(
         str(hook["url"]), secret, delivery_id=str(delivery_id), event=rules.PING, body=body
     )
@@ -421,7 +425,7 @@ async def send_due(
                     )
                 except CannotOpen:
                     logger.warning("webhook secret can't be opened", extra={"event": "webhook"})
-                    got = Answer(None, 0, "The secret can't be read: make a new one.", None)
+                    got = Answer(None, 0, UNREADABLE_SECRET, None)
                     state = await _record(sm, workspace_id, delivery_id, 99, got, retry=False)
                 else:
                     got = await client.send(

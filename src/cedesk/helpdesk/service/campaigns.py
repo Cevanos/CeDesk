@@ -447,7 +447,14 @@ async def _audience(
         queued=queued,
         daily_cap=limits.daily_cap,
         max_recipients=limits.max_recipients,
-        problem=rules.cap_problem(n, today + queued, limits),
+        problem=rules.cap_problem(
+            n,
+            today + queued,
+            limits,
+            in_segment=int(found["in_segment"]),
+            not_mailable=int(found["not_mailable"]),
+            suppressed=int(found["suppressed"]),
+        ),
     )
 
 

@@ -337,6 +337,7 @@ class Step:
     type: NodeType
     outcome: str  # condition: yes/no; action: done/no change; wait: waiting/replied/...
     said: str | None = None
+    reason: str | None = None  # a condition that said no: why (test mode only, not stored)
 
     def stored(self) -> dict[str, Any]:
         out: dict[str, Any] = {"node": self.node, "type": self.type.value, "outcome": self.outcome}
@@ -366,6 +367,7 @@ def walk(
     way: Way = Way.next,
     steps_before: int = 0,
     waits_before: int = 0,
+    reasons: bool = False,
 ) -> Walk:
     """Runs the flow from the trigger (`at` None), or from the wait node `at`, leaving it
     by `way` (resumed: next, replied or timeout). Stops at the next wait, at a node with no
@@ -380,7 +382,14 @@ def walk(
         node = graph.nodes[here]
         if node.type is NodeType.condition:
             ok = all(rules.matches(c, facts, state) for c in node.conditions)
-            steps.append(Step(node.id, node.type, "yes" if ok else "no"))
+            reason = None
+            if reasons and not ok:  # test mode only: a live run never reads it
+                reason = "; ".join(
+                    rules.why(c, facts, state)
+                    for c in node.conditions
+                    if not rules.matches(c, facts, state)
+                )
+            steps.append(Step(node.id, node.type, "yes" if ok else "no", reason=reason))
             here = graph.next(node.id, Way.yes if ok else Way.no)
         elif node.type is NodeType.action:
             assert node.action is not None

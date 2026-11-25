@@ -1,12 +1,9 @@
 "use client";
 
-import { zodResolver } from "@hookform/resolvers/zod";
-import { Check, ChevronDown, KeyRound, LogOut, UserCog } from "lucide-react";
+import { Check, ChevronDown, KeyRound, LifeBuoy, LogOut, UserCog } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { useForm, useWatch } from "react-hook-form";
 import { toast } from "sonner";
-import { z } from "zod";
 
 import { PasswordInput, PasswordStrength } from "@/components/auth/password-input";
 import { ThemeToggle } from "@/components/ui/brand";
@@ -15,7 +12,14 @@ import { Button, Field } from "@/components/ui/primitives";
 import { useChangePassword, useCurrentUser, useSetMyStatus, useSignOut } from "@/hooks/use-auth";
 import { ApiError } from "@/lib/api/client";
 import type { AgentStatus } from "@/lib/api/types";
-import { isWrongCurrentPassword, newPassword, passwordError, PASSWORD_HINT } from "@/lib/password";
+import { bind, fieldError, useFormik } from "@/lib/forms";
+import {
+  changePasswordSchema,
+  isWrongCurrentPassword,
+  passwordError,
+  PASSWORD_HINT,
+  type ChangePasswordValues,
+} from "@/lib/password";
 import { ROLE_LABEL } from "@/lib/permissions";
 import { cn, initials } from "@/lib/utils";
 
@@ -121,6 +125,15 @@ export function UserMenu() {
             >
               <KeyRound className="size-4 text-muted-foreground" /> Change password
             </MenuItem>
+            <MenuItem
+              onClick={() => {
+                close();
+                // New tab, so nobody loses their place in the app. The docs are static files.
+                window.open("/docs/", "_blank", "noopener");
+              }}
+            >
+              <LifeBuoy className="size-4 text-muted-foreground" /> Help
+            </MenuItem>
             <MenuItem onClick={() => signOut.mutate()} disabled={signOut.isPending}>
               <LogOut className="size-4 text-muted-foreground" /> Sign out
             </MenuItem>
@@ -133,66 +146,48 @@ export function UserMenu() {
   );
 }
 
-const schema = z
-  .object({
-    current_password: z.string().min(1, "Enter your current password"),
-    new_password: newPassword(),
-    confirm: z.string(),
-  })
-  .refine((v) => v.new_password === v.confirm, {
-    path: ["confirm"],
-    message: "Passwords do not match",
-  });
-type Values = z.infer<typeof schema>;
-
 function ChangePasswordDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const change = useChangePassword();
-  const {
-    register,
-    handleSubmit,
-    control,
-    reset,
-    setError,
-    formState: { errors },
-  } = useForm<Values>({ resolver: zodResolver(schema) });
+  const form = useFormik<ChangePasswordValues>({
+    initialValues: { current_password: "", new_password: "", confirm: "" },
+    validationSchema: changePasswordSchema,
+    validateOnBlur: false,
+    onSubmit: (v) =>
+      change.mutate(
+        { current_password: v.current_password, new_password: v.new_password },
+        {
+          onSuccess: () => {
+            toast.success("Password changed. Other devices were signed out.");
+            close();
+          },
+          onError: (e) => {
+            if (e instanceof ApiError && e.status === 422) {
+              for (const d of e.details) {
+                if (d.field === "current_password" || d.field === "new_password") {
+                  form.setFieldError(d.field, d.message);
+                }
+              }
+              // These come back with no field: a wrong current password belongs to that box,
+              // the workspace's minimum length (and "choose a different one") to the new one.
+              if (e.details.length === 0) {
+                if (isWrongCurrentPassword(e)) {
+                  form.setFieldError("current_password", e.message);
+                } else {
+                  const pw = passwordError(e, "new_password", { anyMessage: true });
+                  if (pw) form.setFieldError("new_password", pw);
+                }
+              }
+            }
+          },
+        },
+      ),
+  });
 
-  const newPw = useWatch({ control, name: "new_password" });
   const close = () => {
-    reset();
+    form.resetForm();
     change.reset();
     onClose();
   };
-
-  const onSubmit = handleSubmit((v) =>
-    change.mutate(
-      { current_password: v.current_password, new_password: v.new_password },
-      {
-        onSuccess: () => {
-          toast.success("Password changed. Other devices were signed out.");
-          close();
-        },
-        onError: (e) => {
-          if (e instanceof ApiError && e.status === 422) {
-            for (const d of e.details) {
-              if (d.field === "current_password" || d.field === "new_password") {
-                setError(d.field, { message: d.message });
-              }
-            }
-            // These come back with no field: a wrong current password belongs to that box,
-            // the workspace's minimum length (and "choose a different one") to the new one.
-            if (e.details.length === 0) {
-              if (isWrongCurrentPassword(e)) {
-                setError("current_password", { message: e.message });
-              } else {
-                const pw = passwordError(e, "new_password", { anyMessage: true });
-                if (pw) setError("new_password", { message: pw });
-              }
-            }
-          }
-        },
-      },
-    ),
-  );
 
   return (
     <Dialog
@@ -201,42 +196,35 @@ function ChangePasswordDialog({ open, onClose }: { open: boolean; onClose: () =>
       title="Change password"
       description="You stay signed in here. Other devices are signed out."
     >
-      <form onSubmit={onSubmit} noValidate className="space-y-4">
+      <form onSubmit={form.handleSubmit} noValidate className="space-y-4">
         <Field
           label="Current password"
           htmlFor="cp-current"
-          error={errors.current_password?.message}
+          error={fieldError(form, "current_password")}
         >
           <PasswordInput
             id="cp-current"
             autoComplete="current-password"
-            aria-invalid={!!errors.current_password}
-            {...register("current_password")}
+            {...bind(form, "current_password")}
           />
         </Field>
         <Field
           label="New password"
           htmlFor="cp-new"
-          error={errors.new_password?.message}
+          error={fieldError(form, "new_password")}
           hint={PASSWORD_HINT}
         >
-          <PasswordInput
-            id="cp-new"
-            autoComplete="new-password"
-            aria-invalid={!!errors.new_password}
-            {...register("new_password")}
-          />
+          <PasswordInput id="cp-new" autoComplete="new-password" {...bind(form, "new_password")} />
           <div className="pt-1.5">
-            <PasswordStrength value={newPw ?? ""} />
+            <PasswordStrength value={form.values.new_password ?? ""} />
           </div>
         </Field>
-        <Field label="Confirm new password" htmlFor="cp-confirm" error={errors.confirm?.message}>
-          <PasswordInput
-            id="cp-confirm"
-            autoComplete="new-password"
-            aria-invalid={!!errors.confirm}
-            {...register("confirm")}
-          />
+        <Field
+          label="Confirm new password"
+          htmlFor="cp-confirm"
+          error={fieldError(form, "confirm")}
+        >
+          <PasswordInput id="cp-confirm" autoComplete="new-password" {...bind(form, "confirm")} />
         </Field>
         <div className="flex justify-end gap-2 pt-1">
           <Button variant="ghost" onClick={close}>

@@ -1,0 +1,63 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>Workflows · CeDesk Docs</title>
+<meta name="robots" content="noindex"><style>
+:root{--brand:#6C55F6;--ink:#0B1B36;--mute:#4B5563;--line:#E5E7EB;--tint:#F5F3FF;--bg:#F6F8FB}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);
+font:16px/1.65 "Instrument Sans",Inter,system-ui,sans-serif}
+a{color:var(--brand)}a:hover{text-decoration:underline}
+a:focus-visible,input:focus-visible{outline:3px solid var(--brand);outline-offset:2px;border-radius:4px}
+.skip{position:absolute;left:-9999px}.skip:focus{left:0;background:var(--brand);color:#fff;padding:10px}
+header{background:#fff;border-bottom:1px solid var(--line)}
+.bar{max-width:1200px;margin:0 auto;padding:14px 24px;display:flex;flex-wrap:wrap;gap:20px;align-items:center}
+.logo{font-weight:700;font-size:18px;color:var(--ink);text-decoration:none}.logo b{color:var(--brand)}
+.bar nav{margin-left:auto;display:flex;gap:20px}.bar nav a{color:var(--mute);text-decoration:none}
+.wrap{max-width:1200px;margin:0 auto;padding:32px 24px 64px;display:flex;flex-wrap:wrap;gap:40px;align-items:flex-start}
+aside{flex:1 1 220px;max-width:260px;font-size:14px;display:flex;flex-direction:column;gap:2px}
+aside a{padding:6px 10px;border-radius:6px;color:#374151;text-decoration:none}
+aside a.on{background:var(--tint);color:#3B2A9E;font-weight:600}
+main{flex:999 1 560px;min-width:0;max-width:760px;background:#fff;border:1px solid var(--line);
+border-radius:12px;padding:32px}
+h1{margin:0 0 8px;font-size:34px;line-height:1.2}h2{font-size:24px;margin:32px 0 8px}
+.meta{color:var(--mute);font-size:14px;margin-bottom:16px}
+table{width:100%;border-collapse:collapse;font-size:15px;display:block;overflow-x:auto}
+th,td{padding:10px 14px;text-align:left;border:1px solid var(--line)}th{background:#F9FAFB}
+blockquote{margin:16px 0;padding:12px 16px;border-left:4px solid var(--brand);background:var(--tint);border-radius:8px}
+blockquote p{margin:0}code{font:14px "JetBrains Mono",monospace;background:#F3F4F6;padding:1px 6px;border-radius:4px}
+pre{background:#0B1B36;color:#E5E7EB;padding:16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+img{max-width:100%}.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:20px}
+.card{display:block;padding:20px;border:1px solid var(--line);border-radius:12px;background:#fff;
+color:var(--ink);text-decoration:none}.card small{color:var(--mute)}
+.draft{background:#FEF3C7;color:#92400E;padding:2px 8px;border-radius:6px;font-size:12px}
+@media (max-width:900px){aside{max-width:none;flex-basis:100%;order:2}main{order:1;flex-basis:100%;padding:20px}
+h1{font-size:28px}}
+
+.op{border:1px solid var(--line);border-radius:12px;margin:24px 0;padding:20px;background:#fff}
+.op h3{margin:0 0 6px;font-size:18px}.route{font:14px "JetBrains Mono",monospace;word-break:break-all}
+.verb{display:inline-block;min-width:58px;text-align:center;padding:2px 8px;border-radius:6px;color:#fff;
+font:700 12px "JetBrains Mono",monospace;margin-right:8px}
+.get{background:#0E7490}.post{background:#15803D}.put{background:#B45309}.patch{background:#7C3AED}.delete{background:#B91C1C}
+.op h4{margin:18px 0 6px;font-size:13px;text-transform:uppercase;letter-spacing:.04em;color:var(--mute)}
+.op table{font-size:14px}.op td:first-child{font:13px "JetBrains Mono",monospace;white-space:nowrap}
+.op pre{font-size:13px}.req{color:#B91C1C;font-size:12px}
+</style></head><body><a class="skip" href="#content">Skip to content</a>
+<header><div class="bar"><a class="logo" href="../index.html">CeDesk Docs</a>
+<nav><a href="../index.html">User guide</a><a href="../glossary.html">Glossary</a><a href="../api/index.html">API reference</a></nav></div></header>
+<div class="wrap"><aside aria-label='Topics'><a class="" href="../getting-started/index.html">Getting started</a><a class="" href="../working-with-tickets/index.html">Working with tickets</a><a class="" href="../ticket-tools/index.html">Ticket tools</a><a class="" href="../channels/index.html">Channels</a><a class="" href="../customers/index.html">Customers</a><a class="on" href="../automation/index.html">Automation</a><a class="" href="../campaigns/index.html">Email campaigns</a><a class="" href="../reports/index.html">Reports</a><a class="" href="../security-and-privacy/index.html">Security and privacy</a><a class="" href="../account-and-access/index.html">Account and access</a><a class="" href="../integrations/index.html">Integrations</a><a class="" href="../help-center/index.html">Help center</a><a class="" href="../imports/index.html">Moving to CeDesk</a><a class="" href="../best-practices/index.html">Best practices</a><a class="" href="../how-to/index.html">How-to</a><a class="" href="../developers/index.html">Developer guides</a></aside><main id="content" data-pagefind-body><h1>Workflows <span class="draft">Draft</span></h1><div class='meta'>Last updated 2026-11-24 · Who: Admins</div><p>A workflow is a chain of steps that can wait. For example: when a VIP writes in, tag the ticket, wait a day for them to reply, then raise the priority.</p>
+<blockquote><p><strong>Who can do this:</strong> Admins.</p></blockquote>
+<h2 id="how-it-runs">How it runs</h2>
+<p>A workflow starts on its trigger, right after the rules. It goes from step to step until it waits or ends. A waiting run carries on when the time passes or, if you choose, when the customer replies. Every change writes a line on the ticket.</p>
+<h2 id="build-one">Build one</h2>
+<ol><li>Go to <strong>Settings › Service › Workflows</strong> and select <strong>New workflow</strong>.</li><li>Draw the steps in the builder. The kinds of step are:</li></ol>
+<table><thead><tr><th>Step</th><th>Does</th></tr></thead><tbody><tr><td>Trigger</td><td>The event that starts it. One per workflow.</td></tr><tr><td>Condition</td><td>Checks the ticket, then goes the "yes" or the "no" way.</td></tr><tr><td>Action</td><td>Does one thing, like a rule's action.</td></tr><tr><td>Wait</td><td>Waits from 1 minute up to 30 days, optionally until the customer replies, with a path for "replied" and one for "timed out".</td></tr></tbody></table>
+<ol><li>Save. A new workflow starts <strong>turned off</strong>. Turn it on when you are ready.</li></ol>
+<p>The builder checks the shape as you draw: one trigger, every step reachable, no loop without a wait, at most 50 steps and 100 connections.</p>
+<h2 id="versions">Versions</h2>
+<p>Each change to the steps saves a new version. Open the version history to go back to an older one. It is saved as a new version, so history is never lost. Runs already waiting carry on with the version they started on.</p>
+<h2 id="stop-a-run-or-delete">Stop a run, or delete</h2>
+<p>A waiting run can be stopped from the <strong>Automation log</strong>. Deleting a workflow cancels its waiting runs.</p>
+<h2 id="safety-limits">Safety limits</h2>
+<p>A workflow has a limit of runs per hour (1,000 by default) and per day (10,000 by default), across all tickets. Runs over the limit are blocked and logged.</p>
+<h2 id="check-it-worked">Check it worked</h2>
+<p>Use <strong>Test</strong> on a ticket, then turn it on and watch the <strong>Automation log</strong>.</p>
+<h2 id="troubleshooting">Troubleshooting</h2>
+<table><thead><tr><th>What you see</th><th>Why</th><th>What to do</th></tr></thead><tbody><tr><td>The workflow does not run</td><td>It is off.</td><td>Turn it on.</td></tr><tr><td>It cannot be saved</td><td>The shape breaks a rule, for example a loop with no wait.</td><td>Read the message.</td></tr><tr><td>Runs are blocked</td><td>The hourly or daily limit was reached.</td><td>Raise the limit or fix what triggers so many runs.</td></tr><tr><td>A problem is shown</td><td>A team or other item it uses was deleted.</td><td>Edit the step.</td></tr></tbody></table></main></div></body></html>
