@@ -64,7 +64,7 @@ jobs:
           printf '%s\n%s\n' "$pw" "$pw" | docker compose exec -T api uv run --no-sync cedesk seed-demo
           token=$(curl -fsS -X POST http://localhost/api/v1/auth/sign-in \
             -H 'content-type: application/json' \
-            -d "{\"workspace\":\"acme-store\",\"email\":\"ritesh@acme-store.in\",\"password\":\"$pw\"}" | jq -er .token)
+            -d "{\"workspace\":\"acme-store\",\"email\":\"alex@acme-store.in\",\"password\":\"$pw\"}" | jq -er .token)
           curl -fsS http://localhost/api/v1/me -H "authorization: Bearer $token" | jq -e '.member' > /dev/null
           curl -fsS -X POST http://localhost/api/v1/tickets \
             -H "authorization: Bearer $token" -H 'content-type: application/json' \
@@ -75,7 +75,7 @@ jobs:
           # a cookie and calls the API. Changes must come from the page's own origin.
           curl -fsS -c jar -X POST http://localhost/api/auth/sign-in \
             -H 'content-type: application/json' -H 'origin: http://localhost' \
-            -d "{\"workspace\":\"acme-store\",\"email\":\"ritesh@acme-store.in\",\"password\":\"$pw\"}" > /dev/null
+            -d "{\"workspace\":\"acme-store\",\"email\":\"alex@acme-store.in\",\"password\":\"$pw\"}" > /dev/null
           curl -fsS -b jar http://localhost/api/me | jq -e '.member.email'
           curl -fsS -b jar -X POST http://localhost/api/tickets \
             -H 'content-type: application/json' -H 'origin: http://localhost' \
