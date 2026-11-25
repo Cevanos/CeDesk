@@ -12,7 +12,7 @@
 <p align="center">
   <b>The open-source help desk by <a href="https://cevanos.ai">Cevanos</a>.</b><br>
   Tickets, routing, SLAs, macros, rules, a customer portal and one-click imports, on your own server.<br>
-  An open-source alternative to Zendesk, Freshdesk and Help Scout.
+  An open-source alternative to Zendesk, Freshdesk, Intercom, Help Scout, Gorgias, Zoho Desk and HubSpot Service Hub.
 </p>
 
 <p align="center">
@@ -58,7 +58,7 @@
 
 - **Yours.** Your server, your database, your customers' data. Self-hosted CeDesk has every feature and no plan limits.
 - **Complete.** A real help desk out of the box: queues, routing, SLAs, automations, a customer portal and reports.
-- **Easy to move to.** Bring your tickets over from Zendesk, Freshdesk, Intercom, Help Scout or a CSV file.
+- **Easy to move to.** Bring your tickets over from Zendesk, Freshdesk, Intercom, Help Scout, Gorgias, Zoho Desk, HubSpot or a CSV file.
 - **AI when you want it.** Works fully on its own. Connect a [Cevanos](https://cevanos.ai) workspace to add an AI agent with clean AI-to-human handover.
 
 ## Features
@@ -91,7 +91,7 @@
     </td>
     <td valign="top">
       <h3>🔁 Imports</h3>
-      Move from Zendesk, Freshdesk, Intercom, Help Scout or CSV, with resume and retries for large accounts.
+      Move from Zendesk, Freshdesk, Intercom, Help Scout, Gorgias, Zoho Desk, HubSpot or CSV, with resume and retries for large accounts.
     </td>
   </tr>
   <tr>
