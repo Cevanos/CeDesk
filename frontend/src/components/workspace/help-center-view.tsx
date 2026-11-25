@@ -48,6 +48,7 @@ import {
   useSaveArticleCategory,
 } from "@/hooks/use-workspace";
 import type { Article, ArticleCategory, ArticleStatus } from "@/lib/api/types";
+import { bind, bindSelect, fieldError, useFormik, yup } from "@/lib/forms";
 import { COMMON_LOCALES, languageName, nfc } from "@/lib/locale";
 import { cn, timeAgo } from "@/lib/utils";
 
@@ -407,37 +408,31 @@ function CategoryForm({
   onClose: () => void;
 }) {
   const save = useSaveArticleCategory();
-  const [name, setName] = useState(category?.name ?? "");
-  const [errs, setErrs] = useState<Record<string, string>>({});
+  const [srv, setSrv] = useState<Record<string, string>>({});
+  const form = useFormik({
+    initialValues: { name: category?.name ?? "" },
+    validationSchema: yup.object({ name: yup.string().trim().required("Enter a name") }),
+    onSubmit: (v) => {
+      setSrv({});
+      save.mutate(
+        { id: category?.id, name: nfc(v.name.trim()) },
+        {
+          onSuccess: () => {
+            toast.success("Category saved");
+            onClose();
+          },
+          onError: (err) => setSrv(fieldErrors(err)),
+        },
+      );
+    },
+  });
   return (
     <div className="space-y-4">
-      <form
-        noValidate
-        className="space-y-4"
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (!name.trim()) return setErrs({ name: "Enter a name" });
-          save.mutate(
-            { id: category?.id, name: nfc(name.trim()) },
-            {
-              onSuccess: () => {
-                toast.success("Category saved");
-                onClose();
-              },
-              onError: (err) => setErrs(fieldErrors(err)),
-            },
-          );
-        }}
-      >
-        <Field label="Name" htmlFor="cat-name" error={errs.name}>
-          <Input
-            id="cat-name"
-            maxLength={80}
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-          />
+      <form noValidate className="space-y-4" onSubmit={form.handleSubmit}>
+        <Field label="Name" htmlFor="cat-name" error={fieldError(form, "name") ?? srv.name}>
+          <Input id="cat-name" maxLength={80} {...bind(form, "name")} />
         </Field>
-        <FormError message={errs._form} />
+        <FormError message={srv._form} />
         <div className="flex justify-end gap-2">
           <Button variant="ghost" onClick={onClose}>
             Cancel
@@ -464,72 +459,71 @@ function ArticleForm({
   onClose: () => void;
 }) {
   const save = useSaveArticle();
-  const [title, setTitle] = useState(article?.title ?? "");
-  const [body, setBody] = useState(article?.body ?? "");
-  const [categoryId, setCategoryId] = useState(article?.category_id ?? defaultCategory);
-  const [status, setStatus] = useState<ArticleStatus>(article?.status ?? "draft");
   const [seo, setSeo] = useState(() => seoFrom(article));
-  const [errs, setErrs] = useState<Record<string, string>>({});
+  const [srv, setSrv] = useState<Record<string, string>>({});
+  const form = useFormik({
+    initialValues: {
+      title: article?.title ?? "",
+      body: article?.body ?? "",
+      category_id: article?.category_id ?? defaultCategory,
+      status: (article?.status ?? "draft") as ArticleStatus,
+    },
+    validationSchema: yup.object({
+      title: yup.string().trim().required("Enter a title"),
+      body: yup.string().trim().required("Write the article"),
+    }),
+    onSubmit: (v) => {
+      setSrv({});
+      save.mutate(
+        {
+          id: article?.id,
+          title: nfc(v.title.trim()),
+          body: nfc(v.body),
+          category_id: v.category_id || null,
+          status: v.status,
+          ...seoPayload(seo),
+        },
+        {
+          onSuccess: () => {
+            toast.success(v.status === "published" ? "Article published" : "Draft saved");
+            onClose();
+          },
+          onError: (err) => setSrv(fieldErrors(err)),
+        },
+      );
+    },
+  });
+  const { body, status } = form.values;
+  const errs: Record<string, string> = {
+    ...srv,
+    ...(fieldError(form, "title") ? { title: fieldError(form, "title") as string } : {}),
+    ...(fieldError(form, "body") ? { body: fieldError(form, "body") as string } : {}),
+  };
 
   return (
-    <form
-      noValidate
-      className="space-y-4"
-      onSubmit={(e) => {
-        e.preventDefault();
-        const next: Record<string, string> = {};
-        if (!title.trim()) next.title = "Enter a title";
-        if (!body.trim()) next.body = "Write the article";
-        setErrs(next);
-        if (Object.keys(next).length) return;
-        save.mutate(
-          {
-            id: article?.id,
-            title: nfc(title.trim()),
-            body: nfc(body),
-            category_id: categoryId || null,
-            status,
-            ...seoPayload(seo),
-          },
-          {
-            onSuccess: () => {
-              toast.success(status === "published" ? "Article published" : "Draft saved");
-              onClose();
-            },
-            onError: (err) => setErrs(fieldErrors(err)),
-          },
-        );
-      }}
-    >
+    <form noValidate className="space-y-4" onSubmit={form.handleSubmit}>
       <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_12rem_10rem]">
         <Field label="Title" htmlFor="art-title" error={errs.title}>
-          <Input
-            id="art-title"
-            maxLength={200}
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-          />
+          <Input id="art-title" maxLength={200} {...bind(form, "title")} />
         </Field>
         <Field label="Category" htmlFor="art-cat" error={errs.category_id}>
           <Select
             id="art-cat"
-            value={categoryId}
+            {...bindSelect(form, "category_id")}
             options={[
               { value: "", label: "No category" },
               ...categories.map((c) => ({ value: c.id, label: c.name })),
             ]}
-            onChange={(e) => setCategoryId(e.target.value)}
           />
         </Field>
         <Field label="Status" htmlFor="art-status">
           <Select
             id="art-status"
-            value={status}
+            {...bindSelect(form, "status")}
             options={[
               { value: "draft", label: "Draft" },
               { value: "published", label: "Published" },
             ]}
-            onChange={(e) => setStatus(e.target.value as ArticleStatus)}
           />
         </Field>
       </div>
@@ -545,8 +539,7 @@ function ArticleForm({
             id="art-body"
             rows={16}
             className="font-mono text-[13px] leading-6"
-            value={body}
-            onChange={(e) => setBody(e.target.value)}
+            {...bind(form, "body")}
           />
         </Field>
         <div>

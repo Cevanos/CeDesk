@@ -7,12 +7,14 @@ import {
   BookOpen,
   CheckCircle2,
   Clock,
+  Gauge,
   Hourglass,
   Inbox,
   ShieldAlert,
   ShieldCheck,
   Smile,
   Timer,
+  Users,
   type LucideIcon,
 } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -20,6 +22,7 @@ import { useMemo, useState } from "react";
 import { Stars } from "@/components/tickets/csat";
 import { formatMinutes } from "@/components/tickets/sla";
 import { Badge, Card, EmptyState, Skeleton } from "@/components/ui/primitives";
+import { SectionHeader } from "@/components/ui/section";
 import { LoadError } from "@/components/workspace/list-shared";
 import { CsvButton } from "@/components/workspace/reports-more";
 import { useArticleReport } from "@/hooks/use-workspace";
@@ -88,72 +91,83 @@ export function Tile({
 export function ReportData({ data, stale }: { data: TeamReport; stale: boolean }) {
   const s = data.summary;
   return (
-    <div className={cn("space-y-6 transition-opacity", stale && "opacity-60")}>
-      <section aria-label="Summary" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Tile
-          icon={Inbox}
-          label="Created"
-          value={count(s.created)}
-          tone="bg-primary-soft text-primary-ink"
+    <div className={cn("space-y-10 transition-opacity", stale && "opacity-60")}>
+      <section aria-labelledby="summary-h">
+        <SectionHeader
+          id="summary-h"
+          icon={Gauge}
+          title="Summary"
+          description="The headline numbers for the period."
         />
-        <Tile
-          icon={CheckCircle2}
-          label="Resolved"
-          value={count(s.resolved)}
-          tone="bg-success-soft text-success"
-        />
-        <Tile
-          icon={Hourglass}
-          label="Open now"
-          value={count(s.open)}
-          tone="bg-info-soft text-info"
-        />
-        <Tile
-          icon={ShieldAlert}
-          label="Open breaching"
-          value={count(s.open_breaching)}
-          hint="Open tickets past a target"
-          tone="bg-danger-soft text-danger"
-        />
-        <Tile
-          icon={ShieldCheck}
-          label="SLA met"
-          value={percent(s.sla_met_pct)}
-          tone="bg-success-soft text-success"
-        />
-        <Tile
-          icon={Timer}
-          label="First reply"
-          value={mins(s.first_reply_minutes)}
-          hint="Average"
-          tone="bg-warning-soft text-warning"
-        />
-        <Tile
-          icon={Clock}
-          label="Resolution"
-          value={mins(s.resolve_minutes)}
-          hint="Average"
-          tone="bg-warning-soft text-warning"
-        />
-        <Tile
-          icon={Smile}
-          label="CSAT"
-          value={s.csat_average === null ? dash : `${rating(s.csat_average)} ★`}
-          hint={
-            s.csat_count
-              ? `${s.csat_count} ratings${s.csat_happy_pct != null ? ` · ${percent(s.csat_happy_pct)} happy` : ""}`
-              : "No ratings yet"
-          }
-          tone="bg-amber-100 text-amber-700"
-        />
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <Tile
+            icon={Inbox}
+            label="Created"
+            value={count(s.created)}
+            tone="bg-primary-soft text-primary-ink"
+          />
+          <Tile
+            icon={CheckCircle2}
+            label="Resolved"
+            value={count(s.resolved)}
+            tone="bg-success-soft text-success"
+          />
+          <Tile
+            icon={Hourglass}
+            label="Open now"
+            value={count(s.open)}
+            tone="bg-info-soft text-info"
+          />
+          <Tile
+            icon={ShieldAlert}
+            label="Open breaching"
+            value={count(s.open_breaching)}
+            hint="Open tickets past a target"
+            tone="bg-danger-soft text-danger"
+          />
+          <Tile
+            icon={ShieldCheck}
+            label="SLA met"
+            value={percent(s.sla_met_pct)}
+            tone="bg-success-soft text-success"
+          />
+          <Tile
+            icon={Timer}
+            label="First reply"
+            value={mins(s.first_reply_minutes)}
+            hint="Average"
+            tone="bg-warning-soft text-warning"
+          />
+          <Tile
+            icon={Clock}
+            label="Resolution"
+            value={mins(s.resolve_minutes)}
+            hint="Average"
+            tone="bg-warning-soft text-warning"
+          />
+          <Tile
+            icon={Smile}
+            label="CSAT"
+            value={s.csat_average === null ? dash : `${rating(s.csat_average)} ★`}
+            hint={
+              s.csat_count
+                ? `${s.csat_count} ratings${s.csat_happy_pct != null ? ` · ${percent(s.csat_happy_pct)} happy` : ""}`
+                : "No ratings yet"
+            }
+            tone="bg-amber-100 text-amber-700"
+          />
+        </div>
       </section>
 
       <CsatBars data={data} />
 
       <section aria-labelledby="by-team">
-        <h2 id="by-team" className="mb-2 text-base font-semibold">
-          Tickets by team
-        </h2>
+        <SectionHeader
+          id="by-team"
+          icon={BarChart3}
+          title="Tickets by team"
+          description="Volume, SLA and satisfaction per team."
+        />
         <Card className="overflow-x-auto">
           {data.teams.length === 0 ? (
             <EmptyState icon={<BarChart3 className="size-6" />} title="No team data">
@@ -232,9 +246,12 @@ export function CsatBars({ data }: { data: TeamReport }) {
   const average = data.summary.csat_average;
   return (
     <section aria-labelledby="csat-h">
-      <h2 id="csat-h" className="mb-2 text-base font-semibold">
-        Customer satisfaction
-      </h2>
+      <SectionHeader
+        id="csat-h"
+        icon={Smile}
+        title="Customer satisfaction"
+        description="How customers rated their conversations."
+      />
       <Card className="grid gap-6 p-5 sm:grid-cols-[11rem_minmax(0,1fr)]">
         <div className="flex flex-col items-start justify-center gap-1">
           <span className="text-4xl font-semibold tracking-tight tabular-nums">
@@ -334,9 +351,12 @@ export function AgentsTable({ agents }: { agents: ReportAgentRow[] }) {
 
   return (
     <section aria-labelledby="agents-h">
-      <h2 id="agents-h" className="mb-2 text-base font-semibold">
-        Agents
-      </h2>
+      <SectionHeader
+        id="agents-h"
+        icon={Users}
+        title="Agents"
+        description="Workload, speed and satisfaction for each agent."
+      />
       <Card className="overflow-x-auto">
         {sorted.length === 0 ? (
           <EmptyState icon={<BarChart3 className="size-6" />} title="No agent data">
@@ -395,12 +415,15 @@ export function ArticlesTable({ range }: { range: { from: string; to: string } }
       aria-labelledby="articles-h"
       className={cn("mt-6", q.isPlaceholderData && "opacity-60")}
     >
-      <div className="mb-2 flex items-center justify-between gap-2">
-        <h2 id="articles-h" className="text-base font-semibold">
-          Help articles
-        </h2>
-        <CsvButton path="reports/articles" params={range} withTeam={false} name="articles" />
-      </div>
+      <SectionHeader
+        id="articles-h"
+        icon={BookOpen}
+        title="Help articles"
+        description="Which articles customers read and how helpful they found them."
+        aside={
+          <CsvButton path="reports/articles" params={range} withTeam={false} name="articles" />
+        }
+      />
       <Card className="overflow-x-auto">
         {q.isPending ? (
           <Skeleton className="h-24" />

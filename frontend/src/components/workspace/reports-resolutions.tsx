@@ -1,9 +1,10 @@
 "use client";
 
-import { ArrowDown, ArrowUp } from "lucide-react";
+import { ArrowDown, ArrowUp, CircleCheckBig, UserRound, Users } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { Card, EmptyState, Skeleton } from "@/components/ui/primitives";
+import { SectionHeader } from "@/components/ui/section";
 import { LoadError } from "@/components/workspace/list-shared";
 import { GetCsvButton } from "@/components/workspace/report-csv";
 import { useReportFilters } from "@/components/workspace/reports-frame";
@@ -64,7 +65,7 @@ export function ResolutionsTab() {
   ];
 
   return (
-    <div className="mt-6 space-y-6">
+    <div className="mt-6 space-y-10">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground">
           Verified: {total.verified_agent} by agent, {total.verified_shopify} with Shopify,{" "}
@@ -76,17 +77,24 @@ export function ResolutionsTab() {
           fallback="cedesk-resolutions.csv"
         />
       </div>
-      <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-        {tiles.map((t) => (
-          <li key={t.label}>
-            <Card className="p-4">
-              <p className="text-xs text-muted-foreground">{t.label}</p>
-              <p className="mt-1 text-2xl font-semibold tabular-nums">{t.value}</p>
-              {t.sub && <p className="text-xs text-muted-foreground">{t.sub} of resolved</p>}
-            </Card>
-          </li>
-        ))}
-      </ul>
+      <section aria-label="Summary">
+        <SectionHeader
+          icon={CircleCheckBig}
+          title="Summary"
+          description="How resolutions were closed out."
+        />
+        <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+          {tiles.map((t) => (
+            <li key={t.label}>
+              <Card className="p-4">
+                <p className="text-xs text-muted-foreground">{t.label}</p>
+                <p className="mt-1 text-2xl font-semibold tabular-nums">{t.value}</p>
+                {t.sub && <p className="text-xs text-muted-foreground">{t.sub} of resolved</p>}
+              </Card>
+            </li>
+          ))}
+        </ul>
+      </section>
       <RowsTable title="By team" rows={teams} />
       <RowsTable title="By agent" rows={agents} />
     </div>
@@ -132,7 +140,15 @@ function RowsTable({ title, rows }: { title: string; rows: ResolutionRow[] }) {
 
   return (
     <section aria-label={title}>
-      <h3 className="mb-2 text-sm font-semibold">{title}</h3>
+      <SectionHeader
+        icon={title === "By team" ? Users : UserRound}
+        title={title}
+        description={
+          title === "By team"
+            ? "Resolved tickets and receipts per team."
+            : "Resolved tickets and receipts per agent."
+        }
+      />
       <Card className="overflow-x-auto">
         {rows.length === 0 ? (
           <p className="p-4 text-sm text-muted-foreground">Nothing to show.</p>

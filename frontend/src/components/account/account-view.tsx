@@ -1,11 +1,8 @@
 "use client";
 
-import { zodResolver } from "@hookform/resolvers/zod";
 import { AlertCircle, KeyRound, LogOut, Smartphone } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useForm, useWatch } from "react-hook-form";
 import { toast } from "sonner";
-import { z } from "zod";
 
 import { Section } from "@/components/account/section";
 import { TwoFactorCard } from "@/components/account/two-factor-card";
@@ -13,7 +10,14 @@ import { PasswordInput, PasswordStrength } from "@/components/auth/password-inpu
 import { Button, Field, Skeleton } from "@/components/ui/primitives";
 import { useChangePassword, useCurrentUser, useSignOut } from "@/hooks/use-auth";
 import { ApiError } from "@/lib/api/client";
-import { isWrongCurrentPassword, newPassword, passwordError, PASSWORD_HINT } from "@/lib/password";
+import { bind, fieldError, useFormik } from "@/lib/forms";
+import {
+  changePasswordSchema,
+  isWrongCurrentPassword,
+  passwordError,
+  PASSWORD_HINT,
+  type ChangePasswordValues,
+} from "@/lib/password";
 import { ROLE_LABEL } from "@/lib/permissions";
 
 export function AccountView() {
@@ -93,70 +97,52 @@ function DevicesCard() {
 
 /* ---------------------------------------------------------------- password */
 
-const pwSchema = z
-  .object({
-    current_password: z.string().min(1, "Enter your current password"),
-    new_password: newPassword(),
-    confirm: z.string(),
-  })
-  .refine((v) => v.new_password === v.confirm, {
-    path: ["confirm"],
-    message: "Passwords do not match",
-  });
-type PwValues = z.infer<typeof pwSchema>;
-
 function PasswordCard({ expired }: { expired: boolean }) {
   const router = useRouter();
   const change = useChangePassword();
-  const {
-    register,
-    handleSubmit,
-    control,
-    reset,
-    setError,
-    formState: { errors },
-  } = useForm<PwValues>({ resolver: zodResolver(pwSchema) });
-  const newPw = useWatch({ control, name: "new_password" });
-
-  const onSubmit = handleSubmit((v) =>
-    change.mutate(
-      { current_password: v.current_password, new_password: v.new_password },
-      {
-        onSuccess: () => {
-          toast.success("Password changed. Other devices were signed out.");
-          reset();
-          if (expired) {
-            router.replace("/tickets");
-            router.refresh();
-          }
-        },
-        onError: (e) => {
-          if (e instanceof ApiError && (e.status === 422 || e.status === 403)) {
-            const fields = e.details.filter(
-              (d) => d.field === "current_password" || d.field === "new_password",
-            );
-            for (const d of fields) {
-              setError(d.field as "current_password" | "new_password", { message: d.message });
+  const form = useFormik<ChangePasswordValues>({
+    initialValues: { current_password: "", new_password: "", confirm: "" },
+    validationSchema: changePasswordSchema,
+    validateOnBlur: false,
+    onSubmit: (v) =>
+      change.mutate(
+        { current_password: v.current_password, new_password: v.new_password },
+        {
+          onSuccess: () => {
+            toast.success("Password changed. Other devices were signed out.");
+            form.resetForm();
+            if (expired) {
+              router.replace("/tickets");
+              router.refresh();
             }
-            // These come back with no field: a wrong current password belongs to that box,
-            // the workspace's minimum length (and "choose a different one") to the new one.
-            if (fields.length === 0) {
-              if (isWrongCurrentPassword(e)) {
-                setError("current_password", { message: e.message });
-              } else {
-                const pw = passwordError(e, "new_password", { anyMessage: true });
-                if (pw) setError("new_password", { message: pw });
+          },
+          onError: (e) => {
+            if (e instanceof ApiError && (e.status === 422 || e.status === 403)) {
+              const fields = e.details.filter(
+                (d) => d.field === "current_password" || d.field === "new_password",
+              );
+              for (const d of fields) {
+                form.setFieldError(d.field, d.message);
+              }
+              // These come back with no field: a wrong current password belongs to that box,
+              // the workspace's minimum length (and "choose a different one") to the new one.
+              if (fields.length === 0) {
+                if (isWrongCurrentPassword(e)) {
+                  form.setFieldError("current_password", e.message);
+                } else {
+                  const pw = passwordError(e, "new_password", { anyMessage: true });
+                  if (pw) form.setFieldError("new_password", pw);
+                }
+              }
+              // 403 is "old password is wrong".
+              if (e.status === 403 && fields.length === 0) {
+                form.setFieldError("current_password", e.message);
               }
             }
-            // 403 is "old password is wrong".
-            if (e.status === 403 && fields.length === 0) {
-              setError("current_password", { message: e.message });
-            }
-          }
+          },
         },
-      },
-    ),
-  );
+      ),
+  });
 
   return (
     <Section
@@ -164,42 +150,35 @@ function PasswordCard({ expired }: { expired: boolean }) {
       title="Change password"
       description="You stay signed in here. Other devices are signed out."
     >
-      <form onSubmit={onSubmit} noValidate className="max-w-md space-y-4">
+      <form onSubmit={form.handleSubmit} noValidate className="max-w-md space-y-4">
         <Field
           label="Current password"
           htmlFor="ac-current"
-          error={errors.current_password?.message}
+          error={fieldError(form, "current_password")}
         >
           <PasswordInput
             id="ac-current"
             autoComplete="current-password"
-            aria-invalid={!!errors.current_password}
-            {...register("current_password")}
+            {...bind(form, "current_password")}
           />
         </Field>
         <Field
           label="New password"
           htmlFor="ac-new"
-          error={errors.new_password?.message}
+          error={fieldError(form, "new_password")}
           hint={PASSWORD_HINT}
         >
-          <PasswordInput
-            id="ac-new"
-            autoComplete="new-password"
-            aria-invalid={!!errors.new_password}
-            {...register("new_password")}
-          />
+          <PasswordInput id="ac-new" autoComplete="new-password" {...bind(form, "new_password")} />
           <div className="pt-1.5">
-            <PasswordStrength value={newPw ?? ""} />
+            <PasswordStrength value={form.values.new_password ?? ""} />
           </div>
         </Field>
-        <Field label="Confirm new password" htmlFor="ac-confirm" error={errors.confirm?.message}>
-          <PasswordInput
-            id="ac-confirm"
-            autoComplete="new-password"
-            aria-invalid={!!errors.confirm}
-            {...register("confirm")}
-          />
+        <Field
+          label="Confirm new password"
+          htmlFor="ac-confirm"
+          error={fieldError(form, "confirm")}
+        >
+          <PasswordInput id="ac-confirm" autoComplete="new-password" {...bind(form, "confirm")} />
         </Field>
         <Button type="submit" loading={change.isPending}>
           Update password

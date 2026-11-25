@@ -46,12 +46,13 @@ export function PublicShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="relative isolate flex min-h-svh flex-col overflow-x-clip">
       <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[34rem]">
-        <div className="absolute inset-0 bg-[radial-gradient(60rem_26rem_at_85%_-10%,rgb(119_98_251/0.22),transparent_62%),radial-gradient(44rem_24rem_at_0%_-5%,rgb(47_123_255/0.14),transparent_62%)]" />
+        <div className="absolute inset-0 bg-[radial-gradient(60rem_26rem_at_85%_-10%,rgb(124_92_255/0.22),transparent_62%),radial-gradient(44rem_24rem_at_0%_-5%,rgb(31_200_227/0.14),transparent_62%)]" />
+        <div className="bg-dots absolute inset-0 opacity-40 [mask-image:linear-gradient(to_bottom,black,transparent_70%)]" />
         <div className="absolute -top-24 -right-16 size-80 animate-drift rounded-full bg-primary/15 blur-3xl" />
-        <div className="absolute top-10 -left-24 size-72 animate-drift rounded-full bg-[#2f7bff]/10 blur-3xl [animation-direction:reverse]" />
+        <div className="absolute top-10 -left-24 size-72 animate-drift rounded-full bg-ai-to/15 blur-3xl [animation-direction:reverse]" />
       </div>
 
-      <header className="sticky top-0 z-30 border-b border-border/70 bg-background/75 backdrop-blur-xl">
+      <header className="glass sticky top-0 z-30 border-b border-border/70">
         <div className="mx-auto flex h-16 w-full max-w-5xl items-center gap-3 px-4 sm:px-6">
           <Link
             href="/?landing=1"

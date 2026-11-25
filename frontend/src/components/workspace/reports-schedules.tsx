@@ -1,6 +1,6 @@
 "use client";
 
-import { LogOut, Pencil, Plus, Trash2 } from "lucide-react";
+import { CalendarClock, LogOut, Pencil, Plus, Trash2 } from "lucide-react";
 import { Fragment, useState } from "react";
 import { toast } from "sonner";
 
@@ -15,6 +15,7 @@ import {
   Select,
   Skeleton,
 } from "@/components/ui/primitives";
+import { SectionHeader } from "@/components/ui/section";
 import { Switch } from "@/components/ui/switch";
 import { LoadError } from "@/components/workspace/list-shared";
 import { useCurrentUser } from "@/hooks/use-auth";
@@ -30,6 +31,7 @@ import {
   type ScheduleInput,
 } from "@/hooks/workspace/reports-explore";
 import { ApiError } from "@/lib/api/client";
+import { bind, fieldError, useFormik, yup } from "@/lib/forms";
 import {
   DASH,
   RANGE_PRESETS,
@@ -61,14 +63,16 @@ export function SchedulesTab() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-sm text-muted-foreground">
-          Email a report to your team on a schedule. Each email has the numbers and a link here.
-        </p>
-        <Button size="sm" onClick={() => setEditing("new")}>
-          <Plus className="size-3.5" aria-hidden /> New schedule
-        </Button>
-      </div>
+      <SectionHeader
+        icon={CalendarClock}
+        title="Scheduled reports"
+        description="Email a report to your team on a schedule. Each email has the numbers and a link here."
+        aside={
+          <Button size="sm" onClick={() => setEditing("new")}>
+            <Plus className="size-3.5" aria-hidden /> New schedule
+          </Button>
+        }
+      />
 
       {list.length === 0 ? (
         <Card>
@@ -232,7 +236,18 @@ function ScheduleDialog({
       ? `r:${schedule.target.report_id}`
       : `p:${schedule.target.preset ?? ""}`
     : "";
-  const [name, setName] = useState(schedule?.name ?? "");
+  const form = useFormik({
+    initialValues: { name: schedule?.name ?? "" },
+    validationSchema: yup.object({
+      name: yup
+        .string()
+        .trim()
+        .min(1, "A schedule's name is 1-80 characters.")
+        .max(80, "A schedule's name is 1-80 characters.")
+        .required("A schedule's name is 1-80 characters."),
+    }),
+    onSubmit: (v) => save(v.name.trim()),
+  });
   const [target, setTarget] = useState(initialTarget);
   const [cadence, setCadence] = useState<Cadence>(schedule?.cadence ?? "weekly");
   const [range, setRange] = useState<RangePreset>(schedule?.range ?? "last_7d");
@@ -262,11 +277,7 @@ function ScheduleDialog({
     .filter((m) => m.is_active)
     .sort((a, b) => roleRank(a.role) - roleRank(b.role) || a.name.localeCompare(b.name));
 
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const trimmed = name.trim();
-    if (trimmed.length < 1 || trimmed.length > 80)
-      return setError("A schedule's name is 1-80 characters.");
+  const save = async (trimmed: string) => {
     if (!target) return setError("Pick a report.");
     if (recipients.length < 1 || recipients.length > MAX_RECIPIENTS)
       return setError("A schedule goes to 1 to 10 members.");
@@ -302,14 +313,9 @@ function ScheduleDialog({
       title={schedule ? "Edit schedule" : "New schedule"}
       className="sm:max-w-xl"
     >
-      <form onSubmit={submit} className="space-y-4">
-        <Field label="Name" htmlFor="sc-name">
-          <Input
-            id="sc-name"
-            maxLength={80}
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-          />
+      <form noValidate onSubmit={form.handleSubmit} className="space-y-4">
+        <Field label="Name" htmlFor="sc-name" error={fieldError(form, "name")}>
+          <Input id="sc-name" maxLength={80} {...bind(form, "name")} />
         </Field>
         <Field label="Report" htmlFor="sc-target">
           <Select

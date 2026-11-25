@@ -68,6 +68,7 @@ function CampaignList() {
             <Settings className="size-4" /> Settings
           </Button>
           <Button
+            variant="ai"
             loading={create.isPending}
             onClick={() =>
               create.mutate("Untitled campaign", {
@@ -93,10 +94,10 @@ function CampaignList() {
           </EmptyState>
         </Card>
       ) : (
-        <Card className="overflow-x-auto">
+        <Card className="overflow-x-auto rounded-2xl">
           <table className="w-full min-w-[56rem] text-sm">
             <thead>
-              <tr className="border-b border-border text-left text-xs text-muted-foreground">
+              <tr className="border-b border-border bg-surface-2/60 text-left text-[11px] tracking-wider text-muted-foreground uppercase">
                 <th className="px-4 py-2.5 font-medium">Name</th>
                 <th className="px-3 py-2.5 font-medium">State</th>
                 <th className="px-3 py-2.5 font-medium">Segment</th>

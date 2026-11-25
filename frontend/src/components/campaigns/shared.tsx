@@ -38,10 +38,12 @@ export function CampaignTabs() {
     },
   ];
   return (
-    <div className="mb-5 flex items-center gap-2">
-      <Megaphone className="size-5 text-primary-ink" aria-hidden />
+    <div className="mb-5 flex flex-wrap items-center gap-2">
+      <span className="grid size-9 place-items-center rounded-xl bg-ai-gradient text-white shadow-[0_6px_16px_-8px_var(--ai-from)]">
+        <Megaphone className="size-4.5" aria-hidden />
+      </span>
       <h1 className="mr-3 text-xl font-semibold tracking-tight">Campaigns</h1>
-      <nav aria-label="Campaigns" className="flex gap-1">
+      <nav aria-label="Campaigns" className="flex flex-wrap gap-1">
         {tabs.map((t) => (
           <Link
             key={t.href}
@@ -98,7 +100,10 @@ export function ProgressBar({ value, max, label }: { value: number; max: number;
       aria-valuenow={value}
       className="h-1.5 w-full overflow-hidden rounded-full bg-surface-3"
     >
-      <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${pct}%` }} />
+      <div
+        className="h-full rounded-full bg-ai-gradient transition-all"
+        style={{ width: `${pct}%` }}
+      />
     </div>
   );
 }

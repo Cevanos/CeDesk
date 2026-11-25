@@ -30,6 +30,7 @@ import {
   useWorkspaceSlug,
 } from "@/hooks/use-portal";
 import type { PortalMessage, PortalTicket } from "@/lib/api/types";
+import { bind, fieldError, useFormik, yup } from "@/lib/forms";
 import { cn, formatDateTime } from "@/lib/utils";
 
 /**
@@ -232,27 +233,32 @@ function Bubble({ m }: { m: PortalMessage }) {
 
 function ReplyBox({ id, resolved }: { id: string; resolved: boolean }) {
   const send = useSendPortalMessage(id);
-  const [body, setBody] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const formik = useFormik({
+    initialValues: { body: "" },
+    validationSchema: yup.object({
+      body: yup
+        .string()
+        .trim()
+        .required("Write your message first.")
+        .max(10000, "Use at most 10,000 characters."),
+    }),
+    onSubmit: (v, h) => {
+      setError(null);
+      send.mutate(
+        { body: v.body.trim() },
+        { onSuccess: () => h.resetForm(), onError: (err) => setError(publicErrorMessage(err)) },
+      );
+    },
+  });
 
   return (
     <Card className="mt-8 rounded-2xl p-4 shadow-pop sm:p-5">
-      <form
-        noValidate
-        className="space-y-3"
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (!body.trim()) return setError("Write your message first.");
-          setError(null);
-          send.mutate(
-            { body: body.trim() },
-            { onSuccess: () => setBody(""), onError: (err) => setError(publicErrorMessage(err)) },
-          );
-        }}
-      >
+      <form noValidate className="space-y-3" onSubmit={formik.handleSubmit}>
         <Field
           label="Reply"
           htmlFor="pr-body"
+          error={fieldError(formik, "body")}
           hint={resolved ? "Replying reopens this ticket so our team sees it." : undefined}
         >
           <Textarea
@@ -260,9 +266,7 @@ function ReplyBox({ id, resolved }: { id: string; resolved: boolean }) {
             rows={4}
             maxLength={10000}
             placeholder="Write your reply…"
-            value={body}
-            aria-invalid={!!error}
-            onChange={(e) => setBody(e.target.value)}
+            {...bind(formik, "body")}
           />
         </Field>
         {error && (
@@ -271,7 +275,7 @@ function ReplyBox({ id, resolved }: { id: string; resolved: boolean }) {
           </p>
         )}
         <div className="flex justify-end">
-          <Button type="submit" loading={send.isPending}>
+          <Button type="submit" variant="ai" loading={send.isPending}>
             <Send className="size-4" /> Send reply
           </Button>
         </div>
@@ -288,9 +292,26 @@ function Rating({
   ticket: { csat?: { score: number; comment?: string | null } | null };
 }) {
   const rate = useRatePortalTicket(id);
-  const [score, setScore] = useState<number | null>(null);
-  const [comment, setComment] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const formik = useFormik<{ score: number | null; comment: string }>({
+    initialValues: { score: null, comment: "" },
+    validationSchema: yup.object({
+      score: yup
+        .number()
+        .typeError("Choose a rating from 1 to 5.")
+        .required("Choose a rating from 1 to 5.")
+        .min(1, "Choose a rating from 1 to 5.")
+        .max(5, "Choose a rating from 1 to 5."),
+      comment: yup.string().max(2000, "Use at most 2,000 characters."),
+    }),
+    onSubmit: (v) => {
+      setError(null);
+      rate.mutate(
+        { score: v.score as number, comment: v.comment.trim() || undefined },
+        { onError: (err) => setError(publicErrorMessage(err)) },
+      );
+    },
+  });
 
   if (ticket.csat) {
     return (
@@ -312,35 +333,30 @@ function Rating({
   return (
     <Card className="mt-8 rounded-2xl p-5 shadow-pop sm:p-6">
       <h2 className="text-lg font-semibold tracking-tight">This ticket is resolved</h2>
-      <form
-        noValidate
-        className="mt-4 space-y-4"
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (score === null) return setError("Choose a rating from 1 to 5.");
-          setError(null);
-          rate.mutate(
-            { score, comment: comment.trim() || undefined },
-            { onError: (err) => setError(publicErrorMessage(err)) },
-          );
-        }}
-      >
-        <RatingPicker value={score} onChange={setScore} disabled={rate.isPending} />
-        <Field label="Anything to add? (optional)" htmlFor="rt-comment">
-          <Textarea
-            id="rt-comment"
-            rows={3}
-            maxLength={2000}
-            value={comment}
-            onChange={(e) => setComment(e.target.value)}
-          />
+      <form noValidate className="mt-4 space-y-4" onSubmit={formik.handleSubmit}>
+        <RatingPicker
+          value={formik.values.score}
+          onChange={(n) => void formik.setFieldValue("score", n)}
+          disabled={rate.isPending}
+        />
+        {fieldError(formik, "score") && (
+          <p role="alert" className="text-sm text-danger">
+            {fieldError(formik, "score")}
+          </p>
+        )}
+        <Field
+          label="Anything to add? (optional)"
+          htmlFor="rt-comment"
+          error={fieldError(formik, "comment")}
+        >
+          <Textarea id="rt-comment" rows={3} maxLength={2000} {...bind(formik, "comment")} />
         </Field>
         {error && (
           <p role="alert" className="text-sm text-danger">
             {error}
           </p>
         )}
-        <Button type="submit" loading={rate.isPending}>
+        <Button type="submit" variant="ai" loading={rate.isPending}>
           Send my rating
         </Button>
       </form>

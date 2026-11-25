@@ -20,6 +20,7 @@ import {
 import { FormError, LoadError } from "@/components/workspace/list-shared";
 import { useAddSuppression, useRemoveSuppression, useSuppressions } from "@/hooks/use-workspace";
 import type { SuppressionEntry, SuppressionReason } from "@/lib/api/types";
+import { bind, fieldError, useFormik, yup } from "@/lib/forms";
 import { cn, formatDateTime } from "@/lib/utils";
 
 const REASONS: { value: SuppressionReason; label: string }[] = [
@@ -56,8 +57,14 @@ export function SuppressionsView() {
 
 function SuppressionList() {
   const [reason, setReason] = useState("all");
-  const [draft, setDraft] = useState("");
   const [email, setEmail] = useState("");
+  const find = useFormik({
+    initialValues: { draft: "" },
+    validationSchema: yup.object({
+      draft: yup.string().trim().max(254, "That address is too long."),
+    }),
+    onSubmit: (v) => setEmail(v.draft.trim()),
+  });
   const [adding, setAdding] = useState(false);
   const [removing, setRemoving] = useState<SuppressionEntry | null>(null);
   const list = useSuppressions({ reason, email });
@@ -97,22 +104,20 @@ function SuppressionList() {
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <form
           role="search"
+          noValidate
           className="flex items-center gap-2"
-          onSubmit={(e) => {
-            e.preventDefault();
-            setEmail(draft.trim());
-          }}
+          onSubmit={find.handleSubmit}
         >
           <Input
             aria-label="Find one exact email address"
             type="search"
-            value={draft}
+            placeholder="Find an exact address"
+            className="w-full sm:w-64"
+            {...bind(find, "draft")}
             onChange={(e) => {
-              setDraft(e.target.value);
+              find.handleChange(e);
               if (!e.target.value) setEmail("");
             }}
-            placeholder="Find an exact address"
-            className="w-64"
           />
           <Button type="submit" variant="outline">
             <Search className="size-4" /> Find
@@ -212,46 +217,39 @@ function AddDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
 
 function AddForm({ onClose }: { onClose: () => void }) {
   const add = useAddSuppression();
-  const [email, setEmail] = useState("");
-  const [note, setNote] = useState("");
   const [error, setError] = useState<string>();
+  const formik = useFormik({
+    initialValues: { email: "", note: "" },
+    validationSchema: yup.object({
+      email: yup
+        .string()
+        .trim()
+        .required("Enter an email address.")
+        .email("Enter an email address."),
+      note: yup.string().max(200, "Use at most 200 characters."),
+    }),
+    onSubmit: (v) => {
+      setError(undefined);
+      add.mutate(
+        { email: v.email.trim(), note: v.note.trim() || undefined },
+        {
+          onSuccess: () => {
+            toast.success("Address added");
+            onClose();
+          },
+          onError: (err) => setError(errorText(err)),
+        },
+      );
+    },
+  });
 
   return (
-    <form
-      noValidate
-      className="space-y-4"
-      onSubmit={(e) => {
-        e.preventDefault();
-        if (!email.includes("@")) return setError("Enter an email address.");
-        setError(undefined);
-        add.mutate(
-          { email: email.trim(), note: note.trim() || undefined },
-          {
-            onSuccess: () => {
-              toast.success("Address added");
-              onClose();
-            },
-            onError: (err) => setError(errorText(err)),
-          },
-        );
-      }}
-    >
-      <Field label="Email address" htmlFor="sp-email">
-        <Input
-          id="sp-email"
-          type="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          autoComplete="off"
-        />
+    <form noValidate className="space-y-4" onSubmit={formik.handleSubmit}>
+      <Field label="Email address" htmlFor="sp-email" error={fieldError(formik, "email")}>
+        <Input id="sp-email" type="email" autoComplete="off" {...bind(formik, "email")} />
       </Field>
-      <Field label="Note (optional)" htmlFor="sp-note">
-        <Input
-          id="sp-note"
-          value={note}
-          maxLength={200}
-          onChange={(e) => setNote(e.target.value)}
-        />
+      <Field label="Note (optional)" htmlFor="sp-note" error={fieldError(formik, "note")}>
+        <Input id="sp-note" maxLength={200} {...bind(formik, "note")} />
       </Field>
       <FormError message={error} />
       <div className="flex justify-end gap-2">
@@ -268,9 +266,20 @@ function AddForm({ onClose }: { onClose: () => void }) {
 
 function RemoveDialog({ entry, onClose }: { entry: SuppressionEntry; onClose: () => void }) {
   const remove = useRemoveSuppression();
-  const [consent, setConsent] = useState(false);
-  const [how, setHow] = useState("");
   const [error, setError] = useState<string>();
+  const formik = useFormik({
+    initialValues: { consent: false, how: "" },
+    validationSchema: yup.object({
+      consent: yup.boolean().oneOf([true], "Confirm that they asked to get emails again."),
+      how: yup
+        .string()
+        .trim()
+        .required("Say how they asked.")
+        .min(10, "Use at least 10 characters."),
+    }),
+    onSubmit: () => run(),
+  });
+  const { consent, how } = formik.values;
   const strong = needsConsent(entry.reason);
   const address = entry.email ?? "this address";
 
@@ -317,14 +326,20 @@ function RemoveDialog({ entry, onClose }: { entry: SuppressionEntry; onClose: ()
         <label className="flex items-start gap-2 text-sm">
           <input
             type="checkbox"
+            name="consent"
             checked={consent}
-            onChange={(e) => setConsent(e.target.checked)}
+            onChange={formik.handleChange}
             className="mt-1"
           />
           They asked to get campaign emails again
         </label>
-        <Field label="How did they ask?" htmlFor="sp-how" hint="At least 10 characters.">
-          <Input id="sp-how" value={how} maxLength={200} onChange={(e) => setHow(e.target.value)} />
+        <Field
+          label="How did they ask?"
+          htmlFor="sp-how"
+          error={fieldError(formik, "how")}
+          hint="At least 10 characters."
+        >
+          <Input id="sp-how" maxLength={200} {...bind(formik, "how")} />
         </Field>
         <FormError message={error} />
         <div className="flex justify-end gap-2">
@@ -335,7 +350,7 @@ function RemoveDialog({ entry, onClose }: { entry: SuppressionEntry; onClose: ()
             variant="danger"
             disabled={!consent || !how10}
             loading={remove.isPending}
-            onClick={run}
+            onClick={() => void formik.submitForm()}
           >
             Remove
           </Button>

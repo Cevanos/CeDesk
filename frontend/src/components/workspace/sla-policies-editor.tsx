@@ -22,6 +22,7 @@ import {
   type SlaPolicyInput,
 } from "@/hooks/use-workspace";
 import type { SlaPolicy } from "@/lib/api/types";
+import { bind, fieldError, useFormik } from "@/lib/forms";
 import { cn } from "@/lib/utils";
 
 const CHANNELS = ["email", "web", "portal", "api", "chat", "phone"];
@@ -409,8 +410,8 @@ function PolicyForm({
   onCancel: () => void;
 }) {
   const id = useId();
-  const [d, setD] = useState<PolicyDraft>(
-    draft ?? {
+  const form = useFormik<PolicyDraft>({
+    initialValues: draft ?? {
       key: nextKey(),
       name: "",
       enabled: true,
@@ -420,31 +421,30 @@ function PolicyForm({
       first: "",
       resolve: "",
     },
-  );
-  const [errs, setErrs] = useState<Record<string, string>>({});
-  const set = (p: Partial<PolicyDraft>) => setD((x) => ({ ...x, ...p }));
+    validate: (v) => {
+      const next: Record<string, string> = {};
+      if (!v.name.trim()) next.name = "Enter a name";
+      const t = targetError(v);
+      if (t) next.targets = t;
+      return next;
+    },
+    onSubmit: (v) => onSave({ ...v, name: v.name.trim() }),
+  });
+  const d = form.values;
+  const submitted = form.submitCount > 0;
+  const errs: Record<string, string | undefined> = {
+    name: fieldError(form, "name"),
+    targets:
+      submitted && typeof (form.errors as Record<string, unknown>).targets === "string"
+        ? ((form.errors as Record<string, unknown>).targets as string)
+        : undefined,
+  };
+  const set = (p: Partial<PolicyDraft>) => form.setValues({ ...form.values, ...p });
 
   return (
-    <form
-      noValidate
-      className="space-y-4"
-      onSubmit={(e) => {
-        e.preventDefault();
-        const next: Record<string, string> = {};
-        if (!d.name.trim()) next.name = "Enter a name";
-        const t = targetError(d);
-        if (t) next.targets = t;
-        setErrs(next);
-        if (Object.keys(next).length === 0) onSave({ ...d, name: d.name.trim() });
-      }}
-    >
+    <form noValidate className="space-y-4" onSubmit={form.handleSubmit}>
       <Field label="Name" htmlFor={`${id}-name`} error={errs.name}>
-        <Input
-          id={`${id}-name`}
-          maxLength={80}
-          value={d.name}
-          onChange={(e) => set({ name: e.target.value })}
-        />
+        <Input id={`${id}-name`} maxLength={80} {...bind(form, "name")} />
       </Field>
 
       {locked ? (

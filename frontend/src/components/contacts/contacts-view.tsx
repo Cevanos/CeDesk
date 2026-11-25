@@ -22,6 +22,7 @@ import { toast } from "sonner";
 
 import { ImportDialog } from "@/components/contacts/import-dialog";
 import { SegmentNameDialog, SegmentsPanel } from "@/components/contacts/segments-panel";
+import { AiBadge, AiPanel } from "@/components/ui/ai";
 import { DatePicker } from "@/components/ui/date-picker";
 import { InfiniteScroll } from "@/components/ui/infinite-scroll";
 import {
@@ -54,6 +55,7 @@ import {
   segmentToFilters,
   SORT_LABEL,
 } from "@/lib/contacts";
+import { bind, useFormik, yup } from "@/lib/forms";
 import { hasAction } from "@/lib/permissions";
 import { cn, timeAgo } from "@/lib/utils";
 
@@ -113,15 +115,29 @@ function AttributeFilter({
 }) {
   const fields = useContactFields();
   const [key, setKey] = useState("");
-  const [value, setValue] = useState("");
   const field = fields.data?.find((f) => f.key === key);
-  if (!fields.data?.length) return null;
-
   const add = (v: string) => {
     if (!key || !v.trim()) return;
     onChange({ ...filters, attributes: { ...filters.attributes, [key]: v.trim() } });
-    setValue("");
+    valueForm.resetForm();
   };
+  const valueForm = useFormik({
+    initialValues: { value: "" },
+    validationSchema: yup.object({
+      value: yup
+        .string()
+        .max(500, "Use at most 500 characters.")
+        .test(
+          "number",
+          "Enter a number.",
+          (t) => field?.kind !== "number" || !t?.trim() || Number.isFinite(Number(t.trim())),
+        ),
+    }),
+    onSubmit: (v) => add(v.value),
+  });
+  const value = valueForm.values.value;
+  const setValue = (v: string) => void valueForm.setFieldValue("value", v);
+  if (!fields.data?.length) return null;
 
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -159,20 +175,13 @@ function AttributeFilter({
             onChange={add}
           />
         ) : (
-          <form
-            className="flex gap-1.5"
-            onSubmit={(e) => {
-              e.preventDefault();
-              add(value);
-            }}
-          >
+          <form className="flex gap-1.5" noValidate onSubmit={valueForm.handleSubmit}>
             <Input
               aria-label={`${field.label} value`}
               className="h-9 w-40"
               type={field.kind === "number" ? "number" : "text"}
-              value={value}
-              onChange={(e) => setValue(e.target.value)}
               placeholder="Value"
+              {...bind(valueForm, "value")}
             />
             <Button type="submit" size="sm" variant="outline" className="h-9">
               Add
@@ -227,7 +236,7 @@ function StatTile({
   tone: string;
 }) {
   return (
-    <Card className="flex items-center gap-3 rounded-2xl p-4">
+    <Card className="flex items-center gap-3 rounded-2xl p-4 transition-all hover:-translate-y-0.5 hover:shadow-pop">
       <span className={cn("grid size-10 shrink-0 place-items-center rounded-xl", tone)}>
         <Icon className="size-5" />
       </span>
@@ -334,7 +343,13 @@ export function ContactsView() {
 
   const fields = useContactFields();
   const [filters, setFilters] = useState<ContactFilters>(EMPTY_FILTERS);
-  const [text, setText] = useState("");
+  const searchForm = useFormik({
+    initialValues: { text: "" },
+    validationSchema: yup.object({ text: yup.string().max(200, "Use at most 200 characters.") }),
+    onSubmit: () => {},
+  });
+  const text = searchForm.values.text;
+  const setText = (v: string) => void searchForm.setFieldValue("text", v);
   const [segment, setSegment] = useState<Segment | null>(null);
   /** The segment whose filters are being changed in the list. */
   const [editing, setEditing] = useState<Segment | null>(null);
@@ -375,7 +390,9 @@ export function ContactsView() {
     <div className="mx-auto w-full max-w-[1600px] px-3 py-5 sm:px-6 sm:py-7 lg:px-8">
       <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Contacts</h1>
+          <h1 className="flex items-center gap-2.5 text-2xl font-semibold tracking-tight">
+            Contacts <AiBadge>Customer 360</AiBadge>
+          </h1>
           <p className="mt-1 text-sm text-muted-foreground">
             Everyone who has written in, with their tickets and history in one place.
           </p>
@@ -424,6 +441,16 @@ export function ContactsView() {
           )}
         </div>
       </div>
+
+      {!q.isPending && rows.some((r) => r.open_ticket_count > 0) && (
+        <AiPanel title="AI insight" className="mb-5">
+          {rows.filter((r) => r.open_ticket_count > 0).length} of {rows.length} customers in this
+          view are waiting on a reply
+          {rows.some((r) => r.vip && r.open_ticket_count > 0)
+            ? `, including ${rows.filter((r) => r.vip && r.open_ticket_count > 0).length} VIP. Start with the VIPs.`
+            : "."}
+        </AiPanel>
+      )}
 
       {!q.isPending && rows.length > 0 && (
         <div className="mb-5 grid grid-cols-2 gap-3 xl:grid-cols-4">
@@ -530,8 +557,7 @@ export function ContactsView() {
                     placeholder="Search name, email, phone or organization"
                     className="pl-9"
                     maxLength={200}
-                    value={text}
-                    onChange={(e) => setText(e.target.value)}
+                    {...bind(searchForm, "text")}
                   />
                 </div>
                 <Select

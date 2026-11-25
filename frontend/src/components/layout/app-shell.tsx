@@ -8,8 +8,8 @@ import {
   Megaphone,
   Menu,
   Plus,
-  Search,
   Settings,
+  Sparkles,
   UsersRound,
   X,
 } from "lucide-react";
@@ -24,6 +24,7 @@ import { NotificationBell } from "@/components/layout/notification-bell";
 import { ResourcesMenu } from "@/components/layout/resources-menu";
 import { UserMenu } from "@/components/layout/user-menu";
 import { WorkMenu } from "@/components/layout/work-menu";
+import { AiMark } from "@/components/ui/ai";
 import { Logo } from "@/components/ui/brand";
 import { Button } from "@/components/ui/primitives";
 import { useCurrentUser } from "@/hooks/use-auth";
@@ -111,8 +112,40 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     </nav>
   );
 
+  const askAi = (
+    <button
+      type="button"
+      onClick={() => window.dispatchEvent(new Event("cedesk:palette"))}
+      className="group ai-frame flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-[13px] font-medium shadow-card transition-shadow hover:shadow-pop focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:outline-none"
+    >
+      <AiMark className="size-7" />
+      <span className="min-w-0 flex-1">
+        <span className="block text-ai-gradient font-semibold">Ask Cevanos AI</span>
+        <span className="block truncate text-[11px] font-normal text-muted-foreground">
+          Search, act and get answers
+        </span>
+      </span>
+    </button>
+  );
+
+  const aiStatus = (
+    <div className="rounded-xl border border-border bg-surface-2/60 px-3 py-2.5">
+      <div className="flex items-center gap-2 text-[12px] font-semibold">
+        <span className="relative flex size-2">
+          <span className="absolute inline-flex size-full animate-ping rounded-full bg-success/60" />
+          <span className="relative inline-flex size-2 rounded-full bg-success" />
+        </span>
+        Cevanos AI is active
+      </div>
+      <p className="mt-1 text-[11px] leading-snug text-muted-foreground">
+        Summaries, suggested replies and handover context are on for new tickets.
+      </p>
+    </div>
+  );
+
   const footer = (
     <div className="mt-auto space-y-3 border-t border-border pt-3">
+      {aiStatus}
       <div className="flex items-center gap-2.5 px-2">
         <span className="grid size-8 shrink-0 place-items-center rounded-full bg-linear-to-br from-[#a99bff] to-[#5b3cf0] text-xs font-bold text-white">
           {initials(user?.name)}
@@ -145,6 +178,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <Logo />
         </Link>
         {newTicket}
+        {askAi}
         {nav}
         {footer}
       </aside>
@@ -177,6 +211,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               </button>
             </div>
             {newTicket}
+            {askAi}
             {nav}
             {footer}
           </aside>
@@ -185,7 +220,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       <div className="flex min-w-0 flex-col">
         <OfflineBanner />
-        <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b border-border bg-background/85 px-3 backdrop-blur-md sm:px-5">
+        <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b border-border px-3 glass sm:px-5">
           <button
             onClick={() => setOpen(true)}
             aria-label="Open menu"
@@ -201,7 +236,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               onClick={() => window.dispatchEvent(new Event("cedesk:palette"))}
               className="mr-1 hidden h-9 items-center gap-2 rounded-lg border border-border bg-surface px-3 text-[13px] text-muted-foreground transition-colors hover:border-border-strong hover:text-foreground sm:inline-flex"
             >
-              <Search className="size-3.5" aria-hidden />
+              <Sparkles className="size-3.5 text-ai-via" aria-hidden />
               {t("button")}
               <kbd className="rounded bg-surface-2 px-1.5 py-0.5 font-mono text-[10px]">Ctrl K</kbd>
             </button>

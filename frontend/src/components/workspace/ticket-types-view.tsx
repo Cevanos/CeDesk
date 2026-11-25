@@ -25,6 +25,24 @@ import {
 } from "@/hooks/use-workspace";
 import { ApiError } from "@/lib/api/client";
 import type { TicketType, TicketTypeField } from "@/lib/api/types";
+import { bind, fieldError, useFormik, yup } from "@/lib/forms";
+
+const slugKey = (v: string) =>
+  v
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_|_$/g, "");
+
+const typeSchema = yup.object({
+  name: yup.string().trim().required("Enter a name."),
+  fields: yup
+    .array()
+    .max(30, "A type can have at most 30 fields.")
+    .test("labels", "Every field needs a label.", (list) =>
+      (list ?? []).every((f) => !!f?.label?.trim() && !!slugKey(f.key || f.label || "")),
+    ),
+});
 
 export function TicketTypesView() {
   const types = useTicketTypes();
@@ -145,74 +163,70 @@ const blank = (): TicketTypeField => ({ key: "", label: "", kind: "text", requir
 
 function TypeForm({ type, onClose }: { type: TicketType | null; onClose: () => void }) {
   const save = useSaveTicketType();
-  const [name, setName] = useState(type?.name ?? "");
-  const [skill, setSkill] = useState(type?.required_skill ?? "");
-  const [fields, setFields] = useState<TicketTypeField[]>(type?.fields ?? []);
-  const [forCustomers, setForCustomers] = useState(type?.for_customers ?? false);
   const [error, setError] = useState<string | null>(null);
-
+  const form = useFormik({
+    initialValues: {
+      name: type?.name ?? "",
+      skill: type?.required_skill ?? "",
+      for_customers: type?.for_customers ?? false,
+      fields: (type?.fields ?? []) as TicketTypeField[],
+    },
+    validationSchema: typeSchema,
+    onSubmit: (v) => {
+      const clean = v.fields.map((f) => ({
+        ...f,
+        key: slugKey(f.key || f.label),
+        label: f.label.trim(),
+        options:
+          f.kind === "select" ? (f.options ?? []).map((o) => o.trim()).filter(Boolean) : undefined,
+      }));
+      setError(null);
+      save.mutate(
+        {
+          id: type?.id,
+          name: v.name.trim(),
+          fields: clean,
+          required_skill: v.skill.trim() || null,
+          for_customers: v.for_customers,
+        },
+        {
+          onSuccess: () => {
+            toast.success("Ticket type saved");
+            onClose();
+          },
+          onError: (e) =>
+            e instanceof ApiError &&
+            e.status === 422 &&
+            setError(e.details.map((d) => d.message).join(" ")),
+        },
+      );
+    },
+  });
+  const fields = form.values.fields;
+  const setFields = (fn: (f: TicketTypeField[]) => TicketTypeField[]) =>
+    form.setFieldValue("fields", fn(form.values.fields));
   const patch = (i: number, p: Partial<TicketTypeField>) =>
     setFields((f) => f.map((x, j) => (j === i ? { ...x, ...p } : x)));
+  const fieldsError =
+    form.submitCount > 0 && typeof form.errors.fields === "string" ? form.errors.fields : null;
 
   return (
-    <form
-      noValidate
-      className="space-y-4"
-      onSubmit={(e) => {
-        e.preventDefault();
-        if (!name.trim()) return setError("Enter a name.");
-        const clean = fields.map((f) => ({
-          ...f,
-          key: (f.key || f.label)
-            .trim()
-            .toLowerCase()
-            .replace(/[^a-z0-9]+/g, "_")
-            .replace(/^_|_$/g, ""),
-          label: f.label.trim(),
-          options:
-            f.kind === "select"
-              ? (f.options ?? []).map((o) => o.trim()).filter(Boolean)
-              : undefined,
-        }));
-        if (clean.some((f) => !f.label || !f.key)) return setError("Every field needs a label.");
-        if (clean.length > 30) return setError("A type can have at most 30 fields.");
-        setError(null);
-        save.mutate(
-          {
-            id: type?.id,
-            name: name.trim(),
-            fields: clean,
-            required_skill: skill.trim() || null,
-            for_customers: forCustomers,
-          },
-          {
-            onSuccess: () => {
-              toast.success("Ticket type saved");
-              onClose();
-            },
-            onError: (e) =>
-              e instanceof ApiError &&
-              e.status === 422 &&
-              setError(e.details.map((d) => d.message).join(" ")),
-          },
-        );
-      }}
-    >
-      {error && (
+    <form noValidate className="space-y-4" onSubmit={form.handleSubmit}>
+      {(error ?? fieldsError) && (
         <div role="alert" className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger">
-          {error}
+          {error ?? fieldsError}
         </div>
       )}
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="Name" htmlFor="tt-name">
-          <Input id="tt-name" value={name} onChange={(e) => setName(e.target.value)} />
+        <Field label="Name" htmlFor="tt-name" error={fieldError(form, "name")}>
+          <Input id="tt-name" {...bind(form, "name")} />
         </Field>
         <Field
           label="Required skill (optional)"
           htmlFor="tt-skill"
           hint="Only agents with this skill get it automatically."
         >
-          <Input id="tt-skill" value={skill} onChange={(e) => setSkill(e.target.value)} />
+          <Input id="tt-skill" {...bind(form, "skill")} />
         </Field>
       </div>
 
@@ -226,8 +240,8 @@ function TypeForm({ type, onClose }: { type: TicketType | null; onClose: () => v
           </p>
         </div>
         <Switch
-          checked={forCustomers}
-          onChange={setForCustomers}
+          checked={form.values.for_customers}
+          onChange={(v) => form.setFieldValue("for_customers", v)}
           labelledBy="tt-customers"
           describedBy="tt-customers-d"
         />

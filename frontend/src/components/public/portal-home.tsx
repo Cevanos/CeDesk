@@ -7,12 +7,13 @@ import { useState } from "react";
 import { publicErrorMessage, publicFieldError } from "@/components/public/errors";
 import { PortalSignIn } from "@/components/public/portal-signin";
 import {
-  type FieldValues,
   TypeFields,
   fieldsPayload,
-  missingFields,
+  typeFieldErrors,
+  typeFieldsSchema,
 } from "@/components/public/type-fields";
 import { StatusBadge } from "@/components/tickets/badges";
+import { AiBadge } from "@/components/ui/ai";
 import {
   Button,
   Card,
@@ -31,6 +32,7 @@ import {
   usePortalTickets,
   useWorkspaceSlug,
 } from "@/hooks/use-portal";
+import { bind, bindSelect, fieldError, useFormik, yup, yupValidate } from "@/lib/forms";
 import { cn, timeAgo } from "@/lib/utils";
 
 /** `/<workspace>/portal`: sign in with an emailed code, then see and open tickets. */
@@ -103,7 +105,7 @@ export function PortalHome() {
                 href={`/${encodeURIComponent(ws)}/tickets/${encodeURIComponent(t.id)}`}
                 className="group flex items-center gap-4 rounded-2xl border border-border bg-surface p-4 shadow-card transition-all hover:-translate-y-0.5 hover:border-border-strong hover:shadow-pop focus-visible:ring-4 focus-visible:ring-primary/25 focus-visible:outline-none"
               >
-                <span className="grid size-11 flex-none place-items-center rounded-xl bg-primary-soft text-primary-ink">
+                <span className="bg-ai-gradient grid size-11 flex-none place-items-center rounded-xl text-white shadow-[0_6px_16px_-8px_var(--ai-from)]">
                   <Ticket className="size-5" aria-hidden />
                 </span>
                 <span className="min-w-0 flex-1">
@@ -148,12 +150,44 @@ function NewTicketForm({ onDone }: { onDone: () => void }) {
   const ws = useWorkspaceSlug();
   const types = usePortalTicketTypes(ws);
   const create = useCreatePortalTicket(ws);
-  const [description, setDescription] = useState("");
-  const [typeId, setTypeId] = useState("");
-  const [values, setValues] = useState<FieldValues>({});
-  const typeFields = (types.data ?? []).find((t) => t.id === typeId)?.fields ?? [];
-  const [errs, setErrs] = useState<Record<string, string>>({});
   const [sent, setSent] = useState(false);
+  const [formError, setFormError] = useState("");
+  const fieldsOf = (typeId: string) => (types.data ?? []).find((t) => t.id === typeId)?.fields ?? [];
+
+  const formik = useFormik<{ description: string; type_id: string; fields: Record<string, string> }>({
+    initialValues: { description: "", type_id: "", fields: {} },
+    validate: yupValidate((v) =>
+      yup.object({
+        description: yup
+          .string()
+          .trim()
+          .required("Describe what happened.")
+          .max(10000, "Use at most 10,000 characters."),
+        type_id: yup.string(),
+        fields: typeFieldsSchema(fieldsOf(v.type_id)),
+      }),
+    ),
+    onSubmit: (v, helpers) => {
+      setFormError("");
+      create.mutate(
+        {
+          // The subject is made by the server from the start of the message.
+          message: v.description.trim(),
+          ...(v.type_id
+            ? { type_id: v.type_id, fields: fieldsPayload(fieldsOf(v.type_id), v.fields) }
+            : {}),
+        },
+        {
+          onSuccess: () => setSent(true),
+          onError: (err) => {
+            const m = publicFieldError(err, "message");
+            if (m) helpers.setFieldError("description", m);
+            else setFormError(publicErrorMessage(err));
+          },
+        },
+      );
+    },
+  });
 
   if (sent) {
     return (
@@ -170,76 +204,49 @@ function NewTicketForm({ onDone }: { onDone: () => void }) {
   }
 
   return (
-    <Card className="mt-6 rounded-2xl p-5 shadow-pop sm:p-6">
-      <h2 className="text-lg font-semibold tracking-tight">New ticket</h2>
-      <form
-        noValidate
-        className="mt-4 space-y-4"
-        onSubmit={(e) => {
-          e.preventDefault();
-          const next: Record<string, string> = {};
-          if (!description.trim()) next.description = "Describe what happened.";
-          Object.assign(next, missingFields(typeFields, values));
-          setErrs(next);
-          if (Object.keys(next).length) return;
-          create.mutate(
-            {
-              // The subject is made by the server from the start of the message.
-              message: description.trim(),
-              ...(typeId ? { type_id: typeId, fields: fieldsPayload(typeFields, values) } : {}),
-            },
-            {
-              onSuccess: () => setSent(true),
-              onError: (err) =>
-                setErrs({
-                  description: publicFieldError(err, "message") ?? "",
-                  _form: publicErrorMessage(err),
-                }),
-            },
-          );
-        }}
-      >
+    <Card className="ai-frame mt-6 rounded-2xl p-5 shadow-pop sm:p-6">
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="text-lg font-semibold tracking-tight">New ticket</h2>
+        <AiBadge>Auto-triaged</AiBadge>
+      </div>
+      <form noValidate className="mt-4 space-y-4" onSubmit={formik.handleSubmit}>
         {(types.data?.length ?? 0) > 0 && (
           <Field label="What is it about?" htmlFor="pt-type">
             <Select
               id="pt-type"
-              value={typeId}
+              {...bindSelect(formik, "type_id")}
               placeholder="Choose one (optional)"
               options={(types.data ?? []).map((t) => ({ value: t.id, label: t.name }))}
-              onChange={(e) => {
-                setTypeId(e.target.value);
-                setValues({});
-              }}
+              onChange={(e) =>
+                void formik.setValues({
+                  ...formik.values,
+                  type_id: e.target.value,
+                  fields: Object.fromEntries(fieldsOf(e.target.value).map((f) => [f.key, ""])),
+                })
+              }
             />
           </Field>
         )}
         <TypeFields
           idPrefix="pt"
-          fields={typeFields}
-          values={values}
-          errors={errs}
-          onChange={(k, v) => setValues((x) => ({ ...x, [k]: v }))}
+          fields={fieldsOf(formik.values.type_id)}
+          values={formik.values.fields}
+          errors={typeFieldErrors(formik)}
+          onChange={(k, v) => void formik.setFieldValue(`fields.${k}`, v)}
         />
-        <Field label="How can we help?" htmlFor="pt-desc" error={errs.description}>
-          <Textarea
-            id="pt-desc"
-            rows={5}
-            maxLength={10000}
-            value={description}
-            aria-invalid={!!errs.description}
-            onChange={(e) => setDescription(e.target.value)}
-          />
+        <Field label="How can we help?" htmlFor="pt-desc" error={fieldError(formik, "description")}>
+          <Textarea id="pt-desc" rows={5} maxLength={10000} {...bind(formik, "description")} />
         </Field>
-        {errs._form && !errs.description && (
+        {formError && (
           <p role="alert" className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger">
-            {errs._form}
+            {formError}
           </p>
         )}
         <div className="flex justify-end gap-2">
           <Button variant="ghost" onClick={onDone}>
             Cancel
           </Button>
-          <Button type="submit" loading={create.isPending}>
+          <Button type="submit" variant="ai" loading={create.isPending}>
             <Send className="size-4" /> Send request
           </Button>
         </div>

@@ -18,6 +18,16 @@ import {
 import { FormError, fieldErrors, LoadError } from "@/components/workspace/list-shared";
 import { useDeleteSavedReply, useSavedReplies, useSaveSavedReply } from "@/hooks/use-workspace";
 import type { SavedReply } from "@/lib/api/types";
+import { bind, fieldError, useFormik, yup } from "@/lib/forms";
+
+const replySchema = yup.object({
+  shortcut: yup
+    .string()
+    .transform((v: string) => (v ?? "").trim().replace(/^\/+/, ""))
+    .required("Enter a shortcut")
+    .matches(/^\S+$/, "No spaces in a shortcut"),
+  body: yup.string().trim().required("Enter the reply text"),
+});
 
 const PLACEHOLDERS = ["{{customer.first_name}}", "{{customer.name}}", "{{agent.name}}"];
 
@@ -108,45 +118,36 @@ export function SavedRepliesView() {
 
 function ReplyForm({ reply, onClose }: { reply: SavedReply | null; onClose: () => void }) {
   const save = useSaveSavedReply();
-  const [shortcut, setShortcut] = useState(reply?.shortcut ?? "");
-  const [body, setBody] = useState(reply?.body ?? "");
-  const [errs, setErrs] = useState<Record<string, string>>({});
+  const [srv, setSrv] = useState<Record<string, string>>({});
+  const form = useFormik({
+    initialValues: { shortcut: reply?.shortcut ?? "", body: reply?.body ?? "" },
+    validationSchema: replySchema,
+    onSubmit: (v) => {
+      setSrv({});
+      save.mutate(
+        { id: reply?.id, shortcut: v.shortcut.trim().replace(/^\/+/, ""), body: v.body },
+        {
+          onSuccess: () => {
+            toast.success("Saved reply saved");
+            onClose();
+          },
+          onError: (err) => setSrv(fieldErrors(err)),
+        },
+      );
+    },
+  });
 
   return (
-    <form
-      noValidate
-      className="space-y-4"
-      onSubmit={(e) => {
-        e.preventDefault();
-        const sc = shortcut.trim().replace(/^\/+/, "");
-        const next: Record<string, string> = {};
-        if (!sc) next.shortcut = "Enter a shortcut";
-        else if (/\s/.test(sc)) next.shortcut = "No spaces in a shortcut";
-        if (!body.trim()) next.body = "Enter the reply text";
-        setErrs(next);
-        if (Object.keys(next).length) return;
-        save.mutate(
-          { id: reply?.id, shortcut: sc, body },
-          {
-            onSuccess: () => {
-              toast.success("Saved reply saved");
-              onClose();
-            },
-            onError: (err) => setErrs(fieldErrors(err)),
-          },
-        );
-      }}
-    >
+    <form noValidate className="space-y-4" onSubmit={form.handleSubmit}>
       <Field
         label="Shortcut"
         htmlFor="sr-shortcut"
-        error={errs.shortcut}
+        error={fieldError(form, "shortcut") ?? srv.shortcut}
         hint="Agents type /shortcut to find it."
       >
         <Input
           id="sr-shortcut"
-          value={shortcut}
-          onChange={(e) => setShortcut(e.target.value)}
+          {...bind(form, "shortcut")}
           placeholder="refund-policy"
           maxLength={33}
           autoCapitalize="none"
@@ -156,18 +157,12 @@ function ReplyForm({ reply, onClose }: { reply: SavedReply | null; onClose: () =
       <Field
         label="Reply"
         htmlFor="sr-body"
-        error={errs.body}
+        error={fieldError(form, "body") ?? srv.body}
         hint={`Placeholders: ${PLACEHOLDERS.join(", ")}, {{fields.<key>}}`}
       >
-        <Textarea
-          id="sr-body"
-          rows={7}
-          value={body}
-          onChange={(e) => setBody(e.target.value)}
-          maxLength={10000}
-        />
+        <Textarea id="sr-body" rows={7} {...bind(form, "body")} maxLength={10000} />
       </Field>
-      <FormError message={errs._form} />
+      <FormError message={srv._form} />
       <div className="flex justify-end gap-2">
         <Button variant="ghost" onClick={onClose}>
           Cancel

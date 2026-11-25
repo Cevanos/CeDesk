@@ -11,6 +11,7 @@ import { useFocusTrap } from "@/hooks/use-focus-trap";
 import { useRoutingDefaults, useTeams, useUpdateAgentRouting } from "@/hooks/use-workspace";
 import { ApiError } from "@/lib/api/client";
 import type { AgentRow, AgentStatus, ChannelGroup } from "@/lib/api/types";
+import { bind, fieldError, useFormik, yup } from "@/lib/forms";
 import { ROLE_LABEL } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
 
@@ -95,7 +96,19 @@ function DrawerBody({
   const update = useUpdateAgentRouting();
   const defaultsQ = useRoutingDefaults();
   const teams = useTeams();
-  const [skill, setSkill] = React.useState("");
+  const skillForm = useFormik({
+    initialValues: { skill: "" },
+    validationSchema: yup.object({
+      skill: yup.string().trim().max(40, "Use at most 40 characters"),
+    }),
+    onSubmit: (v, h) => {
+      const val = v.skill.trim().toLowerCase();
+      h.resetForm();
+      if (!val || a.skills.includes(val)) return;
+      patch({ skills: [...a.skills, val] }, "Skill added");
+    },
+  });
+  const skill = skillForm.values.skill;
   const s = a.status ? (STATUS_META[a.status] ?? STATUS_META.offline) : null;
   const cap = totalCapacity(a, defaultsQ.data);
   const memberTeams = (teams.data ?? []).filter((t) => t.member_ids?.includes(a.member_id));
@@ -123,13 +136,6 @@ function DrawerBody({
       { channels: has ? a.channels.filter((x) => x !== c) : [...a.channels, c] },
       "Channels updated",
     );
-  };
-
-  const addSkill = () => {
-    const v = skill.trim().toLowerCase();
-    if (!v || a.skills.includes(v)) return setSkill("");
-    patch({ skills: [...a.skills, v] }, "Skill added");
-    setSkill("");
   };
 
   return (
@@ -293,16 +299,9 @@ function DrawerBody({
             ))}
           </div>
           {canEdit && (
-            <form
-              className="mt-3 flex gap-2"
-              onSubmit={(e) => {
-                e.preventDefault();
-                addSkill();
-              }}
-            >
+            <form className="mt-3 flex gap-2" noValidate onSubmit={skillForm.handleSubmit}>
               <Input
-                value={skill}
-                onChange={(e) => setSkill(e.target.value)}
+                {...bind(skillForm, "skill")}
                 placeholder="Add a skill, e.g. billing"
                 aria-label="New skill"
                 className="h-9"
@@ -317,6 +316,11 @@ function DrawerBody({
                 <Plus className="size-4" /> Add
               </Button>
             </form>
+          )}
+          {canEdit && fieldError(skillForm, "skill") && (
+            <p role="alert" className="mt-1.5 text-xs text-danger">
+              {fieldError(skillForm, "skill")}
+            </p>
           )}
         </section>
 

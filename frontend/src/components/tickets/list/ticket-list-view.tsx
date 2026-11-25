@@ -9,6 +9,7 @@ import { SavedViews } from "@/components/tickets/inbox/saved-views";
 import { FilterBar, SORTS, activeChips } from "@/components/tickets/list/filter-bar";
 import { StatusTabs } from "@/components/tickets/list/status-tabs";
 import { VirtualTicketList } from "@/components/tickets/list/virtual-ticket-list";
+import { AiMark } from "@/components/ui/ai";
 import { InfiniteScroll } from "@/components/ui/infinite-scroll";
 import { Button, Card, EmptyState, Skeleton } from "@/components/ui/primitives";
 import { useCurrentUser } from "@/hooks/use-auth";
@@ -80,7 +81,8 @@ export function TicketListView() {
           <h1 className="text-[26px] leading-tight font-semibold tracking-tight sm:text-3xl">
             Tickets
           </h1>
-          <p className="mt-1 text-sm text-muted-foreground">
+          <p className="mt-1.5 flex items-center gap-2 text-sm text-muted-foreground">
+            <AiMark className="size-5 rounded-md" />
             Every conversation, human and AI, in one queue.
           </p>
         </div>

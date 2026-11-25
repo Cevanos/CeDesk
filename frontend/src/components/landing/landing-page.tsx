@@ -40,8 +40,7 @@ import { cn } from "@/lib/utils";
  * Building blocks
  * ------------------------------------------------------------------ */
 
-const GRADIENT_TEXT =
-  "bg-gradient-to-r from-primary-ink via-primary to-[#2f7bff] bg-clip-text text-transparent";
+const GRADIENT_TEXT = "text-ai-gradient";
 const GRID_BG =
   "bg-[linear-gradient(var(--border)_1px,transparent_1px),linear-gradient(90deg,var(--border)_1px,transparent_1px)] bg-[size:56px_56px]";
 
@@ -419,16 +418,16 @@ export function LandingPage({ signedIn = false }: { signedIn?: boolean }) {
           <div className="mx-auto max-w-7xl px-5 pt-10 text-center sm:px-8 sm:pt-14">
             <a
               href="#ai"
-              className="inline-flex animate-rise items-center gap-2 rounded-full border border-border-strong bg-surface/80 py-1.5 pr-4 pl-1.5 text-sm font-medium shadow-card backdrop-blur transition-colors hover:border-primary/50"
+              className="ai-frame inline-flex animate-rise items-center gap-2 rounded-full py-1.5 pr-4 pl-1.5 text-sm font-medium shadow-card backdrop-blur transition-shadow hover:shadow-pop"
             >
-              <span className="rounded-full bg-primary px-2.5 py-0.5 text-xs font-semibold text-primary-foreground">
-                New
+              <span className="inline-flex items-center gap-1 rounded-full bg-ai-gradient px-2.5 py-0.5 text-xs font-semibold text-white">
+                <Sparkles className="size-3" aria-hidden /> AI
               </span>
               AI handover with full context
               <ArrowRight className="size-3.5 text-muted-foreground" aria-hidden />
             </a>
             <h1 className="mx-auto mt-6 max-w-5xl animate-rise text-[2.7rem] leading-[1.02] font-semibold tracking-[-0.04em] text-balance [animation-delay:60ms] sm:text-[4.2rem] lg:text-[4.2rem]">
-              AI help desk software that makes support{" "}
+              AI-native help desk software that makes support{" "}
               <span className={GRADIENT_TEXT}>effortless</span>
             </h1>
             <p className="mx-auto mt-5 max-w-2xl animate-rise text-base leading-relaxed text-pretty text-muted-foreground [animation-delay:120ms] sm:text-xl">

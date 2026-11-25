@@ -1,11 +1,8 @@
 "use client";
 
-import { zodResolver } from "@hookform/resolvers/zod";
 import { KeyRound, Lock, ShieldOff, UserPlus } from "lucide-react";
 import { useMemo, useState } from "react";
-import { useForm } from "react-hook-form";
 import { toast } from "sonner";
-import { z } from "zod";
 
 import { PasswordInput } from "@/components/auth/password-input";
 import { useConfirm } from "@/components/ui/confirm";
@@ -32,8 +29,10 @@ import {
 } from "@/hooks/use-workspace";
 import { ApiError } from "@/lib/api/client";
 import type { Member, Role } from "@/lib/api/types";
+import { bind, fieldError, useFormik, yup } from "@/lib/forms";
 import { newPassword, passwordError, PASSWORD_HINT } from "@/lib/password";
 import { ROLE_LABEL } from "@/lib/permissions";
+import { initials } from "@/lib/utils";
 
 const ROLES: Role[] = ["light_agent", "agent", "supervisor", "admin"];
 
@@ -75,8 +74,17 @@ export function MembersView() {
             {rows.map((m) => {
               const self = m.id === user?.id;
               return (
-                <li key={m.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
-                  <div className="min-w-0 flex-1 basis-52">
+                <li
+                  key={m.id}
+                  className="flex flex-wrap items-center gap-3 px-4 py-3 transition-colors hover:bg-surface-2/60"
+                >
+                  <span
+                    aria-hidden
+                    className="grid size-10 flex-none place-items-center rounded-full bg-ai-gradient text-[13px] font-bold text-white shadow-card"
+                  >
+                    {initials(m.name)}
+                  </span>
+                  <div className="min-w-0 flex-1 basis-48">
                     <div className="flex items-center gap-2">
                       <span className="truncate font-medium">{m.name}</span>
                       {self && <Badge tone="primary">You</Badge>}
@@ -185,27 +193,41 @@ export function MembersView() {
   );
 }
 
-const addSchema = z.object({
-  name: z.string().trim().min(1, "Enter a name").max(120),
-  email: z.string().trim().min(1, "Enter an email").email("Enter a valid email"),
-  role: z.enum(["light_agent", "agent", "supervisor", "admin"]),
+const addSchema = yup.object({
+  name: yup.string().trim().required("Enter a name").max(120),
+  email: yup.string().trim().required("Enter an email").email("Enter a valid email"),
+  role: yup.mixed<Role>().oneOf(ROLES).required(),
   password: newPassword(),
 });
-type AddValues = z.infer<typeof addSchema>;
+type AddValues = yup.InferType<typeof addSchema>;
 
 function AddMemberDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const add = useAddMember();
-  const {
-    register,
-    control,
-    handleSubmit,
-    reset,
-    setError,
-    formState: { errors },
-  } = useForm<AddValues>({ resolver: zodResolver(addSchema), defaultValues: { role: "agent" } });
+  const form = useFormik<AddValues>({
+    initialValues: { name: "", email: "", role: "agent", password: "" },
+    validationSchema: addSchema,
+    onSubmit: (v, helpers) => {
+      const values = addSchema.cast(v) as AddValues;
+      add.mutate(values, {
+        onSuccess: () => {
+          toast.success(`${values.name} added`);
+          close();
+        },
+        onError: (e) => {
+          if (e instanceof ApiError && e.status === 422) {
+            for (const d of e.details)
+              if (d.field in addSchema.fields) helpers.setFieldError(d.field, d.message);
+            // The workspace's own minimum length comes back without a field.
+            const pw = passwordError(e, "password");
+            if (pw) helpers.setFieldError("password", pw);
+          }
+        },
+      });
+    },
+  });
 
   const close = () => {
-    reset();
+    form.resetForm();
     onClose();
   };
 
@@ -216,36 +238,15 @@ function AddMemberDialog({ open, onClose }: { open: boolean; onClose: () => void
       title="Add member"
       description="Share the temporary password with them privately."
     >
-      <form
-        noValidate
-        className="space-y-4"
-        onSubmit={handleSubmit((v) =>
-          add.mutate(v, {
-            onSuccess: () => {
-              toast.success(`${v.name} added`);
-              close();
-            },
-            onError: (e) => {
-              if (e instanceof ApiError && e.status === 422) {
-                for (const d of e.details)
-                  if (d.field in addSchema.shape)
-                    setError(d.field as keyof AddValues, { message: d.message });
-                // The workspace's own minimum length comes back without a field.
-                const pw = passwordError(e, "password");
-                if (pw) setError("password", { message: pw });
-              }
-            },
-          }),
-        )}
-      >
-        <Field label="Name" htmlFor="m-name" error={errors.name?.message}>
-          <Input id="m-name" autoComplete="off" {...register("name")} />
+      <form noValidate className="space-y-4" onSubmit={form.handleSubmit}>
+        <Field label="Name" htmlFor="m-name" error={fieldError(form, "name")}>
+          <Input id="m-name" autoComplete="off" {...bind(form, "name")} />
         </Field>
-        <Field label="Email" htmlFor="m-email" error={errors.email?.message}>
-          <Input id="m-email" type="email" autoComplete="off" {...register("email")} />
+        <Field label="Email" htmlFor="m-email" error={fieldError(form, "email")}>
+          <Input id="m-email" type="email" autoComplete="off" {...bind(form, "email")} />
         </Field>
         <Field label="Role" htmlFor="m-role">
-          <FormSelect control={control} id="m-role" name="role">
+          <FormSelect form={form} id="m-role" name="role">
             {ROLES.map((r) => (
               <option key={r} value={r}>
                 {ROLE_LABEL[r]}
@@ -256,10 +257,10 @@ function AddMemberDialog({ open, onClose }: { open: boolean; onClose: () => void
         <Field
           label="Temporary password"
           htmlFor="m-pw"
-          error={errors.password?.message}
+          error={fieldError(form, "password")}
           hint={PASSWORD_HINT}
         >
-          <PasswordInput id="m-pw" autoComplete="new-password" {...register("password")} />
+          <PasswordInput id="m-pw" autoComplete="new-password" {...bind(form, "password")} />
         </Field>
         <div className="flex justify-end gap-2">
           <Button variant="ghost" onClick={close}>
@@ -274,22 +275,35 @@ function AddMemberDialog({ open, onClose }: { open: boolean; onClose: () => void
   );
 }
 
-const resetSchema = z.object({
+const resetSchema = yup.object({
   new_password: newPassword(),
 });
 
 function ResetPasswordDialog({ member, onClose }: { member: Member | null; onClose: () => void }) {
   const reset = useResetMemberPassword();
-  const {
-    register,
-    handleSubmit,
-    reset: resetForm,
-    setError,
-    formState: { errors },
-  } = useForm<z.infer<typeof resetSchema>>({ resolver: zodResolver(resetSchema) });
+  const form = useFormik({
+    initialValues: { new_password: "" },
+    validationSchema: resetSchema,
+    onSubmit: (v, helpers) => {
+      if (!member) return;
+      reset.mutate(
+        { id: member.id, new_password: v.new_password },
+        {
+          onSuccess: () => {
+            toast.success("Password reset");
+            close();
+          },
+          onError: (e) => {
+            const pw = passwordError(e, "new_password");
+            if (pw) helpers.setFieldError("new_password", pw);
+          },
+        },
+      );
+    },
+  });
 
   const close = () => {
-    resetForm();
+    form.resetForm();
     onClose();
   };
 
@@ -300,32 +314,14 @@ function ResetPasswordDialog({ member, onClose }: { member: Member | null; onClo
       title={`Reset password for ${member?.name ?? ""}`}
       description="They will be signed out everywhere and unlocked."
     >
-      <form
-        noValidate
-        className="space-y-4"
-        onSubmit={handleSubmit((v) =>
-          reset.mutate(
-            { id: member!.id, new_password: v.new_password },
-            {
-              onSuccess: () => {
-                toast.success("Password reset");
-                close();
-              },
-              onError: (e) => {
-                const pw = passwordError(e, "new_password");
-                if (pw) setError("new_password", { message: pw });
-              },
-            },
-          ),
-        )}
-      >
+      <form noValidate className="space-y-4" onSubmit={form.handleSubmit}>
         <Field
           label="New password"
           htmlFor="r-pw"
-          error={errors.new_password?.message}
+          error={fieldError(form, "new_password")}
           hint={PASSWORD_HINT}
         >
-          <PasswordInput id="r-pw" autoComplete="new-password" {...register("new_password")} />
+          <PasswordInput id="r-pw" autoComplete="new-password" {...bind(form, "new_password")} />
         </Field>
         <div className="flex justify-end gap-2">
           <Button variant="ghost" onClick={close}>

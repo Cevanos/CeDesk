@@ -10,6 +10,7 @@ import { FormError } from "@/components/workspace/list-shared";
 import { useContactFields, useImportContacts } from "@/hooks/use-contacts";
 import { ApiError } from "@/lib/api/client";
 import type { ContactImportResult, ImportMapping, OnExisting } from "@/lib/api/contacts-types";
+import { useFormik, yup } from "@/lib/forms";
 
 const MAX_BYTES = 2 * 1024 * 1024;
 
@@ -103,16 +104,55 @@ function Problems({ r }: { r: ContactImportResult }) {
   );
 }
 
+interface ImportValues {
+  file: File | null;
+  picks: Picks;
+  onExisting: OnExisting;
+}
+
+const importSchema = yup.object({
+  file: yup
+    .mixed<File>()
+    .nullable()
+    .required("Choose a CSV file.")
+    .test("size", "That file is over 2 MB. Split it and import the parts.", (f) =>
+      f ? f.size <= MAX_BYTES : true,
+    )
+    .test("type", "Choose a .csv file.", (f) =>
+      f ? /\.csv$/i.test(f.name) || f.type === "text/csv" : true,
+    ),
+  picks: yup
+    .object()
+    .test("email", "Choose the column that holds the email.", (p) => !!(p as Picks)?.email),
+  onExisting: yup.mixed<OnExisting>().oneOf(["fill_blanks", "overwrite", "skip"]).required(),
+});
+
 function ImportSteps({ onClose }: { onClose: () => void }) {
   const run = useImportContacts();
   const fields = useContactFields();
   const input = useRef<HTMLInputElement>(null);
-  const [file, setFile] = useState<File | null>(null);
-  const [picks, setPicks] = useState<Picks | null>(null);
-  const [onExisting, setOnExisting] = useState<OnExisting>("fill_blanks");
   const [preview, setPreview] = useState<ContactImportResult | null>(null);
   const [done, setDone] = useState<ContactImportResult | null>(null);
   const [tooBig, setTooBig] = useState(false);
+  const [mapped, setMapped] = useState(false);
+
+  const formik = useFormik<ImportValues>({
+    initialValues: { file: null, picks: {}, onExisting: "fill_blanks" },
+    validationSchema: importSchema,
+    onSubmit: (v) => {
+      if (!v.file) return;
+      run.mutate(
+        { file: v.file, dryRun: false, mapping: mappingFrom(v.picks), onExisting: v.onExisting },
+        {
+          onSuccess: (r) => {
+            setDone(r);
+            toast.success("Import finished");
+          },
+        },
+      );
+    },
+  });
+  const { file, picks, onExisting } = formik.values;
 
   const dry = (f: File, mapping: ImportMapping | undefined, existing: OnExisting) =>
     run.mutate(
@@ -121,15 +161,18 @@ function ImportSteps({ onClose }: { onClose: () => void }) {
         onSuccess: (r) => {
           setPreview(r);
           // The first answer fills the dropdowns from the server's guess.
-          setPicks((cur) => cur ?? picksFrom(r.mapping));
+          if (!mapped) {
+            setMapped(true);
+            void formik.setFieldValue("picks", picksFrom(r.mapping));
+          }
         },
       },
     );
 
   const change = (key: string, col: string) => {
-    if (!file || !picks) return;
+    if (!file || !mapped) return;
     const next = { ...picks, [key]: col };
-    setPicks(next);
+    void formik.setFieldValue("picks", next);
     dry(file, mappingFrom(next), onExisting);
   };
 
@@ -166,14 +209,15 @@ function ImportSteps({ onClose }: { onClose: () => void }) {
             const f = e.target.files?.[0];
             e.target.value = "";
             if (!f) return;
-            setPicks(null);
+            setMapped(false);
             setPreview(null);
+            void formik.setFieldValue("picks", {});
             if (f.size > MAX_BYTES) {
-              setFile(null);
+              void formik.setFieldValue("file", null);
               return setTooBig(true);
             }
             setTooBig(false);
-            setFile(f);
+            void formik.setFieldValue("file", f);
             dry(f, undefined, onExisting);
           }}
         />
@@ -182,11 +226,14 @@ function ImportSteps({ onClose }: { onClose: () => void }) {
         </Button>
         {file && <span className="text-sm text-muted-foreground">{file.name}</span>}
       </div>
+      {formik.submitCount > 0 && formik.errors.file && (
+        <FormError message={String(formik.errors.file)} />
+      )}
       {tooBig && <FormError message="That file is over 2 MB. Split it and import the parts." />}
       {run.isError && <FormError message={msg(run.error)} />}
 
       {/* Step 2: the columns. */}
-      {preview && picks && (
+      {preview && mapped && (
         <>
           <div className="grid gap-3 sm:grid-cols-2">
             {PROPS.map((p) => (
@@ -223,7 +270,7 @@ function ImportSteps({ onClose }: { onClose: () => void }) {
               searchable={false}
               onChange={(e) => {
                 const v = e.target.value as OnExisting;
-                setOnExisting(v);
+                void formik.setFieldValue("onExisting", v);
                 if (file) dry(file, mappingFrom(picks), v);
               }}
             />
@@ -242,21 +289,9 @@ function ImportSteps({ onClose }: { onClose: () => void }) {
           Cancel
         </Button>
         <Button
-          disabled={!file || !preview || !picks?.email || preview.created + preview.updated === 0}
+          disabled={!file || !preview || !picks.email || preview.created + preview.updated === 0}
           loading={run.isPending && !run.variables?.dryRun}
-          onClick={() =>
-            file &&
-            picks &&
-            run.mutate(
-              { file, dryRun: false, mapping: mappingFrom(picks), onExisting },
-              {
-                onSuccess: (r) => {
-                  setDone(r);
-                  toast.success("Import finished");
-                },
-              },
-            )
-          }
+          onClick={() => void formik.submitForm()}
         >
           Import
         </Button>

@@ -1,10 +1,12 @@
 "use client";
 
-import { Download, ExternalLink } from "lucide-react";
+import { Download, ExternalLink, Gauge, Hourglass, PieChart, Users } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
+import { AiMark } from "@/components/ui/ai";
 import { Button, Card, EmptyState, Skeleton } from "@/components/ui/primitives";
+import { SectionHeader } from "@/components/ui/section";
 import { LoadError } from "@/components/workspace/list-shared";
 import {
   csvQuery,
@@ -61,23 +63,59 @@ export function CsvButton({
   );
 }
 
-function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
+function Stat({
+  label,
+  value,
+  hint,
+  ai,
+}: {
+  label: string;
+  value: string;
+  hint?: string;
+  ai?: boolean;
+}) {
   return (
-    <Card className="p-4">
-      <p className="text-[11px] font-medium tracking-wider text-subtle-foreground uppercase">
+    <Card
+      className={cn(
+        "group relative overflow-hidden p-4 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-pop",
+        ai && "ai-frame",
+      )}
+    >
+      {ai && (
+        <span
+          aria-hidden
+          className="pointer-events-none absolute -top-10 -right-10 size-24 rounded-full bg-ai-gradient opacity-10 blur-2xl transition-opacity group-hover:opacity-25"
+        />
+      )}
+      <p className="relative text-[11px] font-medium tracking-wider text-subtle-foreground uppercase">
         {label}
       </p>
-      <p className="mt-0.5 truncate text-xl font-semibold tracking-tight tabular-nums">{value}</p>
-      {hint && <p className="truncate text-xs text-muted-foreground">{hint}</p>}
+      <p
+        className={cn(
+          "relative mt-0.5 truncate text-2xl font-semibold tracking-tight tabular-nums",
+          ai && "text-ai-gradient",
+        )}
+      >
+        {value}
+      </p>
+      {hint && <p className="relative truncate text-xs text-muted-foreground">{hint}</p>}
     </Card>
   );
 }
 
-function Bars({ title, rows }: { title: string; rows: Labelled[] }) {
+function Bars({
+  title,
+  description,
+  rows,
+}: {
+  title: string;
+  description?: string;
+  rows: Labelled[];
+}) {
   const max = Math.max(1, ...rows.map((r) => r.open));
   return (
     <section aria-label={title}>
-      <h2 className="mb-2 text-base font-semibold">{title}</h2>
+      <SectionHeader icon={Hourglass} title={title} description={description} />
       <Card className="p-4">
         {rows.length === 0 ? (
           <p className="text-sm text-muted-foreground">No data for this period</p>
@@ -117,19 +155,26 @@ function Breakdown({ d }: { d: MetricsReport }) {
   const cur = tabs.find((t) => t.key === active)!;
   return (
     <section aria-label="Breakdown">
-      <div className="mb-2 flex flex-wrap gap-1.5">
-        {tabs.map((t) => (
-          <Button
-            key={t.key}
-            size="sm"
-            variant={t.key === active ? "primary" : "outline"}
-            aria-pressed={t.key === active}
-            onClick={() => setActive(t.key)}
-          >
-            {t.label}
-          </Button>
-        ))}
-      </div>
+      <SectionHeader
+        icon={PieChart}
+        title="Breakdown"
+        description="Where tickets come from and how customers feel."
+        aside={
+          <div className="flex flex-wrap gap-1.5">
+            {tabs.map((t) => (
+              <Button
+                key={t.key}
+                size="sm"
+                variant={t.key === active ? "primary" : "outline"}
+                aria-pressed={t.key === active}
+                onClick={() => setActive(t.key)}
+              >
+                {t.label}
+              </Button>
+            ))}
+          </div>
+        }
+      />
       <Card className="overflow-x-auto">
         {cur.rows.length === 0 ? (
           <EmptyState title="No data for this period">Nothing to show.</EmptyState>
@@ -169,7 +214,11 @@ function Breakdown({ d }: { d: MetricsReport }) {
 function AgentsMetrics({ agents }: { agents: MetricsAgentRow[] }) {
   return (
     <section aria-label="Agents">
-      <h2 className="mb-2 text-base font-semibold">Agents: time and tasks</h2>
+      <SectionHeader
+        icon={Users}
+        title="Agents: time and tasks"
+        description="How each agent spent their time."
+      />
       <Card className="overflow-x-auto">
         {agents.length === 0 ? (
           <EmptyState title="No agent data">Nothing to show for this period.</EmptyState>
@@ -233,7 +282,7 @@ export function MetricsPanel({ params }: { params: ReportParams }) {
   const d = q.data;
   const governanceUrl = safeHttpUrl(d.governance_url);
   return (
-    <div className={cn("space-y-6 transition-opacity", q.isPlaceholderData && "opacity-60")}>
+    <div className={cn("space-y-10 transition-opacity", q.isPlaceholderData && "opacity-60")}>
       <div className="flex flex-wrap items-center justify-end gap-2">
         {governanceUrl && (
           <a
@@ -248,13 +297,20 @@ export function MetricsPanel({ params }: { params: ReportParams }) {
         <CsvButton path="reports/metrics" params={params} withTeam name="more-metrics" />
       </div>
       {d.tiles.length > 0 && (
-        <section aria-label="Summary" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          {d.tiles.map((t) => (
-            <Stat key={t.key} label={t.label} value={tileValue(t)} hint={t.hint} />
-          ))}
+        <section aria-label="Summary">
+          <SectionHeader icon={Gauge} title="Summary" description="Key figures for the period." />
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {d.tiles.map((t) => (
+              <Stat key={t.key} label={t.label} value={tileValue(t)} hint={t.hint} />
+            ))}
+          </div>
         </section>
       )}
-      <Bars title="Open tickets by age" rows={d.backlog} />
+      <Bars
+        title="Open tickets by age"
+        description="How long open tickets have been waiting."
+        rows={d.backlog}
+      />
       <Breakdown d={d} />
       <AgentsMetrics agents={d.agents} />
     </div>
@@ -268,9 +324,22 @@ export function AiPanel({ params }: { params: ReportParams }) {
   if (q.isError) return <LoadError error={q.error} />;
   const d = q.data;
   return (
-    <div className="space-y-4">
-      <div className="flex justify-end">
-        <CsvButton path="reports/ai" params={params} withTeam={false} name="cedesk-ai-report" />
+    <div className="space-y-6">
+      <div className="ai-frame relative flex flex-wrap items-center gap-3 overflow-hidden rounded-2xl p-4 shadow-card sm:p-5">
+        <span
+          aria-hidden
+          className="pointer-events-none absolute inset-0 bg-ai-gradient opacity-[0.06]"
+        />
+        <AiMark className="relative size-10 rounded-xl [&_svg]:size-5" />
+        <div className="relative min-w-0 flex-1 basis-60">
+          <h2 className="text-[15px] font-semibold">Cevanos AI assistant</h2>
+          <p className="text-sm text-muted-foreground">
+            How the AI is handling customer chats before they reach your team.
+          </p>
+        </div>
+        <div className="relative">
+          <CsvButton path="reports/ai" params={params} withTeam={false} name="cedesk-ai-report" />
+        </div>
       </div>
       <section
         aria-label="AI assistant"
@@ -279,8 +348,9 @@ export function AiPanel({ params }: { params: ReportParams }) {
           q.isPlaceholderData && "opacity-60",
         )}
       >
-        <Stat label="AI chats" value={count(d.chats)} />
+        <Stat ai label="AI chats" value={count(d.chats)} />
         <Stat
+          ai
           label="Handed to a person"
           value={count(d.handed_over)}
           hint={
@@ -290,6 +360,7 @@ export function AiPanel({ params }: { params: ReportParams }) {
           }
         />
         <Stat
+          ai
           label="Resolved by AI"
           value={count(d.resolved_by_ai)}
           hint={
@@ -299,6 +370,7 @@ export function AiPanel({ params }: { params: ReportParams }) {
           }
         />
         <Stat
+          ai
           label="CSAT of AI"
           value={d.csat_average === null ? dash : `${d.csat_average.toFixed(1)} ★`}
           hint={d.csat_count ? `${d.csat_count} ratings` : undefined}

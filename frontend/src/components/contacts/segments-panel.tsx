@@ -12,6 +12,7 @@ import { useDeleteSegment, useSaveSegment, useSegments } from "@/hooks/use-conta
 import { ApiError } from "@/lib/api/client";
 import type { ContactFieldRef, ContactFilters, Segment } from "@/lib/api/contacts-types";
 import { filtersToSegment } from "@/lib/contacts";
+import { bind, fieldError, useFormik, yup } from "@/lib/forms";
 import { cn } from "@/lib/utils";
 
 const msg = (e: unknown) => (e instanceof ApiError ? e.userMessage : "Something went wrong.");
@@ -62,37 +63,44 @@ function NameForm({
   onSaved?: (s: Segment) => void;
 }) {
   const save = useSaveSegment();
-  const [name, setName] = useState(segment?.name ?? "");
-  const trimmed = name.trim();
-  return (
-    <form
-      className="space-y-4"
-      onSubmit={(e) => {
-        e.preventDefault();
-        if (!trimmed) return;
-        save.mutate(
-          segment
-            ? { id: segment.id, name: trimmed }
-            : { name: trimmed, filters: filtersToSegment(filters!, fields) },
-          {
-            onSuccess: (s) => {
-              toast.success(segment ? "Segment renamed" : "Segment saved");
-              onSaved?.(s);
-              onClose();
-            },
+  const formik = useFormik({
+    initialValues: { name: segment?.name ?? "" },
+    validationSchema: yup.object({
+      name: yup
+        .string()
+        .trim()
+        .required("Give the segment a name.")
+        .max(80, "Use at most 80 characters."),
+    }),
+    onSubmit: (v) =>
+      save.mutate(
+        segment
+          ? { id: segment.id, name: v.name.trim() }
+          : { name: v.name.trim(), filters: filtersToSegment(filters!, fields) },
+        {
+          onSuccess: (s) => {
+            toast.success(segment ? "Segment renamed" : "Segment saved");
+            onSaved?.(s);
+            onClose();
           },
-        );
-      }}
-    >
-      <Field label="Name" htmlFor="seg-name" hint="Shared with everyone in the workspace.">
+        },
+      ),
+  });
+  return (
+    <form className="space-y-4" noValidate onSubmit={formik.handleSubmit}>
+      <Field
+        label="Name"
+        htmlFor="seg-name"
+        error={fieldError(formik, "name")}
+        hint="Shared with everyone in the workspace."
+      >
         <Input
           id="seg-name"
           maxLength={80}
           // The dialog has one box, so it takes focus.
           // eslint-disable-next-line jsx-a11y/no-autofocus
           autoFocus
-          value={name}
-          onChange={(e) => setName(e.target.value)}
+          {...bind(formik, "name")}
         />
       </Field>
       {save.isError && <FormError message={msg(save.error)} />}
@@ -100,7 +108,7 @@ function NameForm({
         <Button variant="ghost" onClick={onClose}>
           Cancel
         </Button>
-        <Button type="submit" loading={save.isPending} disabled={!trimmed}>
+        <Button type="submit" loading={save.isPending} disabled={!formik.values.name.trim()}>
           Save
         </Button>
       </div>

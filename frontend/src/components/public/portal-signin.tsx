@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { publicErrorMessage } from "@/components/public/errors";
 import { Button, Card, Field, Input } from "@/components/ui/primitives";
 import { useCodeSignIn, useRequestCode, useWorkspaceSlug } from "@/hooks/use-portal";
+import { bind, fieldError, useFormik, yup } from "@/lib/forms";
 
 type Saved = { step: "email" | "code"; email: string };
 const savedKey = (ws: string) => `cedesk:portal-signin:${ws}`;
@@ -50,19 +51,45 @@ export function PortalSignIn({
   // Step + email live in sessionStorage so a remount or full reload returns to "Enter your code".
   const [saved] = useState(() => readSaved(ws));
   const [step, setStepState] = useState<"email" | "code">(saved.step);
-  const [email, setEmailState] = useState(saved.email);
-  const [code, setCode] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [resent, setResent] = useState(false);
+  const codeRef = useRef<HTMLInputElement>(null);
+
+  const emailForm = useFormik({
+    initialValues: { email: saved.email },
+    validationSchema: yup.object({
+      email: yup
+        .string()
+        .trim()
+        .required("Enter a valid email address.")
+        .email("Enter a valid email address."),
+    }),
+    onSubmit: () => sendCode(),
+  });
+  const codeForm = useFormik({
+    initialValues: { code: "" },
+    validationSchema: yup.object({
+      code: yup
+        .string()
+        .required("Enter the 6 digits from the email.")
+        .matches(/^\d{6}$/, "Enter the 6 digits from the email."),
+    }),
+    onSubmit: (v) => {
+      setError(null);
+      signIn.mutate(
+        { email: email.trim(), code: v.code },
+        {
+          onSuccess: () => writeSaved(ws, { step: "email", email: "" }),
+          onError: (err) => setError(publicErrorMessage(err)),
+        },
+      );
+    },
+  });
+  const email = emailForm.values.email;
   const setStep = (s: "email" | "code") => {
     setStepState(s);
     writeSaved(ws, { step: s, email });
   };
-  const setEmail = (v: string) => {
-    setEmailState(v);
-    writeSaved(ws, { step, email: v });
-  };
-  const [error, setError] = useState<string | null>(null);
-  const [resent, setResent] = useState(false);
-  const codeRef = useRef<HTMLInputElement>(null);
   // Move focus to the code box when it appears, so keyboard and screen-reader users land on it.
   useEffect(() => {
     if (step === "code") codeRef.current?.focus();
@@ -81,7 +108,7 @@ export function PortalSignIn({
 
   return (
     <Card className="mx-auto w-full max-w-md animate-rise rounded-2xl p-6 shadow-pop sm:p-8">
-      <div className="grid size-12 place-items-center rounded-2xl bg-primary-soft text-primary-ink">
+      <div className="bg-ai-gradient grid size-12 place-items-center rounded-2xl text-white shadow-[0_8px_20px_-8px_var(--ai-from)]">
         {step === "email" ? <Mail className="size-6" /> : <KeyRound className="size-6" />}
       </div>
       <h1 className="mt-5 text-2xl font-semibold tracking-tight">
@@ -104,54 +131,40 @@ export function PortalSignIn({
       </p>
 
       {step === "email" ? (
-        <form
-          noValidate
-          className="mt-6 space-y-4"
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (!/^\S+@\S+\.\S+$/.test(email.trim())) return setError("Enter a valid email address.");
-            sendCode();
-          }}
-        >
-          <Field label="Email address" htmlFor="ps-email">
+        <form noValidate className="mt-6 space-y-4" onSubmit={emailForm.handleSubmit}>
+          <Field
+            label="Email address"
+            htmlFor="ps-email"
+            error={fieldError(emailForm, "email") ?? error ?? undefined}
+          >
             <Input
               id="ps-email"
               type="email"
               inputMode="email"
               autoComplete="email"
-              value={email}
-              aria-invalid={!!error}
-              aria-describedby={error ? "ps-email-error" : undefined}
-              onChange={(e) => setEmail(e.target.value)}
+              {...bind(emailForm, "email")}
+              aria-invalid={!!(fieldError(emailForm, "email") ?? error)}
+              aria-describedby={
+                fieldError(emailForm, "email") ?? error ? "ps-email-error" : undefined
+              }
+              onChange={(e) => {
+                emailForm.handleChange(e);
+                setError(null);
+                writeSaved(ws, { step, email: e.target.value });
+              }}
             />
           </Field>
-          {error && (
-            <p id="ps-email-error" role="alert" className="text-sm text-danger">
-              {error}
-            </p>
-          )}
-          <Button type="submit" size="lg" className="w-full" loading={request.isPending}>
+          <Button type="submit" size="lg" variant="ai" className="w-full" loading={request.isPending}>
             Send me a code
           </Button>
         </form>
       ) : (
-        <form
-          noValidate
-          className="mt-6 space-y-4"
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (!/^\d{6}$/.test(code)) return setError("Enter the 6 digits from the email.");
-            setError(null);
-            signIn.mutate(
-              { email: email.trim(), code },
-              {
-                onSuccess: () => writeSaved(ws, { step: "email", email: "" }),
-                onError: (err) => setError(publicErrorMessage(err)),
-              },
-            );
-          }}
-        >
-          <Field label="6-digit code" htmlFor="ps-code">
+        <form noValidate className="mt-6 space-y-4" onSubmit={codeForm.handleSubmit}>
+          <Field
+            label="6-digit code"
+            htmlFor="ps-code"
+            error={fieldError(codeForm, "code") ?? error ?? undefined}
+          >
             <Input
               ref={codeRef}
               id="ps-code"
@@ -161,21 +174,19 @@ export function PortalSignIn({
               maxLength={6}
               placeholder="123456"
               className="h-14 text-center font-mono text-2xl tracking-[0.5em]"
-              value={code}
-              aria-invalid={!!error}
-              aria-describedby={error ? "ps-code-error" : undefined}
-              onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+              {...bind(codeForm, "code")}
+              aria-invalid={!!(fieldError(codeForm, "code") ?? error)}
+              aria-describedby={fieldError(codeForm, "code") ?? error ? "ps-code-error" : undefined}
+              onChange={(e) => {
+                void codeForm.setFieldValue("code", e.target.value.replace(/\D/g, "").slice(0, 6));
+                setError(null);
+              }}
             />
           </Field>
           <p aria-live="polite" className="sr-only">
             {resent ? "A new code was sent." : ""}
           </p>
-          {error && (
-            <p id="ps-code-error" role="alert" className="text-sm text-danger">
-              {error}
-            </p>
-          )}
-          <Button type="submit" size="lg" className="w-full" loading={signIn.isPending}>
+          <Button type="submit" size="lg" variant="ai" className="w-full" loading={signIn.isPending}>
             <ShieldCheck className="size-4" /> Sign in
           </Button>
           <div className="flex items-center justify-between text-sm">
@@ -184,7 +195,7 @@ export function PortalSignIn({
               className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground"
               onClick={() => {
                 setStep("email");
-                setCode("");
+                codeForm.resetForm();
                 setError(null);
               }}
             >

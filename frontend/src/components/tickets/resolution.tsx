@@ -16,6 +16,7 @@ import {
 import { receiptRequired } from "@/hooks/workspace/receipts";
 import { ApiError } from "@/lib/api/client";
 import type { Resolution, ResolutionInput, Verified } from "@/lib/api/differentiator-types";
+import { bind, fieldError, useFormik, yup } from "@/lib/forms";
 import { formatDateTime } from "@/lib/utils";
 
 const EDIT_DAYS = 7;
@@ -191,24 +192,20 @@ export function ResolveDialog({
   onClose: () => void;
 }) {
   const resolve = useResolveTicket(ticketId);
-  const [draft, setDraft] = useState<Draft>(blank);
-  const [errors, setErrors] = useState<Record<string, string>>({});
-  const set = (p: Partial<Draft>) => {
-    setDraft((d) => ({ ...d, ...p }));
-    setErrors({});
-  };
+  const form = useFormik<Draft>({
+    initialValues: blank,
+    validationSchema: draftSchema,
+    onSubmit: (v) => resolve.mutate({ etag, resolution: toInput(v, true) }, { onSuccess: done }),
+  });
+  const draft = form.values;
+  const errors: Record<string, string> = {};
+  const actionErr = fieldError(form, "action_taken");
+  if (actionErr) errors.action_taken = actionErr;
+  const set = (p: Partial<Draft>) => void form.setValues({ ...form.values, ...p });
 
   const done = () => {
     toast.success(`${label} resolved`);
     onClose();
-  };
-
-  const submit = () => {
-    if (!draft.action_taken.trim()) {
-      setErrors({ action_taken: "Say what was done." });
-      return;
-    }
-    resolve.mutate({ etag, resolution: toInput(draft, true) }, { onSuccess: done });
   };
 
   return (
@@ -223,13 +220,7 @@ export function ResolveDialog({
       }
       className="sm:max-w-lg"
     >
-      <form
-        noValidate
-        onSubmit={(e) => {
-          e.preventDefault();
-          submit();
-        }}
-      >
+      <form noValidate onSubmit={form.handleSubmit}>
         <ReceiptFields id="rv" draft={draft} set={set} errors={errors} />
         <div className="mt-5 flex flex-wrap justify-end gap-2">
           <Button type="button" variant="ghost" onClick={onClose}>
@@ -268,6 +259,10 @@ function VerifiedBadge({ r }: { r: Resolution }) {
     </Badge>
   );
 }
+
+const draftSchema = yup.object({
+  action_taken: yup.string().trim().required("Say what was done."),
+});
 
 const errorText = (e: unknown) => (e instanceof ApiError ? e.userMessage : "Something went wrong.");
 
@@ -368,21 +363,26 @@ function EditDialog({
   onClose: () => void;
 }) {
   const edit = useEditResolution(ticketId);
-  const [draft, setDraft] = useState<Draft>(() => draftOf(resolution));
-  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [formError, setFormError] = useState<string>();
+  const form = useFormik<Draft>({
+    initialValues: draftOf(resolution),
+    validationSchema: draftSchema,
+    onSubmit: (v) => submit(v),
+  });
+  const draft = form.values;
+  const errors: Record<string, string> = {};
+  const actionErr = fieldError(form, "action_taken");
+  if (actionErr) errors.action_taken = actionErr;
+  if (formError) errors._form = formError;
   const set = (p: Partial<Draft>) => {
-    setDraft((d) => ({ ...d, ...p }));
-    setErrors({});
+    setFormError(undefined);
+    void form.setValues({ ...form.values, ...p });
   };
 
-  const submit = () => {
-    if (!draft.action_taken.trim()) {
-      setErrors({ action_taken: "Say what was done." });
-      return;
-    }
+  const submit = (v: Draft) => {
     // Only the fields that changed.
     const before = toInput(draftOf(resolution), false);
-    const after = toInput(draft, false);
+    const after = toInput(v, false);
     const patch: Record<string, unknown> = {};
     for (const k of Object.keys(after) as (keyof ResolutionInput)[]) {
       if (after[k] !== before[k]) patch[k] = after[k];
@@ -393,19 +393,13 @@ function EditDialog({
         toast.success("Receipt updated");
         onClose();
       },
-      onError: (e) => setErrors({ _form: errorText(e) }),
+      onError: (e) => setFormError(errorText(e)),
     });
   };
 
   return (
     <Dialog open onClose={onClose} title="Edit receipt" className="sm:max-w-lg">
-      <form
-        noValidate
-        onSubmit={(e) => {
-          e.preventDefault();
-          submit();
-        }}
-      >
+      <form noValidate onSubmit={form.handleSubmit}>
         <ReceiptFields id="ed" draft={draft} set={set} errors={errors} />
         {errors._form && (
           <p role="alert" className="mt-4 rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger">
@@ -437,9 +431,30 @@ function VerifyDialog({
   onClose: () => void;
 }) {
   const verify = useVerifyResolution(ticketId);
-  const [kind, setKind] = useState<"order_id" | "payment_id">(shopify ? "order_id" : "payment_id");
-  const [value, setValue] = useState("");
-  const [error, setError] = useState("");
+  const [apiError, setError] = useState("");
+  const form = useFormik<{ kind: "order_id" | "payment_id"; value: string }>({
+    initialValues: { kind: shopify ? "order_id" : "payment_id", value: "" },
+    validationSchema: yup.object({
+      value: yup
+        .string()
+        .trim()
+        .when("kind", {
+          is: "order_id",
+          then: (x) => x.required("Enter an order id."),
+          otherwise: (x) => x.required("Enter a payment id."),
+        }),
+    }),
+    onSubmit: (f) =>
+      verify.mutate({ [f.kind]: f.value.trim() } as { order_id: string } | { payment_id: string }, {
+        onSuccess: (r) => {
+          toast.success(r.result ? r.result : "Receipt verified");
+          onClose();
+        },
+        onError: (e) => setError(errorText(e)),
+      }),
+  });
+  const kind = form.values.kind;
+  const error = apiError || fieldError(form, "value") || "";
 
   return (
     <Dialog
@@ -448,30 +463,14 @@ function VerifyDialog({
       title="Verify with Shopify or Stripe"
       description="We only read the order or payment. Nothing is changed there."
     >
-      <form
-        noValidate
-        className="space-y-4"
-        onSubmit={(e) => {
-          e.preventDefault();
-          const v = value.trim();
-          if (!v)
-            return setError(kind === "order_id" ? "Enter an order id." : "Enter a payment id.");
-          verify.mutate({ [kind]: v } as { order_id: string } | { payment_id: string }, {
-            onSuccess: (r) => {
-              toast.success(r.result ? r.result : "Receipt verified");
-              onClose();
-            },
-            onError: (e) => setError(errorText(e)),
-          });
-        }}
-      >
+      <form noValidate className="space-y-4" onSubmit={form.handleSubmit}>
         {shopify && stripe && (
           <Field label="Check against" htmlFor="vf-kind">
             <Select
               id="vf-kind"
               value={kind}
               onChange={(e) => {
-                setKind(e.target.value as typeof kind);
+                void form.setFieldValue("kind", e.target.value);
                 setError("");
               }}
               options={[
@@ -488,11 +487,11 @@ function VerifyDialog({
         >
           <Input
             id="vf-value"
-            value={value}
+            {...bind(form, "value")}
             placeholder={kind === "order_id" ? "1001" : "pi_…"}
             aria-invalid={!!error}
             onChange={(e) => {
-              setValue(e.target.value);
+              form.handleChange(e);
               setError("");
             }}
           />

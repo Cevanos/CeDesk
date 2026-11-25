@@ -32,6 +32,7 @@ import type { Flow, FlowGraph, FlowTestResult, FlowVersion } from "@/lib/api/aut
 import { ApiError } from "@/lib/api/client";
 import type { TicketSummary } from "@/lib/api/types";
 import { fromCanvas, graphKey, startGraph, toCanvas } from "@/lib/automation/graph";
+import { bind, fieldError, useFormik } from "@/lib/forms";
 
 const DEFAULT_PER_HOUR = 1000;
 const DEFAULT_PER_DAY = 10000;
@@ -51,6 +52,12 @@ const shapeOf = (g: FlowGraph): FlowGraph => ({
 const normalise = (g: FlowGraph): FlowGraph => {
   const c = toCanvas(g);
   return fromCanvas(c.nodes, c.edges);
+};
+
+const limit = (text: string, min: number, max: number): number | undefined | "bad" => {
+  if (text.trim() === "") return undefined;
+  const n = Number(text);
+  return Number.isInteger(n) && n >= min && n <= max ? n : "bad";
 };
 
 export function WorkflowEditor({
@@ -78,9 +85,29 @@ function EditorBody({ flow, openVersions }: { flow: Flow | null; openVersions: b
   const access = useAutomationAccess();
   const save = useSaveFlow();
 
-  const [name, setName] = useState(flow?.name ?? "");
-  const [perHour, setPerHour] = useState(flow?.max_runs_per_hour?.toString() ?? "");
-  const [perDay, setPerDay] = useState(flow?.max_runs_per_day?.toString() ?? "");
+  // Name and run limits are Formik values; the graph is edited on the canvas.
+  const form = useFormik({
+    initialValues: {
+      name: flow?.name ?? "",
+      perHour: flow?.max_runs_per_hour?.toString() ?? "",
+      perDay: flow?.max_runs_per_day?.toString() ?? "",
+    },
+    validate: (v) => {
+      const next: Record<string, string> = {};
+      const trimmed = v.name.trim();
+      if (trimmed.length < 1 || trimmed.length > 80)
+        next.name = "Enter a name of 1 to 80 characters";
+      const hour = limit(v.perHour, 1, 100_000);
+      const day = limit(v.perDay, 1, 1_000_000);
+      if (hour === "bad") next.limits = "The hourly limit is a whole number from 1 to 100000.";
+      else if (day === "bad") next.limits = "The daily limit is a whole number from 1 to 1000000.";
+      else if ((day ?? DEFAULT_PER_DAY) < (hour ?? DEFAULT_PER_HOUR))
+        next.limits = "The daily limit can't be lower than the hourly one.";
+      return next;
+    },
+    onSubmit: () => doSave(),
+  });
+  const { name, perHour, perDay } = form.values;
   const [startFrom, setStartFrom] = useState<FlowGraph>(() => flow?.graph ?? startGraph());
   const [graph, setGraph] = useState<FlowGraph>(startFrom);
   const [editKey, setEditKey] = useState(0);
@@ -111,6 +138,11 @@ function EditorBody({ flow, openVersions }: { flow: Flow | null; openVersions: b
   const check = useFlowValidation(shape);
   const shapeError = !readOnly && check.data && !check.data.valid ? check.data.error : null;
 
+  const limitsError =
+    form.submitCount > 0 && typeof (form.errors as Record<string, unknown>).limits === "string"
+      ? ((form.errors as Record<string, unknown>).limits as string)
+      : undefined;
+
   const nodeName = (nodeId: string) => graph.nodes.find((n) => n.id === nodeId)?.label || nodeId;
 
   const onGraph = (g: FlowGraph) => {
@@ -121,24 +153,11 @@ function EditorBody({ flow, openVersions }: { flow: Flow | null; openVersions: b
     setTest(null); // the path no longer matches what is drawn
   };
 
-  const limit = (text: string, min: number, max: number): number | undefined | "bad" => {
-    if (text.trim() === "") return undefined;
-    const n = Number(text);
-    return Number.isInteger(n) && n >= min && n <= max ? n : "bad";
-  };
-
-  const submit = () => {
-    const next: typeof errors = {};
+  const doSave = () => {
     const trimmed = name.trim();
-    if (trimmed.length < 1 || trimmed.length > 80) next.name = "Enter a name of 1 to 80 characters";
     const hour = limit(perHour, 1, 100_000);
     const day = limit(perDay, 1, 1_000_000);
-    if (hour === "bad") next.limits = "The hourly limit is a whole number from 1 to 100000.";
-    else if (day === "bad") next.limits = "The daily limit is a whole number from 1 to 1000000.";
-    else if ((day ?? DEFAULT_PER_DAY) < (hour ?? DEFAULT_PER_HOUR))
-      next.limits = "The daily limit can't be lower than the hourly one.";
-    setErrors(next);
-    if (Object.keys(next).length) return;
+    setErrors({});
 
     const limits = {
       ...(typeof hour === "number" ? { max_runs_per_hour: hour } : {}),
@@ -213,14 +232,13 @@ function EditorBody({ flow, openVersions }: { flow: Flow | null; openVersions: b
 
       <Card className="space-y-4 p-4">
         <div className="flex flex-wrap items-end gap-3">
-          <Field label="Name" htmlFor="wf-name" error={errors.name} className="min-w-56 flex-1">
-            <Input
-              id="wf-name"
-              value={name}
-              maxLength={80}
-              disabled={readOnly}
-              onChange={(e) => setName(e.target.value)}
-            />
+          <Field
+            label="Name"
+            htmlFor="wf-name"
+            error={fieldError(form, "name") ?? errors.name}
+            className="min-w-56 flex-1"
+          >
+            <Input id="wf-name" {...bind(form, "name")} maxLength={80} disabled={readOnly} />
           </Field>
           <div className="flex flex-wrap gap-2">
             {flow && (
@@ -237,7 +255,7 @@ function EditorBody({ flow, openVersions }: { flow: Flow | null; openVersions: b
               </Button>
             )}
             {!readOnly && (
-              <Button loading={save.isPending} onClick={submit}>
+              <Button loading={save.isPending} onClick={() => form.submitForm()}>
                 <Save className="size-4" /> Save
               </Button>
             )}
@@ -273,12 +291,12 @@ function EditorBody({ flow, openVersions }: { flow: Flow | null; openVersions: b
             </span>
           </div>
         )}
-        {(shapeError || errors.form || errors.limits) && (
+        {(shapeError || errors.form || limitsError) && (
           <p
             role="alert"
             className="rounded-lg border border-danger/25 bg-danger-soft px-3 py-2 text-sm text-danger"
           >
-            {shapeError ?? errors.form ?? errors.limits}
+            {shapeError ?? errors.form ?? limitsError}
           </p>
         )}
 
@@ -326,9 +344,10 @@ function EditorBody({ flow, openVersions }: { flow: Flow | null; openVersions: b
                   type="number"
                   min={1}
                   max={100000}
+                  name="perHour"
                   value={perHour}
                   placeholder={String(DEFAULT_PER_HOUR)}
-                  onChange={(e) => setPerHour(e.target.value)}
+                  onChange={form.handleChange}
                 />
               </Field>
               <Field
@@ -341,9 +360,10 @@ function EditorBody({ flow, openVersions }: { flow: Flow | null; openVersions: b
                   type="number"
                   min={1}
                   max={1000000}
+                  name="perDay"
                   value={perDay}
                   placeholder={String(DEFAULT_PER_DAY)}
-                  onChange={(e) => setPerDay(e.target.value)}
+                  onChange={form.handleChange}
                 />
               </Field>
             </div>

@@ -12,6 +12,7 @@ import { useAutomationAccess } from "@/hooks/use-workspace";
 import { ApiError } from "@/lib/api/client";
 import { apiMessage } from "@/lib/api/messages";
 import type { Ticket } from "@/lib/api/types";
+import { bind, fieldError, useFormik, yup } from "@/lib/forms";
 
 /**
  * The ticket page "…" menu. The transcript item needs the right to send transcripts and change
@@ -75,35 +76,44 @@ function TranscriptDialog({
 }) {
   const customerEmail = ticket.contact?.email ?? "";
   const send = useSendTranscript(ticket.id);
-  const [mode, setMode] = useState<"customer" | "other">(customerEmail ? "customer" : "other");
-  const [to, setTo] = useState("");
   const [error, setError] = useState<{ message: string; settings?: boolean } | null>(null);
-
-  const submit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-    const address = to.trim();
-    if (mode === "other" && !address) return setError({ message: "Enter an email address." });
-    send.mutate(mode === "other" ? address : undefined, {
-      onSuccess: (r) => {
-        const n = r.messages;
-        toast.success(`Transcript sent to ${r.to} (${n} ${n === 1 ? "message" : "messages"})`);
-        onClose();
-      },
-      onError: (err) => {
-        const message = apiMessage(err);
-        if (err instanceof ApiError) {
-          // A chat customer has no address: switch to typing one.
-          if (err.status === 422 && /no email address/i.test(message)) setMode("other");
-          // No support address yet: the fix is in Settings › Email.
-          if (err.status === 409 && /settings/i.test(message)) {
-            return setError({ message, settings: true });
+  const form = useFormik<{ mode: "customer" | "other"; to: string }>({
+    initialValues: { mode: customerEmail ? "customer" : "other", to: "" },
+    validationSchema: yup.object({
+      to: yup.string().when("mode", {
+        is: "other",
+        then: (x) =>
+          x.trim().required("Enter an email address.").email("Enter a valid email address."),
+      }),
+    }),
+    onSubmit: (v) => {
+      setError(null);
+      const address = v.to.trim();
+      send.mutate(v.mode === "other" ? address : undefined, {
+        onSuccess: (r) => {
+          const n = r.messages;
+          toast.success(`Transcript sent to ${r.to} (${n} ${n === 1 ? "message" : "messages"})`);
+          onClose();
+        },
+        onError: (err) => {
+          const message = apiMessage(err);
+          if (err instanceof ApiError) {
+            // A chat customer has no address: switch to typing one.
+            if (err.status === 422 && /no email address/i.test(message))
+              void form.setFieldValue("mode", "other");
+            // No support address yet: the fix is in Settings › Email.
+            if (err.status === 409 && /settings/i.test(message)) {
+              return setError({ message, settings: true });
+            }
           }
-        }
-        setError({ message });
-      },
-    });
-  };
+          setError({ message });
+        },
+      });
+    },
+  });
+  const mode = form.values.mode;
+  const setMode = (m: "customer" | "other") => void form.setFieldValue("mode", m);
+  const fieldMsg = mode === "other" ? fieldError(form, "to") : undefined;
 
   return (
     <Dialog
@@ -112,7 +122,7 @@ function TranscriptDialog({
       title="Email transcript"
       description="Sends the conversation the customer saw. Private notes and system lines are left out."
     >
-      <form onSubmit={submit} noValidate className="space-y-3">
+      <form onSubmit={form.handleSubmit} noValidate className="space-y-3">
         <fieldset className="space-y-2">
           <legend className="sr-only">Send to</legend>
           <label className="flex items-start gap-2.5 text-sm">
@@ -151,10 +161,14 @@ function TranscriptDialog({
             type="email"
             aria-label="Email address"
             placeholder="name@example.com"
-            value={to}
-            onChange={(e) => setTo(e.target.value)}
-            aria-invalid={error ? true : undefined}
+            {...bind(form, "to")}
+            aria-invalid={error || fieldMsg ? true : undefined}
           />
+        )}
+        {fieldMsg && !error && (
+          <p role="alert" className="text-xs text-danger">
+            {fieldMsg}
+          </p>
         )}
         {error && (
           <p

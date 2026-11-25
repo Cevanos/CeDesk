@@ -43,6 +43,12 @@
   --nav-foreground: #cfc8ee;
   --nav-active: #2a1f5e;
 
+  /* AI-native accent: violet to cyan, used only where Cevanos AI is acting. */
+  --ai-from: #7c5cff;
+  --ai-via: #5b8cff;
+  --ai-to: #1fc8e3;
+  --ai-soft: #f2efff;
+
   --shadow-sm: 0 1px 2px rgb(11 27 54 / 0.06);
   --shadow-md: 0 8px 24px -10px rgb(11 27 54 / 0.18);
   --shadow-lg: 0 24px 60px -20px rgb(60 40 160 / 0.35);
@@ -85,6 +91,11 @@
   --nav-foreground: #b6aedc;
   --nav-active: #231a52;
 
+  --ai-from: #9b86ff;
+  --ai-via: #6fa0ff;
+  --ai-to: #3fd8ee;
+  --ai-soft: #1e1a45;
+
   --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4);
   --shadow-md: 0 8px 24px -10px rgb(0 0 0 / 0.6);
   --shadow-lg: 0 24px 60px -20px rgb(0 0 0 / 0.7);
@@ -121,6 +132,10 @@
   --color-info-soft: var(--info-soft);
   --color-note: var(--note);
   --color-note-border: var(--note-border);
+  --color-ai-from: var(--ai-from);
+  --color-ai-via: var(--ai-via);
+  --color-ai-to: var(--ai-to);
+  --color-ai-soft: var(--ai-soft);
   --color-nav: var(--nav);
   --color-nav-foreground: var(--nav-foreground);
   --color-nav-active: var(--nav-active);
@@ -136,6 +151,8 @@
 
   --animate-drift: drift 18s ease-in-out infinite;
   --animate-float: float 7s ease-in-out infinite;
+  --animate-shimmer: shimmer 2.4s linear infinite;
+  --animate-glow: glow 3.2s ease-in-out infinite;
   --animate-rise: rise 0.5s cubic-bezier(0.2, 0.7, 0.2, 1) both;
 
   @keyframes drift {
@@ -154,6 +171,23 @@
     }
     50% {
       transform: translateY(-8px);
+    }
+  }
+  @keyframes shimmer {
+    from {
+      background-position: 200% 0;
+    }
+    to {
+      background-position: -200% 0;
+    }
+  }
+  @keyframes glow {
+    0%,
+    100% {
+      opacity: 0.55;
+    }
+    50% {
+      opacity: 1;
     }
   }
   @keyframes slide-in {
@@ -249,4 +283,46 @@
   --xy-edge-stroke: var(--muted-foreground);
   --xy-edge-stroke-width: 2;
   --xy-edge-stroke-selected: var(--primary);
+}
+
+/* ------------------------------------------------------------------ *
+ * AI-native utilities
+ * ------------------------------------------------------------------ */
+@utility bg-ai-gradient {
+  background-image: linear-gradient(120deg, var(--ai-from), var(--ai-via) 55%, var(--ai-to));
+}
+@utility text-ai-gradient {
+  background-image: linear-gradient(120deg, var(--ai-from), var(--ai-via) 55%, var(--ai-to));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+/* A 1px gradient border on a rounded surface: the "AI is here" frame. */
+@utility ai-frame {
+  position: relative;
+  border: 1px solid transparent;
+  background:
+    linear-gradient(var(--surface), var(--surface)) padding-box,
+    linear-gradient(120deg, var(--ai-from), var(--ai-via) 55%, var(--ai-to)) border-box;
+}
+@utility ai-shimmer {
+  background-image: linear-gradient(
+    100deg,
+    transparent 30%,
+    color-mix(in srgb, var(--ai-via) 22%, transparent) 50%,
+    transparent 70%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 2.4s linear infinite;
+}
+@utility glass {
+  background: color-mix(in srgb, var(--surface) 78%, transparent);
+  backdrop-filter: blur(14px) saturate(1.4);
+}
+@utility bg-dots {
+  background-image: radial-gradient(
+    color-mix(in srgb, var(--foreground) 14%, transparent) 1px,
+    transparent 1px
+  );
+  background-size: 18px 18px;
 }

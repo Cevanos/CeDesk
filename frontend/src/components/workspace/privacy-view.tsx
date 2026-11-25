@@ -17,6 +17,7 @@ import {
 } from "@/hooks/use-workspace";
 import { ApiError, downloadFile } from "@/lib/api/client";
 import { formatBytes } from "@/lib/format";
+import { bind, fieldError, useFormik, yup } from "@/lib/forms";
 
 const when = (s?: string) => (s ? new Date(s).toLocaleString() : "");
 const message = (e: unknown) => (e instanceof ApiError ? e.userMessage : "Something went wrong.");
@@ -33,39 +34,42 @@ export function PrivacyView() {
 
 function ExportCard() {
   const exp = useExportCustomer();
-  const [email, setEmail] = useState("");
-  const [errs, setErrs] = useState<Record<string, string>>({});
+  const [srv, setSrv] = useState<Record<string, string>>({});
+  const form = useFormik({
+    initialValues: { email: "" },
+    validationSchema: yup.object({
+      email: yup
+        .string()
+        .trim()
+        .required("Enter the customer's email")
+        .email("Enter a valid email"),
+    }),
+    onSubmit: (v, h) => {
+      setSrv({});
+      exp.mutate(v.email.trim(), {
+        onSuccess: () => {
+          toast.success("Export ready. Download it from Recent requests.");
+          h.resetForm();
+        },
+        onError: (err) => setSrv({ ...fieldErrors(err), _form: message(err) }),
+      });
+    },
+  });
   return (
     <Card className="p-5">
       <h2 className="text-[15px] font-semibold">Export a customer&rsquo;s data</h2>
       <p className="mt-1 mb-4 text-sm text-muted-foreground">
         Everything we hold about one customer, as a file. The file is kept for 7 days.
       </p>
-      <form
-        noValidate
-        className="space-y-3"
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (!email.trim()) return setErrs({ email: "Enter the customer's email" });
-          setErrs({});
-          exp.mutate(email.trim(), {
-            onSuccess: () => {
-              toast.success("Export ready. Download it from Recent requests.");
-              setEmail("");
-            },
-            onError: (err) => setErrs({ ...fieldErrors(err), _form: message(err) }),
-          });
-        }}
-      >
-        <Field label="Customer email" htmlFor="pv-exp" error={errs.email}>
-          <Input
-            id="pv-exp"
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-          />
+      <form noValidate className="space-y-3" onSubmit={form.handleSubmit}>
+        <Field
+          label="Customer email"
+          htmlFor="pv-exp"
+          error={fieldError(form, "email") ?? srv.email}
+        >
+          <Input id="pv-exp" type="email" {...bind(form, "email")} />
         </Field>
-        <FormError message={errs._form} />
+        <FormError message={srv._form} />
         <Button type="submit" loading={exp.isPending}>
           Export
         </Button>
@@ -77,10 +81,50 @@ function ExportCard() {
 function EraseCard() {
   const find = useFindCustomer();
   const erase = useEraseCustomer();
-  const [email, setEmail] = useState("");
   const [found, setFound] = useState<FoundCustomer | null>(null);
-  const [confirmEmail, setConfirmEmail] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const form = useFormik({
+    initialValues: { email: "", confirm_email: "" },
+    // Step one needs the email to look up; step two needs the typed confirmation to match.
+    validate: (v) => {
+      const errs: Record<string, string> = {};
+      if (!found) {
+        if (!v.email.trim()) errs.email = "Enter the customer's email.";
+      } else if (!v.confirm_email.trim()) {
+        errs.confirm_email = "Type their email again to confirm.";
+      } else if (v.confirm_email.trim().toLowerCase() !== found.email.toLowerCase()) {
+        errs.confirm_email = "The two emails don't match.";
+      }
+      return errs;
+    },
+    onSubmit: (v) => {
+      setError(null);
+      if (!found) {
+        find.mutate(v.email.trim(), {
+          onSuccess: (c) => {
+            if (c) {
+              setFound(c);
+              form.setTouched({}, false);
+            } else setError("No customer with that email was found.");
+          },
+          onError: (err) => setError(message(err)),
+        });
+        return;
+      }
+      erase.mutate(
+        { contact_id: found.id, confirm_email: v.confirm_email.trim() },
+        {
+          onSuccess: () => {
+            toast.success("Customer erased");
+            reset();
+          },
+          // 422 "email doesn't match", 409 "already erased": shown as they come.
+          onError: (err) => setError(message(err)),
+        },
+      );
+    },
+  });
+  const confirmEmail = form.values.confirm_email;
 
   const matches =
     !!found &&
@@ -88,9 +132,8 @@ function EraseCard() {
     confirmEmail.trim().toLowerCase() === found.email.toLowerCase();
 
   function reset() {
-    setEmail("");
+    form.resetForm();
     setFound(null);
-    setConfirmEmail("");
   }
 
   return (
@@ -110,44 +153,14 @@ function EraseCard() {
         </div>
       </div>
 
-      <form
-        noValidate
-        className="space-y-3"
-        onSubmit={(e) => {
-          e.preventDefault();
-          setError(null);
-          if (!found) {
-            if (!email.trim()) return setError("Enter the customer's email.");
-            find.mutate(email.trim(), {
-              onSuccess: (c) =>
-                c ? setFound(c) : setError("No customer with that email was found."),
-              onError: (err) => setError(message(err)),
-            });
-            return;
-          }
-          if (!matches) return setError("The two emails don't match.");
-          erase.mutate(
-            { contact_id: found.id, confirm_email: confirmEmail.trim() },
-            {
-              onSuccess: () => {
-                toast.success("Customer erased");
-                reset();
-              },
-              // 422 "email doesn't match", 409 "already erased": shown as they come.
-              onError: (err) => setError(message(err)),
-            },
-          );
-        }}
-      >
-        <Field label="Find the customer by email" htmlFor="pv-er">
+      <form noValidate className="space-y-3" onSubmit={form.handleSubmit}>
+        <Field
+          label="Find the customer by email"
+          htmlFor="pv-er"
+          error={found ? undefined : fieldError(form, "email")}
+        >
           <div className="flex gap-2">
-            <Input
-              id="pv-er"
-              type="email"
-              value={email}
-              disabled={!!found}
-              onChange={(e) => setEmail(e.target.value)}
-            />
+            <Input id="pv-er" type="email" {...bind(form, "email")} disabled={!!found} />
             {found ? (
               <Button variant="outline" onClick={reset}>
                 Change
@@ -166,14 +179,12 @@ function EraseCard() {
               <span className="font-medium">{found.name || "Unnamed customer"}</span>
               <span className="text-muted-foreground"> · {found.email}</span>
             </p>
-            <Field label="Type their email again to confirm" htmlFor="pv-er2">
-              <Input
-                id="pv-er2"
-                type="email"
-                autoComplete="off"
-                value={confirmEmail}
-                onChange={(e) => setConfirmEmail(e.target.value)}
-              />
+            <Field
+              label="Type their email again to confirm"
+              htmlFor="pv-er2"
+              error={fieldError(form, "confirm_email")}
+            >
+              <Input id="pv-er2" type="email" autoComplete="off" {...bind(form, "confirm_email")} />
             </Field>
             <Button type="submit" variant="danger" disabled={!matches} loading={erase.isPending}>
               Erase customer

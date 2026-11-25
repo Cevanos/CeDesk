@@ -10,6 +10,7 @@ import { Button, Card, Textarea } from "@/components/ui/primitives";
 import { useCurrentUser } from "@/hooks/use-auth";
 import { useAddNote, useAllNotes, useDeleteNote, useEditNote } from "@/hooks/use-contacts";
 import type { ContactDetail, ContactNote } from "@/lib/api/contacts-types";
+import { bind, useFormik, yup } from "@/lib/forms";
 import { hasAction } from "@/lib/permissions";
 import { cn, formatDateTime } from "@/lib/utils";
 
@@ -17,6 +18,15 @@ const MAX = 5000;
 
 /** Length as the API counts it: characters of the trimmed text, not UTF-16 units. */
 const noteLength = (text: string) => [...text.trim()].length;
+
+/** One schema for adding and editing a note: filled in, and no longer than the API allows. */
+const noteSchema = yup.object({
+  body: yup
+    .string()
+    .required("Write a note first.")
+    .test("blank", "Write a note first.", (v) => !!v?.trim())
+    .test("max", `Notes can be at most ${MAX} characters.`, (v) => noteLength(v ?? "") <= MAX),
+});
 
 /** Length counter that turns into an error once a note is too long to save. */
 function Counter({ length }: { length: number }) {
@@ -46,7 +56,13 @@ function NoteItem({
   const del = useDeleteNote(contactId);
   const { ask, dialog } = useConfirm();
   const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(note.body);
+  const editForm = useFormik({
+    initialValues: { body: note.body },
+    validationSchema: noteSchema,
+    onSubmit: (v) =>
+      edit.mutate({ noteId: note.id, body: v.body.trim() }, { onSuccess: () => setEditing(false) }),
+  });
+  const draft = editForm.values.body;
   const edited = note.updated_at !== note.created_at;
   const canEdit = note.can_edit && !locked;
 
@@ -66,7 +82,7 @@ function NoteItem({
               variant="ghost"
               className="h-7 px-2"
               onClick={() => {
-                setDraft(note.body);
+                editForm.resetForm({ values: { body: note.body } });
                 setEditing(true);
               }}
             >
@@ -94,21 +110,8 @@ function NoteItem({
         )}
       </div>
       {editing ? (
-        <form
-          className="mt-2 space-y-2"
-          onSubmit={(e) => {
-            e.preventDefault();
-            const body = draft.trim();
-            if (!body || noteLength(body) > MAX) return;
-            edit.mutate({ noteId: note.id, body }, { onSuccess: () => setEditing(false) });
-          }}
-        >
-          <Textarea
-            aria-label="Edit note"
-            rows={3}
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-          />
+        <form className="mt-2 space-y-2" noValidate onSubmit={editForm.handleSubmit}>
+          <Textarea aria-label="Edit note" rows={3} {...bind(editForm, "body")} />
           <Counter length={noteLength(draft)} />
           <div className="flex justify-end gap-2">
             <Button type="button" size="sm" variant="ghost" onClick={() => setEditing(false)}>
@@ -144,7 +147,18 @@ export function NotesCard({
   const { user } = useCurrentUser();
   const canAdd = hasAction(user, "private_note") && !contact.erased_at;
   const add = useAddNote(contact.id);
-  const [text, setText] = useState("");
+  const addForm = useFormik({
+    initialValues: { body: "" },
+    validationSchema: noteSchema,
+    onSubmit: (v, h) =>
+      add.mutate(v.body.trim(), {
+        onSuccess: () => {
+          h.resetForm();
+          toast.success("Note saved");
+        },
+      }),
+  });
+  const text = addForm.values.body;
   const [all, setAll] = useState(false);
   const full = useAllNotes(contact.id, all);
 
@@ -163,26 +177,12 @@ export function NotesCard({
       </h3>
 
       {canAdd && (
-        <form
-          className="mb-3 space-y-2"
-          onSubmit={(e) => {
-            e.preventDefault();
-            const body = text.trim();
-            if (!body || noteLength(body) > MAX) return;
-            add.mutate(body, {
-              onSuccess: () => {
-                setText("");
-                toast.success("Note saved");
-              },
-            });
-          }}
-        >
+        <form className="mb-3 space-y-2" noValidate onSubmit={addForm.handleSubmit}>
           <Textarea
             aria-label="Add a private note"
             placeholder="Add a private note"
             rows={compact ? 2 : 3}
-            value={text}
-            onChange={(e) => setText(e.target.value)}
+            {...bind(addForm, "body")}
           />
           {text.length > 0 && <Counter length={noteLength(text)} />}
           <div className="flex items-center justify-between gap-2">

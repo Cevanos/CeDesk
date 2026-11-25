@@ -8,6 +8,7 @@ import {
   FileSearch,
   Languages,
   Search,
+  Sparkles,
   ThumbsDown,
   ThumbsUp,
 } from "lucide-react";
@@ -28,6 +29,7 @@ import {
   useWorkspaceSlug,
 } from "@/hooks/use-portal";
 import type { Article } from "@/lib/api/types";
+import { bind, fieldError, useFormik, yup } from "@/lib/forms";
 import { isRtl, languageName, toBcp47 } from "@/lib/locale";
 import { cn } from "@/lib/utils";
 
@@ -91,7 +93,6 @@ export function HelpHome() {
   const help = usePublicHelp(ws, q, asked);
   const served = help.data?.locale ?? asked;
   const formOff = useContactFormOff(ws);
-  const [text, setText] = useState(q);
 
   const go = (next: { q?: string; category?: string }) => {
     const sp = new URLSearchParams();
@@ -104,29 +105,34 @@ export function HelpHome() {
     router.push(`/${encodeURIComponent(ws)}/help${s ? `?${s}` : ""}`);
   };
 
+  const search = useFormik({
+    initialValues: { q },
+    validationSchema: yup.object({
+      q: yup.string().trim().max(200, "Search for up to 200 characters."),
+    }),
+    onSubmit: (v) => go({ q: v.q.trim() }),
+  });
+
   const shown = (help.data?.articles ?? []).filter((a) => !cat || a.category_id === cat);
 
   return (
     <div className="animate-rise" {...textProps(served)}>
-      <section className="mx-auto max-w-2xl text-center">
+      <section className="relative mx-auto max-w-2xl text-center">
+        <span
+          aria-hidden
+          className="bg-ai-gradient pointer-events-none absolute -inset-x-10 -top-10 -z-10 h-56 animate-glow rounded-full opacity-15 blur-3xl"
+        />
         <p className="inline-flex items-center gap-1.5 rounded-full border border-border bg-surface/80 px-3 py-1 text-xs font-medium text-muted-foreground backdrop-blur">
           <BookOpen className="size-3.5 text-primary-ink" aria-hidden />
           {help.data?.workspace_name ?? prettySlug(ws)} help center
         </p>
         <h1 className="mt-5 text-4xl font-semibold tracking-[-0.02em] text-balance sm:text-5xl">
           How can we{" "}
-          <span className="bg-gradient-to-r from-primary to-[#2f7bff] bg-clip-text text-transparent">
+          <span className="text-ai-gradient">
             help you?
           </span>
         </h1>
-        <form
-          role="search"
-          className="relative mt-8"
-          onSubmit={(e) => {
-            e.preventDefault();
-            go({ q: text.trim() });
-          }}
-        >
+        <form role="search" className="relative mt-8" noValidate onSubmit={search.handleSubmit}>
           <label htmlFor="help-q" className="sr-only">
             Search the help center
           </label>
@@ -137,15 +143,24 @@ export function HelpHome() {
           <input
             id="help-q"
             type="search"
-            value={text}
             placeholder="Search for answers…"
-            onChange={(e) => setText(e.target.value)}
-            className="h-14 w-full rounded-2xl border border-input bg-surface pe-28 ps-12 text-base shadow-pop transition-colors placeholder:text-subtle-foreground hover:border-border-strong focus:border-primary focus:ring-4 focus:ring-primary/15 focus:outline-none"
+            {...bind(search, "q")}
+            aria-describedby={fieldError(search, "q") ? "help-q-error" : undefined}
+            className="h-14 w-full rounded-2xl border border-input bg-surface pe-28 ps-12 text-base shadow-pop transition-colors placeholder:text-subtle-foreground hover:border-border-strong focus:border-primary focus:ring-4 focus:ring-primary/15 focus:outline-none aria-[invalid=true]:border-danger"
           />
-          <Button type="submit" className="absolute top-2 end-2 h-10">
+          <Button type="submit" variant="ai" className="absolute top-2 end-2 h-10">
             Search
           </Button>
+          {fieldError(search, "q") && (
+            <p id="help-q-error" role="alert" className="mt-2 text-start text-xs text-danger">
+              {fieldError(search, "q")}
+            </p>
+          )}
         </form>
+        <p className="mt-3 inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+          <Sparkles className="text-ai-via size-3.5" aria-hidden /> Smart search understands what
+          you mean, not just the words you type.
+        </p>
       </section>
 
       {(help.data?.categories.length ?? 0) > 0 && (

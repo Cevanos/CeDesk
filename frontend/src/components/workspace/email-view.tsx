@@ -25,6 +25,7 @@ import {
   useSendTestEmail,
 } from "@/hooks/use-workspace";
 import type { EmailAddress } from "@/lib/api/types";
+import { bind, fieldError, useFormik, yup } from "@/lib/forms";
 
 export function EmailView() {
   const addresses = useEmailAddresses();
@@ -128,85 +129,84 @@ export function EmailView() {
 
 function AddressForm({ address, onClose }: { address: EmailAddress | null; onClose: () => void }) {
   const save = useSaveEmailAddress();
-  const [addr, setAddr] = useState(address?.address ?? "");
-  const [name, setName] = useState(address?.name ?? "");
-  const [signature, setSignature] = useState(address?.signature ?? "");
-  const [isDefault, setIsDefault] = useState(address?.is_default ?? false);
-  const [errs, setErrs] = useState<Record<string, string>>({});
+  const [srv, setSrv] = useState<Record<string, string>>({});
+  const form = useFormik({
+    initialValues: {
+      address: address?.address ?? "",
+      name: address?.name ?? "",
+      signature: address?.signature ?? "",
+      is_default: address?.is_default ?? false,
+    },
+    validationSchema: yup.object({
+      address: address
+        ? yup.string()
+        : yup
+            .string()
+            .trim()
+            .matches(/^\S+@\S+\.\S+$/, "Enter a valid email address")
+            .required("Enter a valid email address"),
+      name: yup.string().trim().required("Enter the name customers will see"),
+    }),
+    onSubmit: (v) => {
+      setSrv({});
+      save.mutate(
+        {
+          id: address?.id,
+          // The address itself can't be changed after it is created.
+          ...(address ? {} : { address: v.address.trim() }),
+          name: v.name.trim(),
+          signature: v.signature,
+          is_default: v.is_default,
+        },
+        {
+          onSuccess: () => {
+            toast.success("Address saved");
+            onClose();
+          },
+          onError: (err) => setSrv(fieldErrors(err)),
+        },
+      );
+    },
+  });
 
   return (
-    <form
-      noValidate
-      className="space-y-4"
-      onSubmit={(e) => {
-        e.preventDefault();
-        const next: Record<string, string> = {};
-        if (!address && !/^\S+@\S+\.\S+$/.test(addr.trim()))
-          next.address = "Enter a valid email address";
-        if (!name.trim()) next.name = "Enter the name customers will see";
-        setErrs(next);
-        if (Object.keys(next).length) return;
-        save.mutate(
-          {
-            id: address?.id,
-            // The address itself can't be changed after it is created.
-            ...(address ? {} : { address: addr.trim() }),
-            name: name.trim(),
-            signature,
-            is_default: isDefault,
-          },
-          {
-            onSuccess: () => {
-              toast.success("Address saved");
-              onClose();
-            },
-            onError: (err) => setErrs(fieldErrors(err)),
-          },
-        );
-      }}
-    >
+    <form noValidate className="space-y-4" onSubmit={form.handleSubmit}>
       <Field
         label="Email address"
         htmlFor="ea-address"
-        error={errs.address}
+        error={fieldError(form, "address") ?? srv.address}
         hint={address ? "The address can't be changed. Add a new one instead." : undefined}
       >
         <Input
           id="ea-address"
           type="email"
           inputMode="email"
-          value={addr}
+          {...bind(form, "address")}
           disabled={!!address}
-          onChange={(e) => setAddr(e.target.value)}
         />
       </Field>
-      <Field label="Sender name" htmlFor="ea-name" error={errs.name}>
-        <Input id="ea-name" maxLength={80} value={name} onChange={(e) => setName(e.target.value)} />
+      <Field label="Sender name" htmlFor="ea-name" error={fieldError(form, "name") ?? srv.name}>
+        <Input id="ea-name" maxLength={80} {...bind(form, "name")} />
       </Field>
       <Field
         label="Signature"
         htmlFor="ea-sig"
-        error={errs.signature}
+        error={srv.signature}
         hint="Added to the end of replies sent from this address."
       >
-        <Textarea
-          id="ea-sig"
-          rows={4}
-          maxLength={2000}
-          value={signature}
-          onChange={(e) => setSignature(e.target.value)}
-        />
+        <Textarea id="ea-sig" rows={4} maxLength={2000} {...bind(form, "signature")} />
       </Field>
       <label className="flex items-center gap-2 text-sm">
         <input
           type="checkbox"
           className="size-4 accent-[var(--primary)]"
-          checked={isDefault}
-          onChange={(e) => setIsDefault(e.target.checked)}
+          name="is_default"
+          checked={form.values.is_default}
+          onChange={form.handleChange}
         />
         Use as the default sender
       </label>
-      <FormError message={errs._form} />
+      <FormError message={srv._form} />
       <div className="flex justify-end gap-2">
         <Button variant="ghost" onClick={onClose}>
           Cancel

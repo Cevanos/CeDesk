@@ -114,6 +114,7 @@ function NameEditor({
   return (
     <form
       className="flex items-center gap-2"
+      noValidate
       onSubmit={(e) => {
         e.preventDefault();
         if (!next || next === name) return setEditing(false);

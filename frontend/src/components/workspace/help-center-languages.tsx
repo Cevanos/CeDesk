@@ -33,6 +33,7 @@ import {
 } from "@/hooks/use-workspace";
 import { ApiError } from "@/lib/api/client";
 import type { Article, ArticleCategory, ArticleStatus, ArticleTranslation } from "@/lib/api/types";
+import { bind, bindSelect, fieldError, useFormik, yup } from "@/lib/forms";
 import {
   COMMON_LOCALES,
   isRtl,
@@ -237,8 +238,29 @@ export function DomainCard() {
   const check = useCheckHelpCenterDomain();
   const remove = useRemoveHelpCenterDomain();
   const { ask, dialog } = useConfirm();
-  const [domain, setDomain] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const domainForm = useFormik({
+    initialValues: { domain: "" },
+    validationSchema: yup.object({
+      domain: yup
+        .string()
+        .trim()
+        .lowercase()
+        .required("Enter a domain, like help.example.com")
+        .matches(
+          /^(?=.{4,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/,
+          "Enter a domain like help.example.com, without https://",
+        ),
+    }),
+    onSubmit: (v, h) => {
+      setError(null);
+      save.mutate(v.domain.trim().toLowerCase(), {
+        onSuccess: () => h.resetForm(),
+        onError: fail,
+      });
+    },
+  });
+  const domain = domainForm.values.domain;
 
   // Server without CEDESK_TLS_ASK_KEY (or an older one): 403 or 404 hides the section.
   if (q.isPending || !perms.manageSettings) return null;
@@ -255,23 +277,21 @@ export function DomainCard() {
       <h2 className="text-sm font-semibold">Custom domain</h2>
       {!cur ? (
         <form
+          noValidate
           className="flex flex-wrap items-end gap-3"
-          onSubmit={(e) => {
-            e.preventDefault();
-            setError(null);
-            save.mutate(domain.trim().toLowerCase(), {
-              onSuccess: () => setDomain(""),
-              onError: fail,
-            });
-          }}
+          onSubmit={domainForm.handleSubmit}
         >
           <div className="min-w-60 flex-1">
-            <Field label="Domain" htmlFor="hc-domain" hint="For example help.example.com">
+            <Field
+              label="Domain"
+              htmlFor="hc-domain"
+              hint="For example help.example.com"
+              error={fieldError(domainForm, "domain")}
+            >
               <Input
                 id="hc-domain"
-                value={domain}
+                {...bind(domainForm, "domain")}
                 placeholder="help.example.com"
-                onChange={(e) => setDomain(e.target.value)}
               />
             </Field>
           </div>
@@ -574,38 +594,57 @@ function TranslationForm({
   onClose: () => void;
 }) {
   const save = useSaveTranslation(article.id);
-  const [locale, setLocale] = useState(existing?.locale ?? "");
-  const [title, setTitle] = useState(existing?.title ?? "");
-  const [body, setBody] = useState(existing?.body ?? "");
-  const [status, setStatus] = useState<ArticleStatus>(existing?.status ?? "draft");
   const [seo, setSeo] = useState(() => seoFrom(existing));
-  const [errs, setErrs] = useState<Record<string, string>>({});
+  const [srv, setSrv] = useState<Record<string, string>>({});
+  const form = useFormik({
+    initialValues: {
+      locale: existing?.locale ?? "",
+      title: existing?.title ?? "",
+      body: existing?.body ?? "",
+      status: (existing?.status ?? "draft") as ArticleStatus,
+    },
+    validate: (v) => {
+      const next: Record<string, string> = {};
+      if (!isValidLocale(v.locale))
+        next.locale = "Choose a language, or type a code like hi or pt-br";
+      if (!v.title.trim()) next.title = "Enter a title";
+      if (!v.body.trim()) next.body = "Write the translation";
+      return next;
+    },
+    onSubmit: (v) => {
+      setSrv({});
+      save.mutate(
+        {
+          locale: v.locale,
+          title: nfc(v.title.trim()),
+          body: nfc(v.body),
+          status: v.status,
+          ...seoPayload(seo),
+        },
+        {
+          onSuccess: () => {
+            toast.success(v.status === "published" ? "Translation published" : "Translation saved");
+            onClose();
+          },
+          onError: (err) => setSrv(fieldErrors(err)),
+        },
+      );
+    },
+  });
+  const { locale } = form.values;
+  const errs: Record<string, string> = {
+    ...srv,
+    ...(fieldError(form, "locale") ? { locale: fieldError(form, "locale") as string } : {}),
+    ...(fieldError(form, "title") ? { title: fieldError(form, "title") as string } : {}),
+    ...(fieldError(form, "body") ? { body: fieldError(form, "body") as string } : {}),
+  };
   const rtl = isRtl(locale);
 
   return (
     <form
       noValidate
       className="space-y-3 rounded-lg border border-border bg-surface-2 p-3"
-      onSubmit={(e) => {
-        e.preventDefault();
-        const next: Record<string, string> = {};
-        if (!isValidLocale(locale))
-          next.locale = "Choose a language, or type a code like hi or pt-br";
-        if (!title.trim()) next.title = "Enter a title";
-        if (!body.trim()) next.body = "Write the translation";
-        setErrs(next);
-        if (Object.keys(next).length) return;
-        save.mutate(
-          { locale, title: nfc(title.trim()), body: nfc(body), status, ...seoPayload(seo) },
-          {
-            onSuccess: () => {
-              toast.success(status === "published" ? "Translation published" : "Translation saved");
-              onClose();
-            },
-            onError: (err) => setErrs(fieldErrors(err)),
-          },
-        );
-      }}
+      onSubmit={form.handleSubmit}
     >
       <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_10rem]">
         <LocalePicker
@@ -613,18 +652,17 @@ function TranslationForm({
           value={locale}
           disabled={!!existing}
           exclude={existing ? [] : taken}
-          onChange={setLocale}
+          onChange={(v) => form.setFieldValue("locale", v)}
           error={errs.locale}
         />
         <Field label="Status" htmlFor="tr-status">
           <Select
             id="tr-status"
-            value={status}
+            {...bindSelect(form, "status")}
             options={[
               { value: "draft", label: "Draft" },
               { value: "published", label: "Published" },
             ]}
-            onChange={(e) => setStatus(e.target.value as ArticleStatus)}
           />
         </Field>
       </div>
@@ -632,9 +670,8 @@ function TranslationForm({
         <Input
           id="tr-title"
           maxLength={200}
-          value={title}
+          {...bind(form, "title")}
           dir={rtl ? "rtl" : undefined}
-          onChange={(e) => setTitle(e.target.value)}
         />
       </Field>
       <Field label="Article (Markdown)" htmlFor="tr-body" error={errs.body}>
@@ -644,12 +681,11 @@ function TranslationForm({
           maxLength={100_000}
           dir={rtl ? "rtl" : undefined}
           className="font-mono text-[13px] leading-6"
-          value={body}
-          onChange={(e) => setBody(e.target.value)}
+          {...bind(form, "body")}
         />
       </Field>
       <SeoFields idPrefix="tr" value={seo} onChange={setSeo} errs={errs} />
-      <FormError message={errs._form} />
+      <FormError message={srv._form} />
       <div className="flex justify-end gap-2">
         <Button variant="ghost" onClick={onClose}>
           Cancel

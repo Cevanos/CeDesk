@@ -1,10 +1,12 @@
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
+import { Inbox, UserCheck, Users } from "lucide-react";
 import Link from "next/link";
 import { useRef, useState } from "react";
 
 import { Badge, Card, EmptyState, Select, Skeleton } from "@/components/ui/primitives";
+import { SectionHeader } from "@/components/ui/section";
 import { LoadError } from "@/components/workspace/list-shared";
 import { GetCsvButton } from "@/components/workspace/report-csv";
 import { useReportFilters } from "@/components/workspace/reports-frame";
@@ -39,7 +41,16 @@ function Tile({
   tone?: "danger" | "warning";
 }) {
   return (
-    <Card className="p-4">
+    <Card className="relative overflow-hidden p-4 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-pop">
+      <span
+        aria-hidden
+        className={cn(
+          "absolute inset-y-0 left-0 w-1 rounded-r-full bg-border-strong",
+          value > 0 && tone === "danger" && "bg-danger",
+          value > 0 && tone === "warning" && "bg-warning",
+          value > 0 && !tone && "bg-primary",
+        )}
+      />
       <p className="text-[11px] font-medium tracking-wider text-subtle-foreground uppercase">
         {label}
       </p>
@@ -93,7 +104,7 @@ export function LiveTab() {
   const now = new Date();
 
   return (
-    <div className={cn("space-y-5 transition-opacity", q.isPlaceholderData && "opacity-60")}>
+    <div className={cn("space-y-10 transition-opacity", q.isPlaceholderData && "opacity-60")}>
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="flex flex-wrap items-end gap-3">
           <div className="w-40">
@@ -127,7 +138,7 @@ export function LiveTab() {
       </section>
 
       <section aria-label="Teams">
-        <h2 className="mb-2 text-base font-semibold">By team</h2>
+        <SectionHeader icon={Users} title="By team" description="Live load per team." />
         <Card className="overflow-x-auto">
           <table className="w-full min-w-[28rem] text-sm">
             <thead>
@@ -195,7 +206,7 @@ export function LiveTab() {
       </div>
 
       <section aria-label="Agents">
-        <h2 className="mb-2 text-base font-semibold">Agents</h2>
+        <SectionHeader icon={UserCheck} title="Agents" description="Who is available right now." />
         <div className="grid gap-3 sm:grid-cols-4">
           <Tile label="Available" value={d.agents.available} />
           <Tile label="On break" value={d.agents.on_break} />
@@ -226,8 +237,8 @@ function TicketList({
 }) {
   return (
     <section aria-label={title}>
-      <h2 className="mb-2 text-base font-semibold">{title}</h2>
-      <Card className="divide-y divide-border">
+      <SectionHeader icon={Inbox} title={title} />
+      <Card className="h-80 divide-y divide-border overflow-y-auto">
         {tickets.length === 0 ? (
           <EmptyState title={empty} />
         ) : (

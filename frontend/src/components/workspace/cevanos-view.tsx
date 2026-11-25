@@ -17,6 +17,7 @@ import {
   useTeams,
 } from "@/hooks/use-workspace";
 import type { CevanosConnection } from "@/lib/api/types";
+import { bind, bindSelect, fieldError, useFormik, yup } from "@/lib/forms";
 
 export function CevanosView() {
   const conn = useCevanosConnection();
@@ -53,33 +54,49 @@ function CevanosBody({ conn }: { conn: CevanosConnection }) {
   const { ask, dialog } = useConfirm();
 
   // Secrets are never sent back: the fields start empty and are only sent when typed.
-  const [apiKey, setApiKey] = useState("");
-  const [secret, setSecret] = useState("");
-  const [closeOnResolve, setCloseOnResolve] = useState(conn.close_on_resolve);
-  const [teamId, setTeamId] = useState(conn.team_id ?? "");
-  const [errs, setErrs] = useState<Record<string, string>>({});
-  const url = webhookUrl(conn.webhook_path);
-
-  const submit = (e: React.FormEvent) => {
-    e.preventDefault();
-    save.mutate(
-      {
-        ...(apiKey.trim() ? { api_key: apiKey.trim() } : {}),
-        ...(secret.trim() ? { webhook_secret: secret.trim() } : {}),
-        close_on_resolve: closeOnResolve,
-        team_id: teamId || null,
-      },
-      {
-        onSuccess: () => {
-          setApiKey("");
-          setSecret("");
-          setErrs({});
-          toast.success("Cevanos settings saved");
+  const [srv, setSrv] = useState<Record<string, string>>({});
+  const form = useFormik({
+    initialValues: {
+      api_key: "",
+      webhook_secret: "",
+      close_on_resolve: conn.close_on_resolve,
+      team_id: conn.team_id ?? "",
+    },
+    validationSchema: yup.object({
+      api_key: yup
+        .string()
+        .trim()
+        .max(500, "That key is too long")
+        .matches(/^\S*$/, "The key has no spaces"),
+      webhook_secret: yup
+        .string()
+        .trim()
+        .max(500, "That secret is too long")
+        .matches(/^\S*$/, "The secret has no spaces"),
+    }),
+    onSubmit: (v, h) => {
+      setSrv({});
+      save.mutate(
+        {
+          ...(v.api_key.trim() ? { api_key: v.api_key.trim() } : {}),
+          ...(v.webhook_secret.trim() ? { webhook_secret: v.webhook_secret.trim() } : {}),
+          close_on_resolve: v.close_on_resolve,
+          team_id: v.team_id || null,
         },
-        onError: (err) => setErrs(fieldErrors(err)),
-      },
-    );
-  };
+        {
+          onSuccess: () => {
+            h.resetForm({
+              values: { ...v, api_key: "", webhook_secret: "" },
+            });
+            toast.success("Cevanos settings saved");
+          },
+          onError: (err) => setSrv(fieldErrors(err)),
+        },
+      );
+    },
+  });
+  const errs = (k: string) => fieldError(form, k) ?? srv[k];
+  const url = webhookUrl(conn.webhook_path);
 
   return (
     <div className="space-y-5">
@@ -95,64 +112,54 @@ function CevanosBody({ conn }: { conn: CevanosConnection }) {
       </div>
 
       <Card className="p-4 sm:p-5">
-        <form onSubmit={submit} noValidate className="space-y-4">
+        <form onSubmit={form.handleSubmit} noValidate className="space-y-4">
           <Field
             label="API key"
             htmlFor="cv-key"
-            error={errs.api_key}
+            error={errs("api_key")}
             hint={
               conn.api_key_hint
                 ? `Saved key ends in ${conn.api_key_hint}. Leave empty to keep it.`
                 : "Paste the API key from Cevanos."
             }
           >
-            <PasswordInput
-              id="cv-key"
-              autoComplete="off"
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
-            />
+            <PasswordInput id="cv-key" autoComplete="off" {...bind(form, "api_key")} />
           </Field>
           <Field
             label="Webhook secret"
             htmlFor="cv-secret"
-            error={errs.webhook_secret}
+            error={errs("webhook_secret")}
             hint="Used to check that events really come from Cevanos. Leave empty to keep the saved one."
           >
-            <PasswordInput
-              id="cv-secret"
-              autoComplete="off"
-              value={secret}
-              onChange={(e) => setSecret(e.target.value)}
-            />
+            <PasswordInput id="cv-secret" autoComplete="off" {...bind(form, "webhook_secret")} />
           </Field>
           <Field
             label="Default team for chat tickets"
             htmlFor="cv-team"
-            error={errs.team_id}
+            error={errs("team_id")}
             hint="Chats are routed to this team."
           >
             <Select
               id="cv-team"
               placeholder="No team"
-              value={teamId}
+              {...bindSelect(form, "team_id")}
               options={[
                 { value: "", label: "No team" },
                 ...(teams.data ?? []).map((t) => ({ value: t.id, label: t.name })),
               ]}
-              onChange={(e) => setTeamId(e.target.value)}
             />
           </Field>
           <label className="flex items-center gap-2 text-sm">
             <input
               type="checkbox"
               className="size-4 accent-[var(--primary)]"
-              checked={closeOnResolve}
-              onChange={(e) => setCloseOnResolve(e.target.checked)}
+              name="close_on_resolve"
+              checked={form.values.close_on_resolve}
+              onChange={form.handleChange}
             />
             Close the chat in Cevanos when the ticket is resolved
           </label>
-          <FormError message={errs._form} />
+          <FormError message={srv._form} />
           <div className="flex flex-wrap justify-end gap-2">
             {conn.connected && (
               <Button

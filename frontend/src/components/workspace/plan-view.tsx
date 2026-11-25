@@ -22,6 +22,7 @@ import {
 } from "@/hooks/use-workspace";
 import { ApiError, downloadFile } from "@/lib/api/client";
 import { formatBytes } from "@/lib/format";
+import { bind, fieldError, useFormik } from "@/lib/forms";
 
 export function PlanView() {
   return (
@@ -112,40 +113,47 @@ function RetentionCard() {
 
 function RetentionForm({ initial }: { initial: RetentionSettings }) {
   const save = useSaveRetention();
-  const [days, setDays] = useState(
-    initial.closed_ticket_days ? String(initial.closed_ticket_days) : "",
-  );
-  const [exportFirst, setExportFirst] = useState(initial.export_before_delete);
-  const [errs, setErrs] = useState<Record<string, string>>({});
+  const [srv, setSrv] = useState<Record<string, string>>({});
+  const form = useFormik({
+    initialValues: {
+      closed_ticket_days: initial.closed_ticket_days ? String(initial.closed_ticket_days) : "",
+      export_before_delete: initial.export_before_delete,
+    },
+    validate: (v) => {
+      const d = v.closed_ticket_days.trim();
+      const n = d ? parseDays(d) : null;
+      return d && (n === null || n < 30 || n > 3650)
+        ? {
+            closed_ticket_days: "Enter 30 to 3650 days, or leave empty to keep resolved tickets.",
+          }
+        : {};
+    },
+    onSubmit: (v) => {
+      setSrv({});
+      const d = v.closed_ticket_days.trim();
+      save.mutate(
+        {
+          closed_ticket_days: d ? parseDays(d) : null,
+          export_before_delete: v.export_before_delete,
+        },
+        {
+          onSuccess: () => toast.success("Retention saved"),
+          // One message, in one place: the banner.
+          onError: (err) =>
+            setSrv({
+              _form:
+                fieldErrors(err)._form ||
+                (err instanceof ApiError ? err.message : "Couldn't save retention."),
+            }),
+        },
+      );
+    },
+  });
+  const errs = { closed_ticket_days: fieldError(form, "closed_ticket_days"), _form: srv._form };
   return (
     <Card className="p-5">
       <h2 className="text-[15px] font-semibold">Retention</h2>
-      <form
-        noValidate
-        className="mt-3 space-y-4"
-        onSubmit={(e) => {
-          e.preventDefault();
-          const n = days.trim() ? parseDays(days) : null;
-          if (days.trim() && (n === null || n < 30 || n > 3650))
-            return setErrs({
-              closed_ticket_days: "Enter 30 to 3650 days, or leave empty to keep resolved tickets.",
-            });
-          setErrs({});
-          save.mutate(
-            { closed_ticket_days: n, export_before_delete: exportFirst },
-            {
-              onSuccess: () => toast.success("Retention saved"),
-              // One message, in one place: the banner.
-              onError: (err) =>
-                setErrs({
-                  _form:
-                    fieldErrors(err)._form ||
-                    (err instanceof ApiError ? err.message : "Couldn't save retention."),
-                }),
-            },
-          );
-        }}
-      >
+      <form noValidate className="mt-3 space-y-4" onSubmit={form.handleSubmit}>
         <Field
           label="Delete resolved tickets after (days)"
           htmlFor="ret-days"
@@ -154,12 +162,7 @@ function RetentionForm({ initial }: { initial: RetentionSettings }) {
             initial.effective_days === null ? "kept for good" : `${initial.effective_days} days`
           }.`}
         >
-          <Input
-            id="ret-days"
-            inputMode="numeric"
-            value={days}
-            onChange={(e) => setDays(e.target.value)}
-          />
+          <Input id="ret-days" inputMode="numeric" {...bind(form, "closed_ticket_days")} />
         </Field>
         {initial.plan_history_days !== null && (
           <p className="text-sm text-muted-foreground">
@@ -176,8 +179,8 @@ function RetentionForm({ initial }: { initial: RetentionSettings }) {
             </p>
           </div>
           <Switch
-            checked={exportFirst}
-            onChange={setExportFirst}
+            checked={form.values.export_before_delete}
+            onChange={(v) => form.setFieldValue("export_before_delete", v)}
             labelledBy="ret-exp-l"
             describedBy="ret-exp-d"
           />
@@ -221,31 +224,36 @@ function ArchiveForm({
 }) {
   const save = useSaveArchiveSettings();
   // Empty = the default (null on the wire); the placeholder shows what applies now.
-  const [days, setDays] = useState(initial.after_days ? String(initial.after_days) : "");
-  const [errs, setErrs] = useState<Record<string, string>>({});
+  const [srv, setSrv] = useState<Record<string, string>>({});
+  const form = useFormik({
+    initialValues: { after_days: initial.after_days ? String(initial.after_days) : "" },
+    validate: (v) => {
+      const d = v.after_days.trim();
+      const n = d ? parseDays(d) : null;
+      return d && (n === null || n < 30 || n > 3650)
+        ? { after_days: "Enter 30 to 3650 days, or leave empty for the default." }
+        : {};
+    },
+    onSubmit: (v) => {
+      setSrv({});
+      const d = v.after_days.trim();
+      save.mutate(
+        { after_days: d ? parseDays(d) : null },
+        {
+          onSuccess: () => toast.success("Archive age saved"),
+          onError: (err) => setSrv(fieldErrors(err)),
+        },
+      );
+    },
+  });
+  const errs: Record<string, string | undefined> = {
+    after_days: fieldError(form, "after_days") ?? srv.after_days,
+    _form: srv._form,
+  };
   return (
     <Card className="p-5">
       <h2 className="text-[15px] font-semibold">Archive</h2>
-      <form
-        noValidate
-        className="mt-3 space-y-4"
-        onSubmit={(e) => {
-          e.preventDefault();
-          const n = days.trim() ? parseDays(days) : null;
-          if (days.trim() && (n === null || n < 30 || n > 3650))
-            return setErrs({
-              after_days: "Enter 30 to 3650 days, or leave empty for the default.",
-            });
-          setErrs({});
-          save.mutate(
-            { after_days: n },
-            {
-              onSuccess: () => toast.success("Archive age saved"),
-              onError: (err) => setErrs(fieldErrors(err)),
-            },
-          );
-        }}
-      >
+      <form noValidate className="mt-3 space-y-4" onSubmit={form.handleSubmit}>
         <Field
           label="Archive resolved tickets after (days)"
           htmlFor="arc-days"
@@ -256,8 +264,7 @@ function ArchiveForm({
             id="arc-days"
             inputMode="numeric"
             placeholder="120"
-            value={days}
-            onChange={(e) => setDays(e.target.value)}
+            {...bind(form, "after_days")}
           />
         </Field>
         {shortRetentionDays !== null && (

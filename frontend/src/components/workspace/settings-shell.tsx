@@ -43,12 +43,24 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { AiBadge } from "@/components/ui/ai";
 import { EmptyState, Skeleton } from "@/components/ui/primitives";
 import { useCurrentUser } from "@/hooks/use-auth";
 import { cn } from "@/lib/utils";
 
 type Item = { href: string; label: string; icon: LucideIcon; description: string };
 type Group = { label: string; icon: LucideIcon; items: Item[] };
+
+/** Settings pages where Cevanos AI is doing the work get the AI treatment. */
+const AI_PAGES = [
+  "/settings/cevanos",
+  "/settings/resolution-receipts",
+  "/settings/automation/log",
+  "/settings/workflows",
+  "/settings/rules",
+  "/settings/topics",
+  "/settings/sandbox",
+];
 
 const GROUPS: Group[] = [
   {
@@ -339,6 +351,7 @@ export function SettingsShell({ children }: { children: React.ReactNode }) {
   const currentGroup = GROUPS.find((g) => g.items.some((i) => pathname.startsWith(i.href)));
   const current = currentGroup?.items.find((i) => pathname.startsWith(i.href));
   const CurrentIcon = current?.icon;
+  const aiPage = !!current && AI_PAGES.some((p) => pathname.startsWith(p));
   const activeGroup: Group = currentGroup ?? (GROUPS[0] as Group);
   const searching = query.trim().length > 0;
   // Searching looks across every tab; otherwise only the selected tab's items show.
@@ -346,17 +359,23 @@ export function SettingsShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="mx-auto w-full max-w-6xl px-3 py-5 sm:px-6 sm:py-8">
-      <div className="flex flex-col gap-1">
-        <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
-        <p className="text-sm text-muted-foreground">
-          Manage your workspace, channels, security and integrations.
-        </p>
+      <div className="relative overflow-hidden rounded-2xl border border-border bg-surface p-5 shadow-card sm:p-6">
+        <span
+          aria-hidden
+          className="pointer-events-none absolute -top-24 -right-16 size-56 rounded-full bg-ai-gradient opacity-15 blur-3xl"
+        />
+        <div className="relative flex flex-col gap-1">
+          <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
+          <p className="text-sm text-muted-foreground">
+            Manage your workspace, channels, security and integrations.
+          </p>
+        </div>
       </div>
 
       <ScrollFade
         as="nav"
         aria-label="Settings sections"
-        className="mt-5 flex [scrollbar-width:none] gap-1 overflow-x-auto overflow-y-hidden border-b border-border [&::-webkit-scrollbar]:hidden"
+        className="mt-4 flex [scrollbar-width:none] gap-1 overflow-x-auto overflow-y-hidden border-b border-border [&::-webkit-scrollbar]:hidden"
       >
         {GROUPS.map((g) => {
           const active = g.label === activeGroup.label;
@@ -454,7 +473,7 @@ export function SettingsShell({ children }: { children: React.ReactNode }) {
                               className={cn(
                                 "grid size-7 flex-none place-items-center rounded-lg transition-colors",
                                 active
-                                  ? "bg-primary text-primary-foreground shadow-card"
+                                  ? "bg-ai-gradient text-white shadow-card"
                                   : "bg-surface-2 text-muted-foreground group-hover:bg-surface group-hover:text-foreground",
                               )}
                             >
@@ -474,18 +493,33 @@ export function SettingsShell({ children }: { children: React.ReactNode }) {
 
         <div className="min-w-0">
           {current && CurrentIcon && (
-            <header className="mb-5 rounded-2xl border border-border bg-surface p-4 shadow-card sm:p-5">
+            <header
+              className={cn(
+                "mb-5 rounded-2xl p-4 shadow-card sm:p-5",
+                aiPage ? "ai-frame" : "border border-border bg-surface",
+              )}
+            >
               <div className="flex items-center gap-1 text-xs font-medium text-subtle-foreground">
                 <span>Settings</span>
                 <ChevronRight className="size-3" aria-hidden />
                 <span>{currentGroup?.label}</span>
               </div>
               <div className="mt-3 flex items-center gap-3.5">
-                <span className="grid size-11 flex-none place-items-center rounded-xl bg-primary-soft text-primary-ink">
+                <span
+                  className={cn(
+                    "grid size-11 flex-none place-items-center rounded-xl",
+                    aiPage
+                      ? "bg-ai-gradient text-white shadow-[0_6px_18px_-6px_var(--ai-from)]"
+                      : "bg-primary-soft text-primary-ink",
+                  )}
+                >
                   <CurrentIcon className="size-5" aria-hidden />
                 </span>
                 <div className="min-w-0">
-                  <h2 className="text-lg font-semibold tracking-tight">{current.label}</h2>
+                  <h2 className="flex flex-wrap items-center gap-2 text-lg font-semibold tracking-tight">
+                    {current.label}
+                    {aiPage && <AiBadge>AI-powered</AiBadge>}
+                  </h2>
                   <p className="text-sm text-muted-foreground">{current.description}</p>
                 </div>
               </div>

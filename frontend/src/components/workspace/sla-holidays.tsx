@@ -11,6 +11,7 @@ import { Badge, Button, EmptyState, Field, Input } from "@/components/ui/primiti
 import { FormError, fieldErrors } from "@/components/workspace/list-shared";
 import { useDeleteHoliday, useSaveHoliday } from "@/hooks/use-workspace";
 import type { Holiday } from "@/lib/api/types";
+import { bind, fieldError, useFormik, yup } from "@/lib/forms";
 import { cn } from "@/lib/utils";
 
 /** Holidays sorted by date; each is flagged `past` once its day is before `today` (YYYY-MM-DD). */
@@ -126,40 +127,45 @@ export function SlaHolidays({ holidays, canEdit }: { holidays: Holiday[]; canEdi
 
 function HolidayForm({ holiday, onClose }: { holiday: Holiday | null; onClose: () => void }) {
   const save = useSaveHoliday();
-  const [day, setDay] = useState(holiday?.day ?? "");
-  const [name, setName] = useState(holiday?.name ?? "");
-  const [errs, setErrs] = useState<Record<string, string>>({});
+  const [srv, setSrv] = useState<Record<string, string>>({});
+  const form = useFormik({
+    initialValues: { day: holiday?.day ?? "", name: holiday?.name ?? "" },
+    validationSchema: yup.object({
+      day: yup
+        .string()
+        .matches(/^\d{4}-\d{2}-\d{2}$/, "Pick a date")
+        .required("Pick a date"),
+      name: yup.string().trim().required("Enter a name, e.g. Diwali"),
+    }),
+    onSubmit: (v) => {
+      setSrv({});
+      save.mutate(
+        { id: holiday?.id, day: v.day, name: v.name.trim() },
+        {
+          onSuccess: () => {
+            toast.success("Holiday saved");
+            onClose();
+          },
+          onError: (err) => setSrv(fieldErrors(err)),
+        },
+      );
+    },
+  });
 
   return (
-    <form
-      noValidate
-      className="space-y-4"
-      onSubmit={(e) => {
-        e.preventDefault();
-        const next: Record<string, string> = {};
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) next.day = "Pick a date";
-        if (!name.trim()) next.name = "Enter a name, e.g. Diwali";
-        setErrs(next);
-        if (Object.keys(next).length) return;
-        save.mutate(
-          { id: holiday?.id, day, name: name.trim() },
-          {
-            onSuccess: () => {
-              toast.success("Holiday saved");
-              onClose();
-            },
-            onError: (err) => setErrs(fieldErrors(err)),
-          },
-        );
-      }}
-    >
-      <Field label="Date" htmlFor="h-day" error={errs.day}>
-        <DatePicker id="h-day" type="date" value={day} onChange={(v) => setDay(v)} />
+    <form noValidate className="space-y-4" onSubmit={form.handleSubmit}>
+      <Field label="Date" htmlFor="h-day" error={fieldError(form, "day") ?? srv.day}>
+        <DatePicker
+          id="h-day"
+          type="date"
+          value={form.values.day}
+          onChange={(v) => form.setFieldValue("day", v)}
+        />
       </Field>
-      <Field label="Name" htmlFor="h-name" error={errs.name}>
-        <Input id="h-name" maxLength={80} value={name} onChange={(e) => setName(e.target.value)} />
+      <Field label="Name" htmlFor="h-name" error={fieldError(form, "name") ?? srv.name}>
+        <Input id="h-name" maxLength={80} {...bind(form, "name")} />
       </Field>
-      <FormError message={errs._form} />
+      <FormError message={srv._form} />
       <div className="flex justify-end gap-2">
         <Button variant="ghost" onClick={onClose}>
           Cancel
