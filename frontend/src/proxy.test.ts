@@ -18,9 +18,10 @@ describe("route guard", () => {
     expect(loc.searchParams.get("next")).toBe("/tickets/42?tab=files");
   });
 
-  it("does not add ?next for the bare root", () => {
-    const loc = new URL(proxy(req("/")).headers.get("location") ?? "");
-    expect(loc.search).toBe("");
+  it("serves the landing page at the root to signed-out visitors without a redirect", () => {
+    const res = proxy(req("/"));
+    expect(res.status).toBe(200);
+    expect(res.headers.get("location")).toBeNull();
   });
 
   it("lets signed-out visitors reach auth pages", () => {
