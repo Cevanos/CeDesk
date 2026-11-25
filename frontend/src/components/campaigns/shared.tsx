@@ -4,6 +4,7 @@ import { Ban, Megaphone } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
+import { PageHeader } from "@/components/ui/page-header";
 import { Badge, Card, EmptyState, Skeleton } from "@/components/ui/primitives";
 import { useCurrentUser } from "@/hooks/use-auth";
 import { ApiError } from "@/lib/api/client";
@@ -24,7 +25,7 @@ export function CampaignsGate({ children }: { children: React.ReactNode }) {
       </Card>
     );
   }
-  return <div className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6">{children}</div>;
+  return <div className="mx-auto w-full max-w-6xl px-3 py-5 sm:px-6 sm:py-8">{children}</div>;
 }
 
 export function CampaignTabs() {
@@ -38,12 +39,13 @@ export function CampaignTabs() {
     },
   ];
   return (
-    <div className="mb-5 flex flex-wrap items-center gap-2">
-      <span className="grid size-9 place-items-center rounded-xl bg-ai-gradient text-white shadow-[0_6px_16px_-8px_var(--ai-from)]">
-        <Megaphone className="size-4.5" aria-hidden />
-      </span>
-      <h1 className="mr-3 text-xl font-semibold tracking-tight">Campaigns</h1>
-      <nav aria-label="Campaigns" className="flex flex-wrap gap-1">
+    <PageHeader
+      className="mb-5"
+      icon={Megaphone}
+      title="Campaigns"
+      description="Send one email to a segment of your customers and track how it lands."
+    >
+      <nav aria-label="Campaigns" className="-mx-1 flex flex-wrap gap-1">
         {tabs.map((t) => (
           <Link
             key={t.href}
@@ -60,7 +62,7 @@ export function CampaignTabs() {
           </Link>
         ))}
       </nav>
-    </div>
+    </PageHeader>
   );
 }
 

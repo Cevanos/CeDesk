@@ -16,6 +16,7 @@ import {
   Skeleton,
   Textarea,
 } from "@/components/ui/primitives";
+import { DataTable, RowTh, TBody, Td, THead, Th, Tr } from "@/components/ui/table";
 import { FormError, fieldErrors, LoadError } from "@/components/workspace/list-shared";
 import { useCurrentUser } from "@/hooks/use-auth";
 import { useContactFields, useDeleteContactField, useSaveContactField } from "@/hooks/use-contacts";
@@ -81,27 +82,23 @@ export function ContactFieldsView() {
           </EmptyState>
         </Card>
       ) : (
-        <Card className="overflow-x-auto">
-          <table className="w-full min-w-[560px] text-left text-sm">
-            <thead className="border-b border-border bg-surface-2 text-xs text-muted-foreground">
+        <Card>
+          <DataTable minWidth="560px">
+            <THead>
               <tr>
                 {["Label", "Key", "Kind", "Options", ""].map((h, i) => (
-                  <th key={i} scope="col" className="px-4 py-2.5 font-medium">
-                    {h || <span className="sr-only">Actions</span>}
-                  </th>
+                  <Th key={i}>{h || <span className="sr-only">Actions</span>}</Th>
                 ))}
               </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
+            </THead>
+            <TBody>
               {fields.data.map((f) => (
-                <tr key={f.id}>
-                  <td className="px-4 py-3 font-medium">{f.label}</td>
-                  <td className="px-4 py-3 font-mono text-xs">{f.key}</td>
-                  <td className="px-4 py-3">{KIND_LABEL[f.kind] ?? f.kind}</td>
-                  <td className="px-4 py-3 text-muted-foreground">
-                    {f.options?.length ? f.options.join(", ") : "—"}
-                  </td>
-                  <td className="px-4 py-3">
+                <Tr key={f.id}>
+                  <RowTh>{f.label}</RowTh>
+                  <Td className="font-mono text-xs">{f.key}</Td>
+                  <Td>{KIND_LABEL[f.kind] ?? f.kind}</Td>
+                  <Td muted>{f.options?.length ? f.options.join(", ") : "—"}</Td>
+                  <Td>
                     <div className="flex justify-end gap-1">
                       <Button size="sm" variant="outline" onClick={() => setEditing(f)}>
                         <Pencil className="size-3.5" /> Edit
@@ -129,11 +126,11 @@ export function ContactFieldsView() {
                         <Trash2 className="size-3.5" /> Delete
                       </Button>
                     </div>
-                  </td>
-                </tr>
+                  </Td>
+                </Tr>
               ))}
-            </tbody>
-          </table>
+            </TBody>
+          </DataTable>
         </Card>
       )}
 

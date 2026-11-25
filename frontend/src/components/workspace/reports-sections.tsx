@@ -23,6 +23,7 @@ import { Stars } from "@/components/tickets/csat";
 import { formatMinutes } from "@/components/tickets/sla";
 import { Badge, Card, EmptyState, Skeleton } from "@/components/ui/primitives";
 import { SectionHeader } from "@/components/ui/section";
+import { DataTable, TBody, Td as UiTd, Th, THead, Tr, RowTh } from "@/components/ui/table";
 import { LoadError } from "@/components/workspace/list-shared";
 import { CsvButton } from "@/components/workspace/reports-more";
 import { useArticleReport } from "@/hooks/use-workspace";
@@ -154,7 +155,7 @@ export function ReportData({ data, stale }: { data: TeamReport; stale: boolean }
                 ? `${s.csat_count} ratings${s.csat_happy_pct != null ? ` · ${percent(s.csat_happy_pct)} happy` : ""}`
                 : "No ratings yet"
             }
-            tone="bg-amber-100 text-amber-700"
+            tone="bg-warning-soft text-warning"
           />
         </div>
       </section>
@@ -168,15 +169,15 @@ export function ReportData({ data, stale }: { data: TeamReport; stale: boolean }
           title="Tickets by team"
           description="Volume, SLA and satisfaction per team."
         />
-        <Card className="overflow-x-auto">
+        <Card>
           {data.teams.length === 0 ? (
             <EmptyState icon={<BarChart3 className="size-6" />} title="No team data">
               Nothing to show for this period.
             </EmptyState>
           ) : (
-            <table className="w-full min-w-[36rem] text-sm">
-              <thead>
-                <tr className="border-b border-border text-left text-xs text-muted-foreground">
+            <DataTable minWidth="36rem">
+              <THead>
+                <tr>
                   <Th>Team</Th>
                   <Th right>Created</Th>
                   <Th right>Resolved</Th>
@@ -184,13 +185,11 @@ export function ReportData({ data, stale }: { data: TeamReport; stale: boolean }
                   <Th right>SLA met</Th>
                   <Th right>CSAT</Th>
                 </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
+              </THead>
+              <TBody>
                 {data.teams.map((t) => (
-                  <tr key={t.id ?? t.name} className="hover:bg-surface-2/60">
-                    <th scope="row" className="px-4 py-3 text-left font-medium">
-                      {t.name}
-                    </th>
+                  <Tr key={t.id ?? t.name}>
+                    <RowTh>{t.name}</RowTh>
                     <Td>{count(t.created)}</Td>
                     <Td>{count(t.resolved)}</Td>
                     <Td>{count(t.open)}</Td>
@@ -212,10 +211,10 @@ export function ReportData({ data, stale }: { data: TeamReport; stale: boolean }
                         )}
                     </Td>
                     <Td>{rating(t.csat_average)}</Td>
-                  </tr>
+                  </Tr>
                 ))}
-              </tbody>
-            </table>
+              </TBody>
+            </DataTable>
           )}
         </Card>
       </section>
@@ -225,19 +224,9 @@ export function ReportData({ data, stale }: { data: TeamReport; stale: boolean }
   );
 }
 
-export function Th({
-  children,
-  right,
-  ...rest
-}: React.ThHTMLAttributes<HTMLTableCellElement> & { right?: boolean }) {
-  return (
-    <th scope="col" className={cn("px-4 py-2.5 font-medium", right && "text-right")} {...rest}>
-      {children}
-    </th>
-  );
-}
+export { Th };
 export function Td({ children }: { children: React.ReactNode }) {
-  return <td className="px-4 py-3 text-right tabular-nums">{children}</td>;
+  return <UiTd right>{children}</UiTd>;
 }
 
 export function CsatBars({ data }: { data: TeamReport }) {
@@ -319,11 +308,7 @@ export function AgentsTable({ agents }: { agents: ReportAgentRow[] }) {
   const head = (key: AgentSort, label: string, right = true) => {
     const active = sort.key === key;
     return (
-      <th
-        scope="col"
-        aria-sort={active ? (sort.dir === 1 ? "ascending" : "descending") : "none"}
-        className={cn("px-4 py-2.5 font-medium", right && "text-right")}
-      >
+      <Th right={right} aria-sort={active ? (sort.dir === 1 ? "ascending" : "descending") : "none"}>
         <button
           type="button"
           onClick={() =>
@@ -345,7 +330,7 @@ export function AgentsTable({ agents }: { agents: ReportAgentRow[] }) {
               <ArrowDown className="size-3" aria-hidden />
             ))}
         </button>
-      </th>
+      </Th>
     );
   };
 
@@ -357,15 +342,15 @@ export function AgentsTable({ agents }: { agents: ReportAgentRow[] }) {
         title="Agents"
         description="Workload, speed and satisfaction for each agent."
       />
-      <Card className="overflow-x-auto">
+      <Card>
         {sorted.length === 0 ? (
           <EmptyState icon={<BarChart3 className="size-6" />} title="No agent data">
             Nothing to show for this period.
           </EmptyState>
         ) : (
-          <table className="w-full min-w-[40rem] text-sm">
-            <thead>
-              <tr className="border-b border-border text-left text-xs text-muted-foreground">
+          <DataTable minWidth="40rem">
+            <THead>
+              <tr>
                 {head("name", "Agent", false)}
                 <Th>Role</Th>
                 <Th>Status</Th>
@@ -374,28 +359,26 @@ export function AgentsTable({ agents }: { agents: ReportAgentRow[] }) {
                 {head("first_reply_minutes", "First reply")}
                 {head("csat_average", "CSAT")}
               </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
+            </THead>
+            <TBody>
               {sorted.map((a) => (
-                <tr key={a.id ?? a.name} className="hover:bg-surface-2/60">
-                  <th scope="row" className="px-4 py-3 text-left font-medium">
+                <Tr key={a.id ?? a.name}>
+                  <RowTh>
                     {a.name}
                     {a.team_name && <Badge className="ml-2">{a.team_name}</Badge>}
-                  </th>
-                  <td className="px-4 py-3 text-muted-foreground">
-                    {a.role ? (ROLE_LABEL[a.role as Role] ?? a.role) : dash}
-                  </td>
-                  <td className="px-4 py-3 text-muted-foreground capitalize">
+                  </RowTh>
+                  <UiTd muted>{a.role ? (ROLE_LABEL[a.role as Role] ?? a.role) : dash}</UiTd>
+                  <UiTd muted className="capitalize">
                     {a.status ? a.status.replaceAll("_", " ") : dash}
-                  </td>
+                  </UiTd>
                   <Td>{count(a.resolved)}</Td>
                   <Td>{count(a.open)}</Td>
                   <Td>{mins(a.first_reply_minutes)}</Td>
                   <Td>{rating(a.csat_average)}</Td>
-                </tr>
+                </Tr>
               ))}
-            </tbody>
-          </table>
+            </TBody>
+          </DataTable>
         )}
       </Card>
     </section>
@@ -424,7 +407,7 @@ export function ArticlesTable({ range }: { range: { from: string; to: string } }
           <CsvButton path="reports/articles" params={range} withTeam={false} name="articles" />
         }
       />
-      <Card className="overflow-x-auto">
+      <Card>
         {q.isPending ? (
           <Skeleton className="h-24" />
         ) : q.isError ? (
@@ -434,26 +417,24 @@ export function ArticlesTable({ range }: { range: { from: string; to: string } }
             Nobody has voted on a help article in this period.
           </EmptyState>
         ) : (
-          <table className="w-full min-w-[30rem] text-sm">
-            <thead>
-              <tr className="border-b border-border text-left text-xs text-muted-foreground">
+          <DataTable minWidth="30rem">
+            <THead>
+              <tr>
                 <Th>Article</Th>
                 <Th right>Helpful</Th>
                 <Th right>Not helpful</Th>
               </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
+            </THead>
+            <TBody>
               {rows.map((a) => (
-                <tr key={a.id ?? a.title} className="hover:bg-surface-2/60">
-                  <th scope="row" className="px-4 py-3 text-left font-medium">
-                    {a.title}
-                  </th>
+                <Tr key={a.id ?? a.title}>
+                  <RowTh>{a.title}</RowTh>
                   <Td>{count(a.helpful)}</Td>
                   <Td>{count(a.not_helpful)}</Td>
-                </tr>
+                </Tr>
               ))}
-            </tbody>
-          </table>
+            </TBody>
+          </DataTable>
         )}
       </Card>
     </section>

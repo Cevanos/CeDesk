@@ -17,6 +17,7 @@ import { toast } from "sonner";
 
 import { PRIORITIES, PRIORITY_LABEL, PriorityBadge } from "@/components/tickets/badges";
 import { FromChatCard } from "@/components/tickets/from-chat-card";
+import { PageHeader } from "@/components/ui/page-header";
 import {
   Badge,
   Button,
@@ -193,23 +194,11 @@ export function NewTicketForm() {
         <span className="font-medium text-foreground-2">New ticket</span>
       </nav>
 
-      <header className="relative overflow-hidden rounded-2xl border border-border bg-surface shadow-card">
-        <div
-          aria-hidden
-          className="absolute inset-x-0 top-0 h-1 bg-linear-to-r from-primary via-primary/60 to-transparent"
-        />
-        <div className="flex flex-wrap items-center gap-4 p-5 sm:p-6">
-          <span className="grid size-11 flex-none place-items-center rounded-xl bg-primary-soft text-primary-ink ring-1 ring-primary/15">
-            <Ticket className="size-5" aria-hidden />
-          </span>
-          <div className="min-w-0 flex-1 basis-64">
-            <h1 className="text-2xl font-semibold tracking-tight">Create a ticket</h1>
-            <p className="mt-0.5 text-sm text-muted-foreground">
-              Log a request on behalf of a customer. Choose a team and it is routed for you.
-            </p>
-          </div>
-        </div>
-      </header>
+      <PageHeader
+        icon={Ticket}
+        title="Create a ticket"
+        description="Log a request on behalf of a customer. Choose a team and it is routed for you."
+      />
 
       <form
         onSubmit={form.handleSubmit}

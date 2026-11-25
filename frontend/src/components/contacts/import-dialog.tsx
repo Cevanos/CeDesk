@@ -6,6 +6,7 @@ import { toast } from "sonner";
 
 import { Dialog } from "@/components/ui/overlay";
 import { Button, Field, Select } from "@/components/ui/primitives";
+import { DataTable, TBody, Td, THead, Th, Tr } from "@/components/ui/table";
 import { FormError } from "@/components/workspace/list-shared";
 import { useContactFields, useImportContacts } from "@/hooks/use-contacts";
 import { ApiError } from "@/lib/api/client";
@@ -80,22 +81,22 @@ function Problems({ r }: { r: ContactImportResult }) {
   return (
     <div>
       <div className="max-h-48 overflow-auto rounded-lg border border-border">
-        <table className="w-full text-left text-xs">
-          <thead className="sticky top-0 bg-surface-2 text-muted-foreground">
+        <DataTable minWidth="0" wrapperClassName="overflow-visible" className="text-xs">
+          <THead className="sticky top-0 bg-surface-2">
             <tr>
-              <th className="px-3 py-1.5 font-medium">Line</th>
-              <th className="px-3 py-1.5 font-medium">Problem</th>
+              <Th className="px-3 py-1.5">Line</Th>
+              <Th className="px-3 py-1.5">Problem</Th>
             </tr>
-          </thead>
-          <tbody className="divide-y divide-border">
+          </THead>
+          <TBody>
             {r.errors.map((e, i) => (
-              <tr key={`${e.line}-${i}`}>
-                <td className="px-3 py-1.5 tabular-nums">{e.line}</td>
-                <td className="px-3 py-1.5">{e.reason}</td>
-              </tr>
+              <Tr key={`${e.line}-${i}`}>
+                <Td className="px-3 py-1.5 tabular-nums">{e.line}</Td>
+                <Td className="px-3 py-1.5">{e.reason}</Td>
+              </Tr>
             ))}
-          </tbody>
-        </table>
+          </TBody>
+        </DataTable>
       </div>
       {r.error_count > 200 && (
         <p className="mt-1 text-xs text-muted-foreground">Showing the first 200.</p>

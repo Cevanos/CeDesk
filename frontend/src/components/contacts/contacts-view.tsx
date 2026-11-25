@@ -25,6 +25,7 @@ import { SegmentNameDialog, SegmentsPanel } from "@/components/contacts/segments
 import { AiBadge, AiPanel } from "@/components/ui/ai";
 import { DatePicker } from "@/components/ui/date-picker";
 import { InfiniteScroll } from "@/components/ui/infinite-scroll";
+import { PageHeader } from "@/components/ui/page-header";
 import {
   Badge,
   Button,
@@ -34,6 +35,7 @@ import {
   Select,
   Skeleton,
 } from "@/components/ui/primitives";
+import { DataTable, RowTh, TBody, Td, THead, Th, Tr } from "@/components/ui/table";
 import { FormError } from "@/components/workspace/list-shared";
 import { useCurrentUser } from "@/hooks/use-auth";
 import {
@@ -251,87 +253,84 @@ function StatTile({
 function Rows({ rows }: { rows: ContactRow[] }) {
   const router = useRouter();
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full min-w-[860px] text-left text-sm">
-        <thead className="border-b border-border bg-surface-2/60 text-[11px] tracking-wider text-muted-foreground uppercase">
-          <tr>
-            {["Contact", "Phone", "Organization", "Tickets", "Last activity", ""].map((h, i) => (
-              <th key={h || i} scope="col" className="px-5 py-3 font-semibold">
-                {h}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-border">
-          {rows.map((c) => (
-            <tr
-              key={c.id}
-              onClick={() => router.push(`/customers/${c.id}?from=contacts`)}
-              className="group cursor-pointer transition-colors hover:bg-primary-soft/40"
-            >
-              <td className="px-5 py-3.5">
-                <div className="flex items-center gap-3">
-                  <ContactAvatar name={c.name} id={c.id} />
-                  <div className="min-w-0">
-                    <Link
-                      href={`/customers/${c.id}?from=contacts`}
-                      onClick={(e) => e.stopPropagation()}
-                      className="inline-flex items-center gap-1.5 font-semibold group-hover:text-primary-ink"
-                    >
-                      {c.name}
-                      {c.vip && (
-                        <Star
-                          className="size-3.5 fill-amber-400 text-amber-500"
-                          aria-label="VIP"
-                          role="img"
-                        />
-                      )}
-                    </Link>
-                    <p className="flex items-center gap-1.5 truncate text-xs text-muted-foreground">
-                      <Mail className="size-3 shrink-0" /> {c.email}
-                    </p>
-                  </div>
-                </div>
-              </td>
-              <td className="px-5 py-3.5 whitespace-nowrap text-muted-foreground">
-                {c.phone ? (
-                  <span className="inline-flex items-center gap-1.5">
-                    <Phone className="size-3.5" /> {c.phone}
-                  </span>
-                ) : (
-                  "—"
-                )}
-              </td>
-              <td className="px-5 py-3.5 text-muted-foreground">
-                {c.organization ? (
-                  <span className="inline-flex items-center gap-1.5">
-                    <Building2 className="size-3.5 shrink-0" /> {c.organization}
-                  </span>
-                ) : (
-                  "—"
-                )}
-              </td>
-              <td className="px-5 py-3.5 whitespace-nowrap">
-                <span className="inline-flex items-center gap-2">
-                  <span className="inline-flex items-center gap-1 tabular-nums">
-                    <Ticket className="size-3.5 text-muted-foreground" /> {c.ticket_count}
-                  </span>
-                  {c.open_ticket_count > 0 && (
-                    <Badge tone="primary">{c.open_ticket_count} open</Badge>
-                  )}
-                </span>
-              </td>
-              <td className="px-5 py-3.5 whitespace-nowrap text-muted-foreground">
-                {c.last_activity_at ? timeAgo(c.last_activity_at) : "—"}
-              </td>
-              <td className="w-10 px-3 py-3.5 text-subtle-foreground">
-                <ChevronRight className="size-4 transition-transform group-hover:translate-x-0.5 group-hover:text-primary-ink" />
-              </td>
-            </tr>
+    <DataTable minWidth="860px">
+      <THead>
+        <tr>
+          {["Contact", "Phone", "Organization", "Tickets", "Last activity", ""].map((h, i) => (
+            <Th key={h || i}>{h}</Th>
           ))}
-        </tbody>
-      </table>
-    </div>
+        </tr>
+      </THead>
+      <TBody>
+        {rows.map((c) => (
+          <Tr
+            key={c.id}
+            interactive
+            onClick={() => router.push(`/customers/${c.id}?from=contacts`)}
+            className="group transition-colors hover:bg-primary-soft/40"
+          >
+            <RowTh className="font-normal">
+              <div className="flex items-center gap-3">
+                <ContactAvatar name={c.name} id={c.id} />
+                <div className="min-w-0">
+                  <Link
+                    href={`/customers/${c.id}?from=contacts`}
+                    onClick={(e) => e.stopPropagation()}
+                    className="inline-flex items-center gap-1.5 font-semibold group-hover:text-primary-ink"
+                  >
+                    {c.name}
+                    {c.vip && (
+                      <Star
+                        className="size-3.5 fill-amber-400 text-amber-500"
+                        aria-label="VIP"
+                        role="img"
+                      />
+                    )}
+                  </Link>
+                  <p className="flex items-center gap-1.5 truncate text-xs text-muted-foreground">
+                    <Mail className="size-3 shrink-0" /> {c.email}
+                  </p>
+                </div>
+              </div>
+            </RowTh>
+            <Td muted className="whitespace-nowrap">
+              {c.phone ? (
+                <span className="inline-flex items-center gap-1.5">
+                  <Phone className="size-3.5" /> {c.phone}
+                </span>
+              ) : (
+                "—"
+              )}
+            </Td>
+            <Td muted>
+              {c.organization ? (
+                <span className="inline-flex items-center gap-1.5">
+                  <Building2 className="size-3.5 shrink-0" /> {c.organization}
+                </span>
+              ) : (
+                "—"
+              )}
+            </Td>
+            <Td className="whitespace-nowrap">
+              <span className="inline-flex items-center gap-2">
+                <span className="inline-flex items-center gap-1 tabular-nums">
+                  <Ticket className="size-3.5 text-muted-foreground" /> {c.ticket_count}
+                </span>
+                {c.open_ticket_count > 0 && (
+                  <Badge tone="primary">{c.open_ticket_count} open</Badge>
+                )}
+              </span>
+            </Td>
+            <Td muted className="whitespace-nowrap">
+              {c.last_activity_at ? timeAgo(c.last_activity_at) : "—"}
+            </Td>
+            <Td className="w-10 text-subtle-foreground">
+              <ChevronRight className="size-4 transition-transform group-hover:translate-x-0.5 group-hover:text-primary-ink" />
+            </Td>
+          </Tr>
+        ))}
+      </TBody>
+    </DataTable>
   );
 }
 
@@ -387,60 +386,59 @@ export function ContactsView() {
   };
 
   return (
-    <div className="mx-auto w-full max-w-[1600px] px-3 py-5 sm:px-6 sm:py-7 lg:px-8">
-      <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="flex items-center gap-2.5 text-2xl font-semibold tracking-tight">
-            Contacts <AiBadge>Customer 360</AiBadge>
-          </h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Everyone who has written in, with their tickets and history in one place.
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {canSegment && !segment && filtered && !editing && (
-            <Button variant="outline" onClick={() => setSaving(true)}>
-              <Filter className="size-4" /> Save as segment
-            </Button>
-          )}
-          {canImport && (
-            <>
-              <Link href="/settings/contact-fields">
-                <Button variant="outline">
-                  <Settings2 className="size-4" /> Fields
-                </Button>
-              </Link>
-              <Button variant="outline" onClick={() => setImporting(true)}>
-                <Upload className="size-4" /> Import CSV
+    <div className="mx-auto w-full max-w-[1600px] px-3 py-5 sm:px-6 sm:py-8 lg:px-8">
+      <PageHeader
+        className="mb-5"
+        icon={Users}
+        title="Contacts"
+        badge={<AiBadge>Customer 360</AiBadge>}
+        description="Everyone who has written in, with their tickets and history in one place."
+        actions={
+          <>
+            {canSegment && !segment && filtered && !editing && (
+              <Button variant="outline" onClick={() => setSaving(true)}>
+                <Filter className="size-4" /> Save as segment
               </Button>
-            </>
-          )}
-          {canExport && (
-            <Button
-              variant="outline"
-              loading={exporting}
-              disabled={!!segment}
-              title={
-                segment
-                  ? "Export works on the full list: choose All contacts and the same filters."
-                  : "Exports what the list shows (all pages), up to 50,000 customers."
-              }
-              onClick={async () => {
-                setExporting(true);
-                try {
-                  await exportContacts(filters);
-                } catch (e) {
-                  toast.error(msg(e));
-                } finally {
-                  setExporting(false);
+            )}
+            {canImport && (
+              <>
+                <Link href="/settings/contact-fields">
+                  <Button variant="outline">
+                    <Settings2 className="size-4" /> Fields
+                  </Button>
+                </Link>
+                <Button variant="outline" onClick={() => setImporting(true)}>
+                  <Upload className="size-4" /> Import CSV
+                </Button>
+              </>
+            )}
+            {canExport && (
+              <Button
+                variant="outline"
+                loading={exporting}
+                disabled={!!segment}
+                title={
+                  segment
+                    ? "Export works on the full list: choose All contacts and the same filters."
+                    : "Exports what the list shows (all pages), up to 50,000 customers."
                 }
-              }}
-            >
-              {!exporting && <Download className="size-4" />} Export CSV
-            </Button>
-          )}
-        </div>
-      </div>
+                onClick={async () => {
+                  setExporting(true);
+                  try {
+                    await exportContacts(filters);
+                  } catch (e) {
+                    toast.error(msg(e));
+                  } finally {
+                    setExporting(false);
+                  }
+                }}
+              >
+                {!exporting && <Download className="size-4" />} Export CSV
+              </Button>
+            )}
+          </>
+        }
+      />
 
       {!q.isPending && rows.some((r) => r.open_ticket_count > 0) && (
         <AiPanel title="AI insight" className="mb-5">

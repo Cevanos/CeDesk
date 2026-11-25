@@ -179,7 +179,7 @@ export function CustomerView({ id }: { id: string }) {
   const canMerge = hasAction(user, "merge_contacts") && !erased && !!detail;
 
   return (
-    <div className="mx-auto w-full max-w-4xl animate-rise px-3 py-5 sm:px-6 sm:py-7">
+    <div className="mx-auto w-full max-w-4xl animate-rise px-3 py-5 sm:px-6 sm:py-8">
       <Link
         href={fromContacts ? "/contacts" : "/tickets"}
         className="mb-4 inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-sm text-muted-foreground transition-colors hover:bg-surface-2 hover:text-foreground"

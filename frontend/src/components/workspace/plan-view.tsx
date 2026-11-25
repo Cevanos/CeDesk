@@ -6,6 +6,7 @@ import { toast } from "sonner";
 
 import { Badge, Button, Card, Field, Input, Skeleton } from "@/components/ui/primitives";
 import { Switch } from "@/components/ui/switch";
+import { DataTable, RowTh, TBody, Td, THead, Th, Tr } from "@/components/ui/table";
 import { FormError, fieldErrors, LoadError } from "@/components/workspace/list-shared";
 import {
   parseDays,
@@ -292,12 +293,12 @@ function ArchiveForm({
 function ExportRow({ x }: { x: RetentionExport }) {
   const [busy, setBusy] = useState(false);
   return (
-    <tr className="border-t border-border">
-      <td className="px-4 py-2.5">{new Date(x.created_at).toLocaleString()}</td>
-      <td className="px-4 py-2.5 tabular-nums">{x.tickets}</td>
-      <td className="px-4 py-2.5 tabular-nums">{formatBytes(x.size)}</td>
-      <td className="px-4 py-2.5">{new Date(x.expires_at).toLocaleDateString()}</td>
-      <td className="px-4 py-2.5 text-right">
+    <Tr>
+      <RowTh className="font-normal">{new Date(x.created_at).toLocaleString()}</RowTh>
+      <Td className="tabular-nums">{x.tickets}</Td>
+      <Td className="tabular-nums">{formatBytes(x.size)}</Td>
+      <Td>{new Date(x.expires_at).toLocaleDateString()}</Td>
+      <Td right>
         <Button
           size="sm"
           variant="outline"
@@ -319,8 +320,8 @@ function ExportRow({ x }: { x: RetentionExport }) {
         >
           <Download className="size-3.5" /> Download
         </Button>
-      </td>
-    </tr>
+      </Td>
+    </Tr>
   );
 }
 
@@ -343,24 +344,24 @@ function ExportsCard() {
             : "No exports yet. Turn on Export before delete to keep a copy."}
         </p>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead className="text-xs text-muted-foreground">
-              <tr>
-                <th className="px-4 py-2 font-medium">Made</th>
-                <th className="px-4 py-2 font-medium">Tickets</th>
-                <th className="px-4 py-2 font-medium">Size</th>
-                <th className="px-4 py-2 font-medium">Kept until</th>
-                <th className="px-4 py-2" />
-              </tr>
-            </thead>
-            <tbody>
-              {q.data.map((x) => (
-                <ExportRow key={x.id} x={x} />
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <DataTable minWidth="32rem">
+          <THead>
+            <tr>
+              <Th>Made</Th>
+              <Th>Tickets</Th>
+              <Th>Size</Th>
+              <Th>Kept until</Th>
+              <Th>
+                <span className="sr-only">Actions</span>
+              </Th>
+            </tr>
+          </THead>
+          <TBody>
+            {q.data.map((x) => (
+              <ExportRow key={x.id} x={x} />
+            ))}
+          </TBody>
+        </DataTable>
       )}
     </Card>
   );

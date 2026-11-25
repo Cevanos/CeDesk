@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/primitives";
 import { SectionHeader } from "@/components/ui/section";
 import { Switch } from "@/components/ui/switch";
+import { DataTable, RowTh, TBody, Td, Th, THead, Tr } from "@/components/ui/table";
 import { LoadError } from "@/components/workspace/list-shared";
 import { useCurrentUser } from "@/hooks/use-auth";
 import { useMemberOptions } from "@/hooks/use-workspace";
@@ -81,48 +82,33 @@ export function SchedulesTab() {
           </EmptyState>
         </Card>
       ) : (
-        <Card className="overflow-x-auto">
-          <table className="w-full min-w-[56rem] text-sm">
-            <thead>
-              <tr className="border-b border-border text-left text-xs text-muted-foreground">
+        <Card>
+          <DataTable minWidth="56rem">
+            <THead>
+              <tr>
                 {["Name", "Report", "When", "Recipients", "Next run", "Last sent", "Owner"].map(
                   (h) => (
-                    <th key={h} scope="col" className="px-3 py-2.5 font-medium">
-                      {h}
-                    </th>
+                    <Th key={h}>{h}</Th>
                   ),
                 )}
-                <th scope="col" className="px-3 py-2.5 font-medium">
-                  On
-                </th>
-                <th scope="col" className="px-3 py-2.5 text-right font-medium">
+                <Th>On</Th>
+                <Th right>
                   <span className="sr-only">Actions</span>
-                </th>
+                </Th>
               </tr>
-            </thead>
-            <tbody>
+            </THead>
+            <TBody className="divide-y-0">
               {list.map((s) => (
                 <Fragment key={s.id}>
-                  <tr
-                    className={cn(
-                      "hover:bg-surface-2/60",
-                      !s.last_error && "border-b border-border",
-                    )}
-                  >
-                    <th scope="row" className="px-3 py-3 text-left font-medium">
-                      {s.name}
-                    </th>
-                    <td className="px-3 py-3">{s.target.label}</td>
-                    <td className="px-3 py-3">{describeSchedule(s)}</td>
-                    <td className="px-3 py-3">
-                      {s.recipients.map((r) => r.name).join(", ") || DASH}
-                    </td>
-                    <td className="px-3 py-3 whitespace-nowrap">
-                      {s.enabled ? when(s.next_run_at) : DASH}
-                    </td>
-                    <td className="px-3 py-3 whitespace-nowrap">{when(s.last_sent_at)}</td>
-                    <td className="px-3 py-3">{s.owner_name ?? DASH}</td>
-                    <td className="px-3 py-3">
+                  <Tr className={cn(!s.last_error && "border-b border-border")}>
+                    <RowTh>{s.name}</RowTh>
+                    <Td>{s.target.label}</Td>
+                    <Td>{describeSchedule(s)}</Td>
+                    <Td>{s.recipients.map((r) => r.name).join(", ") || DASH}</Td>
+                    <Td className="whitespace-nowrap">{s.enabled ? when(s.next_run_at) : DASH}</Td>
+                    <Td className="whitespace-nowrap">{when(s.last_sent_at)}</Td>
+                    <Td>{s.owner_name ?? DASH}</Td>
+                    <Td>
                       <Switch
                         checked={s.enabled}
                         disabled={!s.can_edit || update.isPending}
@@ -133,8 +119,8 @@ export function SchedulesTab() {
                             .catch((e) => toast.error(msg(e)))
                         }
                       />
-                    </td>
-                    <td className="px-3 py-3">
+                    </Td>
+                    <Td>
                       <div className="flex justify-end gap-1">
                         {s.can_edit && (
                           <>
@@ -185,19 +171,19 @@ export function SchedulesTab() {
                           </Button>
                         )}
                       </div>
-                    </td>
-                  </tr>
+                    </Td>
+                  </Tr>
                   {s.last_error && (
-                    <tr className="border-b border-border">
-                      <td colSpan={9} className="px-3 pb-3 text-xs text-danger">
+                    <Tr className="border-b border-border">
+                      <Td colSpan={9} className="pt-0 pb-3 text-xs text-danger">
                         <span role="alert">{s.last_error}</span>
-                      </td>
-                    </tr>
+                      </Td>
+                    </Tr>
                   )}
                 </Fragment>
               ))}
-            </tbody>
-          </table>
+            </TBody>
+          </DataTable>
         </Card>
       )}
 

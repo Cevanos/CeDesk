@@ -1,12 +1,13 @@
 "use client";
 
-import { AlertCircle, KeyRound, LogOut, Smartphone } from "lucide-react";
+import { AlertCircle, KeyRound, LogOut, Smartphone, UserRound } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 
 import { Section } from "@/components/account/section";
 import { TwoFactorCard } from "@/components/account/two-factor-card";
 import { PasswordInput, PasswordStrength } from "@/components/auth/password-input";
+import { PageHeader } from "@/components/ui/page-header";
 import { Button, Field, Skeleton } from "@/components/ui/primitives";
 import { useChangePassword, useCurrentUser, useSignOut } from "@/hooks/use-auth";
 import { ApiError } from "@/lib/api/client";
@@ -28,16 +29,19 @@ export function AccountView() {
 
   return (
     <div className="mx-auto w-full max-w-3xl px-3 py-5 sm:px-6 sm:py-8">
-      <h1 className="text-2xl font-semibold tracking-tight">My account</h1>
-      <p className="mt-1 text-sm text-muted-foreground">
-        {isLoading ? (
-          <Skeleton className="inline-block h-4 w-56 align-middle" />
-        ) : user ? (
-          <>
-            {user.name} · {user.email} · {ROLE_LABEL[user.role]}
-          </>
-        ) : null}
-      </p>
+      <PageHeader
+        icon={UserRound}
+        title="My account"
+        description={
+          isLoading ? (
+            <Skeleton className="inline-block h-4 w-56 align-middle" />
+          ) : user ? (
+            <>
+              {user.name} · {user.email} · {ROLE_LABEL[user.role]}
+            </>
+          ) : null
+        }
+      />
 
       {expired && (
         <Notice>

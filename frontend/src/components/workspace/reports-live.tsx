@@ -7,6 +7,7 @@ import { useRef, useState } from "react";
 
 import { Badge, Card, EmptyState, Select, Skeleton } from "@/components/ui/primitives";
 import { SectionHeader } from "@/components/ui/section";
+import { DataTable, RowTh, TBody, Td, Th, THead, Tr } from "@/components/ui/table";
 import { LoadError } from "@/components/workspace/list-shared";
 import { GetCsvButton } from "@/components/workspace/report-csv";
 import { useReportFilters } from "@/components/workspace/reports-frame";
@@ -139,49 +140,41 @@ export function LiveTab() {
 
       <section aria-label="Teams">
         <SectionHeader icon={Users} title="By team" description="Live load per team." />
-        <Card className="overflow-x-auto">
-          <table className="w-full min-w-[28rem] text-sm">
-            <thead>
-              <tr className="border-b border-border text-left text-xs text-muted-foreground">
-                <th scope="col" className="px-4 py-2.5 font-medium">
-                  Team
-                </th>
+        <Card>
+          <DataTable minWidth="28rem">
+            <THead>
+              <tr>
+                <Th>Team</Th>
                 {["Open", "Pending", "Snoozed", "Past SLA", "Due soon"].map((h) => (
-                  <th key={h} scope="col" className="px-4 py-2.5 text-right font-medium">
+                  <Th key={h} right>
                     {h}
-                  </th>
+                  </Th>
                 ))}
               </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
+            </THead>
+            <TBody>
               {d.teams.map((t) => (
-                <tr key={t.team_id ?? "none"} className="hover:bg-surface-2/60">
-                  <th scope="row" className="px-4 py-2.5 text-left font-medium">
-                    {t.name}
-                  </th>
-                  <td className="px-4 py-2.5 text-right tabular-nums">{t.open}</td>
-                  <td className="px-4 py-2.5 text-right tabular-nums">{t.pending}</td>
-                  <td className="px-4 py-2.5 text-right tabular-nums">{t.snoozed}</td>
-                  <td
-                    className={cn(
-                      "px-4 py-2.5 text-right tabular-nums",
-                      t.breached > 0 && "font-medium text-danger",
-                    )}
-                  >
+                <Tr key={t.team_id ?? "none"}>
+                  <RowTh className="py-2.5">{t.name}</RowTh>
+                  <Td right className="py-2.5">
+                    {t.open}
+                  </Td>
+                  <Td right className="py-2.5">
+                    {t.pending}
+                  </Td>
+                  <Td right className="py-2.5">
+                    {t.snoozed}
+                  </Td>
+                  <Td right className={cn("py-2.5", t.breached > 0 && "font-medium text-danger")}>
                     {t.breached}
-                  </td>
-                  <td
-                    className={cn(
-                      "px-4 py-2.5 text-right tabular-nums",
-                      t.at_risk > 0 && "font-medium text-warning",
-                    )}
-                  >
+                  </Td>
+                  <Td right className={cn("py-2.5", t.at_risk > 0 && "font-medium text-warning")}>
                     {t.at_risk}
-                  </td>
-                </tr>
+                  </Td>
+                </Tr>
               ))}
-            </tbody>
-          </table>
+            </TBody>
+          </DataTable>
         </Card>
       </section>
 

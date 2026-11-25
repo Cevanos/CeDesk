@@ -13,6 +13,7 @@ import { SnoozeBanner, SnoozeButton } from "@/components/tickets/inbox/snooze";
 import { TicketMoreMenu } from "@/components/tickets/inbox/transcript";
 import { JiraHeaderChip } from "@/components/tickets/jira-card";
 import { MacrosMenu } from "@/components/tickets/macros-menu";
+import { latestMessage } from "@/components/tickets/reply-collision";
 import { ReceiptPanel, ResolveDialog, useReceiptPolicy } from "@/components/tickets/resolution";
 import { TicketSidebar } from "@/components/tickets/sidebar";
 import { SlaPill } from "@/components/tickets/sla";
@@ -222,6 +223,9 @@ export function TicketDetail({ id }: { id: string }) {
               accepted={ticket.accepted !== false}
               channel={ticket.channel}
               replyCc={ticket.reply_cc}
+              latest={latestMessage(ticket.messages)}
+              myId={user?.id}
+              onCheck={async () => latestMessage((await q.refetch()).data?.ticket.messages)}
             />
           </div>
         </section>

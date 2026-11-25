@@ -4,6 +4,7 @@ import { LineChart as TrendIcon, Table2 } from "lucide-react";
 
 import { Card, EmptyState, Skeleton } from "@/components/ui/primitives";
 import { SectionHeader } from "@/components/ui/section";
+import { DataTable, RowTh, TBody, Td, Th, THead, Tr } from "@/components/ui/table";
 import { LoadError } from "@/components/workspace/list-shared";
 import { GetCsvButton } from "@/components/workspace/report-csv";
 import { LineChart, Legend, TimezoneNote } from "@/components/workspace/report-result";
@@ -92,53 +93,40 @@ export function BacklogTab() {
           title="Daily snapshots"
           description="One row per day, newest first."
         />
-        <Card className="overflow-x-auto">
-          <table className="w-full min-w-[20rem] text-sm">
-            <thead>
-              <tr className="border-b border-border text-left text-xs text-muted-foreground">
-                <th scope="col" className="px-4 py-2.5 font-medium">
-                  Day
-                </th>
-                <th scope="col" className="px-4 py-2.5 text-right font-medium">
-                  Open
-                </th>
-                <th scope="col" className="px-4 py-2.5 text-right font-medium">
-                  Pending
-                </th>
-                <th scope="col" className="px-4 py-2.5 text-right font-medium">
-                  Breaching
-                </th>
+        <Card>
+          <DataTable minWidth="20rem">
+            <THead>
+              <tr>
+                <Th>Day</Th>
+                <Th right>Open</Th>
+                <Th right>Pending</Th>
+                <Th right>Breaching</Th>
               </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
+            </THead>
+            <TBody>
               {[...d.days].reverse().map((r) => (
-                <tr key={r.day} className="hover:bg-surface-2/60">
-                  <th scope="row" className="px-4 py-2.5 text-left font-medium">
-                    {r.day}
-                  </th>
-                  <td className="px-4 py-2.5 text-right tabular-nums">{r.open.toLocaleString()}</td>
-                  <td className="px-4 py-2.5 text-right tabular-nums">
+                <Tr key={r.day}>
+                  <RowTh className="py-2.5">{r.day}</RowTh>
+                  <Td right className="py-2.5">
+                    {r.open.toLocaleString()}
+                  </Td>
+                  <Td right className="py-2.5">
                     {r.pending.toLocaleString()}
-                  </td>
-                  <td
-                    className={cn(
-                      "px-4 py-2.5 text-right tabular-nums",
-                      r.breaching > 0 && "font-medium text-danger",
-                    )}
-                  >
+                  </Td>
+                  <Td right className={cn("py-2.5", r.breaching > 0 && "font-medium text-danger")}>
                     {r.breaching.toLocaleString()}
-                  </td>
-                </tr>
+                  </Td>
+                </Tr>
               ))}
               {d.days.length === 0 && (
                 <tr>
-                  <td colSpan={4} className="px-4 py-6 text-center text-muted-foreground">
+                  <Td colSpan={4} className="py-6 text-center text-muted-foreground">
                     {DASH} No snapshots in this range.
-                  </td>
+                  </Td>
                 </tr>
               )}
-            </tbody>
-          </table>
+            </TBody>
+          </DataTable>
         </Card>
       </section>
     </div>

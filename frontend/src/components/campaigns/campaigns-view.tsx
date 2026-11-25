@@ -15,6 +15,7 @@ import {
 } from "@/components/campaigns/shared";
 import { InfiniteScroll } from "@/components/ui/infinite-scroll";
 import { Button, Card, EmptyState, Select, Skeleton } from "@/components/ui/primitives";
+import { DataTable, RowTh, TBody, Td, THead, Th, Tr } from "@/components/ui/table";
 import { LoadError } from "@/components/workspace/list-shared";
 import { useCampaigns, useCreateCampaign } from "@/hooks/use-workspace";
 import type { Campaign } from "@/lib/api/types";
@@ -94,33 +95,34 @@ function CampaignList() {
           </EmptyState>
         </Card>
       ) : (
-        <Card className="overflow-x-auto rounded-2xl">
-          <table className="w-full min-w-[56rem] text-sm">
-            <thead>
-              <tr className="border-b border-border bg-surface-2/60 text-left text-[11px] tracking-wider text-muted-foreground uppercase">
-                <th className="px-4 py-2.5 font-medium">Name</th>
-                <th className="px-3 py-2.5 font-medium">State</th>
-                <th className="px-3 py-2.5 font-medium">Segment</th>
-                <th className="px-3 py-2.5 font-medium">Sent</th>
-                <th className="px-3 py-2.5 font-medium">Opened</th>
-                <th className="px-3 py-2.5 font-medium">Unsubscribed</th>
-                <th className="px-3 py-2.5 font-medium">When</th>
-                <th className="px-3 py-2.5 font-medium">Created by</th>
+        <Card className="rounded-2xl">
+          <DataTable minWidth="56rem">
+            <THead>
+              <tr>
+                <Th>Name</Th>
+                <Th>State</Th>
+                <Th>Segment</Th>
+                <Th>Sent</Th>
+                <Th>Opened</Th>
+                <Th>Unsubscribed</Th>
+                <Th>When</Th>
+                <Th>Created by</Th>
               </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
+            </THead>
+            <TBody>
               {rows.map((c) => (
-                <tr
+                <Tr
                   key={c.id}
+                  interactive
                   tabIndex={0}
                   onClick={() => open(c)}
                   onKeyDown={(e) => e.key === "Enter" && open(c)}
-                  className="cursor-pointer align-top hover:bg-surface-2 focus-visible:bg-surface-2 focus-visible:outline-none"
+                  className="align-top"
                 >
-                  <td className="max-w-64 px-4 py-3 font-medium">
+                  <RowTh className="max-w-64">
                     <span className="block truncate">{c.name}</span>
-                  </td>
-                  <td className="px-3 py-3">
+                  </RowTh>
+                  <Td>
                     <div className="space-y-1.5">
                       <StateBadge state={c.state} />
                       {c.state === "sending" && (
@@ -136,29 +138,29 @@ function CampaignList() {
                         <p className="max-w-56 text-xs text-muted-foreground">{c.last_error}</p>
                       )}
                     </div>
-                  </td>
-                  <td className="px-3 py-3 text-muted-foreground">{c.segment_name ?? "—"}</td>
-                  <td className="px-3 py-3 whitespace-nowrap tabular-nums">
+                  </Td>
+                  <Td muted>{c.segment_name ?? "—"}</Td>
+                  <Td className="whitespace-nowrap tabular-nums">
                     {c.state === "draft"
                       ? "—"
                       : `${c.stats.sent.toLocaleString()} of ${c.stats.recipients.toLocaleString()}`}
-                  </td>
-                  <td className="px-3 py-3 tabular-nums">
+                  </Td>
+                  <Td className="tabular-nums">
                     {c.track_opens && c.state !== "draft"
                       ? percent(c.stats.opened, c.stats.sent)
                       : "—"}
-                  </td>
-                  <td className="px-3 py-3 tabular-nums">
+                  </Td>
+                  <Td className="tabular-nums">
                     {c.state === "draft" ? "—" : c.stats.unsubscribed.toLocaleString()}
-                  </td>
-                  <td className="px-3 py-3 whitespace-nowrap text-muted-foreground">
+                  </Td>
+                  <Td muted className="whitespace-nowrap">
                     {whenText(c)}
-                  </td>
-                  <td className="px-3 py-3 text-muted-foreground">{c.created_by_name ?? "—"}</td>
-                </tr>
+                  </Td>
+                  <Td muted>{c.created_by_name ?? "—"}</Td>
+                </Tr>
               ))}
-            </tbody>
-          </table>
+            </TBody>
+          </DataTable>
         </Card>
       )}
 

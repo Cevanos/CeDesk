@@ -6,6 +6,7 @@ import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { STATUS_META } from "@/components/layout/user-menu";
+import { PageHeader } from "@/components/ui/page-header";
 import {
   Badge,
   Button,
@@ -75,33 +76,22 @@ export function AgentsView() {
 
   return (
     <div className="mx-auto w-full max-w-6xl px-3 py-5 sm:px-6 sm:py-8">
-      <header className="relative flex flex-wrap items-end justify-between gap-3 overflow-hidden rounded-2xl border border-border bg-surface p-5 shadow-card sm:p-6">
-        <span
-          aria-hidden
-          className="pointer-events-none absolute -top-24 -right-16 size-60 rounded-full bg-ai-gradient opacity-15 blur-3xl"
-        />
-        <div className="relative flex items-center gap-4">
-          <span className="grid size-12 flex-none place-items-center rounded-2xl bg-ai-gradient text-white shadow-[0_8px_22px_-8px_var(--ai-from)]">
-            <UsersRound className="size-6" aria-hidden />
-          </span>
-          <div>
-            <h1 className="text-2xl font-semibold tracking-tight">Agents</h1>
-            <p className="text-sm text-muted-foreground">
-              Who is online, how busy they are and what they handle. Refreshes every 30 seconds.
-            </p>
-          </div>
-        </div>
-        <Button
-          className="relative"
-          variant="outline"
-          size="sm"
-          onClick={() => agents.refetch()}
-          disabled={agents.isFetching}
-          aria-label="Refresh agents"
-        >
-          <RefreshCw className={cn("size-3.5", agents.isFetching && "animate-spin")} /> Refresh
-        </Button>
-      </header>
+      <PageHeader
+        icon={UsersRound}
+        title="Agents"
+        description="Who is online, how busy they are and what they handle. Refreshes every 30 seconds."
+        actions={
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => agents.refetch()}
+            disabled={agents.isFetching}
+            aria-label="Refresh agents"
+          >
+            <RefreshCw className={cn("size-3.5", agents.isFetching && "animate-spin")} /> Refresh
+          </Button>
+        }
+      />
 
       <div className="mt-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
         {[

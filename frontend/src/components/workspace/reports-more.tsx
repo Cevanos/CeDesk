@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { AiMark } from "@/components/ui/ai";
 import { Button, Card, EmptyState, Skeleton } from "@/components/ui/primitives";
 import { SectionHeader } from "@/components/ui/section";
+import { DataTable, RowTh, TBody, Td, Th, THead, Tr } from "@/components/ui/table";
 import { LoadError } from "@/components/workspace/list-shared";
 import {
   csvQuery,
@@ -175,36 +176,28 @@ function Breakdown({ d }: { d: MetricsReport }) {
           </div>
         }
       />
-      <Card className="overflow-x-auto">
+      <Card>
         {cur.rows.length === 0 ? (
           <EmptyState title="No data for this period">Nothing to show.</EmptyState>
         ) : (
-          <table className="w-full min-w-[20rem] text-sm">
-            <thead>
-              <tr className="border-b border-border text-left text-xs text-muted-foreground">
-                <th scope="col" className="px-4 py-2.5 font-medium">
-                  {cur.label.replace(/s$/, "")}
-                </th>
-                <th scope="col" className="px-4 py-2.5 text-right font-medium">
-                  Created
-                </th>
-                <th scope="col" className="px-4 py-2.5 text-right font-medium">
-                  Open
-                </th>
+          <DataTable minWidth="20rem">
+            <THead>
+              <tr>
+                <Th>{cur.label.replace(/s$/, "")}</Th>
+                <Th right>Created</Th>
+                <Th right>Open</Th>
               </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
+            </THead>
+            <TBody>
               {cur.rows.map((r) => (
-                <tr key={r.label} className="hover:bg-surface-2/60">
-                  <th scope="row" className="px-4 py-3 text-left font-medium">
-                    {r.label}
-                  </th>
-                  <td className="px-4 py-3 text-right tabular-nums">{count(r.created)}</td>
-                  <td className="px-4 py-3 text-right tabular-nums">{r.open.toLocaleString()}</td>
-                </tr>
+                <Tr key={r.label}>
+                  <RowTh>{r.label}</RowTh>
+                  <Td right>{count(r.created)}</Td>
+                  <Td right>{r.open.toLocaleString()}</Td>
+                </Tr>
               ))}
-            </tbody>
-          </table>
+            </TBody>
+          </DataTable>
         )}
       </Card>
     </section>
@@ -219,55 +212,34 @@ function AgentsMetrics({ agents }: { agents: MetricsAgentRow[] }) {
         title="Agents: time and tasks"
         description="How each agent spent their time."
       />
-      <Card className="overflow-x-auto">
+      <Card>
         {agents.length === 0 ? (
           <EmptyState title="No agent data">Nothing to show for this period.</EmptyState>
         ) : (
-          <table className="w-full min-w-[28rem] text-sm">
-            <thead>
-              <tr className="border-b border-border text-left text-xs text-muted-foreground">
-                <th scope="col" className="px-4 py-2.5 font-medium">
-                  Agent
-                </th>
-                <th scope="col" className="px-4 py-2.5 text-right font-medium">
-                  Time logged
-                </th>
-                <th scope="col" className="px-4 py-2.5 text-right font-medium">
-                  Billable
-                </th>
-                <th scope="col" className="px-4 py-2.5 text-right font-medium">
-                  Open tasks
-                </th>
-                <th scope="col" className="px-4 py-2.5 text-right font-medium">
-                  Overdue
-                </th>
+          <DataTable minWidth="28rem">
+            <THead>
+              <tr>
+                <Th>Agent</Th>
+                <Th right>Time logged</Th>
+                <Th right>Billable</Th>
+                <Th right>Open tasks</Th>
+                <Th right>Overdue</Th>
               </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
+            </THead>
+            <TBody>
               {agents.map((a) => (
-                <tr key={a.id ?? a.name} className="hover:bg-surface-2/60">
-                  <th scope="row" className="px-4 py-3 text-left font-medium">
-                    {a.name}
-                  </th>
-                  <td className="px-4 py-3 text-right tabular-nums">
-                    {a.logged_minutes === null ? dash : duration(a.logged_minutes)}
-                  </td>
-                  <td className="px-4 py-3 text-right tabular-nums">
-                    {a.billable_minutes === null ? dash : duration(a.billable_minutes)}
-                  </td>
-                  <td className="px-4 py-3 text-right tabular-nums">{count(a.open_tasks)}</td>
-                  <td
-                    className={cn(
-                      "px-4 py-3 text-right tabular-nums",
-                      (a.overdue_tasks ?? 0) > 0 && "font-medium text-red-600",
-                    )}
-                  >
+                <Tr key={a.id ?? a.name}>
+                  <RowTh>{a.name}</RowTh>
+                  <Td right>{a.logged_minutes === null ? dash : duration(a.logged_minutes)}</Td>
+                  <Td right>{a.billable_minutes === null ? dash : duration(a.billable_minutes)}</Td>
+                  <Td right>{count(a.open_tasks)}</Td>
+                  <Td right className={cn((a.overdue_tasks ?? 0) > 0 && "font-medium text-danger")}>
                     {count(a.overdue_tasks)}
-                  </td>
-                </tr>
+                  </Td>
+                </Tr>
               ))}
-            </tbody>
-          </table>
+            </TBody>
+          </DataTable>
         )}
       </Card>
     </section>

@@ -8,6 +8,7 @@ import { PasswordInput } from "@/components/auth/password-input";
 import { useConfirm } from "@/components/ui/confirm";
 import { InfiniteScroll } from "@/components/ui/infinite-scroll";
 import { Badge, Button, Field, Skeleton } from "@/components/ui/primitives";
+import { DataTable, RowTh, TBody, Td, THead, Th, Tr } from "@/components/ui/table";
 import { FormError, LoadError } from "@/components/workspace/list-shared";
 import {
   useDismissImportFailure,
@@ -68,61 +69,70 @@ export function RunReport({
           <h5 className="mb-1 text-xs font-medium text-foreground-2">
             What was changed or left out
           </h5>
-          <table className="w-full text-left text-sm">
-            <thead className="text-xs text-muted-foreground">
+          <DataTable minWidth="0" wrapperClassName="overflow-visible">
+            <THead>
               <tr>
-                <th className="py-1 pr-3 font-medium">What</th>
-                <th className="py-1 text-right font-medium">Count</th>
+                <Th className="px-3 py-1.5">What</Th>
+                <Th right className="px-3 py-1.5">
+                  Count
+                </Th>
               </tr>
-            </thead>
-            <tbody>
+            </THead>
+            <TBody>
               {report.losses.map((l) => (
-                <tr key={l.key} className="border-t border-border">
-                  <td className="py-1.5 pr-3">{l.meaning}</td>
-                  <td className="py-1.5 text-right tabular-nums">{l.count.toLocaleString()}</td>
-                </tr>
+                <Tr key={l.key}>
+                  <Td className="px-3 py-1.5">{l.meaning}</Td>
+                  <Td right className="px-3 py-1.5">
+                    {l.count.toLocaleString()}
+                  </Td>
+                </Tr>
               ))}
-            </tbody>
-          </table>
+            </TBody>
+          </DataTable>
         </div>
       )}
 
       {recon.length > 0 && (
         <div>
           <h5 className="mb-1 text-xs font-medium text-foreground-2">Count check</h5>
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead className="text-xs text-muted-foreground">
-                <tr>
-                  <th className="py-1 pr-3 font-medium">Kind</th>
-                  <th className="py-1 pr-3 text-right font-medium">In the source</th>
-                  <th className="py-1 pr-3 text-right font-medium">Accounted for</th>
-                  <th className="py-1 text-right font-medium">Difference</th>
-                </tr>
-              </thead>
-              <tbody>
-                {recon.map(([kind, r]) => (
-                  <tr key={kind} className="border-t border-border">
-                    <td className="py-1.5 pr-3 capitalize">{pretty(kind)}</td>
-                    <td className="py-1.5 pr-3 text-right tabular-nums">
-                      {r.in_source == null ? "—" : r.in_source.toLocaleString()}
-                    </td>
-                    <td className="py-1.5 pr-3 text-right tabular-nums">
-                      {r.accounted_for.toLocaleString()}
-                    </td>
-                    <td
-                      className={cn(
-                        "py-1.5 text-right tabular-nums",
-                        r.difference != null && r.difference > 0 && "font-semibold text-danger",
-                      )}
-                    >
-                      {r.difference == null ? "—" : r.difference.toLocaleString()}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <DataTable minWidth="26rem">
+            <THead>
+              <tr>
+                <Th className="px-3 py-1.5">Kind</Th>
+                <Th right className="px-3 py-1.5">
+                  In the source
+                </Th>
+                <Th right className="px-3 py-1.5">
+                  Accounted for
+                </Th>
+                <Th right className="px-3 py-1.5">
+                  Difference
+                </Th>
+              </tr>
+            </THead>
+            <TBody>
+              {recon.map(([kind, r]) => (
+                <Tr key={kind}>
+                  <RowTh className="px-3 py-1.5 font-normal capitalize">{pretty(kind)}</RowTh>
+                  <Td right className="px-3 py-1.5">
+                    {r.in_source == null ? "—" : r.in_source.toLocaleString()}
+                  </Td>
+                  <Td right className="px-3 py-1.5">
+                    {r.accounted_for.toLocaleString()}
+                  </Td>
+                  <Td
+                    right
+                    className={cn(
+                      "px-3 py-1.5",
+                      r.difference != null && r.difference > 0 && "font-semibold text-danger",
+                    )}
+                  >
+                    {r.difference == null ? "—" : r.difference.toLocaleString()}
+                  </Td>
+                </Tr>
+              ))}
+            </TBody>
+          </DataTable>
         </div>
       )}
 
@@ -147,16 +157,20 @@ function FailureRow({ f, runId }: { f: ImportFailure; runId: string }) {
   const dismiss = useDismissImportFailure(runId);
   const { ask, dialog } = useConfirm();
   return (
-    <tr className="border-t border-border align-top">
-      <td className="py-2 pr-3 capitalize">{f.kind}</td>
-      <td className="py-2 pr-3 font-mono text-xs break-all">{f.external_id}</td>
-      <td className="py-2 pr-3">{PROBLEM[f.category] ?? pretty(f.category)}</td>
-      <td className="py-2 pr-3 text-xs text-muted-foreground">{f.last_error ?? "—"}</td>
-      <td className="py-2 pr-3 text-right tabular-nums">{f.attempts}</td>
-      <td className="py-2 pr-3 text-xs whitespace-nowrap">
+    <Tr className="align-top">
+      <RowTh className="px-3 py-2 font-normal capitalize">{f.kind}</RowTh>
+      <Td className="px-3 py-2 font-mono text-xs break-all">{f.external_id}</Td>
+      <Td className="px-3 py-2">{PROBLEM[f.category] ?? pretty(f.category)}</Td>
+      <Td muted className="px-3 py-2 text-xs">
+        {f.last_error ?? "—"}
+      </Td>
+      <Td right className="px-3 py-2">
+        {f.attempts}
+      </Td>
+      <Td className="px-3 py-2 text-xs whitespace-nowrap">
         {f.last_failed_at ? formatDateTime(f.last_failed_at) : "—"}
-      </td>
-      <td className="py-2 text-right">
+      </Td>
+      <Td right className="px-3 py-2">
         {dialog}
         {f.status === "open" ? (
           <Button
@@ -192,8 +206,8 @@ function FailureRow({ f, runId }: { f: ImportFailure; runId: string }) {
             {f.status}
           </Badge>
         )}
-      </td>
-    </tr>
+      </Td>
+    </Tr>
   );
 }
 
@@ -209,26 +223,28 @@ export function FailuresList({ runId }: { runId: string }) {
       {rows.length === 0 ? (
         <p className="text-sm text-muted-foreground">Nothing is missing.</p>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead className="text-xs text-muted-foreground">
-              <tr>
-                <th className="py-1 pr-3 font-medium">Type</th>
-                <th className="py-1 pr-3 font-medium">Source id</th>
-                <th className="py-1 pr-3 font-medium">Problem</th>
-                <th className="py-1 pr-3 font-medium">Error</th>
-                <th className="py-1 pr-3 text-right font-medium">Tries</th>
-                <th className="py-1 pr-3 font-medium">When</th>
-                <th className="py-1 text-right font-medium">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((f) => (
-                <FailureRow key={f.id} f={f} runId={runId} />
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <DataTable minWidth="40rem">
+          <THead>
+            <tr>
+              <Th className="px-3 py-1.5">Type</Th>
+              <Th className="px-3 py-1.5">Source id</Th>
+              <Th className="px-3 py-1.5">Problem</Th>
+              <Th className="px-3 py-1.5">Error</Th>
+              <Th right className="px-3 py-1.5">
+                Tries
+              </Th>
+              <Th className="px-3 py-1.5">When</Th>
+              <Th right className="px-3 py-1.5">
+                Status
+              </Th>
+            </tr>
+          </THead>
+          <TBody>
+            {rows.map((f) => (
+              <FailureRow key={f.id} f={f} runId={runId} />
+            ))}
+          </TBody>
+        </DataTable>
       )}
       <InfiniteScroll query={q} shown={rows.length} noun="rows" />
     </section>

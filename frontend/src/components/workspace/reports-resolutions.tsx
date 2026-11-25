@@ -5,12 +5,12 @@ import { useMemo, useState } from "react";
 
 import { Card, EmptyState, Skeleton } from "@/components/ui/primitives";
 import { SectionHeader } from "@/components/ui/section";
+import { DataTable, RowTh, TBody, Td, Th, THead, Tr } from "@/components/ui/table";
 import { LoadError } from "@/components/workspace/list-shared";
 import { GetCsvButton } from "@/components/workspace/report-csv";
 import { useReportFilters } from "@/components/workspace/reports-frame";
 import { resolutionsQuery, useResolutionsReport } from "@/hooks/workspace/receipts";
 import type { ResolutionCounts, ResolutionRow } from "@/lib/api/differentiator-types";
-import { cn } from "@/lib/utils";
 
 const pct = (n: number, of: number) => (of > 0 ? `${Math.round((n / of) * 100)}%` : "–");
 
@@ -118,11 +118,7 @@ function RowsTable({ title, rows }: { title: string; rows: ResolutionRow[] }) {
   const head = (key: typeof sort.key, label: string, right = true) => {
     const on = sort.key === key;
     return (
-      <th
-        scope="col"
-        aria-sort={on ? (sort.dir === 1 ? "ascending" : "descending") : "none"}
-        className={cn("px-3 py-2 font-medium", right && "text-right")}
-      >
+      <Th right={right} aria-sort={on ? (sort.dir === 1 ? "ascending" : "descending") : "none"}>
         <button
           type="button"
           onClick={() =>
@@ -134,7 +130,7 @@ function RowsTable({ title, rows }: { title: string; rows: ResolutionRow[] }) {
           {on &&
             (sort.dir === 1 ? <ArrowUp className="size-3" /> : <ArrowDown className="size-3" />)}
         </button>
-      </th>
+      </Th>
     );
   };
 
@@ -149,37 +145,35 @@ function RowsTable({ title, rows }: { title: string; rows: ResolutionRow[] }) {
             : "Resolved tickets and receipts per agent."
         }
       />
-      <Card className="overflow-x-auto">
+      <Card>
         {rows.length === 0 ? (
           <p className="p-4 text-sm text-muted-foreground">Nothing to show.</p>
         ) : (
-          <table className="w-full min-w-[40rem] text-left text-sm">
-            <thead className="text-xs text-muted-foreground">
+          <DataTable minWidth="40rem">
+            <THead>
               <tr>
                 {head("name", title.replace("By ", ""), false)}
                 {COLS.map((c) => head(c.key, c.label))}
               </tr>
-            </thead>
-            <tbody>
+            </THead>
+            <TBody>
               {sorted.map((r) => (
-                <tr key={r.id} className="border-t border-border">
-                  <th scope="row" className="px-3 py-2 font-medium">
-                    {r.name}
-                  </th>
+                <Tr key={r.id}>
+                  <RowTh>{r.name}</RowTh>
                   {COLS.map((c) => (
-                    <td key={c.key} className="px-3 py-2 text-right tabular-nums">
+                    <Td key={c.key} right>
                       {r[c.key]}
                       {c.key === "with_receipt" || c.key === "verified" ? (
                         <span className="ml-1 text-xs text-muted-foreground">
                           {pct(r[c.key], r.resolved)}
                         </span>
                       ) : null}
-                    </td>
+                    </Td>
                   ))}
-                </tr>
+                </Tr>
               ))}
-            </tbody>
-          </table>
+            </TBody>
+          </DataTable>
         )}
       </Card>
     </section>

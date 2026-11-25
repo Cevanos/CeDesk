@@ -109,7 +109,7 @@ function Wizard({ onHistory }: { onHistory: () => void }) {
 
   if (stage.name === "source") {
     return (
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {[...SOURCES, null].map((s) => (
           <button
             key={s?.id ?? "csv"}

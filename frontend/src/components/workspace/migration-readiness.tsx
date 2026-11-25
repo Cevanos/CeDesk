@@ -62,7 +62,7 @@ export function PreMigrationDialog({
         <Failure error={q.error} onRetry={() => void q.refetch()} />
       ) : (
         <div className="space-y-5">
-          <ul className="grid grid-cols-3 gap-3" aria-label="Totals">
+          <ul className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-3" aria-label="Totals">
             {GROUPS.map((g) => (
               <li key={g.status}>
                 <Card className="p-3 text-center">

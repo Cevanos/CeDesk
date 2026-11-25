@@ -5,6 +5,7 @@ import Link from "next/link";
 import { toast } from "sonner";
 
 import { Badge, Button, Card, EmptyState, Skeleton } from "@/components/ui/primitives";
+import { DataTable, TBody, Td, Th, THead, Tr } from "@/components/ui/table";
 import { LoadError } from "@/components/workspace/list-shared";
 import { useAutomationAccess } from "@/hooks/use-workspace";
 import { replayActive, useCancelReplay, useReplay } from "@/hooks/workspace/replays";
@@ -146,33 +147,27 @@ function Body({ r }: { r: Replay }) {
             {r.would_change > samples.length ? ` of ${r.would_change}` : ""} shown)
           </span>
         </h3>
-        <Card className="overflow-x-auto">
+        <Card>
           {samples.length === 0 ? (
             <p className="p-4 text-sm text-muted-foreground">
               {active ? "Nothing yet." : "No ticket would have changed."}
             </p>
           ) : (
-            <table className="w-full min-w-[34rem] text-left text-sm">
-              <thead className="text-xs text-muted-foreground">
+            <DataTable minWidth="34rem">
+              <THead>
                 <tr>
-                  <th scope="col" className="px-3 py-2 font-medium">
-                    Ticket
-                  </th>
-                  <th scope="col" className="px-3 py-2 font-medium">
-                    Changes
-                  </th>
-                  <th scope="col" className="px-3 py-2 font-medium">
-                    Would write
-                  </th>
+                  <Th>Ticket</Th>
+                  <Th>Changes</Th>
+                  <Th>Would write</Th>
                 </tr>
-              </thead>
-              <tbody>
+              </THead>
+              <TBody>
                 {samples.map((s, i) => (
-                  <tr key={`${s.ticket_id ?? i}-${i}`} className="border-t border-border align-top">
-                    <td className="px-3 py-2">
+                  <Tr key={`${s.ticket_id ?? i}-${i}`} className="align-top">
+                    <Td>
                       <TicketLink id={s.ticket_id} number={s.number} subject={s.subject} />
-                    </td>
-                    <td className="px-3 py-2">
+                    </Td>
+                    <Td>
                       {Object.entries(s.changes ?? {}).length === 0 ? (
                         "–"
                       ) : (
@@ -186,8 +181,8 @@ function Body({ r }: { r: Replay }) {
                           ))}
                         </ul>
                       )}
-                    </td>
-                    <td className="px-3 py-2">
+                    </Td>
+                    <Td>
                       {(s.said ?? []).length === 0 ? (
                         "–"
                       ) : (
@@ -199,11 +194,11 @@ function Body({ r }: { r: Replay }) {
                           ))}
                         </ul>
                       )}
-                    </td>
-                  </tr>
+                    </Td>
+                  </Tr>
                 ))}
-              </tbody>
-            </table>
+              </TBody>
+            </DataTable>
           )}
         </Card>
       </section>
@@ -214,47 +209,34 @@ function Body({ r }: { r: Replay }) {
             Conflicts with other rules{" "}
             <span className="font-normal text-muted-foreground">({conflicts.length} shown)</span>
           </h3>
-          <Card className="overflow-x-auto">
-            <table className="w-full min-w-[40rem] text-left text-sm">
-              <thead className="text-xs text-muted-foreground">
+          <Card>
+            <DataTable minWidth="40rem">
+              <THead>
                 <tr>
-                  <th scope="col" className="px-3 py-2 font-medium">
-                    Ticket
-                  </th>
-                  <th scope="col" className="px-3 py-2 font-medium">
-                    Field
-                  </th>
-                  <th scope="col" className="px-3 py-2 font-medium">
-                    This rule sets
-                  </th>
-                  <th scope="col" className="px-3 py-2 font-medium">
-                    Other rule
-                  </th>
-                  <th scope="col" className="px-3 py-2 font-medium">
-                    Winner
-                  </th>
+                  <Th>Ticket</Th>
+                  <Th>Field</Th>
+                  <Th>This rule sets</Th>
+                  <Th>Other rule</Th>
+                  <Th>Winner</Th>
                 </tr>
-              </thead>
-              <tbody>
+              </THead>
+              <TBody>
                 {conflicts.map((c, i) => (
-                  <tr
-                    key={`${c.ticket_id ?? i}-${c.field}-${i}`}
-                    className="border-t border-border align-top"
-                  >
-                    <td className="px-3 py-2">
+                  <Tr key={`${c.ticket_id ?? i}-${c.field}-${i}`} className="align-top">
+                    <Td>
                       <TicketLink id={c.ticket_id} number={c.number} subject={c.subject} />
-                    </td>
-                    <td className="px-3 py-2">{c.field}</td>
-                    <td className="px-3 py-2">{show(c.tested_value)}</td>
-                    <td className="px-3 py-2">
+                    </Td>
+                    <Td>{c.field}</Td>
+                    <Td>{show(c.tested_value)}</Td>
+                    <Td>
                       {show(c.other_rule)} <span className="text-muted-foreground">sets</span>{" "}
                       {show(c.other_value)}
-                    </td>
-                    <td className="px-3 py-2 font-medium">{show(c.winner)}</td>
-                  </tr>
+                    </Td>
+                    <Td className="font-medium">{show(c.winner)}</Td>
+                  </Tr>
                 ))}
-              </tbody>
-            </table>
+              </TBody>
+            </DataTable>
           </Card>
         </section>
       )}

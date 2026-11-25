@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
 import { InfiniteScroll } from "@/components/ui/infinite-scroll";
+import { PageHeader } from "@/components/ui/page-header";
 import { Badge, Button, Card, EmptyState, Input, Skeleton } from "@/components/ui/primitives";
 import {
   ARCHIVE_QUERY_HINT,
@@ -47,11 +48,11 @@ export function ArchiveSearchView({ initial }: { initial?: ArchiveSearch | null 
 
   return (
     <div className="mx-auto w-full max-w-4xl px-3 py-5 sm:px-6 sm:py-8">
-      <h1 className="text-2xl font-semibold tracking-tight">Archive</h1>
-      <p className="mt-1 text-sm text-muted-foreground">
-        Old resolved tickets live here. Find one by its number or by the customer, then open it to
-        read it. Archived tickets can&apos;t be replied to, changed or reopened.
-      </p>
+      <PageHeader
+        icon={Archive}
+        title="Archive"
+        description="Old resolved tickets live here. Find one by its number or by the customer, then open it to read it. Archived tickets can't be replied to, changed or reopened."
+      />
 
       <form role="search" className="mt-5 flex gap-2" onSubmit={form.handleSubmit} noValidate>
         <div className="relative flex-1">

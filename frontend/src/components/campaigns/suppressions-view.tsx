@@ -17,6 +17,7 @@ import {
   Input,
   Skeleton,
 } from "@/components/ui/primitives";
+import { DataTable, RowTh, TBody, Td, THead, Th, Tr } from "@/components/ui/table";
 import { FormError, LoadError } from "@/components/workspace/list-shared";
 import { useAddSuppression, useRemoveSuppression, useSuppressions } from "@/hooks/use-workspace";
 import type { SuppressionEntry, SuppressionReason } from "@/lib/api/types";
@@ -141,51 +142,53 @@ function SuppressionList() {
           </EmptyState>
         </Card>
       ) : (
-        <Card className="overflow-x-auto">
-          <table className="w-full min-w-[56rem] text-sm">
-            <thead>
-              <tr className="border-b border-border text-left text-xs text-muted-foreground">
-                <th className="px-4 py-2.5 font-medium">Email</th>
-                <th className="px-3 py-2.5 font-medium">Reason</th>
-                <th className="px-3 py-2.5 font-medium">Source</th>
-                <th className="px-3 py-2.5 font-medium">Campaign</th>
-                <th className="px-3 py-2.5 font-medium">Note</th>
-                <th className="px-3 py-2.5 font-medium">Added by</th>
-                <th className="px-3 py-2.5 font-medium">Added at</th>
-                <th className="px-3 py-2.5" />
+        <Card>
+          <DataTable minWidth="56rem">
+            <THead>
+              <tr>
+                <Th>Email</Th>
+                <Th>Reason</Th>
+                <Th>Source</Th>
+                <Th>Campaign</Th>
+                <Th>Note</Th>
+                <Th>Added by</Th>
+                <Th>Added at</Th>
+                <Th>
+                  <span className="sr-only">Actions</span>
+                </Th>
               </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
+            </THead>
+            <TBody>
               {rows.map((e) => (
-                <tr key={e.id} className="align-top">
-                  <td className="px-4 py-2.5">
+                <Tr key={e.id} className="align-top">
+                  <RowTh className="font-normal">
                     {e.email ?? <span className="text-muted-foreground">(erased customer)</span>}
-                  </td>
-                  <td className="px-3 py-2.5">
+                  </RowTh>
+                  <Td>
                     <Badge tone={e.reason === "complaint" ? "danger" : "neutral"}>
                       {REASON_LABEL[e.reason] ?? e.reason}
                     </Badge>
-                  </td>
-                  <td className="px-3 py-2.5 text-muted-foreground">
-                    {SOURCE_LABEL[e.source] ?? e.source}
-                  </td>
-                  <td className="px-3 py-2.5 text-muted-foreground">{e.campaign_name ?? "—"}</td>
-                  <td className="max-w-48 px-3 py-2.5 text-muted-foreground">{e.note ?? "—"}</td>
-                  <td className="px-3 py-2.5 text-muted-foreground">{e.created_by_name ?? "—"}</td>
-                  <td className="px-3 py-2.5 whitespace-nowrap text-muted-foreground">
+                  </Td>
+                  <Td muted>{SOURCE_LABEL[e.source] ?? e.source}</Td>
+                  <Td muted>{e.campaign_name ?? "—"}</Td>
+                  <Td muted className="max-w-48">
+                    {e.note ?? "—"}
+                  </Td>
+                  <Td muted>{e.created_by_name ?? "—"}</Td>
+                  <Td muted className="whitespace-nowrap">
                     {formatDateTime(e.created_at)}
-                  </td>
-                  <td className="px-3 py-2.5 text-right">
+                  </Td>
+                  <Td right>
                     {e.reason !== "erased" && (
                       <Button size="sm" variant="ghost" onClick={() => setRemoving(e)}>
                         Remove
                       </Button>
                     )}
-                  </td>
-                </tr>
+                  </Td>
+                </Tr>
               ))}
-            </tbody>
-          </table>
+            </TBody>
+          </DataTable>
         </Card>
       )}
 

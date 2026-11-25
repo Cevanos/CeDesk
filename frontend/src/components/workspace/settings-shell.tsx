@@ -24,6 +24,7 @@ import {
   Plug,
   Radio,
   Search,
+  Settings,
   ShieldAlert,
   ShieldCheck,
   SlidersHorizontal,
@@ -44,6 +45,7 @@ import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { AiBadge } from "@/components/ui/ai";
+import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState, Skeleton } from "@/components/ui/primitives";
 import { useCurrentUser } from "@/hooks/use-auth";
 import { cn } from "@/lib/utils";
@@ -359,18 +361,12 @@ export function SettingsShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="mx-auto w-full max-w-6xl px-3 py-5 sm:px-6 sm:py-8">
-      <div className="relative overflow-hidden rounded-2xl border border-border bg-surface p-5 shadow-card sm:p-6">
-        <span
-          aria-hidden
-          className="pointer-events-none absolute -top-24 -right-16 size-56 rounded-full bg-ai-gradient opacity-15 blur-3xl"
-        />
-        <div className="relative flex flex-col gap-1">
-          <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
-          <p className="text-sm text-muted-foreground">
-            Manage your workspace, channels, security and integrations.
-          </p>
-        </div>
-      </div>
+      <PageHeader
+        as="div"
+        icon={Settings}
+        title="Settings"
+        description="Manage your workspace, channels, security and integrations."
+      />
 
       <ScrollFade
         as="nav"

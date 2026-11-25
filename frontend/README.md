@@ -1,6 +1,6 @@
 # CeDesk Frontend
 
-Web frontend for CeDesk, a customer support desk. Agents, supervisors and admins use it to work a shared ticket inbox, reply to customers, and manage the workspace. It is a Next.js 16 (App Router) app with React 19, TypeScript, Tailwind CSS 4, TanStack Query, React Hook Form + Zod and next-intl.
+Web frontend for CeDesk, a customer support desk. Agents, supervisors and admins use it to work a shared ticket inbox, reply to customers, and manage the workspace. It is a Next.js 16 (App Router) app with React 19, TypeScript, Tailwind CSS 4, TanStack Query, Formik + Yup and next-intl.
 
 ## Screenshots
 
@@ -225,4 +225,4 @@ Third-party dependencies keep their own licenses. All are permissive or weak-cop
 
 ## Acknowledgements
 
-Built with [Next.js](https://nextjs.org), [React](https://react.dev), [Tailwind CSS](https://tailwindcss.com), [TanStack Query](https://tanstack.com/query), [React Hook Form](https://react-hook-form.com), [Zod](https://zod.dev), [next-intl](https://next-intl.dev), [Lucide](https://lucide.dev), [Vitest](https://vitest.dev) and [Playwright](https://playwright.dev).
+Built with [Next.js](https://nextjs.org), [React](https://react.dev), [Tailwind CSS](https://tailwindcss.com), [TanStack Query](https://tanstack.com/query), [Formik](https://formik.org), [Yup](https://github.com/jquense/yup), [Zod](https://zod.dev), [next-intl](https://next-intl.dev), [Lucide](https://lucide.dev), [Vitest](https://vitest.dev) and [Playwright](https://playwright.dev).

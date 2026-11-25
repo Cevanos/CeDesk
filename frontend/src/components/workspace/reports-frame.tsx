@@ -19,6 +19,7 @@ import { createContext, useContext, useMemo, useState, type ReactNode } from "re
 
 import { AiBadge } from "@/components/ui/ai";
 import { DatePicker } from "@/components/ui/date-picker";
+import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState, Select, Skeleton } from "@/components/ui/primitives";
 import { useCurrentUser } from "@/hooks/use-auth";
 import { useTeams } from "@/hooks/use-workspace";
@@ -142,72 +143,60 @@ function FrameBody({ children }: { children: ReactNode }) {
   return (
     <FiltersContext.Provider value={value}>
       <div className="mx-auto w-full max-w-6xl animate-rise px-3 py-5 sm:px-6 sm:py-8">
-        <div className="relative flex flex-wrap items-end justify-between gap-4 overflow-hidden rounded-2xl border border-border bg-surface p-5 shadow-card sm:p-6">
-          <span
-            aria-hidden
-            className="pointer-events-none absolute -top-24 -right-16 size-60 rounded-full bg-ai-gradient opacity-15 blur-3xl"
-          />
-          <div className="relative flex items-center gap-4">
-            <span className="grid size-12 flex-none place-items-center rounded-2xl bg-ai-gradient text-white shadow-[0_8px_22px_-8px_var(--ai-from)]">
-              <BarChart3 className="size-6" aria-hidden />
-            </span>
-            <div>
-              <h1 className="flex flex-wrap items-center gap-2 text-2xl font-semibold tracking-tight">
-                Reports
-                {pathname.startsWith("/reports/ai") && <AiBadge>AI insights</AiBadge>}
-              </h1>
-              <p className="mt-1 text-sm text-muted-foreground">
-                How the team is doing: volume, speed, SLA and customer satisfaction.
-              </p>
-            </div>
-          </div>
-          {(controls.period || controls.team) && (
-            <div className="relative flex flex-wrap items-end gap-3">
-              {controls.period && (
-                <div
-                  role="group"
-                  aria-label="Period"
-                  className="inline-flex flex-wrap rounded-xl border border-border bg-surface-2 p-1"
-                >
-                  {periodButtons.map((p) => (
-                    <button
-                      key={p.id}
-                      type="button"
-                      aria-pressed={active === p.id}
-                      onClick={() => setPreset(p.id)}
-                      className={cn(
-                        "rounded-lg px-3 py-1.5 text-[13px] font-semibold transition-all",
-                        active === p.id
-                          ? "bg-surface text-foreground shadow-card ring-1 ring-border"
-                          : "text-muted-foreground hover:text-foreground",
-                      )}
-                    >
-                      {p.label}
-                    </button>
-                  ))}
-                </div>
-              )}
-              {controls.team && (
-                <div className="w-44">
-                  <Select
-                    aria-label="Team"
-                    value={teamId}
-                    disabled={!!lockedTeam}
-                    onChange={(e) => setPickedTeam(e.target.value)}
-                    options={
-                      lockedTeam
-                        ? [{ value: lockedTeam, label: user?.access?.team_name ?? "Your team" }]
-                        : [
-                            { value: "", label: "All teams" },
-                            ...(teams.data ?? []).map((t) => ({ value: t.id, label: t.name })),
-                          ]
-                    }
-                  />
-                </div>
-              )}
-            </div>
-          )}
-        </div>
+        <PageHeader
+          icon={BarChart3}
+          title="Reports"
+          badge={pathname.startsWith("/reports/ai") && <AiBadge>AI insights</AiBadge>}
+          description="How the team is doing: volume, speed, SLA and customer satisfaction."
+          actions={
+            controls.period || controls.team ? (
+              <div className="flex flex-wrap items-end gap-3">
+                {controls.period && (
+                  <div
+                    role="group"
+                    aria-label="Period"
+                    className="inline-flex flex-wrap rounded-xl border border-border bg-surface-2 p-1"
+                  >
+                    {periodButtons.map((p) => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        aria-pressed={active === p.id}
+                        onClick={() => setPreset(p.id)}
+                        className={cn(
+                          "rounded-lg px-3 py-1.5 text-[13px] font-semibold transition-all",
+                          active === p.id
+                            ? "bg-surface text-foreground shadow-card ring-1 ring-border"
+                            : "text-muted-foreground hover:text-foreground",
+                        )}
+                      >
+                        {p.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {controls.team && (
+                  <div className="w-44">
+                    <Select
+                      aria-label="Team"
+                      value={teamId}
+                      disabled={!!lockedTeam}
+                      onChange={(e) => setPickedTeam(e.target.value)}
+                      options={
+                        lockedTeam
+                          ? [{ value: lockedTeam, label: user?.access?.team_name ?? "Your team" }]
+                          : [
+                              { value: "", label: "All teams" },
+                              ...(teams.data ?? []).map((t) => ({ value: t.id, label: t.name })),
+                            ]
+                      }
+                    />
+                  </div>
+                )}
+              </div>
+            ) : undefined
+          }
+        />
 
         {controls.period && active === "custom" && (
           <div className="mt-4 flex flex-wrap items-center gap-3">
