@@ -1,11 +1,25 @@
 "use client";
 
-import { ShieldAlert } from "lucide-react";
+import {
+  Activity,
+  BarChart3,
+  CalendarClock,
+  CircleCheckBig,
+  Gauge,
+  Inbox,
+  LayoutDashboard,
+  LineChart,
+  ShieldAlert,
+  Sparkles,
+  type LucideIcon,
+} from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
 
+import { AiBadge } from "@/components/ui/ai";
 import { DatePicker } from "@/components/ui/date-picker";
+import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState, Select, Skeleton } from "@/components/ui/primitives";
 import { useCurrentUser } from "@/hooks/use-auth";
 import { useTeams } from "@/hooks/use-workspace";
@@ -21,16 +35,17 @@ const PRESETS = [
 ] as const;
 type PresetId = (typeof PRESETS)[number]["id"] | "custom" | "own";
 
-const TABS = [
-  { href: "/reports/team", label: "Team" },
-  { href: "/reports/metrics", label: "More metrics" },
-  { href: "/reports/ai", label: "AI" },
-  { href: "/reports/explore", label: "Trends" },
-  { href: "/reports/backlog", label: "Backlog" },
-  { href: "/reports/dashboards", label: "Dashboards" },
-  { href: "/reports/live", label: "Live" },
-  { href: "/reports/schedules", label: "Scheduled reports" },
-] as const;
+const TABS: readonly { href: string; label: string; icon: LucideIcon; ai?: boolean }[] = [
+  { href: "/reports/team", label: "Team", icon: BarChart3 },
+  { href: "/reports/metrics", label: "More metrics", icon: Gauge },
+  { href: "/reports/ai", label: "AI", icon: Sparkles, ai: true },
+  { href: "/reports/explore", label: "Trends", icon: LineChart },
+  { href: "/reports/backlog", label: "Backlog", icon: Inbox },
+  { href: "/reports/resolutions", label: "Resolutions", icon: CircleCheckBig },
+  { href: "/reports/dashboards", label: "Dashboards", icon: LayoutDashboard },
+  { href: "/reports/live", label: "Live", icon: Activity },
+  { href: "/reports/schedules", label: "Scheduled reports", icon: CalendarClock },
+];
 
 interface Controls {
   period: boolean;
@@ -128,60 +143,60 @@ function FrameBody({ children }: { children: ReactNode }) {
   return (
     <FiltersContext.Provider value={value}>
       <div className="mx-auto w-full max-w-6xl animate-rise px-3 py-5 sm:px-6 sm:py-8">
-        <div className="flex flex-wrap items-end justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-semibold tracking-tight">Reports</h1>
-            <p className="mt-1 text-sm text-muted-foreground">
-              How the team is doing: volume, speed, SLA and customer satisfaction.
-            </p>
-          </div>
-          {(controls.period || controls.team) && (
-            <div className="flex flex-wrap items-end gap-3">
-              {controls.period && (
-                <div
-                  role="group"
-                  aria-label="Period"
-                  className="inline-flex flex-wrap rounded-xl border border-border bg-surface-2 p-1"
-                >
-                  {periodButtons.map((p) => (
-                    <button
-                      key={p.id}
-                      type="button"
-                      aria-pressed={active === p.id}
-                      onClick={() => setPreset(p.id)}
-                      className={cn(
-                        "rounded-lg px-3 py-1.5 text-[13px] font-semibold transition-all",
-                        active === p.id
-                          ? "bg-surface text-foreground shadow-card ring-1 ring-border"
-                          : "text-muted-foreground hover:text-foreground",
-                      )}
-                    >
-                      {p.label}
-                    </button>
-                  ))}
-                </div>
-              )}
-              {controls.team && (
-                <div className="w-44">
-                  <Select
-                    aria-label="Team"
-                    value={teamId}
-                    disabled={!!lockedTeam}
-                    onChange={(e) => setPickedTeam(e.target.value)}
-                    options={
-                      lockedTeam
-                        ? [{ value: lockedTeam, label: user?.access?.team_name ?? "Your team" }]
-                        : [
-                            { value: "", label: "All teams" },
-                            ...(teams.data ?? []).map((t) => ({ value: t.id, label: t.name })),
-                          ]
-                    }
-                  />
-                </div>
-              )}
-            </div>
-          )}
-        </div>
+        <PageHeader
+          icon={BarChart3}
+          title="Reports"
+          badge={pathname.startsWith("/reports/ai") && <AiBadge>AI insights</AiBadge>}
+          description="How the team is doing: volume, speed, SLA and customer satisfaction."
+          actions={
+            controls.period || controls.team ? (
+              <div className="flex flex-wrap items-end gap-3">
+                {controls.period && (
+                  <div
+                    role="group"
+                    aria-label="Period"
+                    className="inline-flex flex-wrap rounded-xl border border-border bg-surface-2 p-1"
+                  >
+                    {periodButtons.map((p) => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        aria-pressed={active === p.id}
+                        onClick={() => setPreset(p.id)}
+                        className={cn(
+                          "rounded-lg px-3 py-1.5 text-[13px] font-semibold transition-all",
+                          active === p.id
+                            ? "bg-surface text-foreground shadow-card ring-1 ring-border"
+                            : "text-muted-foreground hover:text-foreground",
+                        )}
+                      >
+                        {p.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {controls.team && (
+                  <div className="w-44">
+                    <Select
+                      aria-label="Team"
+                      value={teamId}
+                      disabled={!!lockedTeam}
+                      onChange={(e) => setPickedTeam(e.target.value)}
+                      options={
+                        lockedTeam
+                          ? [{ value: lockedTeam, label: user?.access?.team_name ?? "Your team" }]
+                          : [
+                              { value: "", label: "All teams" },
+                              ...(teams.data ?? []).map((t) => ({ value: t.id, label: t.name })),
+                            ]
+                      }
+                    />
+                  </div>
+                )}
+              </div>
+            ) : undefined
+          }
+        />
 
         {controls.period && active === "custom" && (
           <div className="mt-4 flex flex-wrap items-center gap-3">
@@ -222,7 +237,7 @@ function FrameBody({ children }: { children: ReactNode }) {
 
         <nav
           aria-label="Report"
-          className="mt-6 flex max-w-full overflow-x-auto rounded-xl border border-border bg-surface-2 p-1 sm:inline-flex"
+          className="mt-5 flex max-w-full [scrollbar-width:none] overflow-x-auto rounded-xl border border-border bg-surface-2 p-1 sm:inline-flex [&::-webkit-scrollbar]:hidden"
         >
           {TABS.map((t) => {
             const current = pathname === t.href || pathname.startsWith(`${t.href}/`);
@@ -232,12 +247,20 @@ function FrameBody({ children }: { children: ReactNode }) {
                 href={t.href}
                 aria-current={current ? "page" : undefined}
                 className={cn(
-                  "rounded-lg px-3 py-1.5 text-[13px] font-semibold whitespace-nowrap transition-all",
+                  "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] font-semibold whitespace-nowrap transition-all",
                   current
                     ? "bg-surface text-foreground shadow-card ring-1 ring-border"
                     : "text-muted-foreground hover:text-foreground",
                 )}
               >
+                <t.icon
+                  className={cn(
+                    "size-3.5",
+                    t.ai && "text-ai-via",
+                    current && !t.ai && "text-primary-ink",
+                  )}
+                  aria-hidden
+                />
                 {t.label}
               </Link>
             );

@@ -69,13 +69,16 @@ export function AddToggle({
   children,
 }: {
   label: string;
+  /** Read-only viewer: nothing is rendered. */
   disabled?: boolean;
   children: (close: () => void) => React.ReactNode;
 }) {
   const [open, setOpen] = useState(false);
+  // Read-only viewers (a light agent) get no write control at all, not a greyed-out one.
+  if (disabled) return null;
   if (open) return <div className="mt-3 w-full">{children(() => setOpen(false))}</div>;
   return (
-    <Button variant="outline" size="sm" disabled={disabled} onClick={() => setOpen(true)}>
+    <Button variant="outline" size="sm" onClick={() => setOpen(true)}>
       <Plus className="size-3.5" /> {label}
     </Button>
   );

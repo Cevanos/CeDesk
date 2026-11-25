@@ -51,7 +51,11 @@ export function StatusTabs({
   onChange: (tab: ListTab) => void;
 }) {
   return (
-    <div role="tablist" aria-label="Ticket status" className="mt-5 grid grid-cols-4 gap-2 sm:gap-3">
+    <div
+      role="tablist"
+      aria-label="Ticket status"
+      className="mt-5 grid grid-cols-2 gap-2 min-[480px]:grid-cols-4 sm:gap-3"
+    >
       {TABS.map((s) => {
         const meta = STATUS_META[s];
         const isActive = active === s;
@@ -64,15 +68,12 @@ export function StatusTabs({
             className={cn(
               "group relative flex min-w-0 flex-col gap-1 overflow-hidden rounded-xl border p-3 text-left transition-all sm:p-4",
               isActive
-                ? "border-primary/40 bg-surface shadow-pop ring-1 ring-primary/25"
+                ? "-translate-y-px border-primary/40 bg-surface shadow-pop ring-1 ring-primary/25"
                 : "border-border bg-surface/60 hover:border-border-strong hover:bg-surface hover:shadow-card",
             )}
           >
             {isActive && (
-              <span
-                aria-hidden
-                className="absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r from-primary to-primary/30"
-              />
+              <span aria-hidden className="absolute inset-x-0 top-0 h-0.5 bg-ai-gradient" />
             )}
             <div className="flex items-center justify-between gap-2">
               <span

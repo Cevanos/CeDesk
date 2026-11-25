@@ -11,6 +11,7 @@ import { useSetAttributes } from "@/hooks/use-contacts";
 import { ApiError } from "@/lib/api/client";
 import type { AttributeValue, ContactDetail, ContactFieldRef } from "@/lib/api/contacts-types";
 import { showValue } from "@/lib/contacts";
+import { useFormik, yup } from "@/lib/forms";
 import { hasAction } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
 
@@ -41,7 +42,30 @@ function AttributeRow({
   const set = useSetAttributes(contact.id);
   const value = contact.attributes[field.key];
   const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState("");
+  const form = useFormik({
+    initialValues: { value: "" },
+    validationSchema: yup.object({
+      value: yup
+        .string()
+        .max(2000, `${field.label} can be at most 2,000 characters.`)
+        .test(
+          "number",
+          `${field.label} must be a number.`,
+          (t) => field.kind !== "number" || !t?.trim() || Number.isFinite(Number(t.trim())),
+        ),
+    }),
+    onSubmit: (v) => {
+      const parsed = parse(field, v.value);
+      if (parsed === "invalid") return;
+      if (parsed === (value ?? null)) {
+        setEditing(false);
+        return;
+      }
+      save(parsed);
+    },
+  });
+  const draft = form.values.value;
+  const setDraft = (v: string) => void form.setFieldValue("value", v);
 
   const save = (v: AttributeValue) =>
     set.mutate(
@@ -52,11 +76,13 @@ function AttributeRow({
       },
     );
 
-  const commit = () => {
-    const v = parse(field, draft);
-    if (v === "invalid") return toast.error(`${field.label} must be a number.`);
-    if (v === (value ?? null)) return setEditing(false);
-    save(v);
+  const commit = async () => {
+    const errs = await form.validateForm();
+    if (errs.value) {
+      toast.error(errs.value);
+      return;
+    }
+    await form.submitForm();
   };
 
   let control: React.ReactNode;
@@ -76,7 +102,7 @@ function AttributeRow({
       "aria-label": field.label,
       onKeyDown: (e: React.KeyboardEvent) => {
         if (e.key === "Escape") setEditing(false);
-        if (e.key === "Enter") commit();
+        if (e.key === "Enter") void commit();
       },
     };
     control =
@@ -116,7 +142,7 @@ function AttributeRow({
           value={draft}
           disabled={set.isPending}
           onChange={(e) => setDraft(e.target.value)}
-          onBlur={commit}
+          onBlur={() => void commit()}
         />
       );
   } else {

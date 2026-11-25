@@ -1,6 +1,6 @@
 "use client";
 
-import { BookOpen, ExternalLink, MessageSquareText, Star, Ticket } from "lucide-react";
+import { BookOpen, ExternalLink, MessageSquareText, Star, Ticket, UserRound } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -37,12 +37,14 @@ function PortalBody({ saved }: { saved: PortalSettings }) {
   const [domains, setDomains] = useState(saved.allowed_domains);
   const [csat, setCsat] = useState(saved.csat_survey);
   const [form, setForm] = useState(saved.web_form);
+  const [owner, setOwner] = useState(saved.show_owner);
   const { errors: errs, setErrors: setErrs, clear: clearErr, reset: resetErrs } = useFieldErrors();
   const [tagKey, setTagKey] = useState(0);
 
   const dirty =
     csat !== saved.csat_survey ||
     form !== saved.web_form ||
+    owner !== saved.show_owner ||
     JSON.stringify(domains) !== JSON.stringify(saved.allowed_domains);
   useUnsavedChanges(dirty);
 
@@ -103,6 +105,14 @@ function PortalBody({ saved }: { saved: PortalSettings }) {
             checked={form}
             onChange={setForm}
           />
+          <ToggleRow
+            id="owner"
+            icon={<UserRound className="size-4" />}
+            title="Show the agent's first name to customers"
+            body="Customers see who is handling their ticket. Off: they see the team's name instead."
+            checked={owner}
+            onChange={setOwner}
+          />
         </Card>
       </section>
 
@@ -115,6 +125,7 @@ function PortalBody({ saved }: { saved: PortalSettings }) {
             setDomains(saved.allowed_domains);
             setCsat(saved.csat_survey);
             setForm(saved.web_form);
+            setOwner(saved.show_owner);
             resetErrs();
             setTagKey((k) => k + 1); // remount the domain box to drop typed text
           }}
@@ -126,7 +137,7 @@ function PortalBody({ saved }: { saved: PortalSettings }) {
           loading={save.isPending}
           onClick={() =>
             save.mutate(
-              { allowed_domains: domains, csat_survey: csat, web_form: form },
+              { allowed_domains: domains, csat_survey: csat, web_form: form, show_owner: owner },
               {
                 onSuccess: () => toast.success("Portal settings saved"),
                 onError: (e) => setErrs(fieldErrors(e)),

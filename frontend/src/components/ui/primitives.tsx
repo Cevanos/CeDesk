@@ -5,7 +5,7 @@ import * as React from "react";
 
 import { cn } from "@/lib/utils";
 
-type Variant = "primary" | "secondary" | "ghost" | "danger" | "outline";
+type Variant = "primary" | "secondary" | "ghost" | "danger" | "outline" | "ai";
 type Size = "sm" | "md" | "lg" | "icon";
 
 const VARIANT: Record<Variant, string> = {
@@ -15,6 +15,7 @@ const VARIANT: Record<Variant, string> = {
   outline: "border border-border-strong bg-surface text-foreground hover:bg-surface-2",
   ghost: "text-muted-foreground hover:bg-surface-2 hover:text-foreground",
   danger: "bg-danger text-primary-foreground hover:opacity-90",
+  ai: "bg-ai-gradient text-white shadow-[0_1px_0_rgb(255_255_255/0.3)_inset,0_8px_20px_-8px_var(--ai-from)] hover:brightness-110",
 };
 const SIZE: Record<Size, string> = {
   sm: "h-8 gap-1.5 rounded-md px-3 text-[13px]",
@@ -127,7 +128,10 @@ export function Field({
 export function Card({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
   return (
     <div
-      className={cn("rounded-xl border border-border bg-surface shadow-card", className)}
+      className={cn(
+        "rounded-xl border border-border bg-surface shadow-card transition-shadow",
+        className,
+      )}
       {...props}
     />
   );
@@ -180,7 +184,8 @@ export function EmptyState({
   return (
     <div className="grid place-items-center gap-2 px-6 py-16 text-center">
       {icon && (
-        <div className="grid size-12 place-items-center rounded-2xl bg-primary-soft text-primary-ink">
+        <div className="ai-frame relative grid size-14 place-items-center rounded-2xl text-primary-ink shadow-card">
+          <span aria-hidden className="absolute inset-0 rounded-2xl bg-ai-gradient opacity-10" />
           {icon}
         </div>
       )}

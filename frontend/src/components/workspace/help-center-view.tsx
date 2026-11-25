@@ -27,16 +27,29 @@ import {
   Skeleton,
   Textarea,
 } from "@/components/ui/primitives";
+import {
+  CategoryTranslations,
+  DomainCard,
+  LanguageSettingsCard,
+  LanguagesPanel,
+  LocaleChips,
+  SeoFields,
+  seoFrom,
+  seoPayload,
+} from "@/components/workspace/help-center-languages";
 import { FormError, fieldErrors, LoadError } from "@/components/workspace/list-shared";
 import {
   useArticleCategories,
   useArticles,
   useDeleteArticle,
   useDeleteArticleCategory,
+  useHelpCenterSettings,
   useSaveArticle,
   useSaveArticleCategory,
 } from "@/hooks/use-workspace";
 import type { Article, ArticleCategory, ArticleStatus } from "@/lib/api/types";
+import { bind, bindSelect, fieldError, useFormik, yup } from "@/lib/forms";
+import { COMMON_LOCALES, languageName, nfc } from "@/lib/locale";
 import { cn, timeAgo } from "@/lib/utils";
 
 /** Share of "yes" votes as a whole percent, or null when nobody voted. */
@@ -54,7 +67,12 @@ const STATUS_FILTER = [
 
 export function HelpCenterView() {
   const categories = useArticleCategories();
-  const articles = useArticles();
+  const [missing, setMissing] = useState("");
+  const articles = useArticles(missing);
+  // Same query as above while no language filter is on; keeps the category counts true when it is.
+  const everything = useArticles("");
+  const settings = useHelpCenterSettings();
+  const defaultLocale = settings.data?.default_locale ?? "en";
   const delArticle = useDeleteArticle();
   const delCategory = useDeleteArticleCategory();
   const saveArticle = useSaveArticle();
@@ -65,13 +83,15 @@ export function HelpCenterView() {
   const [editingArticle, setEditingArticle] = useState<Article | "new" | null>(null);
   const [editingCategory, setEditingCategory] = useState<ArticleCategory | "new" | null>(null);
 
-  if (categories.isPending || articles.isPending) return <Skeleton className="h-72" />;
+  if (categories.isPending || (articles.isPending && !articles.isPlaceholderData))
+    return <Skeleton className="h-72" />;
   if (categories.isError) return <LoadError error={categories.error} />;
   if (articles.isError) return <LoadError error={articles.error} />;
 
   const cats = categories.data;
-  const all = articles.data;
-  const countIn = (id: string) => all.filter((a) => a.category_id === id).length;
+  const all = articles.data ?? [];
+  const totals = everything.data ?? all;
+  const countIn = (id: string) => totals.filter((a) => a.category_id === id).length;
   const nameOf = (id: string | null) => cats.find((c) => c.id === id)?.name ?? "No category";
   const shown = all.filter(
     (a) => (category === ALL || a.category_id === category) && (!status || a.status === status),
@@ -85,6 +105,9 @@ export function HelpCenterView() {
         drafts stay private.
       </p>
 
+      <LanguageSettingsCard />
+      <DomainCard />
+
       <div className="grid gap-4 lg:grid-cols-[15rem_minmax(0,1fr)]">
         <aside aria-label="Categories">
           <Card className="overflow-hidden">
@@ -97,7 +120,7 @@ export function HelpCenterView() {
             <ul className="p-1.5">
               <CategoryRow
                 label="All articles"
-                count={all.length}
+                count={totals.length}
                 active={category === ALL}
                 onSelect={() => setCategory(ALL)}
               />
@@ -139,6 +162,20 @@ export function HelpCenterView() {
                 onChange={(e) => setStatus(e.target.value)}
               />
             </div>
+            <div className="w-52">
+              <Select
+                aria-label="Needs a language"
+                value={missing}
+                options={[
+                  { value: "", label: "Needs a language: any" },
+                  ...COMMON_LOCALES.filter((l) => l !== defaultLocale).map((l) => ({
+                    value: l,
+                    label: `Needs ${languageName(l)}`,
+                  })),
+                ]}
+                onChange={(e) => setMissing(e.target.value)}
+              />
+            </div>
             <Button className="ml-auto" onClick={() => setEditingArticle("new")}>
               <Plus className="size-4" /> New article
             </Button>
@@ -146,9 +183,19 @@ export function HelpCenterView() {
 
           {shown.length === 0 ? (
             <Card>
-              <EmptyState icon={<BookOpen className="size-6" />} title="No articles here yet">
-                Write the answers to the questions customers ask most, so they can help themselves.
-              </EmptyState>
+              {missing ? (
+                <EmptyState
+                  icon={<BookOpen className="size-6" />}
+                  title={`Every article already has a ${languageName(missing)} version`}
+                >
+                  Nothing is waiting for a {languageName(missing)} translation.
+                </EmptyState>
+              ) : (
+                <EmptyState icon={<BookOpen className="size-6" />} title="No articles here yet">
+                  Write the answers to the questions customers ask most, so they can help
+                  themselves.
+                </EmptyState>
+              )}
             </Card>
           ) : (
             <Card className="overflow-hidden">
@@ -164,7 +211,8 @@ export function HelpCenterView() {
                             {a.status === "published" ? "Published" : "Draft"}
                           </Badge>
                         </div>
-                        <div className="mt-0.5 text-xs text-muted-foreground">
+                        <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
+                          <LocaleChips locales={a.locales} />
                           {a.category_name ?? nameOf(a.category_id)}
                           {a.updated_at && ` · Updated ${timeAgo(a.updated_at)}`}
                         </div>
@@ -229,13 +277,18 @@ export function HelpCenterView() {
         className="sm:max-w-5xl"
       >
         {editingArticle !== null && (
-          <ArticleForm
-            key={editingArticle === "new" ? "new" : editingArticle.id}
-            article={editingArticle === "new" ? null : editingArticle}
-            categories={cats}
-            defaultCategory={category}
-            onClose={() => setEditingArticle(null)}
-          />
+          <>
+            <ArticleForm
+              key={editingArticle === "new" ? "new" : editingArticle.id}
+              article={editingArticle === "new" ? null : editingArticle}
+              categories={cats}
+              defaultCategory={category}
+              onClose={() => setEditingArticle(null)}
+            />
+            {editingArticle !== "new" && (
+              <LanguagesPanel article={editingArticle} defaultLocale={defaultLocale} />
+            )}
+          </>
         )}
       </Dialog>
 
@@ -247,7 +300,11 @@ export function HelpCenterView() {
         {editingCategory !== null && (
           <CategoryForm
             key={editingCategory === "new" ? "new" : editingCategory.id}
-            category={editingCategory === "new" ? null : editingCategory}
+            category={
+              editingCategory === "new"
+                ? null
+                : (cats.find((c) => c.id === editingCategory.id) ?? editingCategory)
+            }
             onClose={() => setEditingCategory(null)}
           />
         )}
@@ -351,45 +408,42 @@ function CategoryForm({
   onClose: () => void;
 }) {
   const save = useSaveArticleCategory();
-  const [name, setName] = useState(category?.name ?? "");
-  const [errs, setErrs] = useState<Record<string, string>>({});
-  return (
-    <form
-      noValidate
-      className="space-y-4"
-      onSubmit={(e) => {
-        e.preventDefault();
-        if (!name.trim()) return setErrs({ name: "Enter a name" });
-        save.mutate(
-          { id: category?.id, name: name.trim() },
-          {
-            onSuccess: () => {
-              toast.success("Category saved");
-              onClose();
-            },
-            onError: (err) => setErrs(fieldErrors(err)),
+  const [srv, setSrv] = useState<Record<string, string>>({});
+  const form = useFormik({
+    initialValues: { name: category?.name ?? "" },
+    validationSchema: yup.object({ name: yup.string().trim().required("Enter a name") }),
+    onSubmit: (v) => {
+      setSrv({});
+      save.mutate(
+        { id: category?.id, name: nfc(v.name.trim()) },
+        {
+          onSuccess: () => {
+            toast.success("Category saved");
+            onClose();
           },
-        );
-      }}
-    >
-      <Field label="Name" htmlFor="cat-name" error={errs.name}>
-        <Input
-          id="cat-name"
-          maxLength={80}
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-        />
-      </Field>
-      <FormError message={errs._form} />
-      <div className="flex justify-end gap-2">
-        <Button variant="ghost" onClick={onClose}>
-          Cancel
-        </Button>
-        <Button type="submit" loading={save.isPending}>
-          Save
-        </Button>
-      </div>
-    </form>
+          onError: (err) => setSrv(fieldErrors(err)),
+        },
+      );
+    },
+  });
+  return (
+    <div className="space-y-4">
+      <form noValidate className="space-y-4" onSubmit={form.handleSubmit}>
+        <Field label="Name" htmlFor="cat-name" error={fieldError(form, "name") ?? srv.name}>
+          <Input id="cat-name" maxLength={80} {...bind(form, "name")} />
+        </Field>
+        <FormError message={srv._form} />
+        <div className="flex justify-end gap-2">
+          <Button variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="submit" loading={save.isPending}>
+            Save
+          </Button>
+        </div>
+      </form>
+      {category && <CategoryTranslations category={category} />}
+    </div>
   );
 }
 
@@ -405,70 +459,71 @@ function ArticleForm({
   onClose: () => void;
 }) {
   const save = useSaveArticle();
-  const [title, setTitle] = useState(article?.title ?? "");
-  const [body, setBody] = useState(article?.body ?? "");
-  const [categoryId, setCategoryId] = useState(article?.category_id ?? defaultCategory);
-  const [status, setStatus] = useState<ArticleStatus>(article?.status ?? "draft");
-  const [errs, setErrs] = useState<Record<string, string>>({});
+  const [seo, setSeo] = useState(() => seoFrom(article));
+  const [srv, setSrv] = useState<Record<string, string>>({});
+  const form = useFormik({
+    initialValues: {
+      title: article?.title ?? "",
+      body: article?.body ?? "",
+      category_id: article?.category_id ?? defaultCategory,
+      status: (article?.status ?? "draft") as ArticleStatus,
+    },
+    validationSchema: yup.object({
+      title: yup.string().trim().required("Enter a title"),
+      body: yup.string().trim().required("Write the article"),
+    }),
+    onSubmit: (v) => {
+      setSrv({});
+      save.mutate(
+        {
+          id: article?.id,
+          title: nfc(v.title.trim()),
+          body: nfc(v.body),
+          category_id: v.category_id || null,
+          status: v.status,
+          ...seoPayload(seo),
+        },
+        {
+          onSuccess: () => {
+            toast.success(v.status === "published" ? "Article published" : "Draft saved");
+            onClose();
+          },
+          onError: (err) => setSrv(fieldErrors(err)),
+        },
+      );
+    },
+  });
+  const { body, status } = form.values;
+  const errs: Record<string, string> = {
+    ...srv,
+    ...(fieldError(form, "title") ? { title: fieldError(form, "title") as string } : {}),
+    ...(fieldError(form, "body") ? { body: fieldError(form, "body") as string } : {}),
+  };
 
   return (
-    <form
-      noValidate
-      className="space-y-4"
-      onSubmit={(e) => {
-        e.preventDefault();
-        const next: Record<string, string> = {};
-        if (!title.trim()) next.title = "Enter a title";
-        if (!body.trim()) next.body = "Write the article";
-        setErrs(next);
-        if (Object.keys(next).length) return;
-        save.mutate(
-          {
-            id: article?.id,
-            title: title.trim(),
-            body,
-            category_id: categoryId || null,
-            status,
-          },
-          {
-            onSuccess: () => {
-              toast.success(status === "published" ? "Article published" : "Draft saved");
-              onClose();
-            },
-            onError: (err) => setErrs(fieldErrors(err)),
-          },
-        );
-      }}
-    >
+    <form noValidate className="space-y-4" onSubmit={form.handleSubmit}>
       <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_12rem_10rem]">
         <Field label="Title" htmlFor="art-title" error={errs.title}>
-          <Input
-            id="art-title"
-            maxLength={160}
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-          />
+          <Input id="art-title" maxLength={200} {...bind(form, "title")} />
         </Field>
         <Field label="Category" htmlFor="art-cat" error={errs.category_id}>
           <Select
             id="art-cat"
-            value={categoryId}
+            {...bindSelect(form, "category_id")}
             options={[
               { value: "", label: "No category" },
               ...categories.map((c) => ({ value: c.id, label: c.name })),
             ]}
-            onChange={(e) => setCategoryId(e.target.value)}
           />
         </Field>
         <Field label="Status" htmlFor="art-status">
           <Select
             id="art-status"
-            value={status}
+            {...bindSelect(form, "status")}
             options={[
               { value: "draft", label: "Draft" },
               { value: "published", label: "Published" },
             ]}
-            onChange={(e) => setStatus(e.target.value as ArticleStatus)}
           />
         </Field>
       </div>
@@ -484,8 +539,7 @@ function ArticleForm({
             id="art-body"
             rows={16}
             className="font-mono text-[13px] leading-6"
-            value={body}
-            onChange={(e) => setBody(e.target.value)}
+            {...bind(form, "body")}
           />
         </Field>
         <div>
@@ -504,6 +558,8 @@ function ArticleForm({
           </div>
         </div>
       </div>
+
+      <SeoFields idPrefix="art" value={seo} onChange={setSeo} errs={errs} />
 
       <FormError message={errs._form} />
       <div className="flex justify-end gap-2">

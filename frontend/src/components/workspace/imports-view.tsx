@@ -1,6 +1,14 @@
 "use client";
 
-import { AlertTriangle, ArrowLeft, CheckCircle2, FileUp, Loader2, RefreshCw } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowLeft,
+  CheckCircle2,
+  ClipboardList,
+  FileUp,
+  Loader2,
+  RefreshCw,
+} from "lucide-react";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -32,6 +40,7 @@ import {
   type SourceDef,
 } from "@/components/workspace/imports-sources";
 import { FormError, LoadError } from "@/components/workspace/list-shared";
+import { CutoverDialog, PreMigrationDialog } from "@/components/workspace/migration-readiness";
 import {
   useCloseImportConnection,
   useConnectImport,
@@ -48,6 +57,7 @@ import {
 } from "@/hooks/use-workspace";
 import { ApiError } from "@/lib/api/client";
 import type { ImportKind, ImportRun } from "@/lib/api/types";
+import { fieldError, useFormik } from "@/lib/forms";
 import { cn, formatDateTime } from "@/lib/utils";
 
 type Stage =
@@ -99,7 +109,7 @@ function Wizard({ onHistory }: { onHistory: () => void }) {
 
   if (stage.name === "source") {
     return (
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {[...SOURCES, null].map((s) => (
           <button
             key={s?.id ?? "csv"}
@@ -194,22 +204,65 @@ function ConnectStep({
   onDone: (c: { id: string; label?: string | null }) => void;
 }) {
   const connect = useConnectImport();
-  const [settings, setSettings] = useState<Record<string, string>>(() => ({
-    ...Object.fromEntries(
-      def.settings.filter((f) => f.options).map((f) => [f.key, f.options![0]!]),
-    ),
-    // Freshdesk imports archived tickets unless told otherwise.
-    ...(def.id === "freshdesk" ? { include_archived: "true" } : {}),
-  }));
   const [mode, setMode] = useState(def.authModes?.[0]?.id ?? "");
   const activeMode = def.authModes?.find((m) => m.id === mode);
   const credFields = activeMode?.credentials ?? def.credentials;
-  const [creds, setCreds] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
-
-  const missing = [...def.settings, ...credFields].some(
-    (f) => !f.optional && !(f.key in creds ? creds[f.key] : settings[f.key])?.trim(),
-  );
+  const form = useFormik<{ settings: Record<string, string>; creds: Record<string, string> }>({
+    initialValues: {
+      settings: {
+        ...Object.fromEntries(
+          def.settings.filter((f) => f.options).map((f) => [f.key, f.options![0]!]),
+        ),
+        // Freshdesk imports archived tickets unless told otherwise.
+        ...(def.id === "freshdesk" ? { include_archived: "true" } : {}),
+      },
+      creds: {},
+    },
+    // Every field that is not optional needs a value.
+    validate: (v) => {
+      const settingsErr: Record<string, string> = {};
+      const credsErr: Record<string, string> = {};
+      for (const f of def.settings)
+        if (!f.optional && !v.settings[f.key]?.trim()) settingsErr[f.key] = `Enter ${f.label}`;
+      for (const f of credFields)
+        if (!f.optional && !v.creds[f.key]?.trim()) credsErr[f.key] = `Enter ${f.label}`;
+      return {
+        ...(Object.keys(settingsErr).length ? { settings: settingsErr } : {}),
+        ...(Object.keys(credsErr).length ? { creds: credsErr } : {}),
+      };
+    },
+    onSubmit: (v) => {
+      setError(null);
+      const clean = (o: Record<string, string>) =>
+        Object.fromEntries(
+          Object.entries(o)
+            .filter(([, x]) => x.trim())
+            .map(([k, x]) => [k, x.trim()]),
+        );
+      const sent = clean(v.settings);
+      // Zoho: unchecked simply means the key is left out.
+      if (def.id === "zoho" && sent.include_archived !== "true") delete sent.include_archived;
+      connect.mutate(
+        { source: def.id, settings: sent, credentials: clean(v.creds) },
+        {
+          onSuccess: (c) => {
+            toast.success(`Connected to ${c.label ?? def.label}`);
+            onDone(c);
+          },
+          onError: (e) => setError(e instanceof ApiError ? e.userMessage : "Couldn't connect."),
+        },
+      );
+    },
+  });
+  const settings = form.values.settings;
+  const creds = form.values.creds;
+  const setSettings = (next: (s: Record<string, string>) => Record<string, string>) =>
+    form.setFieldValue("settings", next(form.values.settings));
+  const setCreds: React.Dispatch<React.SetStateAction<Record<string, string>>> = (next) =>
+    form.setFieldValue("creds", typeof next === "function" ? next(form.values.creds) : next);
+  const fieldErr = (group: "settings" | "creds", key: string) =>
+    fieldError(form, `${group}.${key}`);
 
   return (
     <Card className="max-w-xl space-y-4 p-5">
@@ -219,36 +272,15 @@ function ConnectStep({
         icon={<SourceIcon id={def.id} className="size-8" />}
       />
       <p className="text-sm text-muted-foreground">{def.help}</p>
-      <form
-        className="space-y-3"
-        noValidate
-        autoComplete="off"
-        onSubmit={(e) => {
-          e.preventDefault();
-          setError(null);
-          const clean = (o: Record<string, string>) =>
-            Object.fromEntries(
-              Object.entries(o)
-                .filter(([, v]) => v.trim())
-                .map(([k, v]) => [k, v.trim()]),
-            );
-          const sent = clean(settings);
-          // Zoho: unchecked simply means the key is left out.
-          if (def.id === "zoho" && sent.include_archived !== "true") delete sent.include_archived;
-          connect.mutate(
-            { source: def.id, settings: sent, credentials: clean(creds) },
-            {
-              onSuccess: (c) => {
-                toast.success(`Connected to ${c.label ?? def.label}`);
-                onDone(c);
-              },
-              onError: (e) => setError(e instanceof ApiError ? e.userMessage : "Couldn't connect."),
-            },
-          );
-        }}
-      >
+      <form className="space-y-3" noValidate autoComplete="off" onSubmit={form.handleSubmit}>
         {def.settings.map((f) => (
-          <Field key={f.key} label={f.label} htmlFor={`imp-${f.key}`} hint={f.hint}>
+          <Field
+            key={f.key}
+            label={f.label}
+            htmlFor={`imp-${f.key}`}
+            hint={f.hint}
+            error={fieldErr("settings", f.key)}
+          >
             {f.options ? (
               <Select
                 id={`imp-${f.key}`}
@@ -289,7 +321,12 @@ function ConnectStep({
             )}
           </fieldset>
         )}
-        <CredentialFields fields={credFields} creds={creds} setCreds={setCreds} />
+        <CredentialFields
+          fields={credFields}
+          creds={creds}
+          setCreds={setCreds}
+          errors={(k) => fieldErr("creds", k)}
+        />
         {(def.id === "freshdesk" || def.id === "zoho") && (
           <div>
             <label className="flex items-center gap-2 text-sm">
@@ -317,7 +354,7 @@ function ConnectStep({
           Keys are stored encrypted and never shown again; only the last 4 characters are.
         </p>
         <FormError message={error ?? undefined} />
-        <Button type="submit" disabled={missing} loading={connect.isPending}>
+        <Button type="submit" loading={connect.isPending}>
           Connect
         </Button>
       </form>
@@ -329,15 +366,17 @@ function CredentialFields({
   fields,
   creds,
   setCreds,
+  errors,
 }: {
   fields: FieldDef[];
   creds: Record<string, string>;
   setCreds: React.Dispatch<React.SetStateAction<Record<string, string>>>;
+  errors?: (key: string) => string | undefined;
 }) {
   return (
     <>
       {fields.map((f) => (
-        <Field key={f.key} label={f.label} htmlFor={`imp-${f.key}`}>
+        <Field key={f.key} label={f.label} htmlFor={`imp-${f.key}`} error={errors?.(f.key)}>
           <PasswordInput
             id={`imp-${f.key}`}
             autoComplete="off"
@@ -423,6 +462,7 @@ function PlanStep({
   const [teamMap, setTeamMap] = useState<Record<string, string | null> | null>(null);
   const [sync, setSync] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [checking, setChecking] = useState(false);
 
   if (discover.isPending) return <Skeleton className="h-48" />;
   if (discover.isError)
@@ -533,7 +573,15 @@ function PlanStep({
       </Card>
 
       <FormError message={error ?? undefined} />
+      {checking && (
+        <PreMigrationDialog connectionId={connectionId} onClose={() => setChecking(false)} />
+      )}
       <div className="flex flex-wrap justify-end gap-3">
+        {source !== "csv" && (
+          <Button variant="outline" onClick={() => setChecking(true)}>
+            <ClipboardList className="size-4" /> Check before import
+          </Button>
+        )}
         <Button
           variant="outline"
           disabled={kinds.length === 0}
@@ -621,6 +669,7 @@ function RunStep({
   onHistory: () => void;
 }) {
   const q = useImportRun(runId);
+  const [goLive, setGoLive] = useState(false);
   const syncNow = useSyncNow(runId);
   const syncStop = useSyncStop(runId);
   const { ask, dialog } = useConfirm();
@@ -783,8 +832,12 @@ function RunStep({
         </p>
       )}
 
+      {goLive && <CutoverDialog runId={runId} onClose={() => setGoLive(false)} />}
       {!busy && (
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" size="sm" onClick={() => setGoLive(true)}>
+            <ClipboardList className="size-4" /> Go-live checklist
+          </Button>
           <Button variant="ghost" size="sm" onClick={onAgain}>
             New import
           </Button>
@@ -936,6 +989,18 @@ function HistorySyncActions({ run }: { run: ImportRun }) {
   );
 }
 
+function GoLiveButton({ runId }: { runId: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div>
+      <Button variant="outline" size="sm" onClick={() => setOpen(true)}>
+        <ClipboardList className="size-4" /> Go-live checklist
+      </Button>
+      {open && <CutoverDialog runId={runId} onClose={() => setOpen(false)} />}
+    </div>
+  );
+}
+
 function History() {
   const q = useImportHistory();
   if (q.isPending) {
@@ -996,6 +1061,8 @@ function History() {
               <KindStats run={r} />
 
               {r.sync_on && r.source !== "csv" && <HistorySyncActions run={r} />}
+
+              <GoLiveButton runId={r.id} />
 
               {r.last_error && (
                 <p

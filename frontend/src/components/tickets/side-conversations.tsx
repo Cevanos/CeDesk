@@ -23,80 +23,98 @@ import {
   type SideConversation,
 } from "@/hooks/use-ticket-extras";
 import { ApiError } from "@/lib/api/client";
+import { bind, bindSelect, fieldError, useFormik, yup } from "@/lib/forms";
 import { formatDateTime } from "@/lib/utils";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+const splitEmails = (v: string) =>
+  v
+    .split(/[,;\s]+/)
+    .map((x) => x.trim())
+    .filter(Boolean);
+
+const startSchema = yup.object({
+  via: yup.string().oneOf(["email", "slack"]).required(),
+  to: yup.string().when("via", {
+    is: "email",
+    then: (s) =>
+      s.test("emails", "Enter valid email addresses.", (v) => {
+        const list = splitEmails(v ?? "");
+        return list.length > 0 && list.every((a) => EMAIL_RE.test(a));
+      }),
+  }),
+  subject: yup.string().when("via", {
+    is: "email",
+    then: (s) => s.trim().required("Add a subject.").max(200),
+  }),
+  channel: yup.string().when("via", {
+    is: "slack",
+    then: (s) => s.trim().required("Enter a Slack channel."),
+  }),
+  body: yup.string().trim().required("Write a message."),
+});
+
+const replySchema = yup.object({ body: yup.string().trim().required() });
+
 function StartForm({ ticketId, close }: { ticketId: string; close: () => void }) {
   const email = useStartSideEmail(ticketId);
   const slack = useStartSideSlack(ticketId);
-  const [via, setVia] = useState<"email" | "slack">("email");
-  const [to, setTo] = useState("");
-  const [subject, setSubject] = useState("");
-  const [channel, setChannel] = useState("");
-  const [body, setBody] = useState("");
   const [error, setError] = useState<string | null>(null);
   const pending = email.isPending || slack.isPending;
 
-  const onError = (e: unknown) => {
-    if (via === "slack" && e instanceof ApiError) {
-      if (e.status === 409) return setError("Install Slack in Settings → Apps.");
-      if (e.status === 422)
-        return setError("That channel doesn't exist, or the bot isn't in it. Check the name.");
-      if (e.status === 503) return setError("Slack didn't answer. Please try again.");
-    }
-    setError(errText(e));
-  };
-  const onSuccess = () => {
-    toast.success("Side conversation started");
-    close();
-  };
+  const form = useFormik({
+    initialValues: { via: "email", to: "", subject: "", channel: "", body: "" },
+    validationSchema: startSchema,
+    onSubmit: (v) => {
+      setError(null);
+      const onError = (e: unknown) => {
+        if (v.via === "slack" && e instanceof ApiError) {
+          if (e.status === 409) return setError("Install Slack in Settings → Apps.");
+          if (e.status === 422)
+            return setError("That channel doesn't exist, or the bot isn't in it. Check the name.");
+          if (e.status === 503) return setError("Slack didn't answer. Please try again.");
+        }
+        setError(errText(e));
+      };
+      const onSuccess = () => {
+        toast.success("Side conversation started");
+        close();
+      };
+      if (v.via === "email")
+        email.mutate(
+          { to: splitEmails(v.to), subject: v.subject.trim(), body: v.body.trim() },
+          { onSuccess, onError },
+        );
+      else slack.mutate({ channel: v.channel.trim(), body: v.body.trim() }, { onSuccess, onError });
+    },
+  });
+  const via = form.values.via;
+  // One banner, like before: the first problem in field order.
+  const problem =
+    error ??
+    (via === "email"
+      ? (fieldError(form, "to") ?? fieldError(form, "subject"))
+      : fieldError(form, "channel")) ??
+    fieldError(form, "body") ??
+    null;
 
   return (
-    <form
-      className="space-y-2"
-      onSubmit={(e) => {
-        e.preventDefault();
-        setError(null);
-        if (!body.trim()) return;
-        if (via === "email") {
-          const list = to
-            .split(/[,;\s]+/)
-            .map((s) => s.trim())
-            .filter(Boolean);
-          if (!list.length || !list.every((a) => EMAIL_RE.test(a)))
-            return setError("Enter valid email addresses.");
-          if (!subject.trim()) return setError("Add a subject.");
-          email.mutate(
-            { to: list, subject: subject.trim(), body: body.trim() },
-            { onSuccess, onError },
-          );
-        } else {
-          if (!channel.trim()) return setError("Enter a Slack channel.");
-          slack.mutate({ channel: channel.trim(), body: body.trim() }, { onSuccess, onError });
-        }
-      }}
-    >
-      <Select
-        value={via}
-        onChange={(e) => setVia(e.target.value as "email" | "slack")}
-        aria-label="Start by"
-      >
+    <form className="space-y-2" onSubmit={form.handleSubmit} noValidate>
+      <Select {...bindSelect(form, "via")} aria-label="Start by">
         <option value="email">By email</option>
         <option value="slack">In Slack</option>
       </Select>
       {via === "email" ? (
         <>
           <Input
-            value={to}
-            onChange={(e) => setTo(e.target.value)}
+            {...bind(form, "to")}
             placeholder="To (comma-separated emails)"
             aria-label="To"
             className="h-9"
           />
           <Input
-            value={subject}
-            onChange={(e) => setSubject(e.target.value)}
+            {...bind(form, "subject")}
             placeholder="Subject"
             aria-label="Subject"
             maxLength={200}
@@ -105,23 +123,21 @@ function StartForm({ ticketId, close }: { ticketId: string; close: () => void })
         </>
       ) : (
         <Input
-          value={channel}
-          onChange={(e) => setChannel(e.target.value)}
+          {...bind(form, "channel")}
           placeholder="#channel"
           aria-label="Slack channel"
           className="h-9"
         />
       )}
       <Textarea
-        value={body}
-        onChange={(e) => setBody(e.target.value)}
+        {...bind(form, "body")}
         placeholder="Message"
         aria-label="Message"
         className="min-h-20"
       />
-      {error && (
+      {problem && (
         <p role="alert" className="text-sm text-danger">
-          {error}
+          {problem}
         </p>
       )}
       <div className="flex gap-2">
@@ -146,7 +162,15 @@ function Side({
   canEdit: boolean;
 }) {
   const reply = useSideReply(ticketId);
-  const [body, setBody] = useState("");
+  const replyForm = useFormik({
+    initialValues: { body: "" },
+    validationSchema: replySchema,
+    onSubmit: (v, { resetForm }) =>
+      reply.mutate(
+        { side_id: s.id, body: v.body.trim() },
+        { onSuccess: () => resetForm(), onError: toastError },
+      ),
+  });
   const slack = s.via === "slack";
   const Icon = slack ? MessageSquare : Mail;
   const to = Array.isArray(s.to) ? s.to.join(", ") : s.to;
@@ -188,20 +212,9 @@ function Side({
         ))}
       </ul>
       {canEdit && (
-        <form
-          className="mt-2 flex gap-2"
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (!body.trim()) return;
-            reply.mutate(
-              { side_id: s.id, body: body.trim() },
-              { onSuccess: () => setBody(""), onError: toastError },
-            );
-          }}
-        >
+        <form className="mt-2 flex gap-2" onSubmit={replyForm.handleSubmit} noValidate>
           <Input
-            value={body}
-            onChange={(e) => setBody(e.target.value)}
+            {...bind(replyForm, "body")}
             placeholder="Write back"
             aria-label="Write back"
             className="h-9"
@@ -211,7 +224,7 @@ function Side({
             size="sm"
             className="h-9"
             loading={reply.isPending}
-            disabled={!body.trim()}
+            disabled={!replyForm.values.body.trim()}
           >
             Send
           </Button>

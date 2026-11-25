@@ -1,12 +1,9 @@
 "use client";
 
-import { zodResolver } from "@hookform/resolvers/zod";
 import { AlertCircle, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
-import { useForm, useWatch } from "react-hook-form";
-import { z } from "zod";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { PasswordInput } from "@/components/auth/password-input";
 import { Button, Field, Input } from "@/components/ui/primitives";
@@ -14,14 +11,15 @@ import { useSignIn, useSsoInfo, useTwoFactorSignIn } from "@/hooks/use-auth";
 import { useSignupConfig } from "@/hooks/use-signup";
 import { ApiError } from "@/lib/api/client";
 import type { SignInResponse } from "@/lib/api/types";
+import { bind, fieldError, useFormik, yup } from "@/lib/forms";
 import { safeNext } from "@/lib/utils";
 
-const schema = z.object({
-  workspace: z.string().trim().min(1, "Enter your workspace").max(64),
-  email: z.string().trim().min(1, "Enter your email").email("Enter a valid email"),
-  password: z.string().min(1, "Enter your password"),
+const schema = yup.object({
+  workspace: yup.string().trim().required("Enter your workspace").max(64),
+  email: yup.string().trim().required("Enter your email").email("Enter a valid email"),
+  password: yup.string().required("Enter your password"),
 });
-type Values = z.infer<typeof schema>;
+type Values = yup.InferType<typeof schema>;
 
 /** Where to go once signed in. An expired password only gets Change password. */
 function landing(r: SignInResponse | undefined, next: string | null) {
@@ -62,63 +60,71 @@ export function LoginForm() {
   // After a correct password the page asks for the code (the proxy holds the token).
   const [step, setStep] = useState<"password" | "code">("password");
   const [recovery, setRecovery] = useState(false);
-  const [code, setCode] = useState("");
   const otpRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     if (step === "code") otpRef.current?.focus();
   }, [step, recovery]);
 
-  const {
-    register,
-    handleSubmit,
-    setFocus,
-    control,
-    formState: { errors },
-  } = useForm<Values>({
-    resolver: zodResolver(schema),
-    defaultValues: {
-      workspace: fromUrl,
-      email: "",
-      password: "",
+  const form = useFormik<Values>({
+    initialValues: { workspace: fromUrl, email: "", password: "" },
+    validationSchema: schema,
+    validateOnBlur: false,
+    onSubmit: (raw) => {
+      const v = schema.cast(raw) as Values;
+      signIn.mutate(v, {
+        onSuccess: (r) => {
+          if (r?.two_factor_required) {
+            setStep("code");
+            return;
+          }
+          router.replace(landing(r, params.get("next")));
+          router.refresh();
+        },
+      });
     },
   });
 
-  const workspace = useWatch({ control, name: "workspace" }) ?? "";
+  const workspace = form.values.workspace ?? "";
   const sso = useSsoInfo(useDebounced(workspace));
   const ssoOn = sso.data?.enabled === true && workspace.trim() !== "";
 
   // Only a workspace passed in the URL (e.g. right after sign-up) is prefilled.
+  const emailRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
-    if (fromUrl) setFocus("email");
-  }, [setFocus, fromUrl]);
+    if (fromUrl) emailRef.current?.focus();
+  }, [fromUrl]);
 
-  const onSubmit = handleSubmit((v) => {
-    signIn.mutate(v, {
-      onSuccess: (r) => {
-        if (r?.two_factor_required) {
-          setStep("code");
-          return;
-        }
-        router.replace(landing(r, params.get("next")));
-        router.refresh();
-      },
-    });
-  });
-
-  const onCode = (e: React.FormEvent) => {
-    e.preventDefault();
-    const value = recovery ? code.trim() : code.replace(/\s/g, "");
-    if (!value) return;
-    twoFactor.mutate(
-      { code: value, recovery },
-      {
-        onSuccess: (r) => {
-          router.replace(landing(r, params.get("next")));
-          router.refresh();
+  const codeSchema = useMemo(
+    () =>
+      yup.object({
+        code: yup
+          .string()
+          .default("")
+          .test(
+            "code",
+            recovery ? "Enter a recovery code" : "Enter the 6 digit code",
+            (v) => (recovery ? (v ?? "").trim() : (v ?? "").replace(/\s/g, "")) !== "",
+          ),
+      }),
+    [recovery],
+  );
+  const codeForm = useFormik({
+    initialValues: { code: "" },
+    validationSchema: codeSchema,
+    validateOnBlur: false,
+    onSubmit: (v) => {
+      const value = recovery ? v.code.trim() : v.code.replace(/\s/g, "");
+      twoFactor.mutate(
+        { code: value, recovery },
+        {
+          onSuccess: (r) => {
+            router.replace(landing(r, params.get("next")));
+            router.refresh();
+          },
         },
-      },
-    );
-  };
+      );
+    },
+  });
 
   if (step === "code") {
     const e2 = twoFactor.error instanceof ApiError ? twoFactor.error : null;
@@ -146,13 +152,16 @@ export function LoginForm() {
             </div>
           </div>
         )}
-        <form onSubmit={onCode} noValidate className="mt-7 space-y-4">
-          <Field label={recovery ? "Recovery code" : "Code"} htmlFor="otp">
+        <form onSubmit={codeForm.handleSubmit} noValidate className="mt-7 space-y-4">
+          <Field
+            label={recovery ? "Recovery code" : "Code"}
+            htmlFor="otp"
+            error={fieldError(codeForm, "code")}
+          >
             <Input
               id="otp"
               ref={otpRef}
-              value={code}
-              onChange={(e) => setCode(e.target.value)}
+              {...bind(codeForm, "code")}
               autoComplete="one-time-code"
               inputMode={recovery ? "text" : "numeric"}
               autoCapitalize="none"
@@ -170,7 +179,7 @@ export function LoginForm() {
             className="font-medium text-primary-ink hover:underline"
             onClick={() => {
               setRecovery((r) => !r);
-              setCode("");
+              codeForm.resetForm();
               twoFactor.reset();
             }}
           >
@@ -181,7 +190,7 @@ export function LoginForm() {
             className="text-muted-foreground hover:underline"
             onClick={() => {
               setStep("password");
-              setCode("");
+              codeForm.resetForm();
               setRecovery(false);
               twoFactor.reset();
               signIn.reset();
@@ -228,33 +237,32 @@ export function LoginForm() {
         </div>
       )}
 
-      <form onSubmit={onSubmit} noValidate className="mt-7 space-y-4">
-        <Field label="Workspace" htmlFor="workspace" error={errors.workspace?.message}>
+      <form onSubmit={form.handleSubmit} noValidate className="mt-7 space-y-4">
+        <Field label="Workspace" htmlFor="workspace" error={fieldError(form, "workspace")}>
           <Input
             id="workspace"
             autoComplete="organization"
             autoCapitalize="none"
             spellCheck={false}
             placeholder="acme-store"
-            aria-invalid={!!errors.workspace}
-            {...register("workspace")}
+            {...bind(form, "workspace")}
           />
         </Field>
-        <Field label="Email" htmlFor="email" error={errors.email?.message}>
+        <Field label="Email" htmlFor="email" error={fieldError(form, "email")}>
           <Input
             id="email"
+            ref={emailRef}
             type="email"
             inputMode="email"
             autoComplete="username"
             placeholder="you@company.com"
-            aria-invalid={!!errors.email}
-            {...register("email")}
+            {...bind(form, "email")}
           />
         </Field>
         <Field
           label="Password"
           htmlFor="password"
-          error={errors.password?.message}
+          error={fieldError(form, "password")}
           action={
             <Link
               href="/forgot-password"
@@ -268,8 +276,7 @@ export function LoginForm() {
             id="password"
             autoComplete="current-password"
             placeholder="••••••••••"
-            aria-invalid={!!errors.password}
-            {...register("password")}
+            {...bind(form, "password")}
           />
         </Field>
 

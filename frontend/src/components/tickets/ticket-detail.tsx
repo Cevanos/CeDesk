@@ -2,6 +2,7 @@
 
 import { ArrowLeft, CheckCircle2, RefreshCw } from "lucide-react";
 import Link from "next/link";
+import { useState } from "react";
 import { toast } from "sonner";
 
 import { AiSummaryCard } from "@/components/tickets/ai-assist";
@@ -12,12 +13,14 @@ import { SnoozeBanner, SnoozeButton } from "@/components/tickets/inbox/snooze";
 import { TicketMoreMenu } from "@/components/tickets/inbox/transcript";
 import { JiraHeaderChip } from "@/components/tickets/jira-card";
 import { MacrosMenu } from "@/components/tickets/macros-menu";
+import { latestMessage } from "@/components/tickets/reply-collision";
+import { ReceiptPanel, ResolveDialog, useReceiptPolicy } from "@/components/tickets/resolution";
 import { TicketSidebar } from "@/components/tickets/sidebar";
 import { SlaPill } from "@/components/tickets/sla";
 import { AcceptCard, HandoverCard, Thread } from "@/components/tickets/thread";
 import { Badge, Button, EmptyState, Skeleton } from "@/components/ui/primitives";
 import { useCurrentUser } from "@/hooks/use-auth";
-import { useResolveTicket, useTicket } from "@/hooks/use-tickets";
+import { useTicket, useResolveTicket } from "@/hooks/use-tickets";
 import { useAutomationAccess } from "@/hooks/use-workspace";
 import { ApiError } from "@/lib/api/client";
 import { inboxActions } from "@/lib/permissions";
@@ -29,6 +32,8 @@ export function TicketDetail({ id }: { id: string }) {
   const automation = useAutomationAccess();
   const q = useTicket(id);
   const resolve = useResolveTicket(id);
+  const policy = useReceiptPolicy(q.data?.ticket.team_id);
+  const [receiptOpen, setReceiptOpen] = useState(false);
 
   if (q.isPending) {
     return (
@@ -98,12 +103,13 @@ export function TicketDetail({ id }: { id: string }) {
         <span className="font-mono font-medium text-foreground-2">{ticket.label}</span>
       </nav>
 
-      <header className="relative rounded-2xl border border-border bg-surface shadow-card">
+      <header className="relative overflow-hidden rounded-2xl border border-border bg-surface shadow-card">
+        <div aria-hidden className="absolute inset-x-0 top-0 h-1 bg-ai-gradient" />
         <div
           aria-hidden
-          className="absolute inset-x-0 top-0 h-1 rounded-t-2xl bg-linear-to-r from-primary via-primary/60 to-transparent"
+          className="pointer-events-none absolute -top-24 -right-16 size-56 rounded-full bg-ai-gradient opacity-[0.07] blur-3xl"
         />
-        <div className="flex flex-wrap items-start gap-4 p-4 sm:p-6">
+        <div className="relative flex flex-wrap items-start gap-4 p-4 sm:p-6">
           <div className="min-w-0 flex-1 basis-72">
             <div className="flex flex-wrap items-center gap-2">
               <span className="rounded-md bg-surface-2 px-2 py-0.5 font-mono text-xs font-semibold text-muted-foreground">
@@ -133,7 +139,7 @@ export function TicketDetail({ id }: { id: string }) {
               </p>
             )}
           </div>
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
             <Button
               variant="outline"
               size="icon"
@@ -157,10 +163,12 @@ export function TicketDetail({ id }: { id: string }) {
               <Button
                 loading={resolve.isPending}
                 onClick={() =>
-                  resolve.mutate(
-                    { etag },
-                    { onSuccess: () => toast.success(`${ticket.label} resolved`) },
-                  )
+                  policy.form
+                    ? setReceiptOpen(true)
+                    : resolve.mutate(
+                        { etag },
+                        { onSuccess: () => toast.success(`${ticket.label} resolved`) },
+                      )
                 }
               >
                 <CheckCircle2 className="size-4" /> Resolve
@@ -169,6 +177,16 @@ export function TicketDetail({ id }: { id: string }) {
           </div>
         </div>
       </header>
+
+      {receiptOpen && (
+        <ResolveDialog
+          ticketId={ticket.id}
+          label={ticket.label}
+          etag={etag}
+          required={policy.required}
+          onClose={() => setReceiptOpen(false)}
+        />
+      )}
 
       {ticket.snoozed_until && (
         <SnoozeBanner ticketId={ticket.id} until={ticket.snoozed_until} canEdit={canChange} />
@@ -185,6 +203,13 @@ export function TicketDetail({ id }: { id: string }) {
 
       <div className="mt-5 grid flex-1 gap-5 lg:grid-cols-[minmax(0,1fr)_21rem]">
         <section className="flex min-w-0 flex-col gap-4" aria-label="Conversation">
+          {ticket.status === "resolved" && (
+            <ReceiptPanel
+              ticketId={ticket.id}
+              resolution={ticket.resolution}
+              canChange={canChange}
+            />
+          )}
           <HandoverCard ticket={ticket} />
           <AcceptCard ticket={ticket} />
           <AiSummaryCard ticketId={ticket.id} />
@@ -198,6 +223,9 @@ export function TicketDetail({ id }: { id: string }) {
               accepted={ticket.accepted !== false}
               channel={ticket.channel}
               replyCc={ticket.reply_cc}
+              latest={latestMessage(ticket.messages)}
+              myId={user?.id}
+              onCheck={async () => latestMessage((await q.refetch()).data?.ticket.messages)}
             />
           </div>
         </section>

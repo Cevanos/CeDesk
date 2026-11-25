@@ -8,6 +8,7 @@ import { DatePicker } from "@/components/ui/date-picker";
 import { MenuItem, Popover } from "@/components/ui/overlay";
 import { Button } from "@/components/ui/primitives";
 import { useSnoozeTicket, useUnsnoozeTicket } from "@/hooks/use-inbox-tools";
+import { fieldError, useFormik, yup } from "@/lib/forms";
 import {
   SNOOZE_MIN_MS,
   formatSnoozeTime,
@@ -53,12 +54,33 @@ export function SnoozeMenu({
   );
 }
 
+function isFarEnough(v: string | undefined) {
+  const iso = localInputToIso(v ?? "");
+  return !!iso && new Date(iso).getTime() >= Date.now() + SNOOZE_MIN_MS;
+}
+
 function SnoozeChoices({ onPick, close }: { onPick: (until: string) => void; close: () => void }) {
   const [picking, setPicking] = useState(false);
-  const [value, setValue] = useState("");
   // Read once per open: a stale "later today" from an hour ago would be wrong.
   const [presets] = useState(() => snoozePresets());
   const [min] = useState(() => localInputValue(new Date(Date.now() + SNOOZE_MIN_MS)));
+  const form = useFormik({
+    initialValues: { until: "" },
+    validationSchema: yup.object({
+      until: yup
+        .string()
+        .required("Pick a date and time.")
+        .test("future", "Snooze until a time at least a minute from now.", isFarEnough),
+    }),
+    onSubmit: (v) => {
+      const iso = localInputToIso(v.until);
+      if (!iso) return;
+      close();
+      onPick(iso);
+    },
+  });
+  const value = form.values.until;
+  const err = fieldError(form, "until");
 
   return (
     <div>
@@ -80,19 +102,7 @@ function SnoozeChoices({ onPick, close }: { onPick: (until: string) => void; clo
           <CalendarClock className="size-4" aria-hidden /> Pick a date and time…
         </MenuItem>
       ) : (
-        <form
-          className="space-y-2 p-2"
-          onSubmit={(e) => {
-            e.preventDefault();
-            const iso = localInputToIso(value);
-            if (!iso || new Date(iso).getTime() < Date.now() + SNOOZE_MIN_MS) {
-              toast.error("Snooze until a time at least a minute from now.");
-              return;
-            }
-            close();
-            onPick(iso);
-          }}
-        >
+        <form className="space-y-2 p-2" onSubmit={form.handleSubmit} noValidate>
           <DatePicker
             inline
             required
@@ -100,8 +110,13 @@ function SnoozeChoices({ onPick, close }: { onPick: (until: string) => void; clo
             aria-label="Snooze until"
             value={value}
             min={min}
-            onChange={setValue}
+            onChange={(v) => void form.setFieldValue("until", v)}
           />
+          {err && (
+            <p role="alert" className="text-xs text-danger">
+              {err}
+            </p>
+          )}
           <Button type="submit" size="sm" className="w-full" disabled={!value}>
             Snooze
           </Button>

@@ -22,7 +22,9 @@ describe("queryKeys", () => {
   it("separates keys that must not invalidate each other", () => {
     expect(queryKeys.portal.ticket("1")).not.toEqual(queryKeys.tickets.detail("1"));
     expect(queryKeys.portal.tickets("a")).not.toEqual(queryKeys.portal.tickets("b"));
-    expect(queryKeys.public.article("a", "1")).not.toEqual(queryKeys.public.article("b", "1"));
+    expect(queryKeys.public.article("a", "1", "")).not.toEqual(
+      queryKeys.public.article("b", "1", ""),
+    );
     expect(queryKeys.notifications.list(true)).not.toEqual(queryKeys.notifications.list(false));
   });
 

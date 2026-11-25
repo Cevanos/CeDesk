@@ -4,6 +4,7 @@ import { Ban, Megaphone } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
+import { PageHeader } from "@/components/ui/page-header";
 import { Badge, Card, EmptyState, Skeleton } from "@/components/ui/primitives";
 import { useCurrentUser } from "@/hooks/use-auth";
 import { ApiError } from "@/lib/api/client";
@@ -24,7 +25,7 @@ export function CampaignsGate({ children }: { children: React.ReactNode }) {
       </Card>
     );
   }
-  return <div className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6">{children}</div>;
+  return <div className="mx-auto w-full max-w-6xl px-3 py-5 sm:px-6 sm:py-8">{children}</div>;
 }
 
 export function CampaignTabs() {
@@ -38,10 +39,13 @@ export function CampaignTabs() {
     },
   ];
   return (
-    <div className="mb-5 flex items-center gap-2">
-      <Megaphone className="size-5 text-primary-ink" aria-hidden />
-      <h1 className="mr-3 text-xl font-semibold tracking-tight">Campaigns</h1>
-      <nav aria-label="Campaigns" className="flex gap-1">
+    <PageHeader
+      className="mb-5"
+      icon={Megaphone}
+      title="Campaigns"
+      description="Send one email to a segment of your customers and track how it lands."
+    >
+      <nav aria-label="Campaigns" className="-mx-1 flex flex-wrap gap-1">
         {tabs.map((t) => (
           <Link
             key={t.href}
@@ -58,7 +62,7 @@ export function CampaignTabs() {
           </Link>
         ))}
       </nav>
-    </div>
+    </PageHeader>
   );
 }
 
@@ -98,7 +102,10 @@ export function ProgressBar({ value, max, label }: { value: number; max: number;
       aria-valuenow={value}
       className="h-1.5 w-full overflow-hidden rounded-full bg-surface-3"
     >
-      <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${pct}%` }} />
+      <div
+        className="h-full rounded-full bg-ai-gradient transition-all"
+        style={{ width: `${pct}%` }}
+      />
     </div>
   );
 }

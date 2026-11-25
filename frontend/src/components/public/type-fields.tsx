@@ -2,6 +2,7 @@
 
 import { Field, Input, Select } from "@/components/ui/primitives";
 import type { TypeField } from "@/lib/api/types";
+import { yup } from "@/lib/forms";
 
 /** What the customer typed for a ticket type's own fields, by field key. */
 export type FieldValues = Record<string, string>;
@@ -76,6 +77,39 @@ export function fieldsPayload(
     if (!raw) continue;
     const n = Number(raw);
     out[f.key] = f.kind === "number" && Number.isFinite(n) ? n : raw;
+  }
+  return out;
+}
+
+/**
+ * Yup shape for a ticket type's own fields, keyed by field key (values are strings, as
+ * typed). Required fields must be non-blank; number fields must parse as a number.
+ */
+export function typeFieldsSchema(fields: TypeField[]) {
+  const shape: Record<string, yup.StringSchema> = {};
+  for (const f of fields) {
+    let s = yup.string().trim();
+    if (f.kind === "number") {
+      s = s.test("number", `${f.label} must be a number.`, (v) => !v || Number.isFinite(Number(v)));
+    }
+    shape[f.key] = f.required ? s.required(`Enter ${f.label}.`) : s;
+  }
+  return yup.object(shape);
+}
+
+/**
+ * Formik's nested `fields` errors, as the flat `{ "fields.<key>": message }` map that
+ * `TypeFields` reads. Only fields that were touched (or the whole form once submitted).
+ */
+export function typeFieldErrors(form: {
+  errors: { fields?: unknown };
+  touched: { fields?: unknown };
+}): Record<string, string> {
+  const errs = (form.errors.fields ?? {}) as Record<string, unknown>;
+  const touched = (form.touched.fields ?? {}) as Record<string, unknown>;
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(errs)) {
+    if (typeof v === "string" && touched[k]) out[`fields.${k}`] = v;
   }
   return out;
 }

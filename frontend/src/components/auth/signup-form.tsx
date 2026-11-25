@@ -1,12 +1,9 @@
 "use client";
 
-import { zodResolver } from "@hookform/resolvers/zod";
 import { AlertCircle, ArrowLeft, MailCheck } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { useForm } from "react-hook-form";
-import { z } from "zod";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { PasswordInput } from "@/components/auth/password-input";
 import { Button, Field, Input } from "@/components/ui/primitives";
@@ -18,19 +15,27 @@ import {
   type SignupStarted,
 } from "@/hooks/use-signup";
 import { ApiError } from "@/lib/api/client";
+import { bind, fieldError, useFormik, yup } from "@/lib/forms";
 import { cleanSlugInput, slugProblem, suggestSlug } from "@/lib/workspace-slug";
 
-const schema = z.object({
-  workspace_name: z.string().trim().min(1, "Enter a workspace name").max(120),
-  workspace: z.string().superRefine((v, ctx) => {
-    const p = slugProblem(v);
-    if (p) ctx.addIssue({ code: "custom", message: p });
-  }),
-  name: z.string().trim().min(1, "Enter your name").max(120),
-  email: z.string().trim().min(1, "Enter your email").email("Enter a valid email"),
-  password: z.string().min(10, "Use at least 10 characters").max(128, "Use at most 128 characters"),
+const schema = yup.object({
+  workspace_name: yup.string().trim().required("Enter a workspace name").max(120),
+  workspace: yup
+    .string()
+    .default("")
+    .test("slug", (v, ctx) => {
+      const p = slugProblem(v ?? "");
+      return p ? ctx.createError({ message: p }) : true;
+    }),
+  name: yup.string().trim().required("Enter your name").max(120),
+  email: yup.string().trim().required("Enter your email").email("Enter a valid email"),
+  password: yup
+    .string()
+    .default("")
+    .min(10, "Use at least 10 characters")
+    .max(128, "Use at most 128 characters"),
 });
-type Values = z.infer<typeof schema>;
+type Values = yup.InferType<typeof schema>;
 
 /** Seconds from `now` until an ISO time, never below 0. */
 function secondsUntil(iso: string | null, now: number): number {
@@ -164,9 +169,8 @@ export function SignupForm({ nonce }: { nonce?: string }) {
   // Held in memory only: not in the URL and not in storage. A refresh starts over.
   const [started, setStarted] = useState<SignupStarted | null>(null);
   const [email, setEmail] = useState("");
-  const [code, setCode] = useState("");
-  const [newSlug, setNewSlug] = useState<string | null>(null);
-  const [slugError, setSlugError] = useState<string | null>(null);
+  // Shown only after the first-choice address turned out to be taken.
+  const [slugOpen, setSlugOpen] = useState(false);
   const [banner, setBanner] = useState<string | null>(null);
   const [expiredCode, setExpiredCode] = useState(false);
   const [blockedUntil, setBlockedUntil] = useState<number | null>(null);
@@ -176,18 +180,120 @@ export function SignupForm({ nonce }: { nonce?: string }) {
   const slugTouched = useRef(false);
   const codeRef = useRef<HTMLInputElement>(null);
 
-  const {
-    register,
-    handleSubmit,
-    setValue,
-    setError,
-    setFocus,
-    getValues,
-    resetField,
-    formState: { errors },
-  } = useForm<Values>({
-    resolver: zodResolver(schema),
-    defaultValues: { workspace_name: "", workspace: "", name: "", email: "", password: "" },
+  const form = useFormik<Values>({
+    initialValues: { workspace_name: "", workspace: "", name: "", email: "", password: "" },
+    validationSchema: schema,
+    validateOnBlur: false,
+    onSubmit: (raw) => {
+      const v = schema.cast(raw) as Values;
+      setBanner(null);
+      if (needsCaptcha && !captcha) {
+        setBanner("Complete the check below, then try again.");
+        return;
+      }
+      start.mutate(
+        { ...v, captcha_token: captcha },
+        {
+          onSuccess: (r) => {
+            setEmail(v.email.trim());
+            setStarted(r);
+          },
+          onError: (e) => {
+            // A CAPTCHA token works once, so every failed try needs a new one.
+            setCaptcha(null);
+            setCaptchaReset((n) => n + 1);
+            if (common(e)) return;
+            const err = e as ApiError;
+            if (err.status === 409 && err.code === "slug_taken") {
+              form.setFieldError("workspace", "That address is taken. Try another.");
+              document.getElementById("workspace")?.focus();
+            } else if (err.status === 403 && err.code === "captcha_failed") {
+              setBanner("The check failed. Please try again.");
+            } else if (err.status === 422) {
+              let shown = false;
+              for (const f of [
+                "workspace",
+                "workspace_name",
+                "name",
+                "email",
+                "password",
+              ] as const) {
+                const m = err.fieldMessage(f);
+                if (m) {
+                  form.setFieldError(f, m);
+                  shown = true;
+                }
+              }
+              if (!shown) setBanner(err.message);
+            } else setBanner(err.userMessage);
+          },
+        },
+      );
+    },
+  });
+
+  // Step two: the emailed code, and (if the first address was taken) a new address.
+  const verifySchema = useMemo(
+    () =>
+      yup.object({
+        code: yup
+          .string()
+          .default("")
+          // Pasted "123 456" or "123-456" works; the backend strips them too.
+          .test("code", "Enter the 6 digit code", (v) => (v ?? "").replace(/[\s-]/g, "") !== ""),
+        slug: yup
+          .string()
+          .default("")
+          .test("slug", (v, ctx) => {
+            if (!slugOpen) return true;
+            const p = slugProblem(cleanSlugInput(v ?? "").trim());
+            return p ? ctx.createError({ message: p }) : true;
+          }),
+      }),
+    [slugOpen],
+  );
+  const verifyForm = useFormik({
+    initialValues: { code: "", slug: "" },
+    validationSchema: verifySchema,
+    validateOnBlur: false,
+    onSubmit: (v) => {
+      if (!started) return;
+      const clean = v.code.replace(/[\s-]/g, "");
+      const slug = slugOpen ? cleanSlugInput(v.slug).trim() : undefined;
+      setBanner(null);
+      verify.mutate(
+        { signup_id: started.signup_id, code: clean, ...(slug ? { workspace: slug } : {}) },
+        {
+          onSuccess: (r) => {
+            router.replace(`/login?workspace=${encodeURIComponent(r.workspace)}`);
+          },
+          onError: (err) => {
+            if (common(err)) return;
+            const a = err as ApiError;
+            if (a.status === 409 && a.code === "slug_taken") {
+              // Taken in the meantime: ask for another address, then resend the same code.
+              if (!slugOpen) verifyForm.setFieldValue("slug", form.values.workspace, false);
+              setSlugOpen(true);
+              verifyForm.setFieldError(
+                "slug",
+                "That address was taken while you were signing up. Choose another.",
+              );
+            } else if (a.status === 422 && a.code === "bad_code") {
+              verifyForm.setFieldValue("code", "", false);
+              setBanner("That code didn't work. Check it and try again.");
+              codeRef.current?.focus();
+            } else if (a.status === 410 && a.code === "signup_expired") {
+              toForm();
+              setBanner("This sign-up has expired. Please start again.");
+            } else if (a.status === 410) {
+              setExpiredCode(true);
+              verifyForm.setFieldValue("code", "", false);
+              setBanner("That code has expired or was tried too many times. Send a new one.");
+            } else setBanner(a.userMessage);
+          },
+        },
+      );
+    },
   });
 
   const now = useNow(Boolean(started) || blockedUntil !== null);
@@ -220,104 +326,19 @@ export function SignupForm({ nonce }: { nonce?: string }) {
 
   const toForm = () => {
     setStarted(null);
-    setCode("");
-    setNewSlug(null);
-    setSlugError(null);
+    verifyForm.resetForm();
+    setSlugOpen(false);
     setExpiredCode(false);
     setBanner(null);
     // What they typed stays, except the password.
-    resetField("password", { defaultValue: "" });
+    form.setFieldValue("password", "", false);
+    form.setFieldTouched("password", false, false);
+    form.setFieldError("password", undefined);
     setCaptcha(null);
     setCaptchaReset((n) => n + 1);
   };
 
   const needsCaptcha = Boolean(config.data?.captchaSiteKey);
-
-  const onSubmit = handleSubmit((v) => {
-    setBanner(null);
-    if (needsCaptcha && !captcha) {
-      setBanner("Complete the check below, then try again.");
-      return;
-    }
-    start.mutate(
-      { ...v, captcha_token: captcha },
-      {
-        onSuccess: (r) => {
-          setEmail(v.email.trim());
-          setStarted(r);
-        },
-        onError: (e) => {
-          // A CAPTCHA token works once, so every failed try needs a new one.
-          setCaptcha(null);
-          setCaptchaReset((n) => n + 1);
-          if (common(e)) return;
-          const err = e as ApiError;
-          if (err.status === 409 && err.code === "slug_taken") {
-            setError("workspace", { message: "That address is taken. Try another." });
-            setFocus("workspace");
-          } else if (err.status === 403 && err.code === "captcha_failed") {
-            setBanner("The check failed. Please try again.");
-          } else if (err.status === 422) {
-            let shown = false;
-            for (const f of ["workspace", "workspace_name", "name", "email", "password"] as const) {
-              const m = err.fieldMessage(f);
-              if (m) {
-                setError(f, { message: m });
-                shown = true;
-              }
-            }
-            if (!shown) setBanner(err.message);
-          } else setBanner(err.userMessage);
-        },
-      },
-    );
-  });
-
-  const onVerify = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!started) return;
-    // Pasted "123 456" or "123-456" works; the backend strips them too.
-    const clean = code.replace(/[\s-]/g, "");
-    if (!clean) return;
-    const slug = newSlug !== null ? cleanSlugInput(newSlug).trim() : undefined;
-    if (slug !== undefined) {
-      const p = slugProblem(slug);
-      if (p) {
-        setSlugError(p);
-        return;
-      }
-    }
-    setBanner(null);
-    setSlugError(null);
-    verify.mutate(
-      { signup_id: started.signup_id, code: clean, ...(slug ? { workspace: slug } : {}) },
-      {
-        onSuccess: (r) => {
-          router.replace(`/login?workspace=${encodeURIComponent(r.workspace)}`);
-        },
-        onError: (err) => {
-          if (common(err)) return;
-          const a = err as ApiError;
-          if (a.status === 409 && a.code === "slug_taken") {
-            // Taken in the meantime: ask for another address, then resend the same code.
-            setNewSlug((cur) => cur ?? getValues("workspace"));
-            setSlugError("That address was taken while you were signing up. Choose another.");
-          } else if (a.status === 422 && a.code === "bad_code") {
-            setCode("");
-            setBanner("That code didn't work. Check it and try again.");
-            codeRef.current?.focus();
-          } else if (a.status === 410 && a.code === "signup_expired") {
-            toForm();
-            setBanner("This sign-up has expired. Please start again.");
-          } else if (a.status === 410) {
-            setExpiredCode(true);
-            setCode("");
-            setBanner("That code has expired or was tried too many times. Send a new one.");
-          } else setBanner(a.userMessage);
-        },
-      },
-    );
-  };
 
   const onResend = () => {
     if (!started) return;
@@ -328,7 +349,7 @@ export function SignupForm({ nonce }: { nonce?: string }) {
         onSuccess: (r) => {
           setStarted(r);
           setExpiredCode(false);
-          setCode("");
+          verifyForm.setFieldValue("code", "", false);
           codeRef.current?.focus();
         },
         onError: (err) => {
@@ -372,34 +393,33 @@ export function SignupForm({ nonce }: { nonce?: string }) {
           minutes.
         </p>
         <div aria-live="polite">{banner && <Banner>{banner}</Banner>}</div>
-        <form onSubmit={onVerify} noValidate className="mt-7 space-y-4">
-          {newSlug !== null && (
+        <form onSubmit={verifyForm.handleSubmit} noValidate className="mt-7 space-y-4">
+          {slugOpen && (
             <Field
               label="Workspace address"
               htmlFor="new-workspace"
-              error={slugError ?? undefined}
+              error={fieldError(verifyForm, "slug")}
               hint="Your first choice was taken. Pick another."
             >
               <Input
                 id="new-workspace"
-                value={newSlug}
-                onChange={(e) => setNewSlug(cleanSlugInput(e.target.value))}
+                {...bind(verifyForm, "slug")}
+                onChange={(e) => verifyForm.setFieldValue("slug", cleanSlugInput(e.target.value))}
                 autoCapitalize="none"
                 spellCheck={false}
-                aria-invalid={!!slugError}
               />
             </Field>
           )}
           <Field
             label="6 digit code"
             htmlFor="signup-code"
+            error={fieldError(verifyForm, "code")}
             hint="It can take a minute. Check spam."
           >
             <Input
               id="signup-code"
               ref={codeRef}
-              value={code}
-              onChange={(e) => setCode(e.target.value)}
+              {...bind(verifyForm, "code")}
               inputMode="numeric"
               autoComplete="one-time-code"
               autoCapitalize="none"
@@ -435,9 +455,6 @@ export function SignupForm({ nonce }: { nonce?: string }) {
     );
   }
 
-  const wsReg = register("workspace");
-  const nameReg = register("workspace_name");
-
   return (
     <div className="animate-rise">
       <h1 className="text-[1.75rem] font-semibold tracking-tight">Create a workspace</h1>
@@ -446,29 +463,28 @@ export function SignupForm({ nonce }: { nonce?: string }) {
       </p>
       <div aria-live="polite">{banner && <Banner>{banner}</Banner>}</div>
 
-      <form onSubmit={onSubmit} noValidate className="mt-7 space-y-4">
+      <form onSubmit={form.handleSubmit} noValidate className="mt-7 space-y-4">
         <Field
           label="Workspace name"
           htmlFor="workspace_name"
-          error={errors.workspace_name?.message}
+          error={fieldError(form, "workspace_name")}
         >
           <Input
             id="workspace_name"
             autoComplete="organization"
             placeholder="Acme Support"
-            aria-invalid={!!errors.workspace_name}
-            {...nameReg}
+            {...bind(form, "workspace_name")}
             onChange={(e) => {
-              void nameReg.onChange(e);
+              form.handleChange(e);
               if (!slugTouched.current)
-                setValue("workspace", suggestSlug(e.target.value), { shouldValidate: false });
+                void form.setFieldValue("workspace", suggestSlug(e.target.value), false);
             }}
           />
         </Field>
         <Field
           label="Workspace address"
           htmlFor="workspace"
-          error={errors.workspace?.message}
+          error={fieldError(form, "workspace")}
           hint="Your team signs in with this. Lowercase letters, digits and dashes."
         >
           <Input
@@ -476,47 +492,33 @@ export function SignupForm({ nonce }: { nonce?: string }) {
             autoCapitalize="none"
             spellCheck={false}
             placeholder="acme-support"
-            aria-invalid={!!errors.workspace}
-            {...wsReg}
+            {...bind(form, "workspace")}
             onChange={(e) => {
               slugTouched.current = true;
-              e.target.value = cleanSlugInput(e.target.value);
-              void wsReg.onChange(e);
+              void form.setFieldValue("workspace", cleanSlugInput(e.target.value));
             }}
           />
         </Field>
-        <Field label="Your name" htmlFor="name" error={errors.name?.message}>
-          <Input
-            id="name"
-            autoComplete="name"
-            placeholder="Priya Shah"
-            aria-invalid={!!errors.name}
-            {...register("name")}
-          />
+        <Field label="Your name" htmlFor="name" error={fieldError(form, "name")}>
+          <Input id="name" autoComplete="name" placeholder="Priya Shah" {...bind(form, "name")} />
         </Field>
-        <Field label="Email" htmlFor="email" error={errors.email?.message}>
+        <Field label="Email" htmlFor="email" error={fieldError(form, "email")}>
           <Input
             id="email"
             type="email"
             inputMode="email"
             autoComplete="email"
             placeholder="you@company.com"
-            aria-invalid={!!errors.email}
-            {...register("email")}
+            {...bind(form, "email")}
           />
         </Field>
         <Field
           label="Password"
           htmlFor="password"
-          error={errors.password?.message}
+          error={fieldError(form, "password")}
           hint="10 to 128 characters."
         >
-          <PasswordInput
-            id="password"
-            autoComplete="new-password"
-            aria-invalid={!!errors.password}
-            {...register("password")}
-          />
+          <PasswordInput id="password" autoComplete="new-password" {...bind(form, "password")} />
         </Field>
 
         {config.data.captchaSiteKey && (
