@@ -1,5 +1,6 @@
 import { ArrowUpRight } from "lucide-react";
 import type { Metadata } from "next";
+import { cookies } from "next/headers";
 import Link from "next/link";
 
 import { DocsMobileMenu } from "@/components/docs/docs-mobile-menu";
@@ -25,6 +26,7 @@ const NAV = [
 ];
 
 export default async function DocsLayout({ children }: { children: React.ReactNode }) {
+  const signedIn = Boolean((await cookies()).get("cedesk_session")?.value);
   const topics = (await getSections()).map((s) => ({ href: `/docs/${s.slug}`, label: s.title }));
   return (
     <div className="flex min-h-svh flex-col bg-background pt-16">
@@ -64,19 +66,31 @@ export default async function DocsLayout({ children }: { children: React.ReactNo
               <ResourcesMenu align="right" triggerClassName="rounded-full px-3 py-1.5 h-9" />
             </div>
             <ThemeToggle className="hidden md:inline-flex" />
-            <Link
-              href="/login"
-              className="hidden h-9 items-center rounded-full px-3.5 text-sm font-medium whitespace-nowrap text-muted-foreground transition-colors hover:bg-surface-2 hover:text-foreground md:inline-flex"
-            >
-              Sign in
-            </Link>
-            <Link
-              href="/signup"
-              className="hidden h-9 items-center gap-1 rounded-full bg-primary px-4 text-sm font-semibold whitespace-nowrap text-primary-foreground shadow-[0_6px_16px_-6px_var(--primary)] transition hover:bg-primary-hover sm:inline-flex"
-            >
-              Get started
-              <ArrowUpRight className="size-3.5" aria-hidden />
-            </Link>
+            {signedIn ? (
+              <Link
+                href="/tickets"
+                className="inline-flex h-9 items-center gap-1 rounded-full bg-primary px-4 text-sm font-semibold whitespace-nowrap text-primary-foreground shadow-[0_6px_16px_-6px_var(--primary)] transition hover:bg-primary-hover"
+              >
+                Dashboard
+                <ArrowUpRight className="size-3.5" aria-hidden />
+              </Link>
+            ) : (
+              <>
+                <Link
+                  href="/login"
+                  className="hidden h-9 items-center rounded-full px-3.5 text-sm font-medium whitespace-nowrap text-muted-foreground transition-colors hover:bg-surface-2 hover:text-foreground md:inline-flex"
+                >
+                  Sign in
+                </Link>
+                <Link
+                  href="/signup"
+                  className="hidden h-9 items-center gap-1 rounded-full bg-primary px-4 text-sm font-semibold whitespace-nowrap text-primary-foreground shadow-[0_6px_16px_-6px_var(--primary)] transition hover:bg-primary-hover sm:inline-flex"
+                >
+                  Get started
+                  <ArrowUpRight className="size-3.5" aria-hidden />
+                </Link>
+              </>
+            )}
             <DocsMobileMenu nav={NAV} topics={topics} />
           </div>
         </div>
@@ -93,15 +107,23 @@ export default async function DocsLayout({ children }: { children: React.ReactNo
             © {new Date().getFullYear()} CeDesk by Cogninest AI. Built to help teams answer faster.
           </p>
           <div className="flex flex-wrap justify-center gap-x-5 gap-y-2">
-            <Link href="/" className="hover:text-foreground">
+            <Link href="/?landing=1" className="hover:text-foreground">
               Home
             </Link>
-            <Link href="/login" className="hover:text-foreground">
-              Sign in
-            </Link>
-            <Link href="/signup" className="hover:text-foreground">
-              Sign up
-            </Link>
+            {signedIn ? (
+              <Link href="/tickets" className="hover:text-foreground">
+                Dashboard
+              </Link>
+            ) : (
+              <>
+                <Link href="/login" className="hover:text-foreground">
+                  Sign in
+                </Link>
+                <Link href="/signup" className="hover:text-foreground">
+                  Sign up
+                </Link>
+              </>
+            )}
           </div>
         </div>
       </footer>

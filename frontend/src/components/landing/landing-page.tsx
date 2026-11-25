@@ -344,7 +344,7 @@ export const FAQ: { q: string; a: string; link?: { href: string; label: string }
  * Page
  * ------------------------------------------------------------------ */
 
-export function LandingPage() {
+export function LandingPage({ signedIn = false }: { signedIn?: boolean }) {
   return (
     <div className="relative">
       {/* Nav */}
@@ -370,20 +370,33 @@ export function LandingPage() {
           </nav>
           <div className="flex items-center gap-2">
             <ThemeToggle className="hidden sm:inline-flex" />
-            <LinkButton href="/login" variant="ghost" size="md" className="hidden sm:inline-flex">
-              Sign in
-            </LinkButton>
-            <IfSignup
-              fallback={
-                <LinkButton href="/login" size="md" className="sm:hidden">
+            {signedIn ? (
+              <LinkButton href="/tickets" size="md">
+                Dashboard
+              </LinkButton>
+            ) : (
+              <>
+                <LinkButton
+                  href="/login"
+                  variant="ghost"
+                  size="md"
+                  className="hidden sm:inline-flex"
+                >
                   Sign in
                 </LinkButton>
-              }
-            >
-              <LinkButton href="/signup" size="md">
-                Get started
-              </LinkButton>
-            </IfSignup>
+                <IfSignup
+                  fallback={
+                    <LinkButton href="/login" size="md" className="sm:hidden">
+                      Sign in
+                    </LinkButton>
+                  }
+                >
+                  <LinkButton href="/signup" size="md">
+                    Get started
+                  </LinkButton>
+                </IfSignup>
+              </>
+            )}
           </div>
         </div>
       </header>
@@ -424,14 +437,22 @@ export function LandingPage() {
               people and AI resolve conversations together.
             </p>
             <div className="mt-8 flex animate-rise flex-col items-center justify-center gap-3 [animation-delay:180ms] sm:flex-row">
-              <IfSignup>
-                <LinkButton href="/signup">
-                  Create a workspace <ArrowRight className="size-4" aria-hidden />
+              {signedIn ? (
+                <LinkButton href="/tickets">
+                  Go to your dashboard <ArrowRight className="size-4" aria-hidden />
                 </LinkButton>
-              </IfSignup>
-              <LinkButton href="/login" variant="outline">
-                Sign in to your desk
-              </LinkButton>
+              ) : (
+                <>
+                  <IfSignup>
+                    <LinkButton href="/signup">
+                      Create a workspace <ArrowRight className="size-4" aria-hidden />
+                    </LinkButton>
+                  </IfSignup>
+                  <LinkButton href="/login" variant="outline">
+                    Sign in to your desk
+                  </LinkButton>
+                </>
+              )}
             </div>
             <ul className="mt-8 flex animate-rise flex-wrap items-center justify-center gap-x-7 gap-y-2 text-sm text-muted-foreground [animation-delay:240ms]">
               {["Customer portal included", "SSO and two-factor", "Open source frontend"].map(
@@ -914,14 +935,22 @@ export function LandingPage() {
               Create a workspace in minutes, or sign in to pick up where you left off.
             </p>
             <div className="mt-7 flex flex-col items-center justify-center gap-3 sm:flex-row">
-              <IfSignup>
-                <LinkButton href="/signup" variant="light">
-                  Create a workspace <ArrowRight className="size-4" aria-hidden />
+              {signedIn ? (
+                <LinkButton href="/tickets" variant="light">
+                  Go to your dashboard <ArrowRight className="size-4" aria-hidden />
                 </LinkButton>
-              </IfSignup>
-              <LinkButton href="/login" variant="glass">
-                Sign in
-              </LinkButton>
+              ) : (
+                <>
+                  <IfSignup>
+                    <LinkButton href="/signup" variant="light">
+                      Create a workspace <ArrowRight className="size-4" aria-hidden />
+                    </LinkButton>
+                  </IfSignup>
+                  <LinkButton href="/login" variant="glass">
+                    Sign in
+                  </LinkButton>
+                </>
+              )}
             </div>
           </div>
         </section>
@@ -937,7 +966,9 @@ export function LandingPage() {
             </p>
           </div>
           <nav aria-label="Footer" className="grid grid-cols-2 gap-x-16 gap-y-3 text-sm">
-            {FOOTER_LINKS.map(([href, label]) =>
+            {FOOTER_LINKS.filter(
+              ([href]) => !signedIn || (href !== "/login" && href !== "/signup"),
+            ).map(([href, label]) =>
               href.startsWith("#") ? (
                 <a key={href} href={href} className="text-muted-foreground hover:text-foreground">
                   {label}
