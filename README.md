@@ -16,6 +16,10 @@
 </p>
 
 <p align="center">
+  <b>What is Cevanos?</b> <a href="https://cevanos.ai">Cevanos</a> makes AI agents for customer service. Self-host CeDesk for free, or use <b>CeDesk Cloud</b> with Cevanos.
+</p>
+
+<p align="center">
   <a href="https://github.com/Cevanos/CeDesk/actions/workflows/ci.yml"><img src="https://github.com/Cevanos/CeDesk/actions/workflows/ci.yml/badge.svg?branch=main" alt="Backend CI"></a>
   <a href="https://github.com/Cevanos/CeDesk/actions/workflows/docker.yml"><img src="https://github.com/Cevanos/CeDesk/actions/workflows/docker.yml/badge.svg?branch=main" alt="Docker"></a>
   <br>
@@ -185,6 +189,6 @@ Cevanos AI, CeDesk Cloud (managed hosting) and enterprise-only features are sepa
 
 <p align="center">
   <br>
-  <a href="https://cevanos.ai"><img src="frontend/public/logo-mark.png" alt="Cevanos" width="40"></a><br>
+  <a href="https://cevanos.ai"><img src=".github/assets/logo.png" alt="Cevanos" width="40"></a><br>
   <sub>Made with 💜 by the <a href="https://cevanos.ai">Cevanos</a> team</sub>
 </p>
