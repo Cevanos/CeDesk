@@ -104,7 +104,7 @@ export default async function DocsLayout({ children }: { children: React.ReactNo
         <div className="mx-auto flex max-w-[90rem] flex-col items-center justify-between gap-3 px-6 pt-8 pb-[max(2rem,env(safe-area-inset-bottom))] text-center text-sm text-muted-foreground sm:flex-row sm:text-left">
           <Logo className="scale-90" />
           <p>
-            © {new Date().getFullYear()} CeDesk by Cogninest AI. Built to help teams answer faster.
+            © {new Date().getFullYear()} CeDesk by Cevanos. Built to help teams answer faster.
           </p>
           <div className="flex flex-wrap justify-center gap-x-5 gap-y-2">
             <Link href="/?landing=1" className="hover:text-foreground">
