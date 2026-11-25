@@ -287,9 +287,10 @@ async def public_search(
     result = await session.execute(
         text(
             _PUBLIC_ROW + _PUBLIC_FROM + "WHERE a.status = 'published' "
-            "AND coalesce(t.search, a.search) @@ to_tsquery('simple', :q) "
+            "AND coalesce(t.search, a.search) @@ to_tsquery('simple', cedesk_unaccent(:q)) "
             "AND (CAST(:category AS uuid) IS NULL OR a.category_id = :category) "
-            "ORDER BY ts_rank(coalesce(t.search, a.search), to_tsquery('simple', :q)) DESC, "
+            "ORDER BY ts_rank(coalesce(t.search, a.search), "
+            "to_tsquery('simple', cedesk_unaccent(:q))) DESC, "
             "a.created_at DESC LIMIT :limit"
         ),
         {**_params(want, default), "q": query, "category": category_id, "limit": limit},

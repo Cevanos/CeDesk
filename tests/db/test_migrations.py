@@ -762,3 +762,63 @@ async def test_0085_adds_help_domains_and_a_trigger_keeps_the_directory_in_step(
     async with owner_engine.connect() as conn:
         for table in tables:
             assert await conn.scalar(text(f"SELECT to_regclass('{table}')")) is not None
+
+
+async def test_0086_ignores_accents_in_search_and_wont_go_down_with_a_three_part_code(
+    owner_engine: Any,
+) -> None:
+    """The search column folds accents; three-part language codes are accepted. Going down
+    refuses while one is stored (nothing changes), then goes down and back up."""
+    import asyncio
+
+    from sqlalchemy import text
+
+    cfg = alembic_config()
+    await empty_archive_async()
+    tables = ("workspace", "hd_article", "hd_article_translation")
+    async with owner_engine.begin() as conn:
+        for table in tables:
+            await conn.execute(text(f"ALTER TABLE {table} NO FORCE ROW LEVEL SECURITY"))
+        ws = await conn.scalar(text("INSERT INTO workspace (name) VALUES ('P4A') RETURNING id"))
+        article = await conn.scalar(
+            text(
+                "INSERT INTO hd_article (workspace_id, title) "
+                "VALUES (:ws, 'Café Münster') RETURNING id"
+            ),
+            {"ws": ws},
+        )
+        await conn.execute(
+            text(
+                "INSERT INTO hd_article_translation (workspace_id, article_id, locale, title) "
+                "VALUES (:ws, :a, 'zh-hant-tw', '退款')"
+            ),
+            {"ws": ws, "a": article},
+        )
+        for table in tables:
+            await conn.execute(text(f"ALTER TABLE {table} FORCE ROW LEVEL SECURITY"))
+    async with owner_engine.begin() as conn:
+        await conn.execute(text("ALTER TABLE hd_article NO FORCE ROW LEVEL SECURITY"))
+        for word in ("cafe", "munster", "CAFÉ"):
+            hit = await conn.scalar(
+                text(
+                    "SELECT count(*) FROM hd_article "
+                    "WHERE search @@ to_tsquery('simple', cedesk_unaccent(:q))"
+                ),
+                {"q": word},
+            )
+            assert hit == 1, word
+        await conn.execute(text("ALTER TABLE hd_article FORCE ROW LEVEL SECURITY"))
+    with pytest.raises(RuntimeError, match="three parts"):
+        await asyncio.to_thread(command.downgrade, cfg, "0085")
+    async with owner_engine.connect() as conn:  # rolled back: the function is still there
+        assert await conn.scalar(text("SELECT to_regproc('cedesk_unaccent')")) is not None
+    await empty_archive_async()
+    await asyncio.to_thread(command.downgrade, cfg, "0085")
+    async with owner_engine.connect() as conn:
+        assert await conn.scalar(text("SELECT to_regproc('cedesk_unaccent')")) is None
+    await asyncio.to_thread(command.upgrade, cfg, "head")
+    async with owner_engine.connect() as conn:
+        assert await conn.scalar(text("SELECT to_regproc('cedesk_unaccent')")) is not None
+        for table in ("hd_article", "hd_article_translation", "hd_help_center_settings"):
+            forced = "SELECT relforcerowsecurity FROM pg_class WHERE relname = :t"
+            assert await conn.scalar(text(forced), {"t": table}) is True

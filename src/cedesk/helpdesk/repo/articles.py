@@ -142,11 +142,12 @@ async def search(
     """Best match first (a title match counts more than one in the body)."""
     result = await session.execute(
         text(
-            _ARTICLE + "WHERE a.search @@ to_tsquery('simple', :q) "
+            _ARTICLE + "WHERE a.search @@ to_tsquery('simple', cedesk_unaccent(:q)) "
             "AND (CAST(:status AS text) IS NULL OR a.status = :status) "
             "AND (CAST(:category AS uuid) IS NULL OR a.category_id = :category) "
             + _MISSING
-            + "ORDER BY ts_rank(a.search, to_tsquery('simple', :q)) DESC, a.created_at DESC "
+            + "ORDER BY ts_rank(a.search, to_tsquery('simple', cedesk_unaccent(:q))) DESC, "
+            "a.created_at DESC "
             "LIMIT :limit"
         ),
         {

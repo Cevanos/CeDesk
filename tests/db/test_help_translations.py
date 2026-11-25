@@ -325,3 +325,66 @@ async def test_translation_changes_are_in_the_audit_log_without_the_text(
     mine = [e for e in page["entries"] if "ranslation" in e["target"] or "settings" in e["target"]]
     assert [e["action"] for e in reversed(mine)] == ["created", "changed", "deleted", "changed"]
     assert "गोपनीय" not in str(page)
+
+
+async def test_three_part_codes_work_and_fall_back_one_step_at_a_time(
+    client: AsyncClient, app_sessionmaker: Sm
+) -> None:
+    w = await desk(client, app_sessionmaker)
+    art = await write(client, w, "Refund policy", "Money back.")
+    one = f"{w['pub']}/{art['id']}"
+    made = ok(await put(client, w, art["id"], "ZH-Hant-TW", "退款政策", "五個工作天內退款。"))
+    assert made["locale"] == "zh-hant-tw"
+    ok(await put(client, w, art["id"], "zh", "退款", "简体。"))
+    exact = ok(await client.get(one, params={"locale": "zh-Hant-TW"}))
+    assert exact["title"] == "退款政策" and exact["fallback"] is False
+    # Hong Kong has no page: the nearest is the base, until a script-level page exists.
+    hk = ok(await client.get(one, params={"locale": "zh-hant-hk"}))
+    assert hk["locale"] == "zh" and hk["fallback"] is True
+    ok(await put(client, w, art["id"], "zh-hant", "退款政策 繁體", "繁體。"))
+    hk = ok(await client.get(one, params={"locale": "zh-hant-hk"}))
+    assert hk["locale"] == "zh-hant" and hk["fallback"] is True
+    assert (await client.get(one, params={"locale": "zh-hant-tw-x"})).status_code == 422
+
+
+async def test_search_ignores_accents_and_how_the_text_was_typed(
+    client: AsyncClient, app_sessionmaker: Sm
+) -> None:
+    import unicodedata
+
+    w = await desk(client, app_sessionmaker)
+    cafe = await write(client, w, "Café opening hours", "We open at nine.")
+    reset = await write(client, w, "Password reset", "Click here.")
+    hindi = await write(client, w, "Refunds", "Money back.")
+    title = unicodedata.normalize("NFD", "Réinitialiser le mot de passe")  # as a Mac may paste it
+    body = unicodedata.normalize("NFD", "Cliquez sur « Mot de passe oublié ».")
+    ok(await put(client, w, reset["id"], "fr", title, body))
+    ok(await put(client, w, hindi["id"], "hi", "धनवापसी नीति", "पांच दिन में पैसे वापस।"))
+
+    def found(r: Any) -> list[str]:
+        return [a["id"] for a in ok(r)["articles"]]
+
+    fr = {"locale": "fr"}
+    for q in (
+        "réinitialiser",
+        "Réinitialiser",
+        "reinitialiser",
+        "REINITIALISER",
+        "oublie",
+        "oublié",
+    ):
+        assert found(await client.get(w["pub"], params={**fr, "q": q})) == [reset["id"]], q
+    decomposed_q = unicodedata.normalize("NFD", "réinitialiser")
+    assert found(await client.get(w["pub"], params={**fr, "q": decomposed_q})) == [reset["id"]]
+    assert found(await client.get(w["pub"], params={"q": "cafe"})) == [cafe["id"]]
+    assert found(await client.get(w["pub"], params={"q": "CAFÉ"})) == [cafe["id"]]
+    assert found(await client.get(w["pub"], params={**fr, "q": "passage"})) == []
+    # Scripts with no accent rules are left alone.
+    hi = {"locale": "hi"}
+    assert found(await client.get(w["pub"], params={**hi, "q": "धनवापसी"})) == [hindi["id"]]
+    # The stored title is the composed form.
+    got = ok(await client.get(f"{w['pub']}/{reset['id']}", params=fr))
+    assert got["title"] == unicodedata.normalize("NFC", title)
+    # The agents' own search folds accents too.
+    mine = ok(await client.get(A, headers=w["admin"], params={"q": "cafe"}))
+    assert [a["id"] for a in mine["articles"]] == [cafe["id"]]
