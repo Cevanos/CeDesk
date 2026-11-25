@@ -1,198 +1,190 @@
-# CeDesk
+<p align="center">
+  <a href="https://cevanos.ai">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset=".github/assets/banner-dark.svg">
+      <img src=".github/assets/banner-light.svg" alt="CeDesk: customer support you own, open source" width="100%">
+    </picture>
+  </a>
+</p>
 
-Open-source help desk: tickets, routing, SLA, macros, rules, customer portal and imports.
-This repository holds the whole product: the backend (Python, this folder) and the web
-app ([frontend/](frontend), Next.js).
-CeDesk works on its own; connecting a Cevanos workspace adds the AI agent, the
-AI-to-human handover and the Cevanos chat channels.
+<h1 align="center">CeDesk</h1>
 
-Hosting it yourself: [docs/SELF_HOSTING.md](docs/SELF_HOSTING.md). One
-`docker compose up -d --build` in `deploy/` runs everything. Every setting:
-[docs/SETTINGS.md](docs/SETTINGS.md). The API: [docs/api](docs/api).
+<p align="center">
+  <b>The open-source help desk by <a href="https://cevanos.ai">Cevanos</a>.</b><br>
+  Tickets, routing, SLAs, macros, rules, a customer portal and one-click imports, on your own server.<br>
+  An open-source alternative to Zendesk, Freshdesk and Help Scout.
+</p>
 
-## Run it locally
+<p align="center">
+  <a href="https://github.com/Cevanos/CeDesk/actions/workflows/ci.yml"><img src="https://github.com/Cevanos/CeDesk/actions/workflows/ci.yml/badge.svg?branch=main" alt="Backend CI"></a>
+  <a href="https://github.com/Cevanos/CeDesk/actions/workflows/docker.yml"><img src="https://github.com/Cevanos/CeDesk/actions/workflows/docker.yml/badge.svg?branch=main" alt="Docker"></a>
+  <br>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-6c55f6" alt="MIT License"></a>
+  <img src="https://img.shields.io/badge/python-3.12-6c55f6?logo=python&logoColor=white" alt="Python 3.12">
+  <img src="https://img.shields.io/badge/Next.js-16-6c55f6?logo=nextdotjs&logoColor=white" alt="Next.js 16">
+  <img src="https://img.shields.io/badge/PostgreSQL-17-6c55f6?logo=postgresql&logoColor=white" alt="PostgreSQL 17">
+  <a href="CONTRIBUTING.md"><img src="https://img.shields.io/badge/PRs-welcome-6c55f6" alt="PRs welcome"></a>
+</p>
 
-The web app has its own steps: [frontend/README.md](frontend/README.md). The backend
-needs Python 3.12 via [uv](https://docs.astral.sh/uv/) and Docker.
+<p align="center">
+  <a href="docs/SELF_HOSTING.md"><img src="https://img.shields.io/badge/Self--host%20CeDesk-6c55f6?style=for-the-badge&logo=docker&logoColor=white" alt="Self-host CeDesk"></a>
+  &nbsp;
+  <a href="https://cevanos.ai"><img src="https://img.shields.io/badge/Add%20AI%20with%20Cevanos-0b1b36?style=for-the-badge&logoColor=white" alt="Add AI with Cevanos"></a>
+</p>
+
+<p align="center">
+  <a href="docs/SELF_HOSTING.md">Self-hosting</a> ·
+  <a href="docs/SETTINGS.md">Settings</a> ·
+  <a href="docs/api">API</a> ·
+  <a href="docs/DEVELOPMENT.md">Developing</a> ·
+  <a href="CONTRIBUTING.md">Contributing</a> ·
+  <a href="https://cevanos.ai">Cevanos</a>
+</p>
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset=".github/assets/screenshots/inbox-dark.png">
+    <img src=".github/assets/screenshots/inbox-light.png" alt="The CeDesk ticket inbox: open, pending and resolved counts, filters, and tickets with priority, SLA countdown, channel, team and assignee" width="100%">
+  </picture>
+</p>
+
+---
+
+## Why CeDesk
+
+- **Yours.** Your server, your database, your customers' data. Self-hosted CeDesk has every feature and no plan limits.
+- **Complete.** A real help desk out of the box: queues, routing, SLAs, automations, a customer portal and reports.
+- **Easy to move to.** Bring your tickets over from Zendesk, Freshdesk, Intercom, Help Scout or a CSV file.
+- **AI when you want it.** Works fully on its own. Connect a [Cevanos](https://cevanos.ai) workspace to add an AI agent with clean AI-to-human handover.
+
+## Features
+
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <h3>📥 Shared inbox</h3>
+      Status tabs, search, filters and sorting, live updates, private notes, saved replies, side conversations and a command palette (<kbd>Ctrl</kbd>/<kbd>⌘</kbd> <kbd>K</kbd>).
+    </td>
+    <td width="50%" valign="top">
+      <h3>🧭 Routing and SLA</h3>
+      Teams, skills, capacity and agent availability decide who gets each ticket. SLA policies track first reply and resolution times.
+    </td>
+  </tr>
+  <tr>
+    <td valign="top">
+      <h3>⚡ Macros and rules</h3>
+      One-click macros, automation rules, auto-close and custom ticket types and fields, so repeat work does itself.
+    </td>
+    <td valign="top">
+      <h3>🌐 Customer portal</h3>
+      A help center, contact form, ticket view and CSAT ratings for your customers, with no agent sign-in needed.
+    </td>
+  </tr>
+  <tr>
+    <td valign="top">
+      <h3>📊 Reports</h3>
+      Team reports, dashboards, saved and scheduled reports, and help-article votes.
+    </td>
+    <td valign="top">
+      <h3>🔁 Imports</h3>
+      Move from Zendesk, Freshdesk, Intercom, Help Scout or CSV, with resume and retries for large accounts.
+    </td>
+  </tr>
+  <tr>
+    <td valign="top">
+      <h3>🔐 Secure by design</h3>
+      Four roles, single sign-on, two-factor sign-in, an audit log, and row-level security that keeps every workspace's data apart in the database.
+    </td>
+    <td valign="top">
+      <h3>🔌 Open and connected</h3>
+      Email in and out, a documented REST API, webhooks, API keys, Jira, and file storage on disk, S3, Google Cloud or Azure.
+    </td>
+  </tr>
+</table>
+
+<table>
+  <tr>
+    <td width="50%"><img src=".github/assets/screenshots/agents.png" alt="Agents: who is available, on break or offline, with workload, channels and skills"></td>
+    <td width="50%"><img src=".github/assets/screenshots/reports.png" alt="Reports: tickets created and resolved, SLA met, first reply and resolution time, CSAT"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub><b>Agents.</b> Availability, workload, channels and skills at a glance.</sub></td>
+    <td align="center"><sub><b>Reports.</b> Volume, speed, SLA and customer satisfaction.</sub></td>
+  </tr>
+</table>
+
+## Better with Cevanos
+
+CeDesk is a complete help desk on its own. Connect a [Cevanos](https://cevanos.ai) workspace and it gains:
+
+| | |
+|---|---|
+| 🤖 **AI agent** | Cevanos answers customers first, around the clock. |
+| 🤝 **AI-to-human handover** | When the AI escalates, the conversation lands in CeDesk as a ticket with the full chat. |
+| 💬 **Cevanos chat channels** | Customer chats from Cevanos channels flow into the same queue. |
+| ✍️ **AI writing help** | Summaries, reply drafts and translation for your agents. |
+
+<p align="center">
+  <img src=".github/assets/screenshots/ticket.png" alt="A ticket handed over by the Cevanos AI: the handover reason and summary, the customer's message, routing, a private note and the reply composer" width="100%">
+  <br>
+  <sub>A ticket handed over by the Cevanos AI, with the reason, a summary and the full conversation.</sub>
+</p>
+
+The link is one module over Cevanos's public API. With no key set, CeDesk never calls Cevanos and the Cevanos features stay hidden. Setup: [Self-hosting > Cevanos](docs/SELF_HOSTING.md#cevanos-optional).
+
+## Get started
+
+### Self-host with Docker
+
+All you need is a Linux server with Docker and a domain name. One command runs Postgres, the API, a worker, the web app and Caddy (which gets your HTTPS certificate on its own).
 
 ```bash
-uv sync                      # install
-docker compose up -d db      # Postgres 17 on localhost:5447 (roles from infra/postgres/init)
-cp .env.example .env
-uv run cedesk migrate        # apply migrations as cedesk_owner
-uv run cedesk prune-sessions # delete sign-in sessions that ended over 7 days ago (run daily)
-uv run cedesk openapi        # rewrite docs/api/openapi.json after an API change
-uv run cedesk create-workspace --name "Acme Support" --slug acme \
-    --admin-email you@example.com --admin-name "Your Name"   # asks for the password;
-    # starts with the mock's teams (Billing, Shipping, Tech) and 5 ticket types; --no-seed for none
-uv run cedesk serve --reload # API on http://127.0.0.1:8100, docs at /docs
+git clone https://github.com/Cevanos/CeDesk.git && cd CeDesk/deploy
+cp env.example .env        # fill in passwords, your domain and SMTP
+docker compose up -d --build
 ```
 
-Or everything in containers: `docker compose --profile api up --build`.
+The full guide, with email, backups, updates and single sign-on: **[docs/SELF_HOSTING.md](docs/SELF_HOSTING.md)**. Every setting: [docs/SETTINGS.md](docs/SETTINGS.md).
 
-## Test
+### Run it locally for development
 
 ```bash
-uv run ruff check . && uv run ruff format --check .
-uv run mypy
-uv run lint-imports
-uv run pytest                # DB tests use the cedesk_test database, never cedesk
+uv sync && docker compose up -d db && cp .env.example .env
+uv run cedesk migrate
+uv run cedesk create-workspace --name "Acme" --slug acme \
+    --admin-email you@example.com --admin-name "Your Name"   # asks for a password
+uv run cedesk serve --reload          # API on http://127.0.0.1:8100, docs at /docs
+cd frontend && cp .env.example .env.local && npm install && npm run dev   # web app on :3000
 ```
 
-## Rules every change keeps
+Step by step, with tests and the rules every change keeps: [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) and [frontend/README.md](frontend/README.md).
 
-1. **Tenancy.** Every table holding workspace data has `workspace_id`, and the migration
-   that creates it calls `tenant_rls_sql(...)` (enabled and forced RLS).
-   `tests/db/test_tenancy.py` fails otherwise.
-2. **Roles.** The API connects as `cedesk_app`, which owns nothing and cannot bypass RLS.
-   Migrations run as `cedesk_owner`. `tests/db/test_roles.py` checks both.
-3. **Layers.** `api` → `service` → `repo` / `domain`; `domain` has no database or web code
-   (`uv run lint-imports`).
-4. **One migration head.** Only one person adds migrations at a time;
-   `tests/db/test_migrations.py` fails on two heads.
-5. **Lock order.** Member changes lock every active Admin and the target member in one
-   id-ordered statement.
-   Routing takes the workspace's routing lock, then the team row. New code that locks
-   several of these takes them in the same order.
+## Built with
 
-## Errors
+- **Backend:** Python 3.12, FastAPI, SQLAlchemy, Alembic, PostgreSQL 17 with row-level security.
+- **Web app:** Next.js 16, React 19, TypeScript, Tailwind CSS 4, TanStack Query.
+- **Deploy:** Docker Compose and Caddy on one server.
 
-Every error, whatever its status, has one shape:
+## Contributing
 
-```json
-{"error": {"code": "Invalid", "message": "Some fields are not valid.",
-           "details": [{"field": "contact.email", "location": "body",
-                        "message": "String should match pattern ..."}]}}
-```
+We'd love your help, whether that's a bug report, a fix, a translation or a new feature.
 
-| Status | `code` | When |
-|---|---|---|
-| 401 | `NotSignedIn` | No token, or the session ended (also sends `WWW-Authenticate: Bearer`) |
-| 403 | `Forbidden` | The role can't do this |
-| 404 | `NotFound` | Missing, or in another workspace (never revealed) |
-| 405 | `MethodNotAllowed` | Wrong HTTP method |
-| 409 | `Conflict` | Clashes with the current state, or lost a race with another request; retry |
-| 422 | `Invalid` | Bad input. `details` lists each field for request-shape errors; never the submitted values |
-| 500 | `Internal` | Unexpected; details are logged, not returned |
+- Read the [contributing guide](CONTRIBUTING.md) and the [code of conduct](CODE_OF_CONDUCT.md).
+- Found a bug or have an idea? [Open an issue](https://github.com/Cevanos/CeDesk/issues/new/choose).
+- Found a security problem? Please follow [SECURITY.md](SECURITY.md) instead of opening a public issue.
 
-`details` appears only on request validation errors.
-
-## Lists and concurrent edits
-
-- **Cursor pages.** Tickets, a ticket's messages, notifications and members return
-  `next_cursor`; send it back as `cursor`, with the same filters and `sort`, for the next
-  page (`null` on the last page). `limit` is 1–200, default 50. A row added while paging
-  never makes a row repeat.
-- **Long tickets.** `GET /tickets/{id}` shows the latest 50 messages, oldest to newest,
-  with `older_messages_cursor`; `GET /tickets/{id}/messages?cursor=…` loads older ones
-  (newest first).
-- **Ticket sort.** `sort=priority` (default: Open and Pending most urgent first, then
-  oldest; Resolved last, newest first), `newest`, `oldest`, or `updated`.
-- **If-Match.** Ticket responses carry an `ETag` (the ticket's `updated_at`). Send it as
-  `If-Match` on `PATCH /tickets/{id}` or `POST /tickets/{id}/resolve`; if anyone changed
-  the ticket since, the request gets 409 and nothing is saved. Without the header the
-  last save wins.
-- **Search.** `q` matches the ticket number (`T-1042` or `1042`), subject, field values,
-  tags, and the customer's name and email, ignoring case. Subject, fields and tags are
-  kept in one `search_text` column by a trigger.
-- **Speed.** Each sort has its own index (migration 0009), so a page reads only the rows
-  it returns, however deep. `uv run python scripts/bench_ticket_list.py` fills a new
-  workspace in the dev database with 100k tickets and prints p50/p95 per list and search
-  (target p95 under 300 ms; measured about 10–60 ms for lists, 120 ms at most for search).
-  It leaves the `bench-…` workspace behind.
-
-## Agents
-
-- A new agent starts **Offline** and gets no tickets until they set themselves Available
-  (`PUT /api/v1/me/status`) or an Admin does (`PATCH /api/v1/agents/{id}/routing`).
-  Light agents have no status and are never routed.
-
-## Events, logs and the API file
-
-- **Outbox.** Every ticket change writes its events to `hd_outbox` in the same
-  transaction: `ticket.created`, `ticket.updated` (with the changed fields),
-  `ticket.resolved`, `message.created`, `assignment.changed` (`by` is null when routing
-  chose). Payload: `{id, occurred_at, event, ticket: {id, number, subject, status,
-  priority, team, topic}, ...}`, with ids only, never message text. A refused or failed
-  change leaves no event. The worker that delivers them (webhooks, emails) comes with
-  the job queue.
-- **Logs.** `cedesk serve` writes one JSON line per request with `request_id` (yours, from
-  `X-Request-ID`, if it looks like an id), `workspace_id`, `member_id`, `ticket_id`, the
-  route template, status and ms. Never bodies, query strings, tokens or customer data.
-- **OpenAPI.** `docs/api/openapi.json` is the API as served; `docs/api/CHANGELOG.md`
-  lists what changed. After changing a route or schema run `uv run cedesk openapi` and
-  add a changelog line; a test fails while the file is out of date.
-
-## Files
-
-One setting picks where uploaded files live, `CEDESK_STORAGE_DRIVER`:
-
-- `local` (default): a folder, `CEDESK_STORAGE_LOCAL_PATH` (`storage/`, ignored by git).
-  Back it up with the database.
-- `s3`: AWS S3 or any S3-compatible service (MinIO, Cloudflare R2, Spaces, Wasabi, B2):
-  `CEDESK_STORAGE_S3_BUCKET`, plus `..._ENDPOINT_URL` and `..._PATH_STYLE=true` for MinIO.
-  Without keys it uses the server's AWS role. See `.env.example`.
-- `gcs`: Google Cloud Storage, through its S3-compatible API. Make an HMAC key for a service
-  account that can read and write the bucket (Cloud Storage > Settings > Interoperability)
-  and set `CEDESK_STORAGE_GCS_BUCKET`, `..._HMAC_ACCESS_ID` and `..._HMAC_SECRET`.
-- `azure`: Azure Blob Storage. Create a container, then set
-  `CEDESK_STORAGE_AZURE_ACCOUNT_NAME`, `..._ACCOUNT_KEY` and `..._CONTAINER`
-  (`..._ENDPOINT` only for Azurite or a sovereign cloud).
-
-A file is stored under `<workspace>/<ticket>/<file id>`, never under its own name. Downloads
-use a link that works without signing in for 5 minutes (`CEDESK_DOWNLOAD_LINK_SECONDS`):
-S3 and GCS presign it, Azure gives a read-only SAS link, local disk signs it with
-`CEDESK_SECRET_KEY`. Files are capped at 25 MB
-(`CEDESK_ATTACHMENT_MAX_BYTES`). `scan_status` is where a virus scanner plugs in; an
-`infected` file is never handed out.
-
-## Standalone, and how Cevanos connects
-
-CeDesk is its own service with its own database, sign-in and deployment. It never imports
-Cevanos code, and it runs fully without Cevanos.
-
-When a workspace connects Cevanos, the link is one module,
-`helpdesk/service/cevanos.py`, over Cevanos's public API only (setup: `deploy/README.md`):
-
-- **In:** Cevanos's signed webhooks (for example `conversation.escalated` for an AI handover)
-  arrive at a CeDesk endpoint; the signature is checked before anything acts.
-- **Out:** CeDesk calls Cevanos's `/v1` API with the workspace's Cevanos API key
-  (read the chat, take over, reply). The key is stored encrypted, never in config or logs.
-- **Off:** with no key configured the connector does nothing; Cevanos features are hidden.
-
-AI (summaries, writing help, translation, the AI agent) lives only in Cevanos.
-
-## Local development passwords
-
-The passwords in `docker-compose.yml`, `.env.example` and `infra/postgres/init/` are for
-local development and CI only. Production roles and passwords are created separately and
-supplied through `CEDESK_*` environment variables.
-
-## Layout
-
-```
-frontend/        the web app (Next.js): agents, Admins and the customer portal
-deploy/          Docker Compose and Caddy for one server (API, worker, web app)
-src/cedesk/
-  main.py        app factory, health routes
-  settings.py    CEDESK_* environment settings
-  db.py          engine and workspace_session (sets the RLS workspace)
-  tenancy.py     RLS statements for tenant tables
-  storage/       where uploaded files live: local disk or S3 (one setting)
-  helpdesk/
-    api/         routers
-    service/     use cases
-    repo/        SQL
-    domain/      pure logic (SLA, routing, rules, permissions)
-migrations/      Alembic (owner role)
-infra/postgres/  database roles for local and CI
-tests/           unit/ (no DB) and db/ (cedesk_test)
-```
+<a href="https://github.com/Cevanos/CeDesk/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=Cevanos/CeDesk" alt="Contributors">
+</a>
 
 ## License
 
-CeDesk is open source under the [MIT License](LICENSE), copyright (c) 2026 Cevanos.
-Contributions are welcome: see [CONTRIBUTING.md](CONTRIBUTING.md).
+CeDesk is open source under the [MIT License](LICENSE), copyright © 2026 Cevanos.
 
-Cevanos AI, CeDesk Cloud (managed hosting) and enterprise-only features are separate
-commercial products from Cevanos and are not part of this repository.
+Cevanos AI, CeDesk Cloud (managed hosting) and enterprise-only features are separate commercial products from Cevanos and are not part of this repository.
+
+<p align="center">
+  <br>
+  <a href="https://cevanos.ai"><img src="frontend/public/logo-mark.png" alt="Cevanos" width="40"></a><br>
+  <sub>Made with 💜 by the <a href="https://cevanos.ai">Cevanos</a> team</sub>
+</p>
