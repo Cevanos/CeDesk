@@ -4,7 +4,7 @@ Web frontend for CeDesk, a customer support desk. Agents, supervisors and admins
 
 ## Screenshots
 
-Captured from the app running against the sample data in `e2e/mock-backend.ts`, not a real workspace.
+Captured from the app running against the demo workspace from `uv run cedesk seed-demo`, not a real one.
 
 ![Ticket inbox](docs/images/ticket-inbox.png)
 
