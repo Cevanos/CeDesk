@@ -64,8 +64,14 @@ function ArticleCard({ ws, a, locale }: { ws: string; a: Article; locale: string
           {a.category_name}
         </Badge>
       )}
-      <h3 className="text-[15px] font-semibold text-balance">{a.title}</h3>
-      {a.body && <p className="mt-1.5 line-clamp-2 text-sm text-muted-foreground">{excerpt(a.body)}</p>}
+      <h3 className="text-[15px] font-semibold text-balance" {...textProps(locale)}>
+        {a.title}
+      </h3>
+      {a.body && (
+        <p className="mt-1.5 line-clamp-2 text-sm text-muted-foreground" {...textProps(locale)}>
+          {excerpt(a.body)}
+        </p>
+      )}
       <span className="mt-auto inline-flex items-center gap-1 pt-4 text-[13px] font-medium text-primary-ink">
         Read article{" "}
         <ArrowRight className="size-3.5 transition-transform group-hover:translate-x-0.5 rtl:rotate-180 rtl:group-hover:-translate-x-0.5" aria-hidden />
@@ -243,7 +249,7 @@ export function HelpArticle() {
   const served = q.data.locale ?? defaultLocale ?? asked;
   const switchTo = available.length > 1 ? available : [];
   return (
-    <article className="mx-auto max-w-3xl animate-rise" {...textProps(served)}>
+    <article className="mx-auto max-w-3xl animate-rise">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <Link
           href={`/${encodeURIComponent(ws)}/help${asked ? `?locale=${encodeURIComponent(asked)}` : ""}`}
@@ -269,10 +275,15 @@ export function HelpArticle() {
           {article.category_name}
         </Badge>
       )}
-      <h1 className="mt-3 text-3xl font-semibold tracking-tight text-balance sm:text-4xl">
+      {/* Only the article's own text takes its language's direction; the interface text around it
+          (the vote, links, notices) stays in the interface's direction, so English isn't mirrored. */}
+      <h1
+        className="mt-3 text-3xl font-semibold tracking-tight text-balance sm:text-4xl"
+        {...textProps(served)}
+      >
         {article.title}
       </h1>
-      <Card className="mt-6 rounded-2xl p-5 shadow-pop sm:p-8">
+      <Card className="mt-6 rounded-2xl p-5 shadow-pop sm:p-8" {...textProps(served)}>
         <Markdown source={article.body ?? ""} />
       </Card>
 

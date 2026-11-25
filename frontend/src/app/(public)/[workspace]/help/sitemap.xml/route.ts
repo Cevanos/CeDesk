@@ -3,7 +3,9 @@ import { NextResponse } from "next/server";
 import { articleUrl, fetchHelpSitemap } from "@/lib/server/help-seo";
 
 export const runtime = "nodejs";
-export const revalidate = 300;
+// The data read below is cached for 5 minutes. Caching the finished file too would stack a second
+// 5 minutes on top, so an "Allow search engines" switch-on could show an empty sitemap for ~10.
+export const dynamic = "force-dynamic";
 
 const esc = (s: string) =>
   s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");

@@ -6,7 +6,9 @@ import { siteUrl } from "@/lib/site";
 /**
  * Server-side reads for the public help center's SEO tags and sitemap. The API only gives the
  * data; the tags are ours. Both calls are public (no cookie) and cached for 5 minutes, the same
- * as the API's own sitemap cache.
+ * as the API's own sitemap cache. The article read feeds `<head>` (hreflang, canonical), so it is
+ * not cached by us: the page body is fetched fresh in the browser, and a cached head would list
+ * other languages than the body offers.
  */
 
 export interface SitemapEntry {
@@ -25,13 +27,13 @@ export interface HelpSitemap {
 
 const SAFE_SEG = /^[A-Za-z0-9._~-]{1,200}$/;
 
-async function getJson<T>(path: string): Promise<T | null> {
+async function getJson<T>(path: string, revalidate: number | false = 300): Promise<T | null> {
   const base = upstreamBase();
   if (!base) return null;
   try {
     const res = await fetch(`${base}/${path}`, {
       headers: { Accept: "application/json" },
-      next: { revalidate: 300 },
+      ...(revalidate === false ? { cache: "no-store" as const } : { next: { revalidate } }),
       signal: AbortSignal.timeout(5000),
     });
     return res.ok ? ((await res.json()) as T) : null;
@@ -52,6 +54,7 @@ export function fetchPublicArticle(ws: string, id: string, locale: string) {
   const q = locale ? `?locale=${encodeURIComponent(locale)}` : "";
   return getJson<Record<string, unknown>>(
     `public/${encodeURIComponent(ws)}/articles/${encodeURIComponent(id)}${q}`,
+    false,
   );
 }
 

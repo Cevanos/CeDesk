@@ -68,6 +68,8 @@ export function HelpCenterView() {
   const categories = useArticleCategories();
   const [missing, setMissing] = useState("");
   const articles = useArticles(missing);
+  // Same query as above while no language filter is on; keeps the category counts true when it is.
+  const everything = useArticles("");
   const settings = useHelpCenterSettings();
   const defaultLocale = settings.data?.default_locale ?? "en";
   const delArticle = useDeleteArticle();
@@ -87,7 +89,8 @@ export function HelpCenterView() {
 
   const cats = categories.data;
   const all = articles.data ?? [];
-  const countIn = (id: string) => all.filter((a) => a.category_id === id).length;
+  const totals = everything.data ?? all;
+  const countIn = (id: string) => totals.filter((a) => a.category_id === id).length;
   const nameOf = (id: string | null) => cats.find((c) => c.id === id)?.name ?? "No category";
   const shown = all.filter(
     (a) => (category === ALL || a.category_id === category) && (!status || a.status === status),
@@ -116,7 +119,7 @@ export function HelpCenterView() {
             <ul className="p-1.5">
               <CategoryRow
                 label="All articles"
-                count={all.length}
+                count={totals.length}
                 active={category === ALL}
                 onSelect={() => setCategory(ALL)}
               />
@@ -179,9 +182,19 @@ export function HelpCenterView() {
 
           {shown.length === 0 ? (
             <Card>
-              <EmptyState icon={<BookOpen className="size-6" />} title="No articles here yet">
-                Write the answers to the questions customers ask most, so they can help themselves.
-              </EmptyState>
+              {missing ? (
+                <EmptyState
+                  icon={<BookOpen className="size-6" />}
+                  title={`Every article already has a ${languageName(missing)} version`}
+                >
+                  Nothing is waiting for a {languageName(missing)} translation.
+                </EmptyState>
+              ) : (
+                <EmptyState icon={<BookOpen className="size-6" />} title="No articles here yet">
+                  Write the answers to the questions customers ask most, so they can help
+                  themselves.
+                </EmptyState>
+              )}
             </Card>
           ) : (
             <Card className="overflow-hidden">

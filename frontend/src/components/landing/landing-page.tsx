@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 
+import { IfSignup } from "@/components/landing/if-signup";
 import {
   HandoffMockup,
   HelpMockup,
@@ -32,6 +33,7 @@ import {
 } from "@/components/landing/mockups";
 import { ResourcesMenu } from "@/components/layout/resources-menu";
 import { Logo, ThemeToggle } from "@/components/ui/brand";
+import { SELF_HOSTING_URL } from "@/lib/self-hosting";
 import { cn } from "@/lib/utils";
 
 /* ------------------------------------------------------------------ *
@@ -297,11 +299,12 @@ const FOOTER_LINKS: [string, string][] = [
   ["#features", "Features"],
   ["/signup", "Create a workspace"],
   ["#security", "Security"],
+  [SELF_HOSTING_URL, "Self-hosting"],
   ["/forgot-password", "Reset password"],
   ["#faq", "FAQ"],
 ];
 
-export const FAQ = [
+export const FAQ: { q: string; a: string; link?: { href: string; label: string } }[] = [
   {
     q: "What is CeDesk?",
     a: "CeDesk is a help desk where people and AI resolve customer conversations together. It gives your team a shared inbox, SLAs, routing, automation, a customer portal and reports in one product.",
@@ -328,7 +331,8 @@ export const FAQ = [
   },
   {
     q: "Can I self-host this help desk software?",
-    a: "Yes. The frontend is open source under the MIT license and ships with a Dockerfile. Point it at your CeDesk API with a few environment variables and run it on your own infrastructure.",
+    a: "Yes. The whole product runs on one server of your own with Docker: the API, worker, database and frontend, with Caddy for HTTPS. It has every feature and no plan limits, and Cevanos AI is optional.",
+    link: { href: SELF_HOSTING_URL, label: "Read the self-hosting guide" },
   },
   {
     q: "Does it work on phones and in dark mode?",
@@ -369,9 +373,17 @@ export function LandingPage() {
             <LinkButton href="/login" variant="ghost" size="md" className="hidden sm:inline-flex">
               Sign in
             </LinkButton>
-            <LinkButton href="/signup" size="md">
-              Get started
-            </LinkButton>
+            <IfSignup
+              fallback={
+                <LinkButton href="/login" size="md" className="sm:hidden">
+                  Sign in
+                </LinkButton>
+              }
+            >
+              <LinkButton href="/signup" size="md">
+                Get started
+              </LinkButton>
+            </IfSignup>
           </div>
         </div>
       </header>
@@ -412,9 +424,11 @@ export function LandingPage() {
               people and AI resolve conversations together.
             </p>
             <div className="mt-8 flex animate-rise flex-col items-center justify-center gap-3 [animation-delay:180ms] sm:flex-row">
-              <LinkButton href="/signup">
-                Create a workspace <ArrowRight className="size-4" aria-hidden />
-              </LinkButton>
+              <IfSignup>
+                <LinkButton href="/signup">
+                  Create a workspace <ArrowRight className="size-4" aria-hidden />
+                </LinkButton>
+              </IfSignup>
               <LinkButton href="/login" variant="outline">
                 Sign in to your desk
               </LinkButton>
@@ -683,9 +697,11 @@ export function LandingPage() {
                   title="Support reports and analytics your team can act on"
                   lead="Live queue, backlog ageing, team performance and custom dashboards. Schedule the ones people need in their inbox."
                 />
-                <LinkButton href="/signup" variant="outline" size="md" className="mt-9">
-                  See it in your workspace <ArrowRight className="size-4" aria-hidden />
-                </LinkButton>
+                <IfSignup>
+                  <LinkButton href="/signup" variant="outline" size="md" className="mt-9">
+                    See it in your workspace <ArrowRight className="size-4" aria-hidden />
+                  </LinkButton>
+                </IfSignup>
               </div>
             </div>
 
@@ -777,28 +793,39 @@ export function LandingPage() {
           <div className="mx-auto max-w-7xl">
             <SectionHead
               eyebrow="Your way to run it"
-              title="An open source help desk you can self-host"
-              lead="Start with the open-source frontend today. Add Cevanos AI and managed hosting when you want them."
+              title="A help desk you can run yourself"
+              lead="Run the whole product on a server of your own, or let us host it. Cevanos AI is optional either way."
             />
             <div className="mx-auto mt-8 grid max-w-4xl gap-5 md:grid-cols-2">
               <article className="flex flex-col rounded-3xl border border-border bg-surface p-6 shadow-card">
                 <span className="grid size-12 place-items-center rounded-2xl bg-surface-2 text-foreground">
                   <GitBranch className="size-6" aria-hidden />
                 </span>
-                <h3 className="mt-4 text-xl font-semibold tracking-tight">Open source</h3>
+                <h3 className="mt-4 text-xl font-semibold tracking-tight">Self-host</h3>
                 <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                  MIT-licensed frontend. Run it on your own infrastructure with a Docker image and a
-                  few environment variables.
+                  Runs on one server with Docker: Postgres, the API, a worker and Caddy for HTTPS.
+                  Every feature is included and there are no plan limits. The frontend is MIT
+                  licensed.
                 </p>
                 <ul className="mt-6 space-y-2.5 text-sm">
-                  {["Full source, no lock-in", "Docker image included", "Community-friendly"].map(
-                    (t) => (
-                      <li key={t} className="flex items-center gap-2.5">
-                        <Check className="size-4 text-success" aria-hidden /> {t}
-                      </li>
-                    ),
-                  )}
+                  {[
+                    "Every feature, no plan limits",
+                    "One server, one compose file",
+                    "Cevanos AI is optional",
+                  ].map((t) => (
+                    <li key={t} className="flex items-center gap-2.5">
+                      <Check className="size-4 text-success" aria-hidden /> {t}
+                    </li>
+                  ))}
                 </ul>
+                <LinkButton
+                  href={SELF_HOSTING_URL}
+                  variant="outline"
+                  size="md"
+                  className="mt-8 self-start"
+                >
+                  Read the self-hosting guide <ArrowRight className="size-4" aria-hidden />
+                </LinkButton>
               </article>
               <article className="relative flex flex-col overflow-hidden rounded-3xl border border-primary/40 bg-surface p-6 shadow-pop ring-1 ring-primary/20">
                 <Glow className="-top-16 -right-16 size-56 bg-primary/25" />
@@ -822,9 +849,11 @@ export function LandingPage() {
                     </li>
                   ))}
                 </ul>
-                <LinkButton href="/signup" size="md" className="relative mt-8 self-start">
-                  Create a workspace
-                </LinkButton>
+                <IfSignup>
+                  <LinkButton href="/signup" size="md" className="relative mt-8 self-start">
+                    Create a workspace
+                  </LinkButton>
+                </IfSignup>
               </article>
             </div>
           </div>
@@ -846,7 +875,21 @@ export function LandingPage() {
                       +
                     </span>
                   </summary>
-                  <p className="pb-6 text-sm leading-relaxed text-muted-foreground">{f.a}</p>
+                  <p className="pb-6 text-sm leading-relaxed text-muted-foreground">
+                    {f.a}
+                    {f.link && (
+                      <>
+                        {" "}
+                        <Link
+                          href={f.link.href}
+                          className="font-medium text-primary-ink hover:underline"
+                        >
+                          {f.link.label}
+                        </Link>
+                        .
+                      </>
+                    )}
+                  </p>
                 </details>
               ))}
             </div>
@@ -871,9 +914,11 @@ export function LandingPage() {
               Create a workspace in minutes, or sign in to pick up where you left off.
             </p>
             <div className="mt-7 flex flex-col items-center justify-center gap-3 sm:flex-row">
-              <LinkButton href="/signup" variant="light">
-                Create a workspace <ArrowRight className="size-4" aria-hidden />
-              </LinkButton>
+              <IfSignup>
+                <LinkButton href="/signup" variant="light">
+                  Create a workspace <ArrowRight className="size-4" aria-hidden />
+                </LinkButton>
+              </IfSignup>
               <LinkButton href="/login" variant="glass">
                 Sign in
               </LinkButton>
@@ -897,6 +942,12 @@ export function LandingPage() {
                 <a key={href} href={href} className="text-muted-foreground hover:text-foreground">
                   {label}
                 </a>
+              ) : href === "/signup" ? (
+                <IfSignup key={href}>
+                  <Link href={href} className="text-muted-foreground hover:text-foreground">
+                    {label}
+                  </Link>
+                </IfSignup>
               ) : (
                 <Link
                   key={href}

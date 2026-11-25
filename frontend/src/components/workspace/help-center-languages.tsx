@@ -126,6 +126,20 @@ export function LocaleChips({ locales }: { locales?: string[] }) {
 
 /* ---------- Settings: default language, SEO switch ---------- */
 
+/**
+ * The API's 409 reads "N article translation(s) are in 'ar'. Delete them (…) before making it the
+ * default." Say it once, with the language's name. Any other 409 text is shown as the API wrote it.
+ */
+function conflictMessage(apiMessage: string, locale: string) {
+  const m = /^(\d+) article translation\(s\) are in '([^']+)'/.exec(apiMessage);
+  if (!m) return apiMessage;
+  const n = Number(m[1]);
+  const lang = languageName(m[2] || locale);
+  return `${n} ${n === 1 ? "article has a translation" : "articles have translations"} in ${lang}. Delete ${
+    n === 1 ? "it" : "them"
+  }, or translate in another language, before making ${lang} the default.`;
+}
+
 export function LanguageSettingsCard() {
   const { perms } = useCurrentUser();
   const q = useHelpCenterSettings();
@@ -146,11 +160,13 @@ export function LanguageSettingsCard() {
         setLocale(null);
         toast.success(done);
       },
-      // 409: translations already exist in the new default. Show the API's own words.
+      // 409: translations already exist in the new default.
       onError: (e) =>
         setError(
           e instanceof ApiError
-            ? `${e.userMessage}${e.status === 409 ? " Delete or move those translations first." : ""}`
+            ? e.status === 409
+              ? conflictMessage(e.userMessage, next.default_locale)
+              : e.userMessage
             : "Could not save.",
         ),
     });

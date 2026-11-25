@@ -21,6 +21,7 @@ import {
   Download,
   UserCog,
   Radio,
+  Server,
   type LucideIcon,
 } from "lucide-react";
 import type { Metadata } from "next";
@@ -29,6 +30,7 @@ import { notFound } from "next/navigation";
 
 import { DocsSearch } from "@/components/docs/docs-search";
 import { DocsToc } from "@/components/docs/docs-toc";
+import { SELF_HOSTING_URL } from "@/lib/self-hosting";
 import {
   getAllSlugs,
   getDoc,
@@ -293,6 +295,14 @@ function SideNav({
       <Link href="/docs/glossary" className={row(here === "/docs/glossary")}>
         <BookOpen className="size-4 shrink-0" aria-hidden />
         Glossary
+      </Link>
+      <div className="my-3 border-t border-border" />
+      <p className="px-3 pb-1 text-[11px] font-semibold tracking-wider text-subtle-foreground uppercase">
+        Run it yourself
+      </p>
+      <Link href={SELF_HOSTING_URL} className={row(false)}>
+        <Server className="size-4 shrink-0" aria-hidden />
+        Self-hosting guide
       </Link>
     </nav>
   );
