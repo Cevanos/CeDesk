@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { PRIORITY_LABEL } from "@/components/tickets/badges";
 import { formatMinutes } from "@/components/tickets/sla";
 import { Badge, Button, Card, Input, Skeleton } from "@/components/ui/primitives";
+import { DataTable, RowTh, TBody, Td, THead, Th, Tr } from "@/components/ui/table";
 import { FormError, fieldErrors, LoadError } from "@/components/workspace/list-shared";
 import { SlaHolidays } from "@/components/workspace/sla-holidays";
 import { SlaHoursEditor } from "@/components/workspace/sla-hours-editor";
@@ -69,27 +70,21 @@ function SlaBody({ data }: { data: SlaSettings }) {
           Time to first reply and to resolution, counted in business minutes.
           {!canEdit && " Only an Admin can change them."}
         </p>
-        <Card className="mt-3 overflow-x-auto">
-          <table className="w-full min-w-[34rem] text-sm">
-            <thead>
-              <tr className="border-b border-border text-left text-xs text-muted-foreground">
-                <th scope="col" className="px-4 py-2.5 font-medium">
-                  Priority
-                </th>
-                <th scope="col" className="px-4 py-2.5 font-medium">
-                  First reply (minutes)
-                </th>
-                <th scope="col" className="px-4 py-2.5 font-medium">
-                  Resolution (minutes)
-                </th>
+        <Card className="mt-3">
+          <DataTable minWidth="34rem">
+            <THead>
+              <tr>
+                <Th>Priority</Th>
+                <Th>First reply (minutes)</Th>
+                <Th>Resolution (minutes)</Th>
               </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
+            </THead>
+            <TBody>
               {rows.map((r, i) => {
                 const t: SlaTarget | undefined = data.targets[i];
                 return (
-                  <tr key={r.priority}>
-                    <th scope="row" className="px-4 py-3 text-left font-medium">
+                  <Tr key={r.priority}>
+                    <RowTh>
                       {PRIORITY_LABEL[r.priority]}
                       {t?.is_default && <Badge className="ml-2">Default</Badge>}
                       {t?.reads_as && (
@@ -97,12 +92,12 @@ function SlaBody({ data }: { data: SlaSettings }) {
                           {t.reads_as}
                         </p>
                       )}
-                    </th>
+                    </RowTh>
                     {(["first", "resolve"] as const).map((k) => {
                       const key = `${r.priority}-${k}`;
                       const n = Number(r[k]);
                       return (
-                        <td key={k} className="px-4 py-2 align-top">
+                        <Td key={k} className="py-2 align-top">
                           <Input
                             aria-label={`${PRIORITY_LABEL[r.priority]} ${k === "first" ? "first reply" : "resolution"} minutes`}
                             type="number"
@@ -130,14 +125,14 @@ function SlaBody({ data }: { data: SlaSettings }) {
                               </p>
                             )
                           )}
-                        </td>
+                        </Td>
                       );
                     })}
-                  </tr>
+                  </Tr>
                 );
               })}
-            </tbody>
-          </table>
+            </TBody>
+          </DataTable>
         </Card>
         {errs._form && (
           <div className="mt-3">

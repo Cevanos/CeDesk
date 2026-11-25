@@ -12,6 +12,7 @@ import {
   type Item,
 } from "@/components/workspace/item-builder";
 import { FormError } from "@/components/workspace/list-shared";
+import { useContactFields } from "@/hooks/use-contacts";
 import { MIN_SEARCH_CHARS, useDebouncedValue, useTicketSearch } from "@/hooks/use-global-search";
 import {
   useMemberOptions,
@@ -81,7 +82,10 @@ export function TicketPicker({
       </div>
     );
   }
-  const list = results.data ?? [];
+  // Show results only for the text on screen: while the debounce or the request is
+  // catching up, the list would otherwise be empty or belong to an earlier search.
+  const settled = text.trim() === q.trim() && !results.isPending && !results.isPlaceholderData;
+  const list = settled ? (results.data ?? []) : [];
   return (
     <div className="space-y-2">
       <div className="relative">
@@ -100,12 +104,12 @@ export function TicketPicker({
       </div>
       {text.trim().length >= MIN_SEARCH_CHARS && (
         <ul className="max-h-56 overflow-y-auto rounded-lg border border-border">
-          {results.isFetching && list.length === 0 && (
+          {!settled && (
             <li className="p-3">
               <Spinner />
             </li>
           )}
-          {!results.isFetching && list.length === 0 && (
+          {settled && list.length === 0 && (
             <li className="p-3 text-sm text-muted-foreground">No tickets found.</li>
           )}
           {list.map((t) => (
@@ -275,6 +279,7 @@ function RuleTestResultView({
   result: RuleTestResult;
   ticket: TicketSummary | null;
 }) {
+  const contactFields = useContactFields().data;
   return (
     <div className="space-y-3">
       <Badge tone={result.matched ? "success" : "neutral"} className="text-xs">
@@ -288,7 +293,9 @@ function RuleTestResultView({
           {result.conditions.map((c, i) => (
             <li key={i} className="flex items-start gap-2 text-sm">
               <Tick ok={c.matched} />
-              <span>{summarize(c.condition as Item, AUTOMATION_CONDITION_KINDS)}</span>
+              <span>
+                {summarize(c.condition as Item, AUTOMATION_CONDITION_KINDS, contactFields)}
+              </span>
             </li>
           ))}
         </ul>

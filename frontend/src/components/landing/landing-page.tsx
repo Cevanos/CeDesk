@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 
+import { IfSignup } from "@/components/landing/if-signup";
 import {
   HandoffMockup,
   HelpMockup,
@@ -30,15 +31,16 @@ import {
   ReportsMockup,
   RulesMockup,
 } from "@/components/landing/mockups";
+import { ResourcesMenu } from "@/components/layout/resources-menu";
 import { Logo, ThemeToggle } from "@/components/ui/brand";
+import { SELF_HOSTING_URL } from "@/lib/self-hosting";
 import { cn } from "@/lib/utils";
 
 /* ------------------------------------------------------------------ *
  * Building blocks
  * ------------------------------------------------------------------ */
 
-const GRADIENT_TEXT =
-  "bg-gradient-to-r from-primary-ink via-primary to-[#2f7bff] bg-clip-text text-transparent";
+const GRADIENT_TEXT = "text-ai-gradient";
 const GRID_BG =
   "bg-[linear-gradient(var(--border)_1px,transparent_1px),linear-gradient(90deg,var(--border)_1px,transparent_1px)] bg-[size:56px_56px]";
 
@@ -179,6 +181,7 @@ const NAV = [
   { href: "#automation", label: "Automation" },
   { href: "#security", label: "Security" },
   { href: "#faq", label: "FAQ" },
+  { href: "/docs", label: "Docs" },
 ];
 
 const SMALL_FEATURES: { icon: LucideIcon; title: string; body: string }[] = [
@@ -295,11 +298,12 @@ const FOOTER_LINKS: [string, string][] = [
   ["#features", "Features"],
   ["/signup", "Create a workspace"],
   ["#security", "Security"],
+  [SELF_HOSTING_URL, "Self-hosting"],
   ["/forgot-password", "Reset password"],
   ["#faq", "FAQ"],
 ];
 
-export const FAQ = [
+export const FAQ: { q: string; a: string; link?: { href: string; label: string } }[] = [
   {
     q: "What is CeDesk?",
     a: "CeDesk is a help desk where people and AI resolve customer conversations together. It gives your team a shared inbox, SLAs, routing, automation, a customer portal and reports in one product.",
@@ -326,7 +330,8 @@ export const FAQ = [
   },
   {
     q: "Can I self-host this help desk software?",
-    a: "Yes. The frontend is open source under the MIT license and ships with a Dockerfile. Point it at your CeDesk API with a few environment variables and run it on your own infrastructure.",
+    a: "Yes. The whole product runs on one server of your own with Docker: the API, worker, database and frontend, with Caddy for HTTPS. It has every feature and no plan limits, and Cevanos AI is optional.",
+    link: { href: SELF_HOSTING_URL, label: "Read the self-hosting guide" },
   },
   {
     q: "Does it work on phones and in dark mode?",
@@ -338,7 +343,7 @@ export const FAQ = [
  * Page
  * ------------------------------------------------------------------ */
 
-export function LandingPage() {
+export function LandingPage({ signedIn = false }: { signedIn?: boolean }) {
   return (
     <div className="relative">
       {/* Nav */}
@@ -360,15 +365,37 @@ export function LandingPage() {
                 {n.label}
               </a>
             ))}
+            <ResourcesMenu align="left" triggerClassName="rounded-full px-4 py-1.5 h-auto" />
           </nav>
           <div className="flex items-center gap-2">
             <ThemeToggle className="hidden sm:inline-flex" />
-            <LinkButton href="/login" variant="ghost" size="md" className="hidden sm:inline-flex">
-              Sign in
-            </LinkButton>
-            <LinkButton href="/signup" size="md">
-              Get started
-            </LinkButton>
+            {signedIn ? (
+              <LinkButton href="/tickets" size="md">
+                Dashboard
+              </LinkButton>
+            ) : (
+              <>
+                <LinkButton
+                  href="/login"
+                  variant="ghost"
+                  size="md"
+                  className="hidden sm:inline-flex"
+                >
+                  Sign in
+                </LinkButton>
+                <IfSignup
+                  fallback={
+                    <LinkButton href="/login" size="md" className="sm:hidden">
+                      Sign in
+                    </LinkButton>
+                  }
+                >
+                  <LinkButton href="/signup" size="md">
+                    Get started
+                  </LinkButton>
+                </IfSignup>
+              </>
+            )}
           </div>
         </div>
       </header>
@@ -391,16 +418,16 @@ export function LandingPage() {
           <div className="mx-auto max-w-7xl px-5 pt-10 text-center sm:px-8 sm:pt-14">
             <a
               href="#ai"
-              className="inline-flex animate-rise items-center gap-2 rounded-full border border-border-strong bg-surface/80 py-1.5 pr-4 pl-1.5 text-sm font-medium shadow-card backdrop-blur transition-colors hover:border-primary/50"
+              className="ai-frame inline-flex animate-rise items-center gap-2 rounded-full py-1.5 pr-4 pl-1.5 text-sm font-medium shadow-card backdrop-blur transition-shadow hover:shadow-pop"
             >
-              <span className="rounded-full bg-primary px-2.5 py-0.5 text-xs font-semibold text-primary-foreground">
-                New
+              <span className="inline-flex items-center gap-1 rounded-full bg-ai-gradient px-2.5 py-0.5 text-xs font-semibold text-white">
+                <Sparkles className="size-3" aria-hidden /> AI
               </span>
               AI handover with full context
               <ArrowRight className="size-3.5 text-muted-foreground" aria-hidden />
             </a>
             <h1 className="mx-auto mt-6 max-w-5xl animate-rise text-[2.7rem] leading-[1.02] font-semibold tracking-[-0.04em] text-balance [animation-delay:60ms] sm:text-[4.2rem] lg:text-[4.2rem]">
-              AI help desk software that makes support{" "}
+              AI-native help desk software that makes support{" "}
               <span className={GRADIENT_TEXT}>effortless</span>
             </h1>
             <p className="mx-auto mt-5 max-w-2xl animate-rise text-base leading-relaxed text-pretty text-muted-foreground [animation-delay:120ms] sm:text-xl">
@@ -409,12 +436,22 @@ export function LandingPage() {
               people and AI resolve conversations together.
             </p>
             <div className="mt-8 flex animate-rise flex-col items-center justify-center gap-3 [animation-delay:180ms] sm:flex-row">
-              <LinkButton href="/signup">
-                Create a workspace <ArrowRight className="size-4" aria-hidden />
-              </LinkButton>
-              <LinkButton href="/login" variant="outline">
-                Sign in to your desk
-              </LinkButton>
+              {signedIn ? (
+                <LinkButton href="/tickets">
+                  Go to your dashboard <ArrowRight className="size-4" aria-hidden />
+                </LinkButton>
+              ) : (
+                <>
+                  <IfSignup>
+                    <LinkButton href="/signup">
+                      Create a workspace <ArrowRight className="size-4" aria-hidden />
+                    </LinkButton>
+                  </IfSignup>
+                  <LinkButton href="/login" variant="outline">
+                    Sign in to your desk
+                  </LinkButton>
+                </>
+              )}
             </div>
             <ul className="mt-8 flex animate-rise flex-wrap items-center justify-center gap-x-7 gap-y-2 text-sm text-muted-foreground [animation-delay:240ms]">
               {["Customer portal included", "SSO and two-factor", "Open source frontend"].map(
@@ -680,9 +717,11 @@ export function LandingPage() {
                   title="Support reports and analytics your team can act on"
                   lead="Live queue, backlog ageing, team performance and custom dashboards. Schedule the ones people need in their inbox."
                 />
-                <LinkButton href="/signup" variant="outline" size="md" className="mt-9">
-                  See it in your workspace <ArrowRight className="size-4" aria-hidden />
-                </LinkButton>
+                <IfSignup>
+                  <LinkButton href="/signup" variant="outline" size="md" className="mt-9">
+                    See it in your workspace <ArrowRight className="size-4" aria-hidden />
+                  </LinkButton>
+                </IfSignup>
               </div>
             </div>
 
@@ -774,28 +813,39 @@ export function LandingPage() {
           <div className="mx-auto max-w-7xl">
             <SectionHead
               eyebrow="Your way to run it"
-              title="An open source help desk you can self-host"
-              lead="Start with the open-source frontend today. Add Cevanos AI and managed hosting when you want them."
+              title="A help desk you can run yourself"
+              lead="Run the whole product on a server of your own, or let us host it. Cevanos AI is optional either way."
             />
             <div className="mx-auto mt-8 grid max-w-4xl gap-5 md:grid-cols-2">
               <article className="flex flex-col rounded-3xl border border-border bg-surface p-6 shadow-card">
                 <span className="grid size-12 place-items-center rounded-2xl bg-surface-2 text-foreground">
                   <GitBranch className="size-6" aria-hidden />
                 </span>
-                <h3 className="mt-4 text-xl font-semibold tracking-tight">Open source</h3>
+                <h3 className="mt-4 text-xl font-semibold tracking-tight">Self-host</h3>
                 <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                  MIT-licensed frontend. Run it on your own infrastructure with a Docker image and a
-                  few environment variables.
+                  Runs on one server with Docker: Postgres, the API, a worker and Caddy for HTTPS.
+                  Every feature is included and there are no plan limits. The frontend is MIT
+                  licensed.
                 </p>
                 <ul className="mt-6 space-y-2.5 text-sm">
-                  {["Full source, no lock-in", "Docker image included", "Community-friendly"].map(
-                    (t) => (
-                      <li key={t} className="flex items-center gap-2.5">
-                        <Check className="size-4 text-success" aria-hidden /> {t}
-                      </li>
-                    ),
-                  )}
+                  {[
+                    "Every feature, no plan limits",
+                    "One server, one compose file",
+                    "Cevanos AI is optional",
+                  ].map((t) => (
+                    <li key={t} className="flex items-center gap-2.5">
+                      <Check className="size-4 text-success" aria-hidden /> {t}
+                    </li>
+                  ))}
                 </ul>
+                <LinkButton
+                  href={SELF_HOSTING_URL}
+                  variant="outline"
+                  size="md"
+                  className="mt-8 self-start"
+                >
+                  Read the self-hosting guide <ArrowRight className="size-4" aria-hidden />
+                </LinkButton>
               </article>
               <article className="relative flex flex-col overflow-hidden rounded-3xl border border-primary/40 bg-surface p-6 shadow-pop ring-1 ring-primary/20">
                 <Glow className="-top-16 -right-16 size-56 bg-primary/25" />
@@ -819,9 +869,11 @@ export function LandingPage() {
                     </li>
                   ))}
                 </ul>
-                <LinkButton href="/signup" size="md" className="relative mt-8 self-start">
-                  Create a workspace
-                </LinkButton>
+                <IfSignup>
+                  <LinkButton href="/signup" size="md" className="relative mt-8 self-start">
+                    Create a workspace
+                  </LinkButton>
+                </IfSignup>
               </article>
             </div>
           </div>
@@ -843,7 +895,21 @@ export function LandingPage() {
                       +
                     </span>
                   </summary>
-                  <p className="pb-6 text-sm leading-relaxed text-muted-foreground">{f.a}</p>
+                  <p className="pb-6 text-sm leading-relaxed text-muted-foreground">
+                    {f.a}
+                    {f.link && (
+                      <>
+                        {" "}
+                        <Link
+                          href={f.link.href}
+                          className="font-medium text-primary-ink hover:underline"
+                        >
+                          {f.link.label}
+                        </Link>
+                        .
+                      </>
+                    )}
+                  </p>
                 </details>
               ))}
             </div>
@@ -868,12 +934,22 @@ export function LandingPage() {
               Create a workspace in minutes, or sign in to pick up where you left off.
             </p>
             <div className="mt-7 flex flex-col items-center justify-center gap-3 sm:flex-row">
-              <LinkButton href="/signup" variant="light">
-                Create a workspace <ArrowRight className="size-4" aria-hidden />
-              </LinkButton>
-              <LinkButton href="/login" variant="glass">
-                Sign in
-              </LinkButton>
+              {signedIn ? (
+                <LinkButton href="/tickets" variant="light">
+                  Go to your dashboard <ArrowRight className="size-4" aria-hidden />
+                </LinkButton>
+              ) : (
+                <>
+                  <IfSignup>
+                    <LinkButton href="/signup" variant="light">
+                      Create a workspace <ArrowRight className="size-4" aria-hidden />
+                    </LinkButton>
+                  </IfSignup>
+                  <LinkButton href="/login" variant="glass">
+                    Sign in
+                  </LinkButton>
+                </>
+              )}
             </div>
           </div>
         </section>
@@ -889,11 +965,19 @@ export function LandingPage() {
             </p>
           </div>
           <nav aria-label="Footer" className="grid grid-cols-2 gap-x-16 gap-y-3 text-sm">
-            {FOOTER_LINKS.map(([href, label]) =>
+            {FOOTER_LINKS.filter(
+              ([href]) => !signedIn || (href !== "/login" && href !== "/signup"),
+            ).map(([href, label]) =>
               href.startsWith("#") ? (
                 <a key={href} href={href} className="text-muted-foreground hover:text-foreground">
                   {label}
                 </a>
+              ) : href === "/signup" ? (
+                <IfSignup key={href}>
+                  <Link href={href} className="text-muted-foreground hover:text-foreground">
+                    {label}
+                  </Link>
+                </IfSignup>
               ) : (
                 <Link
                   key={href}

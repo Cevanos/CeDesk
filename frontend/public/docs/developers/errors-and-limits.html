@@ -1,0 +1,60 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>Errors and limits · CeDesk Docs</title>
+<meta name="robots" content="noindex"><style>
+:root{--brand:#6C55F6;--ink:#0B1B36;--mute:#4B5563;--line:#E5E7EB;--tint:#F5F3FF;--bg:#F6F8FB}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);
+font:16px/1.65 "Instrument Sans",Inter,system-ui,sans-serif}
+a{color:var(--brand)}a:hover{text-decoration:underline}
+a:focus-visible,input:focus-visible{outline:3px solid var(--brand);outline-offset:2px;border-radius:4px}
+.skip{position:absolute;left:-9999px}.skip:focus{left:0;background:var(--brand);color:#fff;padding:10px}
+header{background:#fff;border-bottom:1px solid var(--line)}
+.bar{max-width:1200px;margin:0 auto;padding:14px 24px;display:flex;flex-wrap:wrap;gap:20px;align-items:center}
+.logo{font-weight:700;font-size:18px;color:var(--ink);text-decoration:none}.logo b{color:var(--brand)}
+.bar nav{margin-left:auto;display:flex;gap:20px}.bar nav a{color:var(--mute);text-decoration:none}
+.wrap{max-width:1200px;margin:0 auto;padding:32px 24px 64px;display:flex;flex-wrap:wrap;gap:40px;align-items:flex-start}
+aside{flex:1 1 220px;max-width:260px;font-size:14px;display:flex;flex-direction:column;gap:2px}
+aside a{padding:6px 10px;border-radius:6px;color:#374151;text-decoration:none}
+aside a.on{background:var(--tint);color:#3B2A9E;font-weight:600}
+main{flex:999 1 560px;min-width:0;max-width:760px;background:#fff;border:1px solid var(--line);
+border-radius:12px;padding:32px}
+h1{margin:0 0 8px;font-size:34px;line-height:1.2}h2{font-size:24px;margin:32px 0 8px}
+.meta{color:var(--mute);font-size:14px;margin-bottom:16px}
+table{width:100%;border-collapse:collapse;font-size:15px;display:block;overflow-x:auto}
+th,td{padding:10px 14px;text-align:left;border:1px solid var(--line)}th{background:#F9FAFB}
+blockquote{margin:16px 0;padding:12px 16px;border-left:4px solid var(--brand);background:var(--tint);border-radius:8px}
+blockquote p{margin:0}code{font:14px "JetBrains Mono",monospace;background:#F3F4F6;padding:1px 6px;border-radius:4px}
+pre{background:#0B1B36;color:#E5E7EB;padding:16px;border-radius:10px;overflow-x:auto}pre code{background:none;padding:0}
+img{max-width:100%}.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:20px}
+.card{display:block;padding:20px;border:1px solid var(--line);border-radius:12px;background:#fff;
+color:var(--ink);text-decoration:none}.card small{color:var(--mute)}
+.draft{background:#FEF3C7;color:#92400E;padding:2px 8px;border-radius:6px;font-size:12px}
+@media (max-width:900px){aside{max-width:none;flex-basis:100%;order:2}main{order:1;flex-basis:100%;padding:20px}
+h1{font-size:28px}}
+
+.op{border:1px solid var(--line);border-radius:12px;margin:24px 0;padding:20px;background:#fff}
+.op h3{margin:0 0 6px;font-size:18px}.route{font:14px "JetBrains Mono",monospace;word-break:break-all}
+.verb{display:inline-block;min-width:58px;text-align:center;padding:2px 8px;border-radius:6px;color:#fff;
+font:700 12px "JetBrains Mono",monospace;margin-right:8px}
+.get{background:#0E7490}.post{background:#15803D}.put{background:#B45309}.patch{background:#7C3AED}.delete{background:#B91C1C}
+.op h4{margin:18px 0 6px;font-size:13px;text-transform:uppercase;letter-spacing:.04em;color:var(--mute)}
+.op table{font-size:14px}.op td:first-child{font:13px "JetBrains Mono",monospace;white-space:nowrap}
+.op pre{font-size:13px}.req{color:#B91C1C;font-size:12px}
+</style></head><body><a class="skip" href="#content">Skip to content</a>
+<header><div class="bar"><a class="logo" href="../index.html">CeDesk Docs</a>
+<nav><a href="../index.html">User guide</a><a href="../glossary.html">Glossary</a><a href="../api/index.html">API reference</a></nav></div></header>
+<div class="wrap"><aside aria-label='Topics'><a class="" href="../getting-started/index.html">Getting started</a><a class="" href="../working-with-tickets/index.html">Working with tickets</a><a class="" href="../ticket-tools/index.html">Ticket tools</a><a class="" href="../channels/index.html">Channels</a><a class="" href="../customers/index.html">Customers</a><a class="" href="../automation/index.html">Automation</a><a class="" href="../campaigns/index.html">Email campaigns</a><a class="" href="../reports/index.html">Reports</a><a class="" href="../security-and-privacy/index.html">Security and privacy</a><a class="" href="../account-and-access/index.html">Account and access</a><a class="" href="../integrations/index.html">Integrations</a><a class="" href="../help-center/index.html">Help center</a><a class="" href="../imports/index.html">Moving to CeDesk</a><a class="" href="../best-practices/index.html">Best practices</a><a class="" href="../how-to/index.html">How-to</a><a class="on" href="../developers/index.html">Developer guides</a></aside><main id="content" data-pagefind-body><h1>Errors and limits <span class="draft">Draft</span></h1><div class='meta'>Last updated 2026-11-24 · Who: Developers</div><p>Every error has the same shape, so one piece of code can read them all.</p>
+<blockquote><p><strong>Who can do this:</strong> A developer.</p></blockquote>
+<h2 id="the-shape">The shape</h2>
+<pre><code>{&quot;error&quot;: {&quot;code&quot;: &quot;NotFound&quot;, &quot;message&quot;: &quot;Ticket not found.&quot;, &quot;details&quot;: []}}</code></pre>
+<ul><li><code>code</code> is stable. Branch on it, not on the message.</li><li><code>message</code> is plain text you can show to a person.</li><li><code>details</code> appears only on validation errors, one entry per field that is wrong.</li></ul>
+<h2 id="status-codes">Status codes</h2>
+<table><thead><tr><th>Status</th><th>Meaning</th><th>What to do</th></tr></thead><tbody><tr><td>400, 422</td><td>The request is not valid.</td><td>Read <code>details</code>, fix the request. Do not retry unchanged.</td></tr><tr><td>401</td><td>Not signed in, the token ended, or the key is revoked.</td><td>Sign in again. The response carries <code>WWW-Authenticate: Bearer</code>.</td></tr><tr><td>402</td><td>A plan limit is reached, for example adding a member or uploading a file.</td><td>Free something, or change plan.</td></tr><tr><td>403</td><td>Not allowed. Common codes: <code>IpNotAllowed</code>, <code>PasswordExpired</code>, <code>TwoFactorRequired</code>, <code>TwoFactorSetupRequired</code>.</td><td>Fix the cause. See <a href="authentication.html">Authentication</a>.</td></tr><tr><td>404</td><td>Not found, or not visible to you, for example another team's ticket.</td><td>Check the id.</td></tr><tr><td>409</td><td>The request clashes with the current state.</td><td>Read the message, refetch, decide.</td></tr><tr><td>413</td><td>The body is too big, for example a file over 25 MB.</td><td>Send less.</td></tr><tr><td>429</td><td>Too many requests.</td><td>Wait for <code>Retry-After</code> seconds.</td></tr><tr><td>503</td><td>A system CeDesk depends on did not answer, such as Cevanos or Jira.</td><td>Try again.</td></tr></tbody></table>
+<h2 id="back-off">Back off</h2>
+<p>For 429 and 503, wait and retry. Read the <code>Retry-After</code> header when it is there. Otherwise wait a second, then double the wait each time, with a little randomness, up to a limit. Use an <a href="idempotency-keys.html">idempotency key</a> so a retry cannot make a duplicate.</p>
+<h2 id="limits-to-know">Limits to know</h2>
+<p>Limits are listed on each route in the API reference. The common ones:</p>
+<table><thead><tr><th>What</th><th>Limit</th></tr></thead><tbody><tr><td>Bulk ticket changes</td><td>100 tickets per request, 10 requests a minute per person</td></tr><tr><td>Live streams</td><td>5 open per person</td></tr><tr><td>Attachments</td><td>25 MB by default</td></tr><tr><td>Webhooks</td><td>20 per workspace</td></tr><tr><td>Transcripts emailed</td><td>10 an hour per person</td></tr></tbody></table>
+<h2 id="check-it-worked">Check it worked</h2>
+<p>A deliberate bad request returns the error shape with a <code>code</code> you can match.</p>
+<h2 id="troubleshooting">Troubleshooting</h2>
+<table><thead><tr><th>What you see</th><th>Why</th><th>What to do</th></tr></thead><tbody><tr><td>429 with no <code>Retry-After</code></td><td>A limit without a wait time.</td><td>Back off as above.</td></tr><tr><td>404 for a ticket that exists</td><td>The key or person cannot see it.</td><td>Check the team scope.</td></tr></tbody></table></main></div></body></html>

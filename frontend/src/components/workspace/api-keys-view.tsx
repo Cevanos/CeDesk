@@ -20,6 +20,16 @@ import { FormError, fieldErrors, LoadError } from "@/components/workspace/list-s
 import { useApiKeys, useCreateApiKey, useRevokeApiKey } from "@/hooks/use-workspace";
 import type { ApiKeyAccess } from "@/hooks/workspace/api-keys";
 import { ApiError } from "@/lib/api/client";
+import { bind, bindSelect, fieldError, useFormik, yup } from "@/lib/forms";
+
+const keySchema = yup.object({
+  name: yup
+    .string()
+    .trim()
+    .required("Name the key so you can tell it apart later")
+    .max(80, "Use at most 80 characters"),
+  access: yup.string().required("Choose what this key can do"),
+});
 
 const ACCESS: { value: ApiKeyAccess; label: string; help: string }[] = [
   { value: "read", label: "Read only", help: "Can only read (GET)." },
@@ -177,56 +187,44 @@ function KeyForm({
   onCreated: (secret: string) => void;
 }) {
   const create = useCreateApiKey();
-  const [name, setName] = useState("");
-  const [access, setAccess] = useState<ApiKeyAccess | "">("");
-  const [errs, setErrs] = useState<Record<string, string>>({});
-  const clearErr = (k: string) =>
-    setErrs((p) => {
-      if (!p[k]) return p;
-      const { [k]: _gone, ...rest } = p;
-      return rest;
-    });
+  const [srv, setSrv] = useState<Record<string, string>>({});
+  const form = useFormik({
+    initialValues: { name: "", access: "" as ApiKeyAccess | "" },
+    validationSchema: keySchema,
+    onSubmit: (v) => {
+      setSrv({});
+      create.mutate(
+        { name: v.name.trim(), access: v.access as ApiKeyAccess },
+        {
+          onSuccess: (r) => {
+            const secret = r.key ?? r.token ?? r.secret;
+            if (secret) onCreated(secret);
+            else {
+              toast.success("API key made");
+              onClose();
+            }
+          },
+          onError: (err) => setSrv(fieldErrors(err)),
+        },
+      );
+    },
+  });
+  const access = form.values.access;
 
   return (
-    <form
-      noValidate
-      className="space-y-4"
-      onSubmit={(e) => {
-        e.preventDefault();
-        if (!name.trim()) return setErrs({ name: "Name the key so you can tell it apart later" });
-        if (!access) return setErrs({ access: "Choose what this key can do" });
-        setErrs({});
-        create.mutate(
-          { name: name.trim(), access },
-          {
-            onSuccess: (r) => {
-              const secret = r.key ?? r.token ?? r.secret;
-              if (secret) onCreated(secret);
-              else {
-                toast.success("API key made");
-                onClose();
-              }
-            },
-            onError: (err) => setErrs(fieldErrors(err)),
-          },
-        );
-      }}
-    >
-      <Field label="Name" htmlFor="ak-name" error={errs.name} hint="For example “Billing sync”.">
-        <Input
-          id="ak-name"
-          value={name}
-          onChange={(e) => {
-            setName(e.target.value);
-            clearErr("name");
-          }}
-          maxLength={80}
-        />
+    <form noValidate className="space-y-4" onSubmit={form.handleSubmit}>
+      <Field
+        label="Name"
+        htmlFor="ak-name"
+        error={fieldError(form, "name") ?? srv.name}
+        hint="For example “Billing sync”."
+      >
+        <Input id="ak-name" {...bind(form, "name")} maxLength={80} />
       </Field>
       <Field
         label="Access level"
         htmlFor="ak-access"
-        error={errs.access}
+        error={fieldError(form, "access") ?? srv.access}
         hint={
           ACCESS.find((x) => x.value === access)?.help ??
           "At every level the key acts as you, and never reaches sign-in, members, security, SSO, imports or API keys."
@@ -234,11 +232,7 @@ function KeyForm({
       >
         <Select
           id="ak-access"
-          value={access}
-          onChange={(e) => {
-            setAccess(e.target.value as ApiKeyAccess | "");
-            clearErr("access");
-          }}
+          {...bindSelect(form, "access")}
           options={[
             { value: "", label: "Choose…" },
             ...ACCESS.map((x) => ({ value: x.value, label: x.label })),
@@ -248,7 +242,7 @@ function KeyForm({
       <p className="text-xs text-muted-foreground">
         The key is shown once, right after you make it. Copy it then.
       </p>
-      <FormError message={errs._form} />
+      <FormError message={srv._form} />
       <div className="flex justify-end gap-2">
         <Button variant="ghost" onClick={onClose}>
           Cancel

@@ -1,7 +1,6 @@
 "use client";
 
 import { Unlink } from "lucide-react";
-import { useState } from "react";
 import { toast } from "sonner";
 
 import {
@@ -24,6 +23,7 @@ import {
   type TicketRef,
 } from "@/hooks/use-ticket-extras";
 import { useTeams } from "@/hooks/use-workspace";
+import { bind, bindSelect, fieldError, useFormik, yup } from "@/lib/forms";
 
 /** Accepts a ticket id or a pasted ticket page URL. */
 function parseTicketId(raw: string) {
@@ -78,22 +78,31 @@ function IdForm({
   pending: boolean;
   close: () => void;
 }) {
-  const [v, setV] = useState("");
+  const form = useFormik({
+    initialValues: { v: "" },
+    validationSchema: yup.object({
+      v: yup
+        .string()
+        .required("Enter a ticket number or link.")
+        .test(
+          "ticket",
+          "That doesn't look like a ticket number or link.",
+          (x) => !!parseTicketId(x ?? ""),
+        ),
+    }),
+    onSubmit: ({ v }) => {
+      const id = parseTicketId(v);
+      if (id) submit(id);
+    },
+  });
+  const err = fieldError(form, "v");
   return (
-    <form
-      className="flex gap-2"
-      onSubmit={(e) => {
-        e.preventDefault();
-        const id = parseTicketId(v);
-        if (id) submit(id);
-      }}
-    >
+    <form className="flex flex-wrap gap-2" onSubmit={form.handleSubmit} noValidate>
       <Input
-        value={v}
-        onChange={(e) => setV(e.target.value)}
+        {...bind(form, "v")}
         placeholder={placeholder}
         aria-label={placeholder}
-        className="h-9"
+        className="h-9 min-w-0 flex-1"
       />
       <Button type="submit" size="sm" className="h-9" loading={pending}>
         Go
@@ -101,6 +110,11 @@ function IdForm({
       <Button type="button" size="sm" variant="ghost" className="h-9" onClick={close}>
         Cancel
       </Button>
+      {err && (
+        <p role="alert" className="basis-full text-xs text-danger">
+          {err}
+        </p>
+      )}
     </form>
   );
 }
@@ -108,35 +122,35 @@ function IdForm({
 function ChildForm({ ticketId, close }: { ticketId: string; close: () => void }) {
   const teams = useTeams();
   const create = useCreateChild(ticketId);
-  const [subject, setSubject] = useState("");
-  const [team, setTeam] = useState("");
-  return (
-    <form
-      className="space-y-2"
-      onSubmit={(e) => {
-        e.preventDefault();
-        if (!subject.trim() || !team) return;
-        create.mutate(
-          { subject: subject.trim(), team_id: team },
-          {
-            onSuccess: () => {
-              toast.success("Child ticket created");
-              close();
-            },
-            onError: toastError,
+  const form = useFormik({
+    initialValues: { subject: "", team: "" },
+    validationSchema: yup.object({
+      subject: yup.string().trim().required("Add a subject.").max(200),
+      team: yup.string().required("Choose a team."),
+    }),
+    onSubmit: (v) =>
+      create.mutate(
+        { subject: v.subject.trim(), team_id: v.team },
+        {
+          onSuccess: () => {
+            toast.success("Child ticket created");
+            close();
           },
-        );
-      }}
-    >
+          onError: toastError,
+        },
+      ),
+  });
+  const problem = fieldError(form, "subject") ?? fieldError(form, "team");
+  return (
+    <form className="space-y-2" onSubmit={form.handleSubmit} noValidate>
       <Input
-        value={subject}
-        onChange={(e) => setSubject(e.target.value)}
+        {...bind(form, "subject")}
         placeholder="Child ticket subject"
         aria-label="Child ticket subject"
         maxLength={200}
         className="h-9"
       />
-      <Select value={team} onChange={(e) => setTeam(e.target.value)} aria-label="Team">
+      <Select {...bindSelect(form, "team")} aria-label="Team">
         <option value="">Choose a team</option>
         {teams.data?.map((t) => (
           <option key={t.id} value={t.id}>
@@ -144,6 +158,11 @@ function ChildForm({ ticketId, close }: { ticketId: string; close: () => void })
           </option>
         ))}
       </Select>
+      {problem && (
+        <p role="alert" className="text-xs text-danger">
+          {problem}
+        </p>
+      )}
       <div className="flex gap-2">
         <Button type="submit" size="sm" loading={create.isPending}>
           Create child

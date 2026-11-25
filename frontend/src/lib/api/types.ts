@@ -1,5 +1,6 @@
 /** Domain types for the CeDesk API. Source: CEDESK_FRONTEND_GUIDE.md */
 
+import type { Resolution } from "./differentiator-types";
 export type Role = "light_agent" | "agent" | "supervisor" | "admin";
 export type TicketStatus = "open" | "pending" | "resolved";
 export type Priority = "urgent" | "high" | "medium" | "low";
@@ -174,6 +175,8 @@ export interface Ticket extends TicketSummary {
   handover: Handover | null;
   /** Who a reply will copy (read-only; the server decides it). */
   reply_cc?: string[];
+  /** The resolution receipt, or null/missing when there is none (or the ticket was reopened). */
+  resolution?: Resolution | null;
 }
 
 /** GET /tickets/{id}/messages: newest first. */
@@ -227,6 +230,8 @@ export interface AgentRow {
   skills: string[];
   /** `false` for a deactivated member. `GET /agents` lists everyone on purpose. */
   is_active?: boolean;
+  /** Active and the role replies to customers, so tickets can be assigned to them. */
+  assignable?: boolean;
 }
 
 export interface Member {
@@ -483,6 +488,8 @@ export interface PortalSettings {
   allowed_domains: string[];
   csat_survey: boolean;
   web_form: boolean;
+  /** Show the agent's first name to customers (default on). */
+  show_owner: boolean;
 }
 
 export type ArticleStatus = "draft" | "published";
@@ -490,6 +497,8 @@ export interface ArticleCategory {
   id: string;
   name: string;
   position?: number;
+  /** Names in other languages, by language code: `{ hi: "भुगतान" }`. */
+  name_translations?: Record<string, string>;
 }
 export interface Article {
   id: string;
@@ -501,6 +510,53 @@ export interface Article {
   helpful_count?: number;
   not_helpful_count?: number;
   updated_at?: string | null;
+  /** SEO text, in the article's own (default) language. */
+  slug?: string | null;
+  suggested_slug?: string | null;
+  meta_title?: string | null;
+  meta_description?: string | null;
+  canonical_url?: string | null;
+  /** Languages that exist for this article (agent list rows). */
+  locales?: string[];
+  /** Public answers: the language served, and whether it is a fallback. */
+  locale?: string;
+  fallback?: boolean;
+  available_locales?: string[];
+  default_locale?: string;
+  alternates?: ArticleAlternate[];
+}
+
+export interface ArticleAlternate {
+  locale: string;
+  slug?: string | null;
+}
+
+export interface ArticleTranslation {
+  locale: string;
+  title: string;
+  body: string;
+  status: ArticleStatus;
+  slug?: string | null;
+  suggested_slug?: string | null;
+  meta_title?: string | null;
+  meta_description?: string | null;
+  canonical_url?: string | null;
+  updated_at?: string | null;
+  updated_by_name?: string | null;
+}
+
+export interface HelpCenterSettings {
+  default_locale: string;
+  seo_indexable: boolean;
+}
+
+export type DomainStatus = "pending" | "verified" | "failed" | string;
+export interface HelpCenterDomain {
+  domain: string;
+  status: DomainStatus;
+  dns?: { type?: string; name?: string; value?: string } | null;
+  last_error?: string | null;
+  failed_checks?: number;
 }
 
 /* Customer-facing (no agent login) */
@@ -541,6 +597,10 @@ export interface PortalTicketSummary {
   status_label?: string | null;
   created_at: string;
   updated_at: string;
+  /** Who handles it ("Priyanka", or the team's name), what it waits on, and the checked outcome. Any may be null. */
+  owner_first_name?: string | null;
+  pending_step?: string | null;
+  outcome?: string | null;
 }
 export interface PortalTicket extends PortalTicketSummary {
   messages: PortalMessage[];
@@ -580,6 +640,9 @@ export interface PublicHelp {
   workspace_name?: string | null;
   categories: ArticleCategory[];
   articles: Article[];
+  /** The language served and the workspace default. */
+  locale?: string;
+  default_locale?: string;
 }
 
 /* ---------- Imports from other help desks ---------- */

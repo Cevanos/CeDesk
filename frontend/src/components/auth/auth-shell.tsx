@@ -1,4 +1,5 @@
 import { Inbox, ShieldCheck, Sparkles, Zap } from "lucide-react";
+import Link from "next/link";
 
 import { Logo, ThemeToggle } from "@/components/ui/brand";
 
@@ -29,7 +30,13 @@ export function AuthShell({ children }: { children: React.ReactNode }) {
     <div className="grid min-h-svh grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)]">
       <div className="flex min-w-0 flex-col px-5 py-6 sm:px-10 sm:py-8 lg:px-16">
         <header className="flex items-center justify-between">
-          <Logo />
+          <Link
+            href="/"
+            aria-label="CeDesk home"
+            className="rounded-lg focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:outline-none"
+          >
+            <Logo />
+          </Link>
           <ThemeToggle />
         </header>
 
@@ -55,10 +62,13 @@ export function AuthShell({ children }: { children: React.ReactNode }) {
         <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(rgb(255_255_255/0.04)_1px,transparent_1px),linear-gradient(90deg,rgb(255_255_255/0.04)_1px,transparent_1px)] [mask-image:radial-gradient(ellipse_at_center,black,transparent_75%)] bg-[size:48px_48px]" />
 
         <div className="relative mx-auto w-full max-w-[34rem]">
+          <span className="mb-6 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1 text-[11px] font-semibold tracking-[0.12em] text-white/80 uppercase backdrop-blur">
+            <Sparkles className="size-3.5 text-[#8fe3f5]" /> Cevanos AI inside
+          </span>
           <Illustration />
           <h2 className="mt-12 text-[2rem] leading-[1.15] font-semibold tracking-[-0.02em] text-balance xl:text-[2.4rem]">
             One desk for every customer conversation,{" "}
-            <span className="bg-gradient-to-r from-[#c4b9ff] to-[#7fb0ff] bg-clip-text text-transparent">
+            <span className="bg-gradient-to-r from-[#c4b9ff] via-[#8fb4ff] to-[#5fe0f2] bg-clip-text text-transparent">
               human and AI.
             </span>
           </h2>
@@ -114,7 +124,7 @@ function Illustration() {
           ))}
         </ul>
       </div>
-      <div className="absolute -right-2 -bottom-1 w-56 animate-float rounded-2xl border border-white/20 bg-gradient-to-br from-[#8a78ff] to-[#5b3cf0] p-3.5 shadow-[0_24px_50px_-20px_rgb(91_60_240/0.9)] [animation-delay:-3s]">
+      <div className="absolute -right-2 -bottom-1 w-56 animate-float rounded-2xl border border-white/20 bg-gradient-to-br from-[#7c5cff] via-[#5b8cff] to-[#1fc8e3] p-3.5 shadow-[0_24px_50px_-20px_rgb(60_120_255/0.9)] [animation-delay:-3s]">
         <div className="flex items-center gap-1.5 text-[10px] font-bold tracking-wider text-white/80 uppercase">
           <Sparkles className="size-3" /> AI handover
         </div>

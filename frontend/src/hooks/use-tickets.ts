@@ -20,6 +20,7 @@ import {
   request,
   type Query,
 } from "@/lib/api/client";
+import type { ResolutionInput } from "@/lib/api/differentiator-types";
 import { queryKeys } from "@/lib/api/query-keys";
 import { ticketSummarySchema, validateList } from "@/lib/api/schemas";
 import type { TicketFilters } from "@/lib/api/ticket-filters";
@@ -204,9 +205,12 @@ export function useUpdateTicket(id: string) {
 export function useResolveTicket(id: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ etag }: { etag: string | null }) =>
+    // 422 ("a receipt is required", "receipts are off") toasts the API's own message.
+    meta: { loud422: true },
+    mutationFn: ({ etag, resolution }: { etag: string | null; resolution?: ResolutionInput }) =>
       request<Ticket>(`tickets/${id}/resolve`, {
         method: "POST",
+        body: resolution ? { resolution } : undefined,
         headers: etag ? { "If-Match": etag } : undefined,
       }),
     onMutate: () => optimisticTicket(qc, id, (t) => applyTicketPatch(t, { status: "resolved" })),

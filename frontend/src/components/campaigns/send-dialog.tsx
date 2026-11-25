@@ -11,6 +11,7 @@ import { Button, Field, Skeleton } from "@/components/ui/primitives";
 import { FormError } from "@/components/workspace/list-shared";
 import { useCampaignAudience, useSendCampaign } from "@/hooks/use-workspace";
 import type { Campaign } from "@/lib/api/types";
+import { fieldError, useFormik, yup } from "@/lib/forms";
 
 const DAY_MS = 86_400_000;
 
@@ -56,34 +57,54 @@ function SendForm({
 }) {
   const router = useRouter();
   const send = useSendCampaign(campaign.id);
-  const [mode, setMode] = useState<"now" | "later">("now");
-  const [when, setWhen] = useState("");
-  const [agreed, setAgreed] = useState(false);
   const [error, setError] = useState<string>();
   const [now] = useState(() => Date.now());
 
-  const submit = () => {
-    setError(undefined);
-    let scheduled_at: string | undefined;
-    if (mode === "later") {
-      const t = new Date(when).valueOf();
-      if (!when || Number.isNaN(t)) return setError("Choose a date and time.");
-      if (t <= Date.now()) return setError("Choose a time in the future.");
-      if (t > Date.now() + 90 * DAY_MS) return setError("You can schedule up to 90 days ahead.");
-      scheduled_at = new Date(t).toISOString();
-    }
-    send.mutate(
-      { scheduled_at },
-      {
-        onSuccess: (c) => {
-          toast.success(c.state === "scheduled" ? "Campaign scheduled" : "Campaign is sending");
-          onClose();
-          router.push(`/campaigns/${encodeURIComponent(campaign.id)}`);
+  const formik = useFormik({
+    initialValues: { mode: "now" as "now" | "later", when: "", agreed: false },
+    validationSchema: yup.object({
+      mode: yup.string().oneOf(["now", "later"]).required(),
+      when: yup.string().when("mode", {
+        is: "later",
+        then: (f) =>
+          f
+            .required("Choose a date and time.")
+            .test(
+              "valid",
+              "Choose a date and time.",
+              (v) => !!v && !Number.isNaN(new Date(v).valueOf()),
+            )
+            .test(
+              "future",
+              "Choose a time in the future.",
+              (v) => !v || new Date(v).valueOf() > Date.now(),
+            )
+            .test(
+              "horizon",
+              "You can schedule up to 90 days ahead.",
+              (v) => !v || new Date(v).valueOf() <= Date.now() + 90 * DAY_MS,
+            ),
+      }),
+      agreed: yup.boolean().oneOf([true], "Confirm that you have permission."),
+    }),
+    onSubmit: (v) => {
+      setError(undefined);
+      const scheduled_at = v.mode === "later" ? new Date(v.when).toISOString() : undefined;
+      send.mutate(
+        { scheduled_at },
+        {
+          onSuccess: (c) => {
+            toast.success(c.state === "scheduled" ? "Campaign scheduled" : "Campaign is sending");
+            onClose();
+            router.push(`/campaigns/${encodeURIComponent(campaign.id)}`);
+          },
+          onError: (e) => setError(errorText(e)),
         },
-        onError: (e) => setError(errorText(e)),
-      },
-    );
-  };
+      );
+    },
+  });
+  const { mode, when, agreed } = formik.values;
+  const whenError = fieldError(formik, "when");
 
   return (
     <div className="space-y-4">
@@ -111,7 +132,7 @@ function SendForm({
             type="radio"
             name="when"
             checked={mode === "now"}
-            onChange={() => setMode("now")}
+            onChange={() => void formik.setFieldValue("mode", "now")}
           />
           Send now
         </label>
@@ -120,19 +141,19 @@ function SendForm({
             type="radio"
             name="when"
             checked={mode === "later"}
-            onChange={() => setMode("later")}
+            onChange={() => void formik.setFieldValue("mode", "later")}
           />
           Schedule
         </label>
         {mode === "later" && (
-          <Field label="Date and time (your time zone)" htmlFor="sd-when">
+          <Field label="Date and time (your time zone)" htmlFor="sd-when" error={whenError}>
             <DatePicker
               id="sd-when"
               type="datetime-local"
               value={when}
               min={localInput(new Date(now))}
               max={localInput(new Date(now + 90 * DAY_MS))}
-              onChange={(v) => setWhen(v)}
+              onChange={(v) => void formik.setFieldValue("when", v)}
               className="max-w-64"
             />
           </Field>
@@ -142,8 +163,9 @@ function SendForm({
       <label className="flex items-start gap-2 text-sm">
         <input
           type="checkbox"
+          name="agreed"
           checked={agreed}
-          onChange={(e) => setAgreed(e.target.checked)}
+          onChange={formik.handleChange}
           className="mt-1"
         />
         I have permission to email these customers.
@@ -154,7 +176,12 @@ function SendForm({
         <Button variant="ghost" onClick={onClose}>
           Cancel
         </Button>
-        <Button disabled={!agreed || recipients === 0} loading={send.isPending} onClick={submit}>
+        <Button
+          variant="ai"
+          disabled={!agreed || recipients === 0}
+          loading={send.isPending}
+          onClick={() => void formik.submitForm()}
+        >
           {mode === "later" ? "Schedule" : "Send"}
         </Button>
       </div>

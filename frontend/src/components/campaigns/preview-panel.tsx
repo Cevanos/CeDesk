@@ -7,6 +7,7 @@ import { Dialog } from "@/components/ui/overlay";
 import { Button, Input, Skeleton } from "@/components/ui/primitives";
 import { useContactSearch, useDebounced } from "@/hooks/use-contacts";
 import { useCampaignPreview } from "@/hooks/use-workspace";
+import { bind, useFormik, yup } from "@/lib/forms";
 import { cn } from "@/lib/utils";
 
 /**
@@ -24,7 +25,13 @@ export function PreviewPanel({
 }) {
   const preview = useCampaignPreview(campaignId);
   const [contactId, setContactId] = useState<string | undefined>();
-  const [q, setQ] = useState("");
+  const qForm = useFormik({
+    initialValues: { q: "" },
+    validationSchema: yup.object({ q: yup.string().max(200, "Use at most 200 characters.") }),
+    onSubmit: () => {},
+  });
+  const q = qForm.values.q;
+  const setQ = (v: string) => void qForm.setFieldValue("q", v);
   const [tab, setTab] = useState<"html" | "text">("html");
   const search = useContactSearch(useDebounced(q, 300));
   const run = preview.mutate;
@@ -44,8 +51,7 @@ export function PreviewPanel({
           <div className="mt-1 flex flex-wrap items-center gap-2">
             <Input
               id="pv-q"
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
+              {...bind(qForm, "q")}
               placeholder="Search a customer by name or email"
               className="max-w-xs"
             />

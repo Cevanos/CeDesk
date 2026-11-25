@@ -74,11 +74,12 @@ export function proxy(req: NextRequest) {
 }
 
 export const config = {
-  // Skip the API proxy (it has its own checks), Next internals and static files.
+  // Skip the API proxy (it has its own checks), Next internals, static files (including the raw
+  // HTML under public/docs). The /docs pages themselves run through here for the CSP nonce.
   matcher: [
     {
       source:
-        "/((?!api|_next/static|_next/image|favicon.ico|opengraph-image|twitter-image|.*\.(?:svg|png|jpg|jpeg|webp|ico|txt|xml)$).*)",
+        "/((?!api|_next/static|_next/image|favicon.ico|opengraph-image|twitter-image|.*\.(?:svg|png|jpg|jpeg|webp|ico|txt|xml|html)$).*)",
       missing: [
         { type: "header", key: "next-router-prefetch" },
         { type: "header", key: "purpose", value: "prefetch" },

@@ -21,6 +21,7 @@ import { useCurrentUser } from "@/hooks/use-auth";
 import { secondKey, useApps, useSaveApp, useUninstallApp } from "@/hooks/use-workspace";
 import type { AppCredential, AppField, WorkspaceApp } from "@/hooks/use-workspace";
 import { ApiError } from "@/lib/api/client";
+import { bind, fieldError, useFormik } from "@/lib/forms";
 
 const labelOf = (c: AppCredential | string | null | undefined, fallback: string) =>
   !c ? fallback : typeof c === "string" ? humanize(c) : (c.label ?? humanize(c.key) ?? fallback);
@@ -171,58 +172,55 @@ function CredentialHelp({ app }: { app: WorkspaceApp }) {
 function AppFieldsForm({ app, onClose }: { app: WorkspaceApp; onClose: () => void }) {
   const save = useSaveApp();
   const fields = app.fields ?? [];
-  const [values, setValues] = useState<Record<string, string>>(() =>
-    Object.fromEntries(
+  const [srv, setSrv] = useState<Record<string, string>>({});
+  const needsEventsUrl = fields.some((f) => f.send_as === "signing_secret");
+  const form = useFormik<Record<string, string>>({
+    initialValues: Object.fromEntries(
       fields.map((f) => [
         f.key,
         f.send_as === "settings" ? String(app.settings?.[f.key] ?? "") : "",
       ]),
     ),
-  );
-  const [errs, setErrs] = useState<Record<string, string>>({});
-  const needsEventsUrl = fields.some((f) => f.send_as === "signing_secret");
+    validate: (values) => {
+      const next: Record<string, string> = {};
+      for (const f of fields) {
+        // An installed app keeps a saved secret when its box is left blank.
+        const keepsSaved = app.installed && f.send_as !== "settings";
+        if (!keepsSaved && !values[f.key]?.trim()) next[f.key] = `Enter ${f.label}`;
+      }
+      return next;
+    },
+    onSubmit: (values) => {
+      setSrv({});
+      const settings: Record<string, string> = {};
+      const extra: Record<string, string> = {};
+      for (const f of fields) {
+        const v = (values[f.key] ?? "").trim();
+        if (f.send_as === "settings") settings[f.key] = v;
+        else if (v) extra[f.send_as] = v;
+      }
+      const { secret, ...rest } = extra;
+      save.mutate(
+        { app: app.app, settings, ...(secret ? { secret } : {}), extra: rest },
+        {
+          onSuccess: (res) => {
+            toast.success("App saved");
+            if (res?.note) toast.warning(res.note, { duration: 12_000 });
+            onClose();
+          },
+          onError: (err) =>
+            setSrv(
+              err instanceof ApiError && err.status !== 422
+                ? { _form: err.userMessage }
+                : fieldErrors(err),
+            ),
+        },
+      );
+    },
+  });
 
   return (
-    <form
-      noValidate
-      className="space-y-4"
-      onSubmit={(e) => {
-        e.preventDefault();
-        const next: Record<string, string> = {};
-        for (const f of fields) {
-          // An installed app keeps a saved secret when its box is left blank.
-          const keepsSaved = app.installed && f.send_as !== "settings";
-          if (!keepsSaved && !values[f.key]?.trim()) next[f.key] = `Enter ${f.label}`;
-        }
-        setErrs(next);
-        if (Object.keys(next).length) return;
-
-        const settings: Record<string, string> = {};
-        const extra: Record<string, string> = {};
-        for (const f of fields) {
-          const v = (values[f.key] ?? "").trim();
-          if (f.send_as === "settings") settings[f.key] = v;
-          else if (v) extra[f.send_as] = v;
-        }
-        const { secret, ...rest } = extra;
-        save.mutate(
-          { app: app.app, settings, ...(secret ? { secret } : {}), extra: rest },
-          {
-            onSuccess: (res) => {
-              toast.success("App saved");
-              if (res?.note) toast.warning(res.note, { duration: 12_000 });
-              onClose();
-            },
-            onError: (err) =>
-              setErrs(
-                err instanceof ApiError && err.status !== 422
-                  ? { _form: err.userMessage }
-                  : fieldErrors(err),
-              ),
-          },
-        );
-      }}
-    >
+    <form noValidate className="space-y-4" onSubmit={form.handleSubmit}>
       <CredentialHelp app={app} />
       {fields.map((f) => (
         <Field
@@ -230,9 +228,10 @@ function AppFieldsForm({ app, onClose }: { app: WorkspaceApp; onClose: () => voi
           label={f.label}
           htmlFor={`app-${f.key}`}
           error={
-            errs[f.key] ??
-            errs[`settings.${f.key}`] ??
-            (f.send_as !== "settings" ? errs[f.send_as] : undefined)
+            fieldError(form, f.key) ??
+            srv[f.key] ??
+            srv[`settings.${f.key}`] ??
+            (f.send_as !== "settings" ? srv[f.send_as] : undefined)
           }
           hint={
             f.send_as !== "settings" && app.installed
@@ -244,11 +243,7 @@ function AppFieldsForm({ app, onClose }: { app: WorkspaceApp; onClose: () => voi
             id={`app-${f.key}`}
             type={f.secret ? "password" : "text"}
             autoComplete="off"
-            value={values[f.key] ?? ""}
-            onChange={(e) => {
-              setValues((v) => ({ ...v, [f.key]: e.target.value }));
-              setErrs((p) => ({ ...p, [f.key]: "" }));
-            }}
+            {...bind(form, f.key)}
             autoCapitalize="none"
             spellCheck={false}
           />
@@ -258,7 +253,7 @@ function AppFieldsForm({ app, onClose }: { app: WorkspaceApp; onClose: () => voi
       {fields.length === 0 && (
         <p className="text-sm text-muted-foreground">This app needs no settings.</p>
       )}
-      <FormError message={errs._form} />
+      <FormError message={srv._form} />
       <div className="flex justify-end gap-2">
         <Button variant="ghost" onClick={onClose}>
           Cancel
@@ -279,67 +274,69 @@ function AppForm({ app, onClose }: { app: WorkspaceApp; onClose: () => void }) {
 function LegacyAppForm({ app, onClose }: { app: WorkspaceApp; onClose: () => void }) {
   const save = useSaveApp();
   const fields: AppField[] = app.settings_fields ?? [];
-  const [values, setValues] = useState<Record<string, string>>(() =>
-    Object.fromEntries(fields.map((f) => [f.key, String(app.settings?.[f.key] ?? "")])),
-  );
-  const [credential, setCredential] = useState("");
-  const [second, setSecond] = useState("");
-  const [errs, setErrs] = useState<Record<string, string>>({});
+  const [srv, setSrv] = useState<Record<string, string>>({});
+  const form = useFormik<Record<string, string>>({
+    initialValues: {
+      ...Object.fromEntries(fields.map((f) => [f.key, String(app.settings?.[f.key] ?? "")])),
+      credential: "",
+      second: "",
+    },
+    validate: (v) => {
+      const next: Record<string, string> = {};
+      for (const f of fields)
+        if (f.required && !v[f.key]?.trim()) next[f.key] = `Enter ${f.label ?? f.key}`;
+      if (!app.installed && app.credential && !v.credential?.trim())
+        next.credential = `Enter ${labelOf(app.credential, "the credential")}`;
+      return next;
+    },
+    onSubmit: (v) => {
+      setSrv({});
+      const credential = v.credential ?? "";
+      const second = v.second ?? "";
+      const settings = Object.fromEntries(fields.map((f) => [f.key, v[f.key] ?? ""]));
+      save.mutate(
+        {
+          app: app.app,
+          settings,
+          // Left blank on an installed app = keep the saved credential.
+          ...(credential.trim() ? { secret: credential.trim() } : {}),
+          ...(second.trim()
+            ? { extra: { [secondKey(app.second_credential)]: second.trim() } }
+            : {}),
+        },
+        {
+          onSuccess: (res) => {
+            toast.success("App saved");
+            // A warning from the server, e.g. "/book was edited by hand".
+            if (res?.note) toast.warning(res.note, { duration: 12_000 });
+            onClose();
+          },
+          onError: (err) =>
+            setSrv(
+              err instanceof ApiError && err.status !== 422
+                ? { _form: err.userMessage }
+                : fieldErrors(err),
+            ),
+        },
+      );
+    },
+  });
 
   return (
-    <form
-      noValidate
-      className="space-y-4"
-      onSubmit={(e) => {
-        e.preventDefault();
-        const next: Record<string, string> = {};
-        for (const f of fields)
-          if (f.required && !values[f.key]?.trim()) next[f.key] = `Enter ${f.label ?? f.key}`;
-        if (!app.installed && app.credential && !credential.trim())
-          next.credential = `Enter ${labelOf(app.credential, "the credential")}`;
-        setErrs(next);
-        if (Object.keys(next).length) return;
-        save.mutate(
-          {
-            app: app.app,
-            settings: values,
-            // Left blank on an installed app = keep the saved credential.
-            ...(credential.trim() ? { secret: credential.trim() } : {}),
-            ...(second.trim()
-              ? { extra: { [secondKey(app.second_credential)]: second.trim() } }
-              : {}),
-          },
-          {
-            onSuccess: (res) => {
-              toast.success("App saved");
-              // A warning from the server, e.g. "/book was edited by hand".
-              if (res?.note) toast.warning(res.note, { duration: 12_000 });
-              onClose();
-            },
-            onError: (err) =>
-              setErrs(
-                err instanceof ApiError && err.status !== 422
-                  ? { _form: err.userMessage }
-                  : fieldErrors(err),
-              ),
-          },
-        );
-      }}
-    >
+    <form noValidate className="space-y-4" onSubmit={form.handleSubmit}>
       <CredentialHelp app={app} />
       {fields.map((f) => (
         <Field
           key={f.key}
           label={f.label ?? humanize(f.key)}
           htmlFor={`app-${f.key}`}
-          error={errs[f.key] ?? errs[`settings.${f.key}`]}
+          error={fieldError(form, f.key) ?? srv[f.key] ?? srv[`settings.${f.key}`]}
           hint={f.hint}
         >
           <Input
             id={`app-${f.key}`}
             type={f.type === "number" ? "number" : f.type === "url" ? "url" : "text"}
-            value={values[f.key] ?? ""}
-            onChange={(e) => setValues((v) => ({ ...v, [f.key]: e.target.value }))}
+            {...bind(form, f.key)}
             autoCapitalize="none"
             spellCheck={false}
           />
@@ -349,7 +346,7 @@ function LegacyAppForm({ app, onClose }: { app: WorkspaceApp; onClose: () => voi
         <Field
           label={labelOf(app.credential, "Credential")}
           htmlFor="app-credential"
-          error={errs.credential}
+          error={fieldError(form, "credential") ?? srv.credential}
           hint={
             app.installed
               ? `Saved${app.secret_hint ? ` (ends ${app.secret_hint})` : ""}. Leave blank to keep it.`
@@ -360,8 +357,7 @@ function LegacyAppForm({ app, onClose }: { app: WorkspaceApp; onClose: () => voi
             id="app-credential"
             type="password"
             autoComplete="off"
-            value={credential}
-            onChange={(e) => setCredential(e.target.value)}
+            {...bind(form, "credential")}
           />
         </Field>
       )}
@@ -369,23 +365,17 @@ function LegacyAppForm({ app, onClose }: { app: WorkspaceApp; onClose: () => voi
         <Field
           label={labelOf(app.second_credential, "Second credential")}
           htmlFor="app-second"
-          error={errs.second_credential}
+          error={srv.second_credential}
           hint={app.installed ? "Leave blank to keep the saved one." : undefined}
         >
-          <Input
-            id="app-second"
-            type="password"
-            autoComplete="off"
-            value={second}
-            onChange={(e) => setSecond(e.target.value)}
-          />
+          <Input id="app-second" type="password" autoComplete="off" {...bind(form, "second")} />
         </Field>
       )}
       {app.second_credential && <SlackEventsUrl />}
       {fields.length === 0 && !app.credential && !app.second_credential && (
         <p className="text-sm text-muted-foreground">This app needs no settings.</p>
       )}
-      <FormError message={errs._form} />
+      <FormError message={srv._form} />
       <div className="flex justify-end gap-2">
         <Button variant="ghost" onClick={onClose}>
           Cancel

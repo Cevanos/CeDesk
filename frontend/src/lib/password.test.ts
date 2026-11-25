@@ -5,12 +5,12 @@ import { isWrongCurrentPassword, newPassword, passwordError } from "@/lib/passwo
 
 describe("newPassword", () => {
   it("allows 8 characters, the lowest minimum a workspace can set", () => {
-    expect(newPassword().safeParse("abcdefgh").success).toBe(true);
+    expect(newPassword().isValidSync("abcdefgh")).toBe(true);
   });
 
   it("refuses 7 characters and over 128", () => {
-    expect(newPassword().safeParse("abcdefg").success).toBe(false);
-    expect(newPassword().safeParse("a".repeat(129)).success).toBe(false);
+    expect(newPassword().isValidSync("abcdefg")).toBe(false);
+    expect(newPassword().isValidSync("a".repeat(129))).toBe(false);
   });
 });
 

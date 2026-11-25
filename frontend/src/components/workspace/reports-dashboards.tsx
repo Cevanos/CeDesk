@@ -4,6 +4,7 @@ import {
   ArrowDown,
   ArrowLeft,
   ArrowUp,
+  LayoutDashboard,
   MoreHorizontal,
   Pencil,
   Plus,
@@ -27,6 +28,7 @@ import {
   Select,
   Skeleton,
 } from "@/components/ui/primitives";
+import { SectionHeader } from "@/components/ui/section";
 import { LoadError } from "@/components/workspace/list-shared";
 import { useCsvDownload } from "@/components/workspace/report-csv";
 import { ResultView } from "@/components/workspace/report-result";
@@ -44,6 +46,7 @@ import {
   useUpdateDashboard,
 } from "@/hooks/workspace/reports-explore";
 import { ApiError, downloadFilePost } from "@/lib/api/client";
+import { bind, fieldError, useFormik, yup } from "@/lib/forms";
 import { inboxActions } from "@/lib/permissions";
 import { csvName, type CardInput, type Dashboard, type DashboardCard } from "@/lib/reports";
 
@@ -69,14 +72,16 @@ export function DashboardsList() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-2">
-        <p className="text-sm text-muted-foreground">
-          A dashboard is a set of up to {MAX_CARDS} reports on one page.
-        </p>
-        <Button size="sm" onClick={() => setEditing(true)}>
-          <Plus className="size-3.5" aria-hidden /> New dashboard
-        </Button>
-      </div>
+      <SectionHeader
+        icon={LayoutDashboard}
+        title="Your dashboards"
+        description={`A dashboard is a set of up to ${MAX_CARDS} reports on one page.`}
+        aside={
+          <Button size="sm" onClick={() => setEditing(true)}>
+            <Plus className="size-3.5" aria-hidden /> New dashboard
+          </Button>
+        }
+      />
       {list.length === 0 ? (
         <Card>
           <EmptyState title="No dashboards yet">
@@ -173,6 +178,11 @@ export function DashboardPage({ id }: { id: string }) {
         )}
       </div>
 
+      <SectionHeader
+        icon={LayoutDashboard}
+        title="Cards"
+        description="Each card is one report for the chosen period."
+      />
       {cards.length === 0 ? (
         <Card>
           <EmptyState title="No cards yet">Edit the dashboard to add reports.</EmptyState>
@@ -308,7 +318,18 @@ export function DashboardEditor({
   const saved = useSavedReports();
   const create = useCreateDashboard();
   const update = useUpdateDashboard();
-  const [name, setName] = useState(dashboard?.name ?? "");
+  const form = useFormik({
+    initialValues: { name: dashboard?.name ?? "" },
+    validationSchema: yup.object({
+      name: yup
+        .string()
+        .trim()
+        .min(1, "A dashboard's name is 1-80 characters.")
+        .max(80, "A dashboard's name is 1-80 characters.")
+        .required("A dashboard's name is 1-80 characters."),
+    }),
+    onSubmit: (v) => save(v.name.trim()),
+  });
   const [shared, setShared] = useState(dashboard?.shared ?? false);
   const [cards, setCards] = useState<EditCard[]>(() =>
     [...(dashboard?.cards ?? [])]
@@ -339,13 +360,7 @@ export function DashboardEditor({
       return next;
     });
 
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const trimmed = name.trim();
-    if (trimmed.length < 1 || trimmed.length > 80) {
-      setError("A dashboard's name is 1-80 characters.");
-      return;
-    }
+  const save = async (trimmed: string) => {
     // The whole card list is sent, in order.
     const body: CardInput[] = cards.map((c) =>
       c.preset ? { preset: c.preset } : { report_id: c.report_id! },
@@ -374,14 +389,14 @@ export function DashboardEditor({
       title={dashboard ? "Edit dashboard" : "New dashboard"}
       className="sm:max-w-xl"
     >
-      <form onSubmit={submit} className="space-y-4">
-        <Field label="Name" htmlFor="db-name">
+      <form noValidate onSubmit={form.handleSubmit} className="space-y-4">
+        <Field label="Name" htmlFor="db-name" error={fieldError(form, "name")}>
           <Input
             id="db-name"
             maxLength={80}
-            value={name}
+            {...bind(form, "name")}
             onChange={(e) => {
-              setName(e.target.value);
+              form.handleChange(e);
               setError(null);
             }}
           />

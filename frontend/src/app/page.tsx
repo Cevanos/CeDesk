@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { FAQ, LandingPage } from "@/components/landing/landing-page";
+import { landingEnabled } from "@/lib/server/landing";
 import { SITE_DESCRIPTION, SITE_KEYWORDS, SITE_NAME, SITE_TITLE, siteUrl } from "@/lib/site";
 
 // The one public, indexable page. Everything else stays noindex (see the root layout).
@@ -69,7 +70,6 @@ function structuredData() {
         applicationSubCategory: "Help desk software",
         operatingSystem: "Web",
         keywords: SITE_KEYWORDS.join(", "),
-        license: "https://opensource.org/licenses/MIT",
         publisher: { "@id": `${url}/#organization` },
         featureList: [
           "Shared inbox with saved views and bulk actions",
@@ -105,9 +105,18 @@ function structuredData() {
   };
 }
 
-export default async function Home() {
+export default async function Home({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   // Signed-in agents go straight to work; visitors see the landing page.
-  if ((await cookies()).get("cedesk_session")?.value) redirect("/tickets");
+  // `/?landing=1` (the logo link inside the app) lets them view it on purpose.
+  const wantsLanding = (await searchParams).landing !== undefined;
+  const signedIn = Boolean((await cookies()).get("cedesk_session")?.value);
+  if (!wantsLanding && signedIn) redirect("/tickets");
+  // A self-hosted install has no use for our sales page (CEDESK_LANDING=off).
+  if (!landingEnabled()) redirect("/login");
   return (
     <>
       <script
@@ -118,7 +127,7 @@ export default async function Home() {
           __html: JSON.stringify(structuredData()).replace(/</g, "\\u003c"),
         }}
       />
-      <LandingPage />
+      <LandingPage signedIn={signedIn} />
     </>
   );
 }

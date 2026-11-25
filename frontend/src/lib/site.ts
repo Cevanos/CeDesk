@@ -8,7 +8,7 @@ export const SITE_NAME = "CeDesk";
 export const SITE_TITLE = "CeDesk: AI Help Desk Software & Customer Support Ticketing System";
 
 export const SITE_DESCRIPTION =
-  "CeDesk is help desk software with a shared inbox, SLA management, smart ticket routing, automation, a customer portal and help center, and AI-to-human handover with full context. Open source and self-hostable.";
+  "CeDesk is help desk software with a shared inbox, SLA management, smart ticket routing, automation, a customer portal and help center, and AI-to-human handover with full context. Self-hostable, with an open source frontend.";
 
 export const SITE_KEYWORDS = [
   "help desk software",

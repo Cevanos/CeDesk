@@ -59,7 +59,7 @@ function Avatar({
       className={cn(
         "grid size-9 flex-none place-items-center rounded-full text-[12px] font-semibold ring-1 ring-inset",
         tone === "brand"
-          ? "bg-primary-soft text-primary-ink ring-primary/15"
+          ? "bg-linear-to-br from-primary-soft to-ai-soft text-primary-ink ring-primary/20"
           : "bg-surface-2 text-muted-foreground ring-border",
         className,
       )}
@@ -98,7 +98,7 @@ export function TicketRow({
       <Link
         href={`/tickets/${t.id}`}
         className={cn(
-          "group relative block py-3.5 pr-3 pl-4 outline-offset-[-2px] transition-colors hover:bg-primary-soft/40 focus-visible:bg-primary-soft/40 sm:py-4 sm:pr-5 sm:pl-5",
+          "group relative block py-3.5 pr-3 pl-4 outline-offset-[-2px] transition-colors hover:bg-linear-to-r hover:from-primary-soft/60 hover:to-transparent focus-visible:bg-primary-soft/40 sm:py-4 sm:pr-5 sm:pl-5",
           selectable && "pl-10 sm:pl-12",
         )}
       >

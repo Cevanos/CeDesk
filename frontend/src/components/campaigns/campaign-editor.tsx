@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { PreviewPanel } from "@/components/campaigns/preview-panel";
 import { SendDialog } from "@/components/campaigns/send-dialog";
 import { errorText } from "@/components/campaigns/shared";
+import { AiBadge, AiPanel } from "@/components/ui/ai";
 import { useConfirm } from "@/components/ui/confirm";
 import { Button, Card, Field, Input, Select, Skeleton, Textarea } from "@/components/ui/primitives";
 import { Switch } from "@/components/ui/switch";
@@ -23,6 +24,7 @@ import {
 } from "@/hooks/use-workspace";
 import { ApiError } from "@/lib/api/client";
 import type { Campaign, EmailAddress } from "@/lib/api/types";
+import { bind, fieldError, useFormik, yup } from "@/lib/forms";
 
 const PLACEHOLDERS = [
   "{{customer.first_name}}",
@@ -51,9 +53,21 @@ export function CampaignEditor({ campaign }: { campaign: Campaign }) {
   const test = useSendCampaignTest(campaign.id);
 
   // Local copies of the text fields, saved when the field loses focus.
-  const [name, setName] = useState(campaign.name);
-  const [subject, setSubject] = useState(campaign.subject);
-  const [body, setBody] = useState(campaign.body);
+  const formik = useFormik({
+    initialValues: { name: campaign.name, subject: campaign.subject, body: campaign.body },
+    validationSchema: yup.object({
+      name: yup
+        .string()
+        .trim()
+        .required("Give the campaign a name.")
+        .max(120, "Use at most 120 characters."),
+      subject: yup.string().max(200, "Use at most 200 characters."),
+      body: yup.string().max(50000, "Use at most 50,000 characters."),
+    }),
+    onSubmit: () => {},
+  });
+  const { name, subject, body } = formik.values;
+  const setBody = (v: string) => void formik.setFieldValue("body", v);
   const bodyRef = useRef<HTMLTextAreaElement>(null);
 
   const segments = useSegments();
@@ -71,9 +85,14 @@ export function CampaignEditor({ campaign }: { campaign: Campaign }) {
     });
   };
   // Only send what changed, so a blur without an edit makes no call.
-  const saveText = (key: "name" | "subject" | "body", value: string) => {
+  const saveText = async (key: "name" | "subject" | "body", value: string) => {
     if (value === campaign[key]) return;
-    if (key === "name" && !value.trim()) return setName(campaign.name);
+    const errs = await formik.validateForm();
+    if (errs[key]) {
+      // A blank name is put back; over-long text stays on screen with its message.
+      if (key === "name" && !value.trim()) void formik.setFieldValue("name", campaign.name);
+      return;
+    }
     save({ [key]: key === "name" ? value.trim() : value });
   };
 
@@ -99,13 +118,19 @@ export function CampaignEditor({ campaign }: { campaign: Campaign }) {
       {dialog}
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_20rem]">
         <Card className="space-y-4 p-5">
-          <Field label="Name (only you see it)" htmlFor="ce-name">
+          <Field
+            label="Name (only you see it)"
+            htmlFor="ce-name"
+            error={fieldError(formik, "name")}
+          >
             <Input
               id="ce-name"
-              value={name}
               maxLength={120}
-              onChange={(e) => setName(e.target.value)}
-              onBlur={() => saveText("name", name)}
+              {...bind(formik, "name")}
+              onBlur={(e) => {
+                formik.handleBlur(e);
+                void saveText("name", name);
+              }}
             />
           </Field>
 
@@ -158,20 +183,24 @@ export function CampaignEditor({ campaign }: { campaign: Campaign }) {
           <Field
             label="Subject"
             htmlFor="ce-subject"
+            error={fieldError(formik, "subject")}
             hint="Placeholders like {{customer.first_name}} are allowed."
           >
             <Input
               id="ce-subject"
-              value={subject}
               maxLength={200}
-              onChange={(e) => setSubject(e.target.value)}
-              onBlur={() => saveText("subject", subject)}
+              {...bind(formik, "subject")}
+              onBlur={(e) => {
+                formik.handleBlur(e);
+                void saveText("subject", subject);
+              }}
             />
           </Field>
 
           <Field
             label="Body"
             htmlFor="ce-body"
+            error={fieldError(formik, "body")}
             hint="Paragraphs, # headings, - and 1. lists, **bold**, *italics* and [text](https://…) links work. Raw HTML shows as plain text."
           >
             <div className="mb-1.5 flex flex-wrap gap-1.5">
@@ -191,9 +220,11 @@ export function CampaignEditor({ campaign }: { campaign: Campaign }) {
               ref={bodyRef}
               rows={14}
               maxLength={50000}
-              value={body}
-              onChange={(e) => setBody(e.target.value)}
-              onBlur={() => saveText("body", body)}
+              {...bind(formik, "body")}
+              onBlur={(e) => {
+                formik.handleBlur(e);
+                void saveText("body", body);
+              }}
             />
           </Field>
 
@@ -220,6 +251,10 @@ export function CampaignEditor({ campaign }: { campaign: Campaign }) {
         </Card>
 
         <div className="space-y-4">
+          <AiPanel title="AI-assisted draft" action={<AiBadge>Personalised</AiBadge>}>
+            Use placeholders so every message reads as written for one person. Preview shows the
+            email exactly as a customer will see it before you send.
+          </AiPanel>
           <Card className="space-y-2 p-4">
             <h2 className="text-sm font-semibold">Before you can send</h2>
             {problems.length > 0 ? (
@@ -279,7 +314,7 @@ export function CampaignEditor({ campaign }: { campaign: Campaign }) {
             >
               <TestTube2 className="size-4" /> Send test
             </Button>
-            <Button disabled={!canSend} onClick={() => setSendOpen(true)}>
+            <Button variant="ai" disabled={!canSend} onClick={() => setSendOpen(true)}>
               <Send className="size-4" /> Send
             </Button>
             {neverStarted && (

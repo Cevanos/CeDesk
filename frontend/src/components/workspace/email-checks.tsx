@@ -8,6 +8,7 @@ import { CopyButton } from "@/components/ui/copy-button";
 import { Badge, Button, Input } from "@/components/ui/primitives";
 import { useDnsCheck, useForwardingCheck, useSaveDkimSelector } from "@/hooks/use-workspace";
 import type { DnsCheck, EmailAddress } from "@/lib/api/types";
+import { bind, fieldError, useFormik, yup } from "@/lib/forms";
 import { cn, timeAgo } from "@/lib/utils";
 
 type Tone = "success" | "warning" | "danger" | "neutral" | "info";
@@ -190,35 +191,45 @@ export function EmailChecks({ address: a }: { address: EmailAddress }) {
 
 function DkimSelector({ address: a }: { address: EmailAddress }) {
   const save = useSaveDkimSelector();
-  const [value, setValue] = useState(a.dkim_selector ?? "");
-  const dirty = value.trim() !== (a.dkim_selector ?? "");
+  const form = useFormik({
+    initialValues: { dkim_selector: a.dkim_selector ?? "" },
+    validationSchema: yup.object({
+      dkim_selector: yup
+        .string()
+        .trim()
+        .max(63, "Use at most 63 characters")
+        .matches(/^[A-Za-z0-9._-]*$/, "Use letters, numbers, dots, dashes or underscores only"),
+    }),
+    onSubmit: (v) =>
+      save.mutate(
+        { id: a.id, dkim_selector: v.dkim_selector.trim() },
+        { onSuccess: () => toast.success("DKIM selector saved") },
+      ),
+  });
+  const dirty = form.values.dkim_selector.trim() !== (a.dkim_selector ?? "");
   const id = `dkim-${a.id}`;
+  const err = fieldError(form, "dkim_selector");
   return (
-    <form
-      className="mt-4"
-      onSubmit={(e) => {
-        e.preventDefault();
-        save.mutate(
-          { id: a.id, dkim_selector: value.trim() },
-          { onSuccess: () => toast.success("DKIM selector saved") },
-        );
-      }}
-    >
+    <form className="mt-4" noValidate onSubmit={form.handleSubmit}>
       <label htmlFor={id} className="text-[13px] font-medium text-foreground-2">
         DKIM selector
       </label>
       <div className="mt-1.5 flex gap-2">
         <Input
           id={id}
-          value={value}
+          {...bind(form, "dkim_selector")}
           maxLength={63}
           placeholder="e.g. google or selector1"
-          onChange={(e) => setValue(e.target.value)}
         />
         <Button type="submit" variant="outline" disabled={!dirty} loading={save.isPending}>
           Save
         </Button>
       </div>
+      {err && (
+        <p role="alert" className="mt-1 text-xs text-danger">
+          {err}
+        </p>
+      )}
       <p className="mt-1 text-xs text-muted-foreground">
         The name your mail provider gave its DKIM key. We look the record up under it.
       </p>

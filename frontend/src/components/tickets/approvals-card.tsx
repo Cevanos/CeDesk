@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import { toast } from "sonner";
 
 import {
@@ -14,6 +13,7 @@ import {
 import { Badge, Button, Input, Select } from "@/components/ui/primitives";
 import { useApprovals, useAskApproval } from "@/hooks/use-ticket-extras";
 import { useAgents } from "@/hooks/use-workspace";
+import { bind, bindSelect, fieldError, useFormik, yup } from "@/lib/forms";
 import { formatDateTime } from "@/lib/utils";
 
 const TONE = { approved: "success", rejected: "danger", pending: "warning" } as const;
@@ -21,27 +21,28 @@ const TONE = { approved: "success", rejected: "danger", pending: "warning" } as 
 function AskForm({ ticketId, close }: { ticketId: string; close: () => void }) {
   const agents = useAgents();
   const ask = useAskApproval(ticketId);
-  const [who, setWho] = useState("");
-  const [title, setTitle] = useState("");
-  return (
-    <form
-      className="space-y-2"
-      onSubmit={(e) => {
-        e.preventDefault();
-        if (!who || !title.trim()) return;
-        ask.mutate(
-          { approver_id: who, title: title.trim() },
-          {
-            onSuccess: () => {
-              toast.success("Approval requested");
-              close();
-            },
-            onError: toastError,
+  const form = useFormik({
+    initialValues: { who: "", title: "" },
+    validationSchema: yup.object({
+      who: yup.string().required("Choose who to ask."),
+      title: yup.string().trim().required("Say what needs approval.").max(200),
+    }),
+    onSubmit: (v) =>
+      ask.mutate(
+        { approver_id: v.who, title: v.title.trim() },
+        {
+          onSuccess: () => {
+            toast.success("Approval requested");
+            close();
           },
-        );
-      }}
-    >
-      <Select value={who} onChange={(e) => setWho(e.target.value)} aria-label="Approver">
+          onError: toastError,
+        },
+      ),
+  });
+  const problem = fieldError(form, "who") ?? fieldError(form, "title");
+  return (
+    <form className="space-y-2" onSubmit={form.handleSubmit} noValidate>
+      <Select {...bindSelect(form, "who")} aria-label="Approver">
         <option value="">Ask who?</option>
         {agents.data?.map((a) => (
           <option key={a.member_id} value={a.member_id}>
@@ -50,13 +51,17 @@ function AskForm({ ticketId, close }: { ticketId: string; close: () => void }) {
         ))}
       </Select>
       <Input
-        value={title}
-        onChange={(e) => setTitle(e.target.value)}
+        {...bind(form, "title")}
         placeholder="What needs approval?"
         aria-label="What needs approval"
         maxLength={200}
         className="h-9"
       />
+      {problem && (
+        <p role="alert" className="text-xs text-danger">
+          {problem}
+        </p>
+      )}
       <div className="flex gap-2">
         <Button type="submit" size="sm" loading={ask.isPending}>
           Ask

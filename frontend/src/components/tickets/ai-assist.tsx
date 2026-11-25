@@ -3,9 +3,10 @@
 import { Languages, Sparkles, Undo2, Wand2, X } from "lucide-react";
 import { useState } from "react";
 
+import { AiBadge, AiMark } from "@/components/ui/ai";
 import { LinkifiedText } from "@/components/ui/linkified-text";
 import { MenuItem, Popover } from "@/components/ui/overlay";
-import { Button, Card } from "@/components/ui/primitives";
+import { Button } from "@/components/ui/primitives";
 import {
   AI_MAX_CHARS,
   LANGUAGES,
@@ -40,10 +41,21 @@ export function AiSummaryCard({ ticketId }: { ticketId: string }) {
   };
 
   return (
-    <Card className="p-3.5" aria-label="AI summary">
-      <div className="flex items-center gap-2">
-        <Sparkles className="size-4 text-primary" aria-hidden />
+    <section
+      className="ai-frame relative overflow-hidden rounded-xl p-3.5 shadow-card"
+      aria-label="AI summary"
+    >
+      <div
+        aria-hidden
+        className="pointer-events-none absolute -top-10 -right-10 size-28 rounded-full bg-ai-gradient opacity-15 blur-2xl"
+      />
+      {summarise.isPending && (
+        <div aria-hidden className="absolute inset-x-0 top-0 h-0.5 ai-shimmer" />
+      )}
+      <div className="relative flex flex-wrap items-center gap-2">
+        <AiMark />
         <h2 className="text-sm font-semibold">AI summary</h2>
+        <AiBadge className="hidden sm:inline-flex">Cevanos</AiBadge>
         <div className="ml-auto flex items-center gap-1">
           {text !== null && (
             <button
@@ -55,7 +67,7 @@ export function AiSummaryCard({ ticketId }: { ticketId: string }) {
               <X className="size-3.5" />
             </button>
           )}
-          <Button size="sm" variant="outline" loading={summarise.isPending} onClick={run}>
+          <Button size="sm" variant="ai" loading={summarise.isPending} onClick={run}>
             {text === null ? "Summarise" : "Refresh"}
           </Button>
         </div>
@@ -66,7 +78,9 @@ export function AiSummaryCard({ ticketId }: { ticketId: string }) {
         </p>
       )}
       {text !== null && (
-        <p className="mt-2 text-sm leading-relaxed wrap-break-word whitespace-pre-wrap">{text}</p>
+        <p className="relative mt-3 text-sm leading-relaxed wrap-break-word whitespace-pre-wrap">
+          {text}
+        </p>
       )}
       {error && (
         <p role="alert" className="mt-2 text-xs text-danger">
@@ -78,7 +92,7 @@ export function AiSummaryCard({ ticketId }: { ticketId: string }) {
           Written by AI and not saved on the ticket. Check it before you rely on it.
         </p>
       )}
-    </Card>
+    </section>
   );
 }
 
@@ -132,14 +146,15 @@ export function ComposerAi({
 
   return (
     <div
-      className="flex flex-wrap items-center gap-1 px-1 pb-1.5"
+      className="ai-frame mx-1 mb-1.5 flex flex-wrap items-center gap-1 rounded-xl px-1.5 py-1"
       role="group"
       aria-label="AI help"
     >
+      <AiMark className="mr-0.5 size-5 rounded-md" />
       {canSuggest && (
         <Button
           size="sm"
-          variant="ghost"
+          variant="ai"
           loading={draft.isPending}
           disabled={busy}
           onClick={() => {
@@ -270,11 +285,12 @@ export function TranslateMessage({ text }: { text: string }) {
   return (
     <div className="mt-1.5">
       {result && (
-        <div className="rounded-lg border border-border bg-surface-2/70 px-3 py-2">
+        <div className="ai-frame rounded-lg px-3 py-2">
           <p className="text-sm leading-relaxed wrap-break-word whitespace-pre-wrap">
             <LinkifiedText text={result.text} />
           </p>
           <p className="mt-1 flex items-center gap-2 text-[11px] text-muted-foreground">
+            <Sparkles className="size-3 text-ai-via" aria-hidden />
             Translated{result.from ? ` from ${result.from}` : ""} by AI
             <button type="button" className="underline" onClick={() => setResult(null)}>
               Hide translation
