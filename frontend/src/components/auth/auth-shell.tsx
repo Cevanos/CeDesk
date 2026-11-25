@@ -1,4 +1,5 @@
 import { Inbox, ShieldCheck, Sparkles, Zap } from "lucide-react";
+import Link from "next/link";
 
 import { Logo, ThemeToggle } from "@/components/ui/brand";
 
@@ -29,7 +30,13 @@ export function AuthShell({ children }: { children: React.ReactNode }) {
     <div className="grid min-h-svh grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)]">
       <div className="flex min-w-0 flex-col px-5 py-6 sm:px-10 sm:py-8 lg:px-16">
         <header className="flex items-center justify-between">
-          <Logo />
+          <Link
+            href="/"
+            aria-label="CeDesk home"
+            className="rounded-lg focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:outline-none"
+          >
+            <Logo />
+          </Link>
           <ThemeToggle />
         </header>
 

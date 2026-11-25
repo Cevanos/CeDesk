@@ -105,9 +105,15 @@ function structuredData() {
   };
 }
 
-export default async function Home() {
+export default async function Home({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   // Signed-in agents go straight to work; visitors see the landing page.
-  if ((await cookies()).get("cedesk_session")?.value) redirect("/tickets");
+  // `/?landing=1` (the logo link inside the app) lets them view it on purpose.
+  const wantsLanding = (await searchParams).landing !== undefined;
+  if (!wantsLanding && (await cookies()).get("cedesk_session")?.value) redirect("/tickets");
   // A self-hosted install has no use for our sales page (CEDESK_LANDING=off).
   if (!landingEnabled()) redirect("/login");
   return (

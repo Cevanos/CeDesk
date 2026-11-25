@@ -54,8 +54,8 @@ export function PublicShell({ children }: { children: React.ReactNode }) {
       <header className="sticky top-0 z-30 border-b border-border/70 bg-background/75 backdrop-blur-xl">
         <div className="mx-auto flex h-16 w-full max-w-5xl items-center gap-3 px-4 sm:px-6">
           <Link
-            href={workspace ? `/${workspace}/help` : "/"}
-            aria-label="Support home"
+            href="/?landing=1"
+            aria-label="CeDesk home"
             className="flex min-w-0 items-center gap-3 rounded-lg focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:outline-none"
           >
             <Logo />

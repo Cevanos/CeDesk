@@ -35,9 +35,9 @@ export default async function DocsLayout({ children }: { children: React.ReactNo
         />
         <div className="mx-auto flex h-16 max-w-[90rem] items-center gap-2 px-[max(1rem,env(safe-area-inset-left))] sm:gap-4 sm:px-6">
           <Link
-            href="/docs"
+            href="/?landing=1"
             className="flex min-w-0 items-center gap-3"
-            aria-label="CeDesk documentation home"
+            aria-label="CeDesk home"
           >
             <Logo />
             <span className="hidden rounded-full border border-primary/25 bg-primary-soft px-2.5 py-0.5 text-xs font-semibold text-primary-ink sm:inline">

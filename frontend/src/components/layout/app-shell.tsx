@@ -141,7 +141,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-svh lg:grid lg:grid-cols-[15rem_minmax(0,1fr)]">
       <aside className="sticky top-0 hidden h-svh flex-col gap-6 border-r border-border bg-surface px-3 py-5 lg:flex">
-        <Link href="/tickets" className="px-2" aria-label="CeDesk home">
+        <Link href="/?landing=1" className="px-2" aria-label="CeDesk home">
           <Logo />
         </Link>
         {newTicket}
@@ -165,7 +165,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             className="absolute inset-y-0 left-0 flex w-72 max-w-[85vw] animate-rise flex-col gap-6 bg-surface px-3 py-4 outline-none"
           >
             <div className="flex items-center justify-between px-2">
-              <Logo />
+              <Link href="/?landing=1" aria-label="CeDesk home">
+                <Logo />
+              </Link>
               <button
                 onClick={() => setOpen(false)}
                 aria-label="Close menu"
@@ -191,9 +193,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           >
             <Menu className="size-5" />
           </button>
-          <span className="lg:hidden">
+          <Link href="/?landing=1" aria-label="CeDesk home" className="lg:hidden">
             <Logo className="[&>span:last-child]:text-base" />
-          </span>
+          </Link>
           <div className="ml-auto flex items-center gap-1">
             <button
               onClick={() => window.dispatchEvent(new Event("cedesk:palette"))}
