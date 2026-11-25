@@ -37,12 +37,6 @@ const nextConfig: NextConfig = {
   // Self-contained server bundle, enabled by the Dockerfile (`next start` is not used there).
   ...(process.env.NEXT_OUTPUT === "standalone" ? { output: "standalone" as const } : {}),
   experimental: { optimizePackageImports: ["lucide-react", "date-fns"] },
-  // The docs are static files in public/docs (built by the CDESK repository, see
-  // docs/DOCS_IN_APP.md). Their links are relative, so the address must end at the file:
-  // a rewrite would keep "/docs" in the address bar and break every link on the page.
-  async redirects() {
-    return [{ source: "/docs", destination: "/docs/index.html", permanent: false }];
-  },
   async headers() {
     return [
       { source: "/:path*", headers: securityHeaders },

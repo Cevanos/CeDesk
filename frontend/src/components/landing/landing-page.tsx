@@ -180,6 +180,7 @@ const NAV = [
   { href: "#automation", label: "Automation" },
   { href: "#security", label: "Security" },
   { href: "#faq", label: "FAQ" },
+  { href: "/docs", label: "Docs" },
 ];
 
 const SMALL_FEATURES: { icon: LucideIcon; title: string; body: string }[] = [
