@@ -92,6 +92,7 @@ export function PortalTicketPage() {
         <StatusBadge status={t.status} label={t.status_label} />
       </div>
 
+      <StatusInfo t={t} />
       <TicketDetails ws={ws} t={t} />
 
       <ol aria-label="Conversation" className="mt-8 space-y-4">
@@ -102,6 +103,46 @@ export function PortalTicketPage() {
 
       {resolved && <Rating id={t.id} ticket={t} />}
       <ReplyBox id={t.id} resolved={resolved} />
+    </div>
+  );
+}
+
+/** Who handles the ticket, what it waits on, and (once checked) the outcome. Hides what is null. */
+function StatusInfo({ t }: { t: PortalTicket }) {
+  const outcome = t.status === "resolved" ? t.outcome : null;
+  if (!t.owner_first_name && !t.pending_step && !outcome) return null;
+  return (
+    <div className="mt-4 space-y-2">
+      {t.pending_step && (
+        <p
+          role="status"
+          className={cn(
+            "rounded-xl border px-4 py-2.5 text-sm font-medium",
+            t.status === "pending"
+              ? "border-warning/30 bg-warning-soft text-warning"
+              : "border-primary/20 bg-primary-soft text-primary-ink",
+          )}
+        >
+          Next step: {t.pending_step}
+        </p>
+      )}
+      {(t.owner_first_name || outcome) && (
+        <p className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
+          {t.owner_first_name && (
+            <span>
+              Handled by <span className="font-medium text-foreground-2">{t.owner_first_name}</span>
+            </span>
+          )}
+          {outcome && (
+            <span className="inline-flex items-center gap-1">
+              Outcome: <span className="font-medium text-foreground-2">{outcome}</span>
+              <span className="inline-flex items-center gap-0.5 rounded-full bg-success-soft px-1.5 py-0.5 text-[11px] font-semibold text-success">
+                <CheckCircle2 className="size-3" aria-hidden /> Verified
+              </span>
+            </span>
+          )}
+        </p>
+      )}
     </div>
   );
 }

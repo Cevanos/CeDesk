@@ -31,7 +31,7 @@ import {
   usePortalTickets,
   useWorkspaceSlug,
 } from "@/hooks/use-portal";
-import { timeAgo } from "@/lib/utils";
+import { cn, timeAgo } from "@/lib/utils";
 
 /** `/<workspace>/portal`: sign in with an emailed code, then see and open tickets. */
 export function PortalHome() {
@@ -110,7 +110,25 @@ export function PortalHome() {
                   <span className="block truncate font-medium">{t.subject}</span>
                   <span className="mt-0.5 block text-xs text-muted-foreground">
                     {t.label} · updated {timeAgo(t.updated_at)}
+                    {t.owner_first_name ? ` · Handled by ${t.owner_first_name}` : ""}
                   </span>
+                  {t.pending_step && (
+                    <span
+                      className={cn(
+                        "mt-1.5 inline-block rounded-md px-2 py-0.5 text-xs font-medium",
+                        t.status === "pending"
+                          ? "bg-warning-soft text-warning"
+                          : "bg-primary-soft text-primary-ink",
+                      )}
+                    >
+                      Next step: {t.pending_step}
+                    </span>
+                  )}
+                  {t.status === "resolved" && t.outcome && (
+                    <span className="mt-1.5 block text-xs text-foreground-2">
+                      Outcome: {t.outcome}
+                    </span>
+                  )}
                 </span>
                 <StatusBadge status={t.status} label={t.status_label} />
                 <ChevronRight

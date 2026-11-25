@@ -2,6 +2,7 @@
 
 import { ArrowLeft, CheckCircle2, RefreshCw } from "lucide-react";
 import Link from "next/link";
+import { useState } from "react";
 import { toast } from "sonner";
 
 import { AiSummaryCard } from "@/components/tickets/ai-assist";
@@ -12,12 +13,13 @@ import { SnoozeBanner, SnoozeButton } from "@/components/tickets/inbox/snooze";
 import { TicketMoreMenu } from "@/components/tickets/inbox/transcript";
 import { JiraHeaderChip } from "@/components/tickets/jira-card";
 import { MacrosMenu } from "@/components/tickets/macros-menu";
+import { ReceiptPanel, ResolveDialog, useReceiptPolicy } from "@/components/tickets/resolution";
 import { TicketSidebar } from "@/components/tickets/sidebar";
 import { SlaPill } from "@/components/tickets/sla";
 import { AcceptCard, HandoverCard, Thread } from "@/components/tickets/thread";
 import { Badge, Button, EmptyState, Skeleton } from "@/components/ui/primitives";
 import { useCurrentUser } from "@/hooks/use-auth";
-import { useResolveTicket, useTicket } from "@/hooks/use-tickets";
+import { useTicket, useResolveTicket } from "@/hooks/use-tickets";
 import { useAutomationAccess } from "@/hooks/use-workspace";
 import { ApiError } from "@/lib/api/client";
 import { inboxActions } from "@/lib/permissions";
@@ -29,6 +31,8 @@ export function TicketDetail({ id }: { id: string }) {
   const automation = useAutomationAccess();
   const q = useTicket(id);
   const resolve = useResolveTicket(id);
+  const policy = useReceiptPolicy(q.data?.ticket.team_id);
+  const [receiptOpen, setReceiptOpen] = useState(false);
 
   if (q.isPending) {
     return (
@@ -157,10 +161,12 @@ export function TicketDetail({ id }: { id: string }) {
               <Button
                 loading={resolve.isPending}
                 onClick={() =>
-                  resolve.mutate(
-                    { etag },
-                    { onSuccess: () => toast.success(`${ticket.label} resolved`) },
-                  )
+                  policy.form
+                    ? setReceiptOpen(true)
+                    : resolve.mutate(
+                        { etag },
+                        { onSuccess: () => toast.success(`${ticket.label} resolved`) },
+                      )
                 }
               >
                 <CheckCircle2 className="size-4" /> Resolve
@@ -169,6 +175,16 @@ export function TicketDetail({ id }: { id: string }) {
           </div>
         </div>
       </header>
+
+      {receiptOpen && (
+        <ResolveDialog
+          ticketId={ticket.id}
+          label={ticket.label}
+          etag={etag}
+          required={policy.required}
+          onClose={() => setReceiptOpen(false)}
+        />
+      )}
 
       {ticket.snoozed_until && (
         <SnoozeBanner ticketId={ticket.id} until={ticket.snoozed_until} canEdit={canChange} />
@@ -185,6 +201,13 @@ export function TicketDetail({ id }: { id: string }) {
 
       <div className="mt-5 grid flex-1 gap-5 lg:grid-cols-[minmax(0,1fr)_21rem]">
         <section className="flex min-w-0 flex-col gap-4" aria-label="Conversation">
+          {ticket.status === "resolved" && (
+            <ReceiptPanel
+              ticketId={ticket.id}
+              resolution={ticket.resolution}
+              canChange={canChange}
+            />
+          )}
           <HandoverCard ticket={ticket} />
           <AcceptCard ticket={ticket} />
           <AiSummaryCard ticketId={ticket.id} />

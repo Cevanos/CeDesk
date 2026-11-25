@@ -1,6 +1,14 @@
 "use client";
 
-import { AlertTriangle, ArrowLeft, CheckCircle2, FileUp, Loader2, RefreshCw } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowLeft,
+  CheckCircle2,
+  ClipboardList,
+  FileUp,
+  Loader2,
+  RefreshCw,
+} from "lucide-react";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -32,6 +40,7 @@ import {
   type SourceDef,
 } from "@/components/workspace/imports-sources";
 import { FormError, LoadError } from "@/components/workspace/list-shared";
+import { CutoverDialog, PreMigrationDialog } from "@/components/workspace/migration-readiness";
 import {
   useCloseImportConnection,
   useConnectImport,
@@ -423,6 +432,7 @@ function PlanStep({
   const [teamMap, setTeamMap] = useState<Record<string, string | null> | null>(null);
   const [sync, setSync] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [checking, setChecking] = useState(false);
 
   if (discover.isPending) return <Skeleton className="h-48" />;
   if (discover.isError)
@@ -533,7 +543,15 @@ function PlanStep({
       </Card>
 
       <FormError message={error ?? undefined} />
+      {checking && (
+        <PreMigrationDialog connectionId={connectionId} onClose={() => setChecking(false)} />
+      )}
       <div className="flex flex-wrap justify-end gap-3">
+        {source !== "csv" && (
+          <Button variant="outline" onClick={() => setChecking(true)}>
+            <ClipboardList className="size-4" /> Check before import
+          </Button>
+        )}
         <Button
           variant="outline"
           disabled={kinds.length === 0}
@@ -621,6 +639,7 @@ function RunStep({
   onHistory: () => void;
 }) {
   const q = useImportRun(runId);
+  const [goLive, setGoLive] = useState(false);
   const syncNow = useSyncNow(runId);
   const syncStop = useSyncStop(runId);
   const { ask, dialog } = useConfirm();
@@ -783,8 +802,12 @@ function RunStep({
         </p>
       )}
 
+      {goLive && <CutoverDialog runId={runId} onClose={() => setGoLive(false)} />}
       {!busy && (
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" size="sm" onClick={() => setGoLive(true)}>
+            <ClipboardList className="size-4" /> Go-live checklist
+          </Button>
           <Button variant="ghost" size="sm" onClick={onAgain}>
             New import
           </Button>
@@ -936,6 +959,18 @@ function HistorySyncActions({ run }: { run: ImportRun }) {
   );
 }
 
+function GoLiveButton({ runId }: { runId: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div>
+      <Button variant="outline" size="sm" onClick={() => setOpen(true)}>
+        <ClipboardList className="size-4" /> Go-live checklist
+      </Button>
+      {open && <CutoverDialog runId={runId} onClose={() => setOpen(false)} />}
+    </div>
+  );
+}
+
 function History() {
   const q = useImportHistory();
   if (q.isPending) {
@@ -996,6 +1031,8 @@ function History() {
               <KindStats run={r} />
 
               {r.sync_on && r.source !== "csv" && <HistorySyncActions run={r} />}
+
+              <GoLiveButton runId={r.id} />
 
               {r.last_error && (
                 <p

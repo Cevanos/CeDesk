@@ -1,5 +1,6 @@
 /** Domain types for the CeDesk API. Source: CEDESK_FRONTEND_GUIDE.md */
 
+import type { Resolution } from "./differentiator-types";
 export type Role = "light_agent" | "agent" | "supervisor" | "admin";
 export type TicketStatus = "open" | "pending" | "resolved";
 export type Priority = "urgent" | "high" | "medium" | "low";
@@ -174,6 +175,8 @@ export interface Ticket extends TicketSummary {
   handover: Handover | null;
   /** Who a reply will copy (read-only; the server decides it). */
   reply_cc?: string[];
+  /** The resolution receipt, or null/missing when there is none (or the ticket was reopened). */
+  resolution?: Resolution | null;
 }
 
 /** GET /tickets/{id}/messages: newest first. */
@@ -485,6 +488,8 @@ export interface PortalSettings {
   allowed_domains: string[];
   csat_survey: boolean;
   web_form: boolean;
+  /** Show the agent's first name to customers (default on). */
+  show_owner: boolean;
 }
 
 export type ArticleStatus = "draft" | "published";
@@ -592,6 +597,10 @@ export interface PortalTicketSummary {
   status_label?: string | null;
   created_at: string;
   updated_at: string;
+  /** Who handles it ("Priyanka", or the team's name), what it waits on, and the checked outcome. Any may be null. */
+  owner_first_name?: string | null;
+  pending_step?: string | null;
+  outcome?: string | null;
 }
 export interface PortalTicket extends PortalTicketSummary {
   messages: PortalMessage[];

@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, FlaskConical, History, Lock, Save } from "lucide-react";
+import { ArrowLeft, FlaskConical, History, Lock, Rewind, Save } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useRef, useState } from "react";
@@ -14,6 +14,7 @@ import {
   formatWhen,
 } from "@/components/workspace/automation-test";
 import { LoadError } from "@/components/workspace/list-shared";
+import { ReplayDialog } from "@/components/workspace/replay-dialog";
 import { WEBHOOK_LOCKED } from "@/components/workspace/rules-view";
 import { WorkflowCanvas } from "@/components/workspace/workflow-canvas";
 import { useDebouncedValue } from "@/hooks/use-global-search";
@@ -24,6 +25,7 @@ import {
   useFlow,
   useFlowValidation,
   useFlowVersions,
+  useRestoreFlowVersion,
   useSaveFlow,
 } from "@/hooks/use-workspace";
 import type { Flow, FlowGraph, FlowTestResult, FlowVersion } from "@/lib/api/automation-types";
@@ -62,7 +64,12 @@ export function WorkflowEditor({
   if (id && flow.isPending) return <Skeleton className="h-80" />;
   if (id && flow.isError) return <LoadError error={flow.error} />;
   return (
-    <EditorBody key={flow.data?.id ?? "new"} flow={flow.data ?? null} openVersions={openVersions} />
+    // A restore saves a new version: remount so the canvas shows the restored graph.
+    <EditorBody
+      key={`${flow.data?.id ?? "new"}:${flow.data?.version ?? 0}`}
+      flow={flow.data ?? null}
+      openVersions={openVersions}
+    />
   );
 }
 
@@ -80,6 +87,7 @@ function EditorBody({ flow, openVersions }: { flow: Flow | null; openVersions: b
   const [viewing, setViewing] = useState<FlowVersion | null>(null);
   const [versionsOpen, setVersionsOpen] = useState(openVersions);
   const [testOpen, setTestOpen] = useState(false);
+  const [replay, setReplay] = useState<number | "current" | null>(null);
   const [test, setTest] = useState<{ result: FlowTestResult; ticket: TicketSummary } | null>(null);
   const [errors, setErrors] = useState<{ name?: string; limits?: string; form?: string }>({});
   const lastKey = useRef("");
@@ -223,6 +231,11 @@ function EditorBody({ flow, openVersions }: { flow: Flow | null; openVersions: b
             <Button variant="outline" disabled={!!viewing} onClick={() => setTestOpen(true)}>
               <FlaskConical className="size-4" /> Test
             </Button>
+            {flow && (
+              <Button variant="outline" onClick={() => setReplay("current")}>
+                <Rewind className="size-4" /> Replay on past tickets
+              </Button>
+            )}
             {!readOnly && (
               <Button loading={save.isPending} onClick={submit}>
                 <Save className="size-4" /> Save
@@ -351,10 +364,26 @@ function EditorBody({ flow, openVersions }: { flow: Flow | null; openVersions: b
         onResult={(result, ticket) => setTest({ result, ticket })}
       />
 
+      {flow && replay !== null && (
+        <ReplayDialog
+          title={name.trim() || flow.name}
+          target={{
+            kind: "flow",
+            flowId: flow.id,
+            ...(replay === "current" ? {} : { version: replay }),
+          }}
+          onClose={() => setReplay(null)}
+        />
+      )}
+
       {flow && versionsOpen && (
         <VersionsDialog
           flowId={flow.id}
           current={flow.version}
+          onReplay={(v) => {
+            setVersionsOpen(false);
+            setReplay(v.version);
+          }}
           onClose={() => setVersionsOpen(false)}
           onView={(v) => {
             setViewing(v);
@@ -371,20 +400,29 @@ function VersionsDialog({
   current,
   onClose,
   onView,
+  onReplay,
 }: {
   flowId: string;
   current: number;
   onClose: () => void;
   onView: (v: FlowVersion) => void;
+  onReplay: (v: FlowVersion) => void;
 }) {
   const versions = useFlowVersions(flowId);
+  const restore = useRestoreFlowVersion(flowId);
+  const [error, setError] = useState<string>();
   return (
     <Dialog
       open
       onClose={onClose}
       title="Versions"
-      description="Open one to see its graph. To go back to it, load it into the editor and save."
+      description="Open one to see its graph, or restore an older one. A restore is saved as a new version; history is never rewritten."
     >
+      {error && (
+        <p role="alert" className="mb-3 rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger">
+          {error}
+        </p>
+      )}
       {versions.isPending ? (
         <Skeleton className="h-24" />
       ) : versions.isError ? (
@@ -392,11 +430,11 @@ function VersionsDialog({
       ) : (
         <ul className="divide-y divide-border">
           {versions.data.map((v) => (
-            <li key={v.version}>
+            <li key={v.version} className="flex flex-wrap items-center gap-2 py-1">
               <button
                 type="button"
                 onClick={() => onView(v)}
-                className="flex w-full items-center gap-2 px-1 py-2.5 text-left text-sm hover:bg-surface-2"
+                className="flex min-w-0 flex-1 items-center gap-2 px-1 py-1.5 text-left text-sm hover:bg-surface-2"
               >
                 <span className="font-medium">Version {v.version}</span>
                 {v.version === current && <Badge tone="primary">Current</Badge>}
@@ -405,6 +443,30 @@ function VersionsDialog({
                   {v.created_by_name ? ` · ${v.created_by_name}` : ""}
                 </span>
               </button>
+              <Button size="sm" variant="ghost" onClick={() => onReplay(v)}>
+                Replay
+              </Button>
+              {v.version !== current && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  loading={restore.isPending && restore.variables === v.version}
+                  disabled={restore.isPending}
+                  onClick={() => {
+                    setError(undefined);
+                    restore.mutate(v.version, {
+                      onSuccess: (f) => {
+                        toast.success(`Version ${v.version} restored as version ${f.version}`);
+                        onClose();
+                      },
+                      onError: (e) =>
+                        setError(e instanceof ApiError ? e.userMessage : "Couldn't restore."),
+                    });
+                  }}
+                >
+                  Restore this version
+                </Button>
+              )}
             </li>
           ))}
         </ul>

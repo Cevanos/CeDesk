@@ -68,6 +68,15 @@ export const queryKeys = {
     discover: (id: string) => ["imports", "discover", id] as const,
     failures: (id: string) => ["imports", "failures", id] as const,
   },
+  migration: {
+    report: (id: string) => ["migration", "report", id] as const,
+    cutover: (id: string) => ["migration", "cutover", id] as const,
+  },
+  replays: { detail: (id: string) => ["replays", id] as const },
+  receipts: {
+    settings: ["receipts", "settings"] as const,
+    report: (p: object) => ["receipts", "report", p] as const,
+  },
   views: { all: ["views"] as const },
   autoClose: { all: ["auto-close"] as const },
   triage: { all: ["triage-settings"] as const },

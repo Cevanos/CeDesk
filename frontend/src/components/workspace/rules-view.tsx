@@ -44,6 +44,7 @@ import {
   Problems,
   ReorderButtons,
 } from "@/components/workspace/list-shared";
+import { ReplayDialog } from "@/components/workspace/replay-dialog";
 import { useContactFields } from "@/hooks/use-contacts";
 import {
   callsWebhook,
@@ -80,6 +81,7 @@ export function RulesView() {
   const { ask, dialog } = useConfirm();
   const [editing, setEditing] = useState<Rule | "new" | null>(null);
   const [testing, setTesting] = useState<Rule | null>(null);
+  const [replaying, setReplaying] = useState<Rule | null>(null);
 
   const move = (i: number, dir: -1 | 1) => {
     const ids = movedIds(
@@ -219,6 +221,14 @@ export function RulesView() {
                           >
                             <FlaskConical className="size-4" aria-hidden /> Test on a ticket
                           </MenuItem>
+                          <MenuItem
+                            onClick={() => {
+                              close();
+                              setReplaying(r);
+                            }}
+                          >
+                            <History className="size-4" aria-hidden /> Replay on past tickets
+                          </MenuItem>
                           <Link
                             role="menuitem"
                             href={`/settings/automation/log?rule_id=${r.id}`}
@@ -262,6 +272,13 @@ export function RulesView() {
           ruleId={testing.id}
         />
       )}
+      {replaying && (
+        <ReplayDialog
+          title={replaying.name}
+          target={{ kind: "rule", ruleId: replaying.id }}
+          onClose={() => setReplaying(null)}
+        />
+      )}
     </div>
   );
 }
@@ -280,6 +297,7 @@ function RuleForm({ rule, onClose }: { rule: Rule | null; onClose: () => void })
   const [perDay, setPerDay] = useState(rule?.max_runs_per_day?.toString() ?? "");
   const [errs, setErrs] = useState<Record<string, string>>({});
   const [testOpen, setTestOpen] = useState(false);
+  const [replayOpen, setReplayOpen] = useState(false);
 
   // Someone without `manage_access` may look at a webhook rule but not change it.
   const readOnly = callsWebhook(actions) && !access.manageAccess;
@@ -455,9 +473,16 @@ function RuleForm({ rule, onClose }: { rule: Rule | null; onClose: () => void })
       </div>
       <FormError message={errs._form} />
       <div className="flex flex-wrap justify-between gap-2">
-        <Button variant="outline" onClick={() => setTestOpen(true)}>
-          <FlaskConical className="size-4" /> Test on a ticket
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" onClick={() => setTestOpen(true)}>
+            <FlaskConical className="size-4" /> Test on a ticket
+          </Button>
+          {access.settings && (
+            <Button variant="outline" onClick={() => setReplayOpen(true)}>
+              <History className="size-4" /> Replay on past tickets
+            </Button>
+          )}
+        </div>
         <div className="flex gap-2">
           <Button variant="ghost" onClick={onClose}>
             {readOnly ? "Close" : "Cancel"}
@@ -469,6 +494,16 @@ function RuleForm({ rule, onClose }: { rule: Rule | null; onClose: () => void })
           )}
         </div>
       </div>
+      {replayOpen && (
+        <ReplayDialog
+          title={name.trim() || "Draft rule"}
+          target={{
+            kind: "draft",
+            draft: { name: name.trim() || "Draft", event, conditions, actions },
+          }}
+          onClose={() => setReplayOpen(false)}
+        />
+      )}
       {testOpen && (
         <RuleTestDrawer
           open

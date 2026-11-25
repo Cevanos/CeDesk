@@ -27,6 +27,7 @@ const TABS = [
   { href: "/reports/ai", label: "AI" },
   { href: "/reports/explore", label: "Trends" },
   { href: "/reports/backlog", label: "Backlog" },
+  { href: "/reports/resolutions", label: "Resolutions" },
   { href: "/reports/dashboards", label: "Dashboards" },
   { href: "/reports/live", label: "Live" },
   { href: "/reports/schedules", label: "Scheduled reports" },

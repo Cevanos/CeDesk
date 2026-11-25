@@ -6,6 +6,7 @@ import {
   Bot,
   Building2,
   CircleCheck,
+  ClipboardCheck,
   ChevronRight,
   Code2,
   Contact,
@@ -107,6 +108,12 @@ const GROUPS: Group[] = [
         label: "Workflows",
         icon: GitFork,
         description: "Chains of steps that can wait, branch and follow up on their own.",
+      },
+      {
+        href: "/settings/resolution-receipts",
+        label: "Resolution receipts",
+        icon: ClipboardCheck,
+        description: "Ask agents to record what was done, and whether they checked it, on resolve.",
       },
       {
         href: "/settings/automation/log",
