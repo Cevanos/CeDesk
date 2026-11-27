@@ -18,6 +18,8 @@ dependencies = [
     "dnspython>=2.6",
     "fastapi>=0.162.0",
     "httpx>=0.28.1",
+    # The MCP connector: the /mcp endpoint and its OAuth authorization server.
+    "mcp>=2.3,<3",
     "pydantic-settings>=2.16.2",
     "python3-saml>=1.16",
     "sqlalchemy[asyncio]>=2.1.8",
@@ -95,3 +97,12 @@ name = "Domain is pure: no database, no web framework"
 type = "forbidden"
 source_modules = ["cedesk.helpdesk.domain"]
 forbidden_modules = ["sqlalchemy", "asyncpg", "fastapi", "cedesk.db"]
+
+# The MCP server (AI apps) sits outside the helpdesk layers and calls the service layer
+# only: a tool never reaches SQL or a route directly, so every web app check applies.
+[[tool.importlinter.contracts]]
+name = "MCP tools go through the service layer"
+type = "forbidden"
+source_modules = ["cedesk.mcp"]
+forbidden_modules = ["cedesk.helpdesk.repo", "cedesk.helpdesk.api", "cedesk.db", "sqlalchemy"]
+allow_indirect_imports = true

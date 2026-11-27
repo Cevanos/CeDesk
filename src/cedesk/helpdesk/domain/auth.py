@@ -38,6 +38,10 @@ class Caller:
     api_key_id: UUID | None = None
     api_key_name: str | None = None
     api_key_access: str | None = None
+    # An AI app the member connected (the MCP connector): its name and the member's grant.
+    # None for a person signed in or an API key.
+    via_app: str | None = None
+    grant_id: UUID | None = None
 
     def __post_init__(self) -> None:
         if self.access is None:
@@ -47,8 +51,10 @@ class Caller:
         return self.access.can(action)
 
     def acting(self, name: str) -> str:
-        """The name for system lines and the audit log: "Neha", or, through a key,
-        'Neha (API key "Shopify sync")'."""
+        """The name for system lines and the audit log: "Neha", through a key
+        'Neha (API key "Shopify sync")', through an AI app "Neha via Claude"."""
+        if self.via_app is not None:
+            return f"{name} via {self.via_app}"
         if self.api_key_name is None:
             return name
         return f'{name} (API key "{self.api_key_name}")'

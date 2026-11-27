@@ -183,6 +183,36 @@ class Settings(BaseSettings):
         description="The customer portal's address, for links in emails (the CSAT survey "
         "opens `<portal_url>/rate`). Empty: the same as app_url.",
     )
+    # AI apps (the MCP connector): Claude, ChatGPT, Codex, Cursor ... reach a member's
+    # workspace at `<issuer>/mcp` after the member says yes on the web app.
+    mcp_enabled: bool = Field(
+        default=True,
+        description="Serve /mcp and the OAuth endpoints AI apps sign in with. Off: they "
+        "answer 404.",
+    )
+    oauth_issuer: str = Field(
+        default="",
+        description="The public https address AI apps reach this CeDesk at (the OAuth "
+        "issuer; the MCP server is `<issuer>/mcp`), e.g. https://mcp.cedesk.in. Never change "
+        "it once apps are connected. Empty: api_url, else app_url.",
+    )
+    openai_apps_challenge: SecretStr | None = Field(
+        default=None,
+        description="The domain challenge token OpenAI shows when you submit the app; served "
+        "at /.well-known/openai-apps-challenge. Empty: that address answers 404.",
+    )
+    mcp_requests_per_minute: int = Field(
+        default=120, ge=1, description="Requests to /mcp per connected app per minute."
+    )
+    oauth_requests_per_minute: int = Field(
+        default=60,
+        ge=1,
+        description="Requests to /oauth/authorize, /oauth/token and /oauth/revoke per client "
+        "address per minute.",
+    )
+    oauth_registrations_per_hour: int = Field(
+        default=20, ge=1, description="App registrations (/oauth/register) per address per hour."
+    )
     # Sender of account emails (password reset) when the workspace has no support
     # address yet, e.g. no-reply@cedesk.in. Empty: such emails can't be sent.
     mail_from_address: str = ""
@@ -344,6 +374,13 @@ class Settings(BaseSettings):
 
     def allowed_origins(self) -> list[str]:
         return [o.strip().rstrip("/") for o in self.cors_origins.split(",") if o.strip()]
+
+    def issuer(self) -> str:
+        """The OAuth issuer AI apps see: exact, no trailing slash (RFC 8414 compares it)."""
+        return (self.oauth_issuer or self.api_url or self.app_url).strip().rstrip("/")
+
+    def mcp_resource(self) -> str:
+        return f"{self.issuer()}/mcp"
 
     def unsafe(self) -> list[str]:
         """What must change before this runs anywhere but a developer's machine."""

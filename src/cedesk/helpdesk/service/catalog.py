@@ -16,9 +16,10 @@ from cedesk.helpdesk.domain.tickets import FieldDef, FieldError, FieldKind, chec
 from cedesk.helpdesk.repo import catalog as repo
 from cedesk.helpdesk.repo import roles as role_repo
 from cedesk.helpdesk.repo.catalog import Row
-from cedesk.helpdesk.service import audit
+from cedesk.helpdesk.service import audit, idempotency
 from cedesk.helpdesk.service.auth import Sessionmaker
 from cedesk.helpdesk.service.errors import Conflict, Invalid, NotFound
+from cedesk.helpdesk.service.idempotency import Idempotency
 from cedesk.helpdesk.service.members import require
 
 TEAM_FIELDS = ("name", "auto_assign", "max_open_per_agent", "member_ids")
@@ -87,12 +88,21 @@ async def create_team(
     auto_assign: bool,
     max_open: int,
     member_ids: Sequence[UUID],
+    idem: Idempotency | None = None,
 ) -> Row:
+    """`idem`: a repeat with the same key returns the team the first one made."""
     require(caller, Action.settings)
     try:
         async with workspace_session(sm, caller.workspace_id) as s:
+            earlier = await idempotency.begin(s, caller, idem)
+            if earlier is not None:
+                found = await repo.get_team(s, earlier)
+                if found is None:
+                    raise NotFound("The team this key made has since been deleted.")
+                return found
             await _check_members(s, member_ids)
             team_id = await repo.insert_team(s, caller.workspace_id, name, auto_assign, max_open)
+            await idempotency.remember(s, caller, idem, team_id)
             await repo.set_team_members(
                 s, caller.workspace_id, team_id, list(dict.fromkeys(member_ids))
             )

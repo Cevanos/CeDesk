@@ -3,6 +3,24 @@
 `openapi.json` next to this file is the API as served (`uv run cedesk openapi`). Every
 route is under `/api/v1`. Breaking changes only come in v2 (md 2B). Newest first.
 
+## 2026-11-26: AI apps (the MCP connector)
+
+New. Migration 0087. Claude, ChatGPT, Codex, Cursor and other AI apps connect to a member's
+workspace with OAuth 2.1 and call CeDesk's tools at `<issuer>/mcp` (see
+`docs/SELF_HOSTING.md`, "Connect your CeDesk to Claude, ChatGPT and other AI apps").
+
+- Outside `/api/v1`, answered in OAuth's own shapes (not the error envelope):
+  `GET /.well-known/oauth-authorization-server` (RFC 8414), `GET|POST /oauth/authorize`,
+  `POST /oauth/token`, `POST /oauth/register` (RFC 7591), `POST /oauth/revoke` (RFC 7009),
+  `GET /.well-known/openai-apps-challenge` (404 unless `CEDESK_OPENAI_APPS_CHALLENGE` is
+  set). Not in this file: `/mcp` and `GET /.well-known/oauth-protected-resource/mcp`
+  (RFC 9728), served by the MCP SDK.
+- `GET /oauth/consent?request=…` and `POST /oauth/consent` (`{request, decision}` ->
+  `{redirect_to}`): what an app asks for, and the signed-in member's answer.
+- `GET /oauth/grants` and `DELETE /oauth/grants/{id}`: the member's own connected apps;
+  disconnecting ends the app's tokens at once. Both are audited (area `connected_apps`).
+- Changes an app makes are audited and shown as "<member> via <app>".
+
 ## 2026-11-23: The archive age and retention each say when they were changed
 
 Fix. No new routes or fields. Migration 0078.

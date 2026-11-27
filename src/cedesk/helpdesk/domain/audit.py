@@ -55,6 +55,8 @@ class Area(StrEnum):
     plan = "plan"
     demo = "demo"
     archive = "archive"
+    # AI apps a member connected (the MCP connector): granted and revoked.
+    connected_apps = "connected_apps"
     workspace = "workspace"  # the workspace itself was created (self-service sign-up)
     # Inbox tools (feature-gap plan phase 1): snooze, bulk changes, followers, transcripts
     # and automatic closes; saved views; the auto-close setting.

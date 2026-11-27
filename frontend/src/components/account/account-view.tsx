@@ -7,6 +7,7 @@ import { useForm, useWatch } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
 
+import { ConnectedAppsCard } from "@/components/account/connected-apps-card";
 import { Section } from "@/components/account/section";
 import { TwoFactorCard } from "@/components/account/two-factor-card";
 import { PasswordInput, PasswordStrength } from "@/components/auth/password-input";
@@ -52,6 +53,7 @@ export function AccountView() {
         {/* While the password is expired only /me, /me/password and sign-out work. */}
         {!expired && <TwoFactorCard />}
         {!expired && <DevicesCard />}
+        {!expired && !mustSetUp2fa && <ConnectedAppsCard />}
         {expired && <SignOutRow />}
       </div>
     </div>

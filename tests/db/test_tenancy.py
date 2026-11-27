@@ -20,6 +20,12 @@ GLOBAL_TABLES = {
     # client IP only HMACs; rows are deleted after two days.
     "workspace_signup",
     "auth_email_out",
+    # AI apps that asked to connect (0087): the same Claude for every workspace, known
+    # before any workspace grants it anything. Name, redirect URIs, the hash of a secret;
+    # what a member granted lives in the tenant table oauth_grant.
+    "oauth_client",
+    # Request counts shared by every API process (0087): hashed keys and counts only.
+    "rate_limit_hit",
 }
 
 TABLES = text(

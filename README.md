@@ -179,6 +179,7 @@ src/cedesk/
   db.py          engine and workspace_session (sets the RLS workspace)
   tenancy.py     RLS statements for tenant tables
   storage/       where uploaded files live: local disk or S3 (one setting)
+  mcp/           the MCP server AI apps reach at /mcp; calls the service layer only
   helpdesk/
     api/         routers
     service/     use cases

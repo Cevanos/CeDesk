@@ -74,6 +74,7 @@ describe("proxy path classes", () => {
       "roles",
       "apps",
       "api-keys",
+      "oauth",
       "webhooks",
       "audit",
       "privacy",
