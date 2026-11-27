@@ -20,6 +20,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from cedesk import logs
 from cedesk.captcha import Turnstile
 from cedesk.cevanos_client import make_cevanos
+from cedesk.client_documents import make_fetch
 from cedesk.db import make_engine, make_sessionmaker
 from cedesk.dnscheck import DnsLookup
 from cedesk.helpdesk.api import ai as ai_api
@@ -54,6 +55,7 @@ from cedesk.helpdesk.api import macros as macros_api
 from cedesk.helpdesk.api import members as members_api
 from cedesk.helpdesk.api import messages as messages_api
 from cedesk.helpdesk.api import mobile as mobile_api
+from cedesk.helpdesk.api import oauth as oauth_api
 from cedesk.helpdesk.api import outbox as outbox_api
 from cedesk.helpdesk.api import portal as portal_api
 from cedesk.helpdesk.api import privacy as privacy_api
@@ -94,8 +96,10 @@ from cedesk.helpdesk.service.imports.framework import make_importers, retry_poli
 from cedesk.helpdesk.service.live import LiveCache
 from cedesk.helpdesk.service.report_engine import ReportSlots
 from cedesk.helpdesk.service.stream import Slots
+from cedesk.mcp import server as mcp_server
+from cedesk.mcp.cors import AiAppCors
 from cedesk.ratelimit import SlidingWindowLimiter
-from cedesk.settings import Edition, Settings, get_settings
+from cedesk.settings import Edition, Env, Settings, get_settings
 from cedesk.storage import make_store
 from cedesk.webhook_client import WebhookClient
 
@@ -177,7 +181,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.engine = engine
         app.state.sessionmaker = make_sessionmaker(engine)
         try:
-            yield
+            if settings.mcp_enabled:
+                async with app.state.mcp.sessions.run():  # the MCP SDK's task group
+                    yield
+            else:
+                yield
         finally:
             await engine.dispose()
 
@@ -255,6 +263,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.captcha = Turnstile(secret.get_secret_value()) if secret else None
     # Sign-up passwords hashed at once (each Argon2 hash takes about 64 MB).
     app.state.signup_hash_slots = asyncio.Semaphore(settings.signup_hash_slots)
+    # AI apps (the MCP connector): the authorization server, and how it fetches an app's
+    # client metadata document (through the egress guard; tests replace it).
+    app.state.oauth_server = oauth_api.auth_server(settings)
+    app.state.oauth_fetch = make_fetch()
+    if (
+        settings.mcp_enabled
+        and settings.env is not Env.dev
+        and not settings.issuer().startswith("https://")
+    ):
+        logger.warning("AI apps need an https address: set CEDESK_OAUTH_ISSUER")
 
     @app.middleware("http")
     async def request_log(request: Request, call_next: Any) -> Response:
@@ -366,6 +384,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             max_age=600,
         )
 
+    if settings.mcp_enabled:
+        # Outside /api/v1: AI apps find these from the issuer (README: AI apps).
+        app.include_router(oauth_api.public)
+        app.include_router(oauth_api.router, prefix="/api/v1")
+        app.state.mcp = mcp_server.build(settings, lambda: app.state.sessionmaker)
+        app.router.routes.extend(app.state.mcp.routes)
+        # Outermost: AI apps' browser clients may call these from any origin (bearer
+        # tokens, no cookies); everything else keeps the CORS list above.
+        app.add_middleware(AiAppCors)
     app.include_router(auth_api.router, prefix="/api/v1")
     app.include_router(signup_api.router, prefix="/api/v1")
     app.include_router(members_api.router, prefix="/api/v1")

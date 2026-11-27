@@ -226,6 +226,12 @@ const GROUPS: Group[] = [
         description: "Create keys to access the API securely.",
       },
       {
+        href: "/settings/connected-apps",
+        label: "Connected apps",
+        icon: Plug,
+        description: "AI apps such as Claude and ChatGPT you connected (also in My account).",
+      },
+      {
         href: "/settings/webhooks",
         label: "Webhooks",
         icon: Webhook,

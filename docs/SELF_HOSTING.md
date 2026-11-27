@@ -189,6 +189,49 @@ the identity provider's setup reads `/api/v1/sso/<workspace>/metadata`). Set `CE
 to `https://help.example.com` so the identity provider sends people back to the right
 address.
 
+## Connect your CeDesk to Claude, ChatGPT and other AI apps
+
+AI apps that speak MCP (Claude, Claude Code, ChatGPT, Codex, Cursor, VS Code, Gemini CLI,
+Antigravity) can read tickets and reports and change setup in your CeDesk. Each member
+connects their own app: the app opens CeDesk, the member signs in as usual (password,
+two-step code, SSO, your IP allowlist all apply) and approves. The app then acts as that
+member, with that member's role, and nothing more. Members, roles, security, SSO, API keys,
+the Cevanos link, imports, privacy and approvals are never reachable through an app. Every
+change it makes is in the audit log as "<member> via <app>". Each member sees and
+disconnects their apps under Settings > Connected apps.
+
+What it needs:
+
+- **A public HTTPS name.** Claude and ChatGPT connect from their own servers, so your
+  CeDesk must be reachable from the internet over HTTPS with a real certificate. With
+  `CEDESK_SITE=help.example.com`, Caddy already does this. A CeDesk on `:80`, an IP
+  address or a private network can't be connected to these apps.
+- **`CEDESK_OAUTH_ISSUER`** in `deploy/.env`: the public address apps reach, e.g.
+  `https://help.example.com`. Empty, it is `CEDESK_API_URL`, else `CEDESK_APP_URL`. Apps
+  remember it exactly: **don't change it once apps are connected** (they would have to
+  connect again).
+- Nothing else by default. `CEDESK_MCP_ENABLED=false` turns it off (every AI-app address
+  answers 404). The other settings are in [SETTINGS.md](SETTINGS.md#ai-apps-the-mcp-connector).
+
+The MCP server address to give an app is **`<CEDESK_OAUTH_ISSUER>/mcp`**, for example
+`https://help.example.com/mcp`. Apps find the sign-in themselves from that address. For
+example, in Claude: Settings > Connectors > Add custom connector, and paste the address;
+in Cursor's `mcp.json`: `{"mcpServers": {"cedesk": {"url": "https://help.example.com/mcp"}}}`;
+in Claude Code: `claude mcp add --transport http cedesk https://help.example.com/mcp`.
+
+Caddy (`deploy/Caddyfile`) sends `/mcp`, `/oauth/*` and the OAuth `/.well-known/` documents
+to the API, ahead of the web app. To give AI apps a host of their own (as CeDesk Cloud
+does with `mcp.cedesk.in`), point its DNS at the server, set `CEDESK_MCP_SITE` to it and
+`CEDESK_OAUTH_ISSUER=https://<that host>`, and uncomment the site block at the end of the
+Caddyfile. Members still approve on the web app's own address.
+
+Apps register themselves (dynamic client registration) or are known by their client
+metadata document (an https `client_id`), so there is nothing to set up per app. For an
+app that does neither, register it by hand:
+`docker compose exec api uv run --no-sync cedesk add-ai-app --name "My app" --redirect-uri https://app.example/callback`.
+Behind a firewall, allow the AI providers' addresses to reach `/mcp` and `/oauth/*`
+(Anthropic's, for example, are `160.79.104.0/21`).
+
 ## Updating
 
 ```sh
@@ -258,4 +301,4 @@ the login and connect safely: [REPORTING_DATABASE.md](REPORTING_DATABASE.md).
 
 ## Licence
 
-To be announced.
+MIT. See [LICENSE](../LICENSE).

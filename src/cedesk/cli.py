@@ -274,7 +274,11 @@ def _seed_demo(args: argparse.Namespace) -> int:
         engine = make_engine(get_settings().database_url)
         try:
             return await seed_demo(
-                make_sessionmaker(engine), slug=args.slug, name=args.name, password=password
+                make_sessionmaker(engine),
+                slug=args.slug,
+                name=args.name,
+                password=password,
+                email_domain=args.email_domain,
             )
         finally:
             await engine.dispose()
@@ -303,6 +307,39 @@ def _prune_sessions() -> int:
             await engine.dispose()
 
     print(f"Deleted {asyncio.run(run())} ended sign-in sessions.")
+    return 0
+
+
+def _add_ai_app(args: argparse.Namespace) -> int:
+    """Registers an AI app by hand (for one that neither publishes a client metadata
+    document nor registers itself). Prints its client id and, once, its secret."""
+    from cedesk.db import make_engine, make_sessionmaker
+    from cedesk.helpdesk.service import oauth
+    from cedesk.settings import get_settings
+
+    doc = {
+        "client_name": args.name,
+        "redirect_uris": args.redirect_uri,
+        "token_endpoint_auth_method": "client_secret_post" if args.secret else "none",
+    }
+
+    async def run() -> oauth.Registered:
+        engine = make_engine(get_settings().database_url)
+        try:
+            return await oauth.register(
+                make_sessionmaker(engine), doc, registration="manual", client_id=args.client_id
+            )
+        finally:
+            await engine.dispose()
+
+    try:
+        made = asyncio.run(run())
+    except oauth.OAuthError as exc:
+        print(exc.description, file=sys.stderr)
+        return 1
+    print(f"client_id: {made.client.client_id}")
+    if made.secret:
+        print(f"client_secret (shown once): {made.secret}")
     return 0
 
 
@@ -346,10 +383,12 @@ def _worker(once: bool) -> int:
     from cedesk.helpdesk.service.imports.framework import run_due as run_imports
     from cedesk.helpdesk.service.jira import make_post
     from cedesk.helpdesk.service.limits import remove_expired_retention_exports, run_retention
+    from cedesk.helpdesk.service.oauth import sweep_everywhere as sweep_oauth
     from cedesk.helpdesk.service.password_reset import Sender
     from cedesk.helpdesk.service.portal_notice import PortalNoticeHandler
     from cedesk.helpdesk.service.privacy import remove_expired_exports
     from cedesk.helpdesk.service.push import push_due
+    from cedesk.helpdesk.service.rate_limits import sweep as sweep_rate_limits
     from cedesk.helpdesk.service.replay import prune_everywhere as prune_replays
     from cedesk.helpdesk.service.replay import run_due as run_replays
     from cedesk.helpdesk.service.report_schedules import run_scheduled_reports
@@ -612,6 +651,11 @@ def _worker(once: bool) -> int:
                     alerted_at = time.monotonic()
                 if time.monotonic() - swept_at > SWEEP_EVERY_SECONDS:
                     await sweep_everywhere(sm)
+                    try:  # AI apps: ended codes and tokens, old shared request counts
+                        await sweep_oauth(sm)
+                        await sweep_rate_limits(sm)
+                    except Exception:
+                        logger.exception("Sweeping AI-app tokens and request counts failed")
                     try:  # customer exports past their 7 days (S11)
                         await remove_expired_exports(sm, store)
                     except Exception:
@@ -738,6 +782,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     demo.add_argument("--slug", default="acme-store")
     demo.add_argument("--name", default="Acme Store")
+    demo.add_argument(
+        "--email-domain",
+        default="acme-store.in",
+        help="The accounts' domain (alex@<domain>, ...); on a real server, one whose mail you get",
+    )
     workflow = sub.add_parser(
         "seed-workflow",
         help="Add the default saved replies, rules and macros to an existing workspace",
@@ -759,6 +808,11 @@ def main(argv: list[str] | None = None) -> int:
     plan = sub.add_parser("set-plan", help="Give a workspace its cloud plan (limits, md O4)")
     plan.add_argument("--workspace", required=True, help="Sign-in address, e.g. 'acme-store'")
     plan.add_argument("--plan", required=True, help="free, growth, enterprise, or none")
+    app = sub.add_parser("add-ai-app", help="Register an AI app by hand (OAuth client)")
+    app.add_argument("--name", required=True, help="Shown on the consent screen")
+    app.add_argument("--redirect-uri", required=True, action="append", help="Repeat for several")
+    app.add_argument("--client-id", help="Use this id instead of a new one")
+    app.add_argument("--secret", action="store_true", help="A confidential client with a secret")
     reporting = sub.add_parser(
         "reporting-user",
         help="Logins for BI tools (Metabase, Power BI) that read the reporting views only",
@@ -805,6 +859,8 @@ def main(argv: list[str] | None = None) -> int:
         return _articles_markdown()
     if args.command == "set-plan":
         return _set_plan(args.workspace, args.plan)
+    if args.command == "add-ai-app":
+        return _add_ai_app(args)
     if args.command == "reporting-user":
         return _reporting_user(args)
     if args.command == "openapi":

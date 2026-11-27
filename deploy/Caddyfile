@@ -31,6 +31,21 @@
 		}
 	}
 
+	# AI apps (the MCP connector): the MCP endpoint, where they sign in, and the discovery
+	# documents. Before the web app's catch-all, which would answer them otherwise (the web
+	# app keeps the rest of /.well-known, e.g. security.txt). /mcp is not buffered (a tool
+	# call may stream its answer).
+	@mcp path /mcp
+	handle @mcp {
+		reverse_proxy api:8100 {
+			flush_interval -1
+		}
+	}
+	@oauth path /oauth/* /.well-known/oauth-authorization-server* /.well-known/oauth-protected-resource* /.well-known/openai-apps-challenge
+	handle @oauth {
+		reverse_proxy api:8100
+	}
+
 	# The API: the web app's server, the mobile app, webhooks (Cevanos, inbound email) and
 	# single sign-on. Its health checks and API docs (/docs) too.
 	@api path /api/v1/* /readyz /healthz /docs /docs/* /openapi.json
@@ -45,6 +60,30 @@
 		reverse_proxy web:3000
 	}
 }
+
+# Optional: a host of its own for AI apps, e.g. mcp.cedesk.in on CeDesk Cloud. Point its DNS
+# at this server, set CEDESK_MCP_SITE to it, set CEDESK_OAUTH_ISSUER=https://<that host>
+# for the api, and uncomment. It serves only the AI-app paths; members still sign in and
+# approve on the web app's own address (CEDESK_SITE).
+#
+# {$CEDESK_MCP_SITE} {
+# 	request_body {
+# 		max_size 5MB
+# 	}
+# 	@mcp path /mcp
+# 	handle @mcp {
+# 		reverse_proxy api:8100 {
+# 			flush_interval -1
+# 		}
+# 	}
+# 	@oauth path /oauth/* /.well-known/oauth-authorization-server* /.well-known/oauth-protected-resource* /.well-known/openai-apps-challenge
+# 	handle @oauth {
+# 		reverse_proxy api:8100
+# 	}
+# 	handle {
+# 		respond 404
+# 	}
+# }
 
 # Custom help-center domains (plan 4.2), second half: OFF. Needs the global block at the top
 # of this file and CEDESK_FRONTEND_UPSTREAM set to where the frontend answers (for example

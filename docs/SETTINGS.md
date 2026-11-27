@@ -109,6 +109,22 @@ file or `deploy/env.example` names one that doesn't exist.
 | `CEDESK_CEVANOS_APP_URL` | `https://cevanos.ai` | Cevanos's web app, for links into it (the Governance report). | api | api |
 | `CEDESK_CEVANOS_POLL_BATCH` | `20` | Chats read per worker pass, per workspace (1 to 60, within Cevanos's rate limit). | worker | no |
 
+## AI apps (the MCP connector)
+
+Claude, ChatGPT, Codex, Cursor and other AI apps connect at `<issuer>/mcp` after a member
+approves them on the web app (see SELF_HOSTING.md, "Connect your CeDesk to Claude, ChatGPT
+and other AI apps"). These limits are kept in the database, so every API process shares
+them; over a limit: 429 with `Retry-After`.
+
+| Setting | Default | What it does | Read by | In compose |
+|---|---|---|---|---|
+| `CEDESK_MCP_ENABLED` | `true` | Serve `/mcp`, `/oauth/*` and the OAuth discovery documents. `false`: they answer 404. | api | api |
+| `CEDESK_OAUTH_ISSUER` | (empty: `CEDESK_API_URL`, else `CEDESK_APP_URL`) | The public **https** address AI apps reach (the OAuth issuer; the MCP server is `<this>/mcp`), e.g. `https://help.example.com`, or `https://mcp.cedesk.in` on CeDesk Cloud. Apps compare it exactly: never change it once apps are connected. | api | api |
+| `CEDESK_OPENAI_APPS_CHALLENGE` | (empty: 404) | The domain challenge token OpenAI shows when the app is submitted; served as plain text at `/.well-known/openai-apps-challenge`. | api | api |
+| `CEDESK_MCP_REQUESTS_PER_MINUTE` | `120` | Requests to `/mcp` per connected app (one member's grant) per minute. | api | no |
+| `CEDESK_OAUTH_REQUESTS_PER_MINUTE` | `60` | Requests to `/oauth/authorize`, `/oauth/token` and `/oauth/revoke` per client address per minute. | api | no |
+| `CEDESK_OAUTH_REGISTRATIONS_PER_HOUR` | `20` | App registrations (`/oauth/register`) per client address per hour. | api | no |
+
 ## Limits per address (abuse protection)
 
 The address these limits (and each workspace's IP allowlist) count is the visitor's,
@@ -201,6 +217,7 @@ Read by `deploy/docker-compose.yml`, the database's first start, or `deploy/back
 | `CEDESK_OWNER_PASSWORD` | `cedesk_owner`'s password (migrations); compose builds `CEDESK_MIGRATION_DATABASE_URL` from it. |
 | `CEDESK_APP_PASSWORD` | `cedesk_app`'s password (the app); compose builds `CEDESK_DATABASE_URL` from it. |
 | `CEDESK_SITE` | Caddy's site: your domain (HTTPS) or `:80` (plain HTTP, for a short test). |
+| `CEDESK_MCP_SITE` | Optional: a host of its own for AI apps (e.g. `mcp.cedesk.in`), with the commented site block at the end of `deploy/Caddyfile`. |
 | `BACKUP_DIR` | Where `backup.sh` writes (default `~/cedesk-backups`). Its other settings (`BACKUP_GPG_RECIPIENT`, retention, alerts) are in `deploy/backup.env.example`. |
 | `CEDESK_FORWARDED_ALLOW_IPS` | The proxies the API takes `X-Forwarded-For` from (uvicorn's `--forwarded-allow-ips`). Default: this machine and Docker's private networks. Never `*`. |
 

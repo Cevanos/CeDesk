@@ -6,6 +6,304 @@
     "version": "0.1.0"
   },
   "paths": {
+    "/.well-known/oauth-authorization-server": {
+      "get": {
+        "tags": [
+          "ai apps (oauth)"
+        ],
+        "summary": "OAuth authorization server metadata (RFC 8414) for AI apps",
+        "operationId": "authorization_server_metadata__well_known_oauth_authorization_server_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/.well-known/openai-apps-challenge": {
+      "get": {
+        "tags": [
+          "ai apps (oauth)"
+        ],
+        "summary": "OpenAI's domain challenge for the CeDesk app (404 when not set)",
+        "operationId": "openai_apps_challenge__well_known_openai_apps_challenge_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/oauth/authorize": {
+      "get": {
+        "tags": [
+          "ai apps (oauth)"
+        ],
+        "summary": "Start an AI app's sign-in",
+        "description": "OAuth 2.1 authorization code with PKCE (S256 only). `client_id` is a registered client or the https URL of a Client ID Metadata Document. The member signs in to CeDesk if needed and approves on `<app_url>/connect`. An unknown client or redirect URI is a plain 400 page, never a redirect; other errors go back to the app with `error`, `state` and `iss`.",
+        "operationId": "authorize_oauth_authorize_get",
+        "responses": {
+          "302": {
+            "description": "On to the consent page, or back to the app with an error"
+          },
+          "400": {
+            "description": "Unknown client or redirect URI"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "ai apps (oauth)"
+        ],
+        "summary": "Start an AI app's sign-in (form post)",
+        "description": "OAuth 2.1 authorization code with PKCE (S256 only). `client_id` is a registered client or the https URL of a Client ID Metadata Document. The member signs in to CeDesk if needed and approves on `<app_url>/connect`. An unknown client or redirect URI is a plain 400 page, never a redirect; other errors go back to the app with `error`, `state` and `iss`.",
+        "operationId": "authorize_form_oauth_authorize_post",
+        "responses": {
+          "302": {
+            "description": "On to the consent page, or back to the app with an error"
+          },
+          "400": {
+            "description": "Unknown client or redirect URI"
+          }
+        }
+      }
+    },
+    "/oauth/token": {
+      "post": {
+        "tags": [
+          "ai apps (oauth)"
+        ],
+        "summary": "Exchange a code, or refresh (form-encoded, RFC 6749)",
+        "description": "`grant_type=authorization_code` (with `code`, `code_verifier`, `redirect_uri`) or `refresh_token`. Refresh tokens rotate: a used one presented again revokes every token from that sign-in. Access tokens last an hour, refresh tokens 30 days.",
+        "operationId": "token_oauth_token_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/oauth/revoke": {
+      "post": {
+        "tags": [
+          "ai apps (oauth)"
+        ],
+        "summary": "Revoke an access or refresh token (RFC 7009; always 200)",
+        "operationId": "revoke_oauth_revoke_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/oauth/register": {
+      "post": {
+        "tags": [
+          "ai apps (oauth)"
+        ],
+        "summary": "Register an AI app (RFC 7591 dynamic client registration)",
+        "description": "Redirect URIs: https anywhere, or http on 127.0.0.1, [::1] or localhost (the port may then change at sign-in). A public client (`none`) gets no secret; others get one, shown only here.",
+        "operationId": "register_oauth_register_post",
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/oauth/consent": {
+      "get": {
+        "tags": [
+          "connected apps"
+        ],
+        "summary": "What an AI app is asking for, for the signed-in member to approve",
+        "operationId": "consent_api_v1_oauth_consent_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "request",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 8000,
+              "description": "From the consent page's URL.",
+              "title": "Request"
+            },
+            "description": "From the consent page's URL."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsentOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "connected apps"
+        ],
+        "summary": "Approve or deny an AI app; answers where to send the browser",
+        "operationId": "decide_api_v1_oauth_consent_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConsentIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsentDone"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/oauth/grants": {
+      "get": {
+        "tags": [
+          "connected apps"
+        ],
+        "summary": "The AI apps you connected to this workspace",
+        "operationId": "list_grants_api_v1_oauth_grants_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ConnectedAppGrantOut"
+                  },
+                  "type": "array",
+                  "title": "Response List Grants Api V1 Oauth Grants Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/oauth/grants/{grant_id}": {
+      "delete": {
+        "tags": [
+          "connected apps"
+        ],
+        "summary": "Disconnect an AI app: its tokens stop working at once",
+        "operationId": "revoke_grant_api_v1_oauth_grants__grant_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "grant_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Grant Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/auth/sign-in": {
       "post": {
         "tags": [
@@ -21268,6 +21566,7 @@
           "plan",
           "demo",
           "archive",
+          "connected_apps",
           "workspace",
           "tickets",
           "views",
@@ -23670,6 +23969,117 @@
         ],
         "title": "ConnectIn"
       },
+      "ConnectedAppGrantOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "app": {
+            "$ref": "#/components/schemas/ConnectedAppOut"
+          },
+          "scopes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Scopes"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "last_used_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Used At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "app",
+          "scopes",
+          "created_at",
+          "last_used_at"
+        ],
+        "title": "ConnectedAppGrantOut"
+      },
+      "ConnectedAppOut": {
+        "properties": {
+          "client_id": {
+            "type": "string",
+            "title": "Client Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "The app's own name, or its domain when it gave none."
+          },
+          "client_uri": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Client Uri"
+          },
+          "logo_uri": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Logo Uri"
+          },
+          "registration": {
+            "type": "string",
+            "enum": [
+              "dynamic",
+              "metadata_document",
+              "manual"
+            ],
+            "title": "Registration"
+          },
+          "domain": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Domain",
+            "description": "The host of client_uri, or of a metadata URL."
+          }
+        },
+        "type": "object",
+        "required": [
+          "client_id",
+          "name",
+          "client_uri",
+          "logo_uri",
+          "registration",
+          "domain"
+        ],
+        "title": "ConnectedAppOut"
+      },
       "ConnectionIn": {
         "properties": {
           "api_key": {
@@ -23721,6 +24131,140 @@
         },
         "type": "object",
         "title": "ConnectionIn"
+      },
+      "ConsentDone": {
+        "properties": {
+          "redirect_to": {
+            "type": "string",
+            "title": "Redirect To",
+            "description": "Send the browser here: back to the app."
+          }
+        },
+        "type": "object",
+        "required": [
+          "redirect_to"
+        ],
+        "title": "ConsentDone"
+      },
+      "ConsentIn": {
+        "properties": {
+          "request": {
+            "type": "string",
+            "maxLength": 8000,
+            "title": "Request",
+            "description": "`request` from the consent page's URL."
+          },
+          "decision": {
+            "type": "string",
+            "enum": [
+              "approve",
+              "deny"
+            ],
+            "title": "Decision"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "request",
+          "decision"
+        ],
+        "title": "ConsentIn"
+      },
+      "ConsentMemberOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "email": {
+            "type": "string",
+            "title": "Email"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "email"
+        ],
+        "title": "ConsentMemberOut"
+      },
+      "ConsentOut": {
+        "properties": {
+          "app": {
+            "$ref": "#/components/schemas/ConnectedAppOut"
+          },
+          "redirect_host": {
+            "type": "string",
+            "title": "Redirect Host",
+            "description": "Where the app's sign-in code will be sent."
+          },
+          "scopes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Scopes",
+            "description": "read: look things up. write: make changes."
+          },
+          "resource": {
+            "type": "string",
+            "title": "Resource"
+          },
+          "workspace": {
+            "$ref": "#/components/schemas/ConsentWorkspaceOut"
+          },
+          "member": {
+            "$ref": "#/components/schemas/ConsentMemberOut"
+          }
+        },
+        "type": "object",
+        "required": [
+          "app",
+          "redirect_host",
+          "scopes",
+          "resource",
+          "workspace",
+          "member"
+        ],
+        "title": "ConsentOut"
+      },
+      "ConsentWorkspaceOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "slug": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slug"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "slug"
+        ],
+        "title": "ConsentWorkspaceOut"
       },
       "ContactAttributesIn": {
         "properties": {

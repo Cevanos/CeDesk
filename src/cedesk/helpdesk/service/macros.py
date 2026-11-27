@@ -91,13 +91,27 @@ async def list_macros(sm: Sessionmaker, caller: Caller) -> list[MacroView]:
 
 
 async def create_macro(
-    sm: Sessionmaker, caller: Caller, *, name: str, steps: Sequence[Any]
+    sm: Sessionmaker,
+    caller: Caller,
+    *,
+    name: str,
+    steps: Sequence[Any],
+    idem: Idempotency | None = None,
 ) -> MacroView:
+    """`idem`: a repeat with the same key returns the macro the first one made."""
     require(caller, Action.settings)
     name, parsed = parse(name, steps)
     try:
         async with workspace_session(sm, caller.workspace_id) as s:
-            return (await _views(s, [await create_in(s, caller, name, parsed)]))[0]
+            earlier = await idempotency.begin(s, caller, idem)
+            if earlier is not None:
+                found = await repo.get_macro(s, earlier)
+                if found is None:
+                    raise NotFound("The macro this key made has since been deleted.")
+                return (await _views(s, [found]))[0]
+            row = await create_in(s, caller, name, parsed)
+            await idempotency.remember(s, caller, idem, row["id"])
+            return (await _views(s, [row]))[0]
     except IntegrityError as exc:
         raise Conflict(TAKEN) from exc
 

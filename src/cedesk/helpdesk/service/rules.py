@@ -32,10 +32,11 @@ from cedesk.helpdesk.domain.permissions import Action
 from cedesk.helpdesk.repo import rules as repo
 from cedesk.helpdesk.repo import tickets as ticket_repo
 from cedesk.helpdesk.repo.rules import Row
-from cedesk.helpdesk.service import audit, automation, scope
+from cedesk.helpdesk.service import audit, automation, idempotency, scope
 from cedesk.helpdesk.service.auth import Sessionmaker
 from cedesk.helpdesk.service.automation import RuleRun
 from cedesk.helpdesk.service.errors import Conflict, Invalid, NotFound
+from cedesk.helpdesk.service.idempotency import Idempotency
 from cedesk.helpdesk.service.members import require
 
 logger = logging.getLogger("cedesk")
@@ -123,13 +124,23 @@ async def create_rule(
     actions: Sequence[Any],
     max_runs_per_hour: int = guard.DEFAULT_PER_HOUR,
     max_runs_per_day: int = guard.DEFAULT_PER_DAY,
+    idem: Idempotency | None = None,
 ) -> RuleView:
+    """`idem`: a repeat with the same key returns the rule the first one made."""
     require(caller, Action.settings)
     rule = parse(name, event, conditions, actions)
     limits = _limits(max_runs_per_hour, max_runs_per_day)
     try:
         async with workspace_session(sm, caller.workspace_id) as s:
-            return await _view(s, await create_in(s, caller, rule, enabled, limits))
+            earlier = await idempotency.begin(s, caller, idem)
+            if earlier is not None:
+                found = await repo.get_rule(s, earlier)
+                if found is None:
+                    raise NotFound("The rule this key made has since been deleted.")
+                return await _view(s, found)
+            row = await create_in(s, caller, rule, enabled, limits)
+            await idempotency.remember(s, caller, idem, row["id"])
+            return await _view(s, row)
     except IntegrityError as exc:
         raise Conflict(TAKEN) from exc
 

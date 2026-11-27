@@ -78,6 +78,11 @@ services:
       CEDESK_REPORT_CONCURRENCY: ${CEDESK_REPORT_CONCURRENCY:-4}
       # Single sign-on: the identity provider sends people back to this API address.
       CEDESK_API_URL: ${CEDESK_API_URL:-}
+      # AI apps (the MCP connector): the public https address they reach (empty: the API
+      # address, else the web app's), whether it is on, and OpenAI's domain challenge.
+      CEDESK_OAUTH_ISSUER: ${CEDESK_OAUTH_ISSUER:-}
+      CEDESK_MCP_ENABLED: ${CEDESK_MCP_ENABLED:-true}
+      CEDESK_OPENAI_APPS_CHALLENGE: ${CEDESK_OPENAI_APPS_CHALLENGE:-}
       CEDESK_MAIL_FROM_ADDRESS: ${CEDESK_MAIL_FROM_ADDRESS:-}
       CEDESK_INBOUND_EMAIL_TOKEN: ${CEDESK_INBOUND_EMAIL_TOKEN:-}
       # Settings > Email: where support addresses should forward to, and the mail
@@ -193,6 +198,8 @@ services:
       - "443:443"
     environment:
       CEDESK_SITE: ${CEDESK_SITE:-:80}
+      # Only with the optional AI-app host block in the Caddyfile (e.g. mcp.cedesk.in).
+      CEDESK_MCP_SITE: ${CEDESK_MCP_SITE:-}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data

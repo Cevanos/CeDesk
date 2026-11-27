@@ -138,6 +138,8 @@ export const ALLOWED_AREAS = new Set([
   "webhooks",
   "api-keys",
   "apps",
+  // AI apps (the MCP connector): the consent screen and Connected apps.
+  "oauth",
   "assist",
   "side-conversations",
   "time",
