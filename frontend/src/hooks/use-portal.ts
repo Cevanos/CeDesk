@@ -1,13 +1,14 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useParams } from "next/navigation";
-import { useState } from "react";
+import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useState, useSyncExternalStore } from "react";
 
 import { ApiError, api, createIdempotency, listOf } from "@/lib/api/client";
 import { queryKeys } from "@/lib/api/query-keys";
 import type {
   Article,
+  ArticleAlternate,
   ArticleCategory,
   PortalSession,
   PortalTicket,
@@ -17,6 +18,13 @@ import type {
   PublicHelp,
   PublicType,
 } from "@/lib/api/types";
+import {
+  browserLocale,
+  isValidLocale,
+  normalizeLocale,
+  readLocaleCookie,
+  saveLocaleCookie,
+} from "@/lib/locale";
 import { newId } from "@/lib/new-id";
 
 /**
@@ -221,11 +229,41 @@ export function useSubmitPublicForm(ws: string) {
 
 /* ---------- Help center ---------- */
 
-export function usePublicHelp(ws: string, q: string) {
+const noopSubscribe = () => () => {};
+
+/**
+ * The language to ask for: `?locale=` in the address, then the visitor's saved choice, then
+ * the browser's. Empty means "the workspace default" (the API answers with it).
+ */
+export function useHelpLocale(): { locale: string; choose: (l: string) => void } {
+  const params = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
+  const fromUrl = normalizeLocale(params.get("locale") ?? "");
+  // Cookie and navigator exist only in the browser; the server render sees "" (the default).
+  const saved = useSyncExternalStore(
+    noopSubscribe,
+    () => readLocaleCookie() || browserLocale(),
+    () => "",
+  );
+  const locale = isValidLocale(fromUrl) ? fromUrl : saved;
+  const choose = (l: string) => {
+    saveLocaleCookie(l);
+    const sp = new URLSearchParams(params.toString());
+    sp.set("locale", l);
+    router.push(`${pathname}?${sp.toString()}`);
+  };
+  return { locale, choose };
+}
+
+export function usePublicHelp(ws: string, q: string, locale = "") {
   return useQuery({
-    queryKey: queryKeys.public.help(ws, q),
+    queryKey: queryKeys.public.help(ws, q, locale),
     queryFn: async (): Promise<PublicHelp> => {
-      const raw = await api.get<Record<string, unknown>>(`public/${seg(ws)}/articles`, { q });
+      const raw = await api.get<Record<string, unknown>>(`public/${seg(ws)}/articles`, {
+        q,
+        locale: locale || undefined,
+      });
       const articles = listOf<Article>(raw?.articles ?? raw);
       let categories = listOf<ArticleCategory>(raw?.categories);
       if (categories.length === 0) {
@@ -241,6 +279,8 @@ export function usePublicHelp(ws: string, q: string) {
         workspace_name: (raw?.workspace_name as string | undefined) ?? null,
         categories,
         articles,
+        locale: raw?.locale as string | undefined,
+        default_locale: raw?.default_locale as string | undefined,
       };
     },
     retry: false,
@@ -249,13 +289,25 @@ export function usePublicHelp(ws: string, q: string) {
   });
 }
 
-export function usePublicArticle(ws: string, id: string) {
+export function usePublicArticle(ws: string, id: string, locale = "") {
   return useQuery({
-    queryKey: queryKeys.public.article(ws, id),
+    queryKey: queryKeys.public.article(ws, id, locale),
     queryFn: async () => {
-      const raw = await api.get<Record<string, unknown>>(`public/${seg(ws)}/articles/${seg(id)}`);
+      const raw = await api.get<Record<string, unknown>>(`public/${seg(ws)}/articles/${seg(id)}`, {
+        locale: locale || undefined,
+      });
       const article = (raw?.article ?? raw) as Article;
-      return { article, related: listOf<Article>(raw?.related) };
+      // Language facts may sit on the answer or on the article itself.
+      const pick = (k: keyof Article): unknown => raw?.[k] ?? article[k];
+      return {
+        article,
+        related: listOf<Article>(raw?.related),
+        locale: pick("locale") as string | undefined,
+        fallback: pick("fallback") === true,
+        defaultLocale: pick("default_locale") as string | undefined,
+        available: (pick("available_locales") as string[] | undefined) ?? [],
+        alternates: (pick("alternates") as ArticleAlternate[] | undefined) ?? [],
+      };
     },
     retry: false,
     staleTime: 60_000,
@@ -280,12 +332,13 @@ export function visitorId(): string {
   }
 }
 
-export function useVoteArticle(ws: string, id: string) {
+export function useVoteArticle(ws: string, id: string, locale = "") {
   return useMutation({
     mutationFn: (helpful: boolean) =>
       api.post<unknown>(`public/${seg(ws)}/articles/${seg(id)}/vote`, {
         helpful,
         visitor: visitorId(),
+        ...(locale ? { locale } : {}),
       }),
     meta: { silent: true },
   });

@@ -13,10 +13,14 @@ import { useCreateView, useDeleteView, useUpdateView, useViews } from "@/hooks/u
 import { apiMessage } from "@/lib/api/messages";
 import { filtersToView, type TicketFilters } from "@/lib/api/ticket-filters";
 import type { SavedView } from "@/lib/api/types";
+import { bind, fieldError, useFormik, yup } from "@/lib/forms";
 import { inboxActions } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
 
 const NAME_MAX = 80;
+const nameSchema = yup.object({
+  name: yup.string().trim().required("Give the view a name.").max(NAME_MAX),
+});
 
 /** True when a view's saved filters are exactly what the list shows now. */
 export function sameFilters(a: Record<string, string>, b: Record<string, string>): boolean {
@@ -219,9 +223,26 @@ function SaveViewDialog({
   onClose: () => void;
 }) {
   const create = useCreateView();
-  const [name, setName] = useState("");
-  const [shared, setShared] = useState(false);
-  const [error, setError] = useState<string>();
+  const [apiError, setError] = useState<string>();
+  const form = useFormik({
+    initialValues: { name: "", shared: false },
+    validationSchema: nameSchema,
+    onSubmit: (v) => {
+      const n = v.name.trim();
+      setError(undefined);
+      create.mutate(
+        { name: n, filters, shared: canShare && v.shared },
+        {
+          onSuccess: () => {
+            toast.success(`Saved “${n}”`);
+            onClose();
+          },
+          onError: (err) => setError(apiMessage(err)),
+        },
+      );
+    },
+  });
+  const error = apiError ?? fieldError(form, "name");
 
   return (
     <Dialog
@@ -230,32 +251,12 @@ function SaveViewDialog({
       title="Save view"
       description="Saves the filters, tab and sort you have on now."
     >
-      <form
-        noValidate
-        className="space-y-3"
-        onSubmit={(e) => {
-          e.preventDefault();
-          const n = name.trim();
-          if (!n) return setError("Give the view a name.");
-          setError(undefined);
-          create.mutate(
-            { name: n, filters, shared: canShare && shared },
-            {
-              onSuccess: () => {
-                toast.success(`Saved “${n}”`);
-                onClose();
-              },
-              onError: (err) => setError(apiMessage(err)),
-            },
-          );
-        }}
-      >
+      <form noValidate className="space-y-3" onSubmit={form.handleSubmit}>
         <Field label="Name" htmlFor="view-name">
           <Input
             id="view-name"
-            value={name}
+            {...bind(form, "name")}
             maxLength={NAME_MAX}
-            onChange={(e) => setName(e.target.value)}
             placeholder="My pending tickets"
           />
         </Field>
@@ -263,8 +264,9 @@ function SaveViewDialog({
           <label className="flex items-center gap-2 text-sm">
             <input
               type="checkbox"
-              checked={shared}
-              onChange={(e) => setShared(e.target.checked)}
+              name="shared"
+              checked={form.values.shared}
+              onChange={form.handleChange}
               className="size-4 accent-[var(--primary)]"
             />
             Share with everyone
@@ -286,33 +288,27 @@ function SaveViewDialog({
 
 function RenameDialog({ view, onClose }: { view: SavedView; onClose: () => void }) {
   const update = useUpdateView();
-  const [name, setName] = useState(view.name);
-  const [error, setError] = useState<string>();
+  const [apiError, setError] = useState<string>();
+  const form = useFormik({
+    initialValues: { name: view.name },
+    validationSchema: nameSchema,
+    onSubmit: (v) => {
+      const n = v.name.trim();
+      if (n === view.name) return onClose();
+      setError(undefined);
+      update.mutate(
+        { id: view.id, name: n },
+        { onSuccess: onClose, onError: (err) => setError(apiMessage(err)) },
+      );
+    },
+  });
+  const error = apiError ?? fieldError(form, "name");
 
   return (
     <Dialog open onClose={onClose} title="Rename view">
-      <form
-        noValidate
-        className="space-y-3"
-        onSubmit={(e) => {
-          e.preventDefault();
-          const n = name.trim();
-          if (!n) return setError("Give the view a name.");
-          if (n === view.name) return onClose();
-          setError(undefined);
-          update.mutate(
-            { id: view.id, name: n },
-            { onSuccess: onClose, onError: (err) => setError(apiMessage(err)) },
-          );
-        }}
-      >
+      <form noValidate className="space-y-3" onSubmit={form.handleSubmit}>
         <Field label="Name" htmlFor="view-rename">
-          <Input
-            id="view-rename"
-            value={name}
-            maxLength={NAME_MAX}
-            onChange={(e) => setName(e.target.value)}
-          />
+          <Input id="view-rename" {...bind(form, "name")} maxLength={NAME_MAX} />
         </Field>
         <FormError message={error} />
         <div className="flex justify-end gap-2 pt-1">

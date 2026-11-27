@@ -1,0 +1,8 @@
+# Dummy bearer tokens used as fixtures in unit tests (flagged as generic-api-key).
+# They are not real credentials. Fingerprints are commit:file:rule:line.
+603cd7db2531b126bf1d10a23e53324177459138:src/components/auth/sso-callback.test.tsx:generic-api-key:21
+111d7940000f99553c2d3789bbbfe3f76f65cc79:src/components/auth/sso-callback.test.tsx:generic-api-key:21
+7df55a6799ef0970187d3bd593d6fac54f9c2588:src/components/auth/sso-callback.test.tsx:generic-api-key:21
+603cd7db2531b126bf1d10a23e53324177459138:src/app/api/[...path]/route.test.ts:generic-api-key:443
+111d7940000f99553c2d3789bbbfe3f76f65cc79:src/app/api/[...path]/route.test.ts:generic-api-key:443
+7df55a6799ef0970187d3bd593d6fac54f9c2588:src/app/api/[...path]/route.test.ts:generic-api-key:443

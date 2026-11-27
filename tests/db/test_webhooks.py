@@ -380,3 +380,25 @@ async def test_the_log_keeps_thirty_days(client: AsyncClient, app_sessionmaker: 
     assert sorted(left) == [("Newer", "delivered"), ("Newer", "pending"),
                             ("Order late", "pending")]  # fmt: skip
     assert tries == 0
+
+
+async def test_a_ping_with_an_unreadable_secret_is_refused_not_a_500(
+    client: AsyncClient, app_sessionmaker: Sm
+) -> None:
+    """CEDESK_SECRET_KEY changed since the secret was saved: the ping answers 409 with what
+    to do (it was a 500), and logs nothing; a new secret makes it work again."""
+    receiver, _ = install(client)
+    w = await desk(client, app_sessionmaker)
+    made = await hook(client, w, ["ticket.created"])
+    other_key = Sealer("a-different-server-key-0123456789").seal("old", bound_to="old")
+    async with workspace_session(app_sessionmaker, w["ws"]) as s:
+        await s.execute(text("UPDATE hd_webhook SET secret_sealed = :x WHERE id = :id"),
+                        {"x": other_key, "id": made["id"]})  # fmt: skip
+    r = await client.post(f"{W}/{made['id']}/test", headers=w["h"])
+    assert r.status_code == 409
+    assert r.json()["error"]["message"] == "The secret can't be read: make a new one."
+    assert receiver.got == []
+    log = ok(await client.get(f"{W}/deliveries", headers=w["h"], params={"webhook_id": made["id"]}))
+    assert log["deliveries"] == []
+    ok(await client.post(f"{W}/{made['id']}/secret", headers=w["h"]))
+    assert ok(await client.post(f"{W}/{made['id']}/test", headers=w["h"]))["state"] == "delivered"

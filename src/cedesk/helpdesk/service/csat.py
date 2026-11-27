@@ -4,7 +4,8 @@ Three ways in, one rating per ticket (rating again changes it):
 - the portal: `rate_in_portal`, on the customer's own resolved ticket;
 - the emailed survey link: `CsatHandler` sends it after `ticket.resolved` (outbox, so a
   retry never sends two), then `link_info` / `rate_by_link` from the public page;
-- the Cevanos widget asks in the chat itself (md P7), so chat customers get no email.
+- the Cevanos widget asks in the chat itself (md P7), so a Cevanos chat's customer gets
+  no email, also once Cevanos has told us their real address (AI6).
 
 Each rating adds a system line "Customer rated 4/5: ..." for the agents. No survey for a
 ticket merged into another (md X1), when the Admin turned it off, or with no sender
@@ -200,8 +201,9 @@ class CsatHandler:
             if ticket["source"] == seeds.DEMO_SOURCE:
                 return  # demo data (md D1): nobody is asked
             email = str(ticket["contact_email"])
-            if not rules.deliverable(email) or await repo.for_ticket(s, ticket_id):
-                return  # a chat customer, or already rated
+            surveyed = rules.survey_by_email(ticket["source"], email)
+            if not surveyed or await repo.for_ticket(s, ticket_id):
+                return  # a Cevanos chat (its widget asks), or already rated
             sender = await self._sender(s)
             if sender is None:
                 # Skipped, not failed: like the portal code email (no failed-event noise).

@@ -10,6 +10,7 @@ import { FormError } from "@/components/workspace/list-shared";
 import { useContactSearch, useDebounced, useMerge, useMergePreview } from "@/hooks/use-contacts";
 import { ApiError } from "@/lib/api/client";
 import type { ContactRow, MergeMoves, MergePreview } from "@/lib/api/contacts-types";
+import { useFormik, yup } from "@/lib/forms";
 
 const MOVE_LABEL: Record<keyof MergeMoves, [string, string]> = {
   tickets: ["ticket", "tickets"],
@@ -68,19 +69,25 @@ function MergeSteps({
   survivorName: string;
   onClose: () => void;
 }) {
-  const [search, setSearch] = useState("");
-  const q = useDebounced(search.trim());
+  const formik = useFormik({
+    initialValues: { search: "", sure: false },
+    validationSchema: yup.object({
+      search: yup.string().trim().min(2, "Type at least 2 characters."),
+      sure: yup.boolean().oneOf([true], "Confirm that you understand this can't be undone."),
+    }),
+    onSubmit: () => {},
+  });
+  const q = useDebounced(formik.values.search.trim());
   const found = useContactSearch(q);
   const preview = useMergePreview(survivorId);
   const merge = useMerge(survivorId);
   const [picked, setPicked] = useState<ContactRow | null>(null);
   const [plan, setPlan] = useState<MergePreview | null>(null);
-  const [sure, setSure] = useState(false);
 
   const choose = (c: ContactRow) => {
     setPicked(c);
     setPlan(null);
-    setSure(false);
+    void formik.setFieldValue("sure", false);
     preview.mutate(c.id, { onSuccess: setPlan });
   };
 
@@ -98,8 +105,10 @@ function MergeSteps({
             // The dialog exists to search, so the box takes focus.
             // eslint-disable-next-line jsx-a11y/no-autofocus
             autoFocus
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            name="search"
+            value={formik.values.search}
+            onChange={formik.handleChange}
+            onBlur={formik.handleBlur}
           />
         </div>
         {q.length < 2 ? (
@@ -197,8 +206,9 @@ function MergeSteps({
               <input
                 type="checkbox"
                 className="mt-0.5 size-4 accent-primary"
-                checked={sure}
-                onChange={(e) => setSure(e.target.checked)}
+                name="sure"
+                checked={formik.values.sure}
+                onChange={formik.handleChange}
               />
               I understand this can&apos;t be undone
             </label>
@@ -213,7 +223,7 @@ function MergeSteps({
         </Button>
         <Button
           variant="danger"
-          disabled={!plan?.can_merge || !sure}
+          disabled={!plan?.can_merge || !formik.values.sure}
           loading={merge.isPending}
           onClick={() =>
             merge.mutate(picked.id, {

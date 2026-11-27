@@ -115,6 +115,7 @@ export const ALLOWED_AREAS = new Set([
   "portal-settings",
   "article-categories",
   "articles",
+  "help-center",
   "imports",
   "stream",
   "sso",

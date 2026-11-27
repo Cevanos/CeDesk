@@ -253,6 +253,37 @@ def test_a_condition_branches() -> None:
     assert flows.walk(parsed, facts(), state(), TARGETS).state.tags == ("done",)
 
 
+def test_a_failed_condition_says_what_the_ticket_has() -> None:
+    snoozed = cond({"kind": "snoozed", "value": True})
+    assert engine.why(snoozed, facts(), state()) == "the ticket is not snoozed"
+    assert engine.why(snoozed, facts(), state(snoozed=True)) == "the ticket is snoozed"
+    followers = cond({"kind": "has_followers", "value": True})
+    assert engine.why(followers, facts(), state()) == "the ticket has no followers"
+    plan = cond({"kind": "contact_field", "key": "tier", "op": "equals", "value": "Gold"})
+    assert engine.why(plan, facts(attributes={"tier": "Silver"}), state()) == (
+        "the customer's tier is Silver"
+    )
+    assert engine.why(plan, facts(), state()) == "the customer's tier is empty"
+    since = cond({"kind": "time_since", "of": "customer_reply", "op": "more_than", "minutes": 60})
+    ago = facts(last_customer_at=NOW - timedelta(minutes=30))
+    assert engine.why(since, ago, state()) == "30 min since the last customer reply"
+
+
+def test_a_condition_node_that_says_no_gives_its_reason() -> None:
+    raw = graph(
+        {"id": "snz", "type": "condition", "conditions": [{"kind": "snoozed", "value": True}]},
+        TAG,
+        edges=[{"from": "start", "to": "snz"}, {"from": "snz", "to": "tag", "when": "yes"}],
+    )
+    live = flows.walk(flows.parse_graph(raw), facts(), state(), TARGETS)
+    assert live.steps[0].reason is None  # a live run does not work reasons out
+    walked = flows.walk(flows.parse_graph(raw), facts(), state(), TARGETS, reasons=True)
+    assert walked.steps[0].outcome == "no"
+    assert walked.steps[0].reason == "the ticket is not snoozed"
+    yes = flows.walk(flows.parse_graph(raw), facts(), state(snoozed=True), TARGETS, reasons=True)
+    assert yes.steps[0].outcome == "yes" and yes.steps[0].reason is None
+
+
 def test_a_loop_through_a_wait_stops_at_the_wait_limit() -> None:
     raw = graph(
         TAG,

@@ -75,9 +75,14 @@ class Area(StrEnum):
     # Automation (feature-gap plan phase 5): workflows, and waiting runs stopped by hand.
     # Rules stay under `rules`.
     flows = "flows"
+    # Help center custom domain (feature-gap plan 4.2): added, proven, demoted, removed.
+    help_domain = "help_domain"
     # Email campaigns (feature-gap plan phase 6): campaigns, their settings and the
     # suppression list. Counts and ids only: never an address or an email's text.
     campaigns = "campaigns"
+    # Resolution receipts (differentiator plan #5): the setting, and receipts replaced or
+    # changed. Field names and the verified kind only: never the receipt's text.
+    resolutions = "resolutions"
 
 
 @dataclass(frozen=True)

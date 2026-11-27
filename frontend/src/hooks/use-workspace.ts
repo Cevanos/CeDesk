@@ -30,3 +30,6 @@ export * from "./workspace/plan";
 export * from "./workspace/demo";
 export * from "./workspace/sandbox";
 export * from "./workspace/campaigns";
+export * from "./workspace/migration";
+export * from "./workspace/replays";
+export * from "./workspace/receipts";

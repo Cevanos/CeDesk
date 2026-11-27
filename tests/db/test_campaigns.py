@@ -415,6 +415,33 @@ async def test_unsubscribe_by_page_and_one_click(client: AsyncClient, app_sessio
     assert rows == [(["ana@shop.test"],)]
 
 
+async def test_an_unsubscribe_replaces_an_earlier_manual_entry(
+    client: AsyncClient, app_sessionmaker: Sm
+) -> None:
+    """Ana was already on the list as `manual` when she unsubscribed. Her unsubscribe was
+    dropped (the first entry stayed), so an Admin could remove her without her consent and
+    mail her again. Now it becomes an unsubscribe; an Admin's entry never weakens one."""
+    sm = app_sessionmaker
+    w = await camp_desk(client, sm)
+    c = await draft(client, w)
+    ok(await client.post(f"{K}/{c['id']}/send", headers=w["h"], json={"confirm": True}))
+    mailer = FakeMailer(w["domain"])
+    await campaigns.run_due(sm, mailer, CONFIG)
+    by = {e.to[0]: token_of(e) for e in mailer.sent}
+    manual = ok(await client.post(SUP, headers=w["h"], json={"email": "ana@shop.test"}), 201)
+    ok(await client.post(f"/api/v1/public/unsubscribe/{by['ana@shop.test']}"))
+    ana = {"email": "ana@shop.test"}
+    [entry] = ok(await client.get(SUP, headers=w["h"], params=ana))["entries"]
+    assert (entry["id"], entry["reason"]) == (manual["id"], "unsubscribed")
+    assert entry["source"] == "link"
+    r = await client.post(f"{SUP}/{entry['id']}/remove", headers=w["h"], json={})
+    assert r.status_code == 409  # her consent is needed now
+    # An Admin adding her again changes nothing: still her unsubscribe.
+    assert (await client.post(SUP, headers=w["h"], json=ana)).status_code == 409
+    [still] = ok(await client.get(SUP, headers=w["h"], params=ana))["entries"]
+    assert still["reason"] == "unsubscribed"
+
+
 async def test_opens_are_counted_when_tracked(client: AsyncClient, app_sessionmaker: Sm) -> None:
     sm = app_sessionmaker
     w = await camp_desk(client, sm)
@@ -594,6 +621,27 @@ async def test_a_suppressed_or_erased_recipient_is_skipped_at_send_time(
     assert mine(mailer) == ["ana@shop.test"] and result.skipped >= 2
     stats = ok(await client.get(f"{K}/{c['id']}/stats", headers=w["h"]))
     assert (stats["sent"], stats["skipped"]) == (1, 2)
+
+
+async def test_a_customer_merged_while_queued_is_skipped_as_merged_not_erased(
+    client: AsyncClient, app_sessionmaker: Sm
+) -> None:
+    """Bo is merged into Ana while the campaign is queued: his email is skipped (Ana gets
+    hers), and the reason says merged. It said "The customer was erased."."""
+    sm = app_sessionmaker
+    w = await camp_desk(client, sm)
+    c = await draft(client, w)
+    ok(await client.post(f"{K}/{c['id']}/send", headers=w["h"], json={"confirm": True}))
+    people = w["people"]
+    ok(await client.post(f"/api/v1/contacts/{people['Ana']}/merge", headers=w["h"],
+                         json={"duplicate_id": people["Bo"], "confirm": True}))  # fmt: skip
+    mailer = FakeMailer(w["domain"])
+    await campaigns.run_due(sm, mailer, CONFIG)
+    assert sorted(mine(mailer)) == ["ana@shop.test", "cy@shop.test"]
+    rows = ok(await client.get(f"{K}/{c['id']}/recipients", headers=w["h"],
+                               params={"status": "skipped"}))["recipients"]  # fmt: skip
+    assert [(r["email"], r["error"]) for r in rows] == [
+        ("bo@shop.test", "The customer was merged into another customer.")]  # fmt: skip
 
 
 async def test_a_draft_is_edited_and_deleted(client: AsyncClient, app_sessionmaker: Sm) -> None:

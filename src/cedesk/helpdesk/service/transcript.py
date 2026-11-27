@@ -15,6 +15,7 @@
 - Rate-limited per member and per workspace by the route (429).
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from uuid import UUID
 
@@ -54,8 +55,11 @@ async def send(
     *,
     to: str | None,
     fallback: Sender | None,
+    spend: Callable[[], None] | None = None,
 ) -> Sent:
-    """`to`: another address; None sends it to the ticket's customer."""
+    """`to`: another address; None sends it to the ticket's customer. `spend` uses one of
+    the caller's (and the workspace's) transcripts; it raises when they are used up. It runs
+    after every check, so a refused request costs nothing (as bulk changes)."""
     require(caller, Action.read_ticket)
     require(caller, Action.send_transcript)
     async with workspace_session(sm, caller.workspace_id) as s:
@@ -83,6 +87,8 @@ async def send(
         public = await repo.public_messages(s, ticket_id)
         if not public:
             raise Conflict(NOTHING)
+        if spend is not None:
+            spend()
         ticket_label = label(int(ticket["number"]))
         text, count = rules.body(
             ticket_label=ticket_label,

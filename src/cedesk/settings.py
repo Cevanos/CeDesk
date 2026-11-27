@@ -213,6 +213,19 @@ class Settings(BaseSettings):
     oauth_registrations_per_hour: int = Field(
         default=20, ge=1, description="App registrations (/oauth/register) per address per hour."
     )
+    tls_ask_key: SecretStr | None = Field(
+        default=None,
+        description="Turns on custom help-center domains (feature-gap plan 4.2). Caddy's "
+        "on-demand TLS asks `GET /api/v1/internal/tls-ask?domain=...&key=<this>` before it "
+        "gets a certificate for a domain; the route answers 200 only for a verified one. "
+        "Empty: the route does not exist and no certificate is ever requested. 24+ random "
+        "characters.",
+    )
+    help_cname_target: str = Field(
+        default="",
+        description="The host name customers point their help-center domain at (a CNAME), "
+        "shown to the Admin on the domain screen. Empty: no target is shown.",
+    )
     # Sender of account emails (password reset) when the workspace has no support
     # address yet, e.g. no-reply@cedesk.in. Empty: such emails can't be sent.
     mail_from_address: str = ""
@@ -398,6 +411,9 @@ class Settings(BaseSettings):
             problems.append("CEDESK_CEVANOS_URL: use https")
         if not self.cevanos_app_url.startswith("https://"):
             problems.append("CEDESK_CEVANOS_APP_URL: use https")
+        ask = self.tls_ask_key
+        if ask is not None and len(ask.get_secret_value()) < 24:
+            problems.append("CEDESK_TLS_ASK_KEY: use a random value of 24+ characters")
         token = self.inbound_email_token
         if token is not None and len(token.get_secret_value()) < 32:
             problems.append("CEDESK_INBOUND_EMAIL_TOKEN: use a random value of 32+ characters")

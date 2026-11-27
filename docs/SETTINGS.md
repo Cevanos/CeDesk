@@ -35,6 +35,8 @@ file or `deploy/env.example` names one that doesn't exist.
 |---|---|---|---|---|
 | `CEDESK_APP_URL` | `http://localhost:3000` | The agent app (frontend). Password reset links, the return from single sign-on (`<this>/sso/callback`), and Jira issues and Slack alerts linking to a ticket open it. | api, worker | api, worker |
 | `CEDESK_PORTAL_URL` | (empty: `CEDESK_APP_URL`) | The customer portal. The CSAT survey email links to `<this>/rate`; the "an agent replied" email links to the ticket there. | worker | worker |
+| `CEDESK_TLS_ASK_KEY` | (empty: custom help-center domains off) | Turns on custom help-center domains (plan 4.2). Caddy's on-demand TLS calls `/api/v1/internal/tls-ask?domain=...&key=<this>` before it gets a certificate; the route answers 200 only for a domain an Admin has verified. Empty: the route does not exist and no certificate is requested. 24+ random characters; never reuse another secret. See `deploy/README.md`. | api | api |
+| `CEDESK_HELP_CNAME_TARGET` | (empty: none shown) | The host name customers point their help-center domain at (a CNAME), shown on the domain screen next to the TXT record. | api | api |
 | `CEDESK_API_URL` | (empty: the address requests come in on) | This API's public address, for single sign-on: the identity provider sends people back to `<this>/api/v1/sso/<workspace>/acs`. | api | api |
 | `CEDESK_CORS_ORIGINS` | (empty: none) | Sites whose pages may call the API from a browser, comma-separated, e.g. `https://app.example.com`. Not `*`. | api | api |
 

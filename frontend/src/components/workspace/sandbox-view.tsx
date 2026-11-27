@@ -41,6 +41,7 @@ import {
   type SandboxRule,
 } from "@/hooks/use-workspace";
 import type { RuleEvent } from "@/lib/api/types";
+import { bind, fieldError, useFormik } from "@/lib/forms";
 import { cn } from "@/lib/utils";
 
 import { EVENT_LABEL } from "./rules-view";
@@ -357,41 +358,44 @@ function RuleDraftForm({
   onSave: (r: SandboxRule) => void;
   onCancel: () => void;
 }) {
-  const [name, setName] = useState(item?.name ?? "");
-  const [event, setEvent] = useState<RuleEvent>((item?.event as RuleEvent) ?? "created");
-  const [enabled, setEnabled] = useState(item?.enabled ?? true);
-  const [conditions, setConditions] = useState<Item[]>((item?.conditions as Item[]) ?? []);
-  const [actions, setActions] = useState<Item[]>((item?.actions as Item[]) ?? []);
-  const [errs, setErrs] = useState<Record<string, string>>({});
+  const form = useFormik({
+    initialValues: {
+      name: item?.name ?? "",
+      event: ((item?.event as RuleEvent) ?? "created") as RuleEvent,
+      enabled: item?.enabled ?? true,
+      conditions: ((item?.conditions as Item[]) ?? []) as Item[],
+      actions: ((item?.actions as Item[]) ?? []) as Item[],
+    },
+    validate: (v) => {
+      const next: Record<string, string> = {};
+      if (!v.name.trim()) next.name = "Enter a name";
+      if (v.conditions.length === 0) next.conditions = "Add at least one condition";
+      if (v.actions.length === 0) next.actions = "Add at least one action";
+      return next;
+    },
+    onSubmit: (v) =>
+      onSave({
+        ...(item?.id ? { id: item.id } : {}),
+        name: v.name.trim(),
+        event: v.event,
+        enabled: v.enabled,
+        conditions: v.conditions,
+        actions: v.actions,
+      }),
+  });
+  const { event, enabled, conditions, actions } = form.values;
+  const setConditions = (next: Item[] | ((cs: Item[]) => Item[])) =>
+    form.setFieldValue(
+      "conditions",
+      typeof next === "function" ? next(form.values.conditions) : next,
+    );
+  const setActions = (next: Item[] | ((cs: Item[]) => Item[])) =>
+    form.setFieldValue("actions", typeof next === "function" ? next(form.values.actions) : next);
+  const errs = (k: string) => fieldError(form, k);
   return (
-    <form
-      noValidate
-      className="space-y-4"
-      onSubmit={(e) => {
-        e.preventDefault();
-        const next: Record<string, string> = {};
-        if (!name.trim()) next.name = "Enter a name";
-        if (conditions.length === 0) next.conditions = "Add at least one condition";
-        if (actions.length === 0) next.actions = "Add at least one action";
-        setErrs(next);
-        if (Object.keys(next).length) return;
-        onSave({
-          ...(item?.id ? { id: item.id } : {}),
-          name: name.trim(),
-          event,
-          enabled,
-          conditions,
-          actions,
-        });
-      }}
-    >
-      <Field label="Name" htmlFor="sb-r-name" error={errs.name}>
-        <Input
-          id="sb-r-name"
-          value={name}
-          maxLength={80}
-          onChange={(e) => setName(e.target.value)}
-        />
+    <form noValidate className="space-y-4" onSubmit={form.handleSubmit}>
+      <Field label="Name" htmlFor="sb-r-name" error={errs("name")}>
+        <Input id="sb-r-name" maxLength={80} {...bind(form, "name")} />
       </Field>
       <Field label="When" htmlFor="sb-r-event">
         <Select
@@ -400,7 +404,7 @@ function RuleDraftForm({
           options={EVENT_OPTIONS}
           onChange={(e) => {
             const next = e.target.value as RuleEvent;
-            setEvent(next);
+            form.setFieldValue("event", next);
             if (next === "created") setConditions((cs) => cs.filter((c) => c.kind !== "sla_in"));
           }}
         />
@@ -412,9 +416,9 @@ function RuleDraftForm({
         items={conditions}
         onChange={setConditions}
       />
-      {errs.conditions && (
+      {errs("conditions") && (
         <p role="alert" className="text-xs text-danger">
-          {errs.conditions}
+          {errs("conditions")}
         </p>
       )}
       <ItemBuilder
@@ -424,17 +428,18 @@ function RuleDraftForm({
         items={actions}
         onChange={setActions}
       />
-      {errs.actions && (
+      {errs("actions") && (
         <p role="alert" className="text-xs text-danger">
-          {errs.actions}
+          {errs("actions")}
         </p>
       )}
       <label className="flex items-center gap-2 text-sm">
         <input
           type="checkbox"
           className="size-4 accent-[var(--primary)]"
+          name="enabled"
           checked={enabled}
-          onChange={(e) => setEnabled(e.target.checked)}
+          onChange={form.handleChange}
         />
         Enabled
       </label>
@@ -479,41 +484,33 @@ function MacroDraftForm({
   onSave: (m: SandboxMacro) => void;
   onCancel: () => void;
 }) {
-  const [name, setName] = useState(item?.name ?? "");
-  const [steps, setSteps] = useState<Item[]>((item?.steps as Item[]) ?? []);
-  const [errs, setErrs] = useState<Record<string, string>>({});
+  const form = useFormik({
+    initialValues: { name: item?.name ?? "", steps: ((item?.steps as Item[]) ?? []) as Item[] },
+    validate: (v) => {
+      const next: Record<string, string> = {};
+      if (!v.name.trim()) next.name = "Enter a name";
+      if (v.steps.length === 0) next.steps = "Add at least one step";
+      return next;
+    },
+    onSubmit: (v) =>
+      onSave({ ...(item?.id ? { id: item.id } : {}), name: v.name.trim(), steps: v.steps }),
+  });
+  const errs = (k: string) => fieldError(form, k);
   return (
-    <form
-      noValidate
-      className="space-y-4"
-      onSubmit={(e) => {
-        e.preventDefault();
-        const next: Record<string, string> = {};
-        if (!name.trim()) next.name = "Enter a name";
-        if (steps.length === 0) next.steps = "Add at least one step";
-        setErrs(next);
-        if (Object.keys(next).length) return;
-        onSave({ ...(item?.id ? { id: item.id } : {}), name: name.trim(), steps });
-      }}
-    >
-      <Field label="Name" htmlFor="sb-m-name" error={errs.name}>
-        <Input
-          id="sb-m-name"
-          value={name}
-          maxLength={80}
-          onChange={(e) => setName(e.target.value)}
-        />
+    <form noValidate className="space-y-4" onSubmit={form.handleSubmit}>
+      <Field label="Name" htmlFor="sb-m-name" error={errs("name")}>
+        <Input id="sb-m-name" maxLength={80} {...bind(form, "name")} />
       </Field>
       <ItemBuilder
         title="Steps"
         addLabel="Add step"
         kinds={MACRO_STEP_KINDS}
-        items={steps}
-        onChange={setSteps}
+        items={form.values.steps}
+        onChange={(steps) => form.setFieldValue("steps", steps)}
       />
-      {errs.steps && (
+      {errs("steps") && (
         <p role="alert" className="text-xs text-danger">
-          {errs.steps}
+          {errs("steps")}
         </p>
       )}
       <div className="flex justify-end gap-2">
@@ -555,43 +552,37 @@ function ReplyDraftForm({
   onSave: (r: SandboxReply) => void;
   onCancel: () => void;
 }) {
-  const [shortcut, setShortcut] = useState(item?.shortcut ?? "");
-  const [body, setBody] = useState(item?.body ?? "");
-  const [errs, setErrs] = useState<Record<string, string>>({});
+  const form = useFormik({
+    initialValues: { shortcut: item?.shortcut ?? "", body: item?.body ?? "" },
+    validate: (v) => {
+      const sc = v.shortcut.trim().replace(/^\/+/, "");
+      const next: Record<string, string> = {};
+      if (!sc) next.shortcut = "Enter a shortcut";
+      else if (/\s/.test(sc)) next.shortcut = "No spaces in a shortcut";
+      if (!v.body.trim()) next.body = "Enter the reply text";
+      return next;
+    },
+    onSubmit: (v) =>
+      onSave({
+        ...(item?.id ? { id: item.id } : {}),
+        shortcut: v.shortcut.trim().replace(/^\/+/, ""),
+        body: v.body,
+      }),
+  });
+  const errs = (k: string) => fieldError(form, k);
   return (
-    <form
-      noValidate
-      className="space-y-4"
-      onSubmit={(e) => {
-        e.preventDefault();
-        const sc = shortcut.trim().replace(/^\/+/, "");
-        const next: Record<string, string> = {};
-        if (!sc) next.shortcut = "Enter a shortcut";
-        else if (/\s/.test(sc)) next.shortcut = "No spaces in a shortcut";
-        if (!body.trim()) next.body = "Enter the reply text";
-        setErrs(next);
-        if (Object.keys(next).length) return;
-        onSave({ ...(item?.id ? { id: item.id } : {}), shortcut: sc, body });
-      }}
-    >
-      <Field label="Shortcut" htmlFor="sb-sr-sc" error={errs.shortcut}>
+    <form noValidate className="space-y-4" onSubmit={form.handleSubmit}>
+      <Field label="Shortcut" htmlFor="sb-sr-sc" error={errs("shortcut")}>
         <Input
           id="sb-sr-sc"
-          value={shortcut}
+          {...bind(form, "shortcut")}
           maxLength={33}
           autoCapitalize="none"
           spellCheck={false}
-          onChange={(e) => setShortcut(e.target.value)}
         />
       </Field>
-      <Field label="Reply" htmlFor="sb-sr-body" error={errs.body}>
-        <Textarea
-          id="sb-sr-body"
-          rows={7}
-          value={body}
-          maxLength={10000}
-          onChange={(e) => setBody(e.target.value)}
-        />
+      <Field label="Reply" htmlFor="sb-sr-body" error={errs("body")}>
+        <Textarea id="sb-sr-body" rows={7} {...bind(form, "body")} maxLength={10000} />
       </Field>
       <div className="flex justify-end gap-2">
         <Button variant="ghost" onClick={onCancel}>

@@ -16,13 +16,21 @@ import {
   Skeleton,
   Textarea,
 } from "@/components/ui/primitives";
+import { DataTable, RowTh, TBody, Td, THead, Th, Tr } from "@/components/ui/table";
 import { FormError, fieldErrors, LoadError } from "@/components/workspace/list-shared";
 import { useCurrentUser } from "@/hooks/use-auth";
 import { useContactFields, useDeleteContactField, useSaveContactField } from "@/hooks/use-contacts";
 import { ApiError } from "@/lib/api/client";
 import type { ContactField, FieldKind } from "@/lib/api/contacts-types";
 import { keyFromLabel } from "@/lib/contacts";
+import { bind, bindSelect, fieldError, useFormik, yup } from "@/lib/forms";
 import { hasAction } from "@/lib/permissions";
+
+const splitOptions = (v?: string) =>
+  (v ?? "")
+    .split("\n")
+    .map((o) => o.trim())
+    .filter(Boolean);
 
 const KINDS: { value: FieldKind; label: string }[] = [
   { value: "text", label: "Text" },
@@ -74,27 +82,23 @@ export function ContactFieldsView() {
           </EmptyState>
         </Card>
       ) : (
-        <Card className="overflow-x-auto">
-          <table className="w-full min-w-[560px] text-left text-sm">
-            <thead className="border-b border-border bg-surface-2 text-xs text-muted-foreground">
+        <Card>
+          <DataTable minWidth="560px">
+            <THead>
               <tr>
                 {["Label", "Key", "Kind", "Options", ""].map((h, i) => (
-                  <th key={i} scope="col" className="px-4 py-2.5 font-medium">
-                    {h || <span className="sr-only">Actions</span>}
-                  </th>
+                  <Th key={i}>{h || <span className="sr-only">Actions</span>}</Th>
                 ))}
               </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
+            </THead>
+            <TBody>
               {fields.data.map((f) => (
-                <tr key={f.id}>
-                  <td className="px-4 py-3 font-medium">{f.label}</td>
-                  <td className="px-4 py-3 font-mono text-xs">{f.key}</td>
-                  <td className="px-4 py-3">{KIND_LABEL[f.kind] ?? f.kind}</td>
-                  <td className="px-4 py-3 text-muted-foreground">
-                    {f.options?.length ? f.options.join(", ") : "—"}
-                  </td>
-                  <td className="px-4 py-3">
+                <Tr key={f.id}>
+                  <RowTh>{f.label}</RowTh>
+                  <Td className="font-mono text-xs">{f.key}</Td>
+                  <Td>{KIND_LABEL[f.kind] ?? f.kind}</Td>
+                  <Td muted>{f.options?.length ? f.options.join(", ") : "—"}</Td>
+                  <Td>
                     <div className="flex justify-end gap-1">
                       <Button size="sm" variant="outline" onClick={() => setEditing(f)}>
                         <Pencil className="size-3.5" /> Edit
@@ -122,11 +126,11 @@ export function ContactFieldsView() {
                         <Trash2 className="size-3.5" /> Delete
                       </Button>
                     </div>
-                  </td>
-                </tr>
+                  </Td>
+                </Tr>
               ))}
-            </tbody>
-          </table>
+            </TBody>
+          </DataTable>
         </Card>
       )}
 
@@ -158,123 +162,126 @@ function FieldForm({
   onClose: () => void;
 }) {
   const save = useSaveContactField();
-  const [label, setLabel] = useState(field?.label ?? "");
-  const [key, setKey] = useState(field?.key ?? "");
   const [keyTouched, setKeyTouched] = useState(false);
-  const [kind, setKind] = useState<FieldKind>(field?.kind ?? "text");
-  const [options, setOptions] = useState((field?.options ?? []).join("\n"));
-  const [position, setPosition] = useState(String(field?.position ?? count));
-  const [errs, setErrs] = useState<Record<string, string>>({});
+  const [srv, setSrv] = useState<Record<string, string>>({});
+  const form = useFormik({
+    initialValues: {
+      label: field?.label ?? "",
+      key: field?.key ?? "",
+      kind: (field?.kind ?? "text") as FieldKind,
+      options: (field?.options ?? []).join("\n"),
+      position: String(field?.position ?? count),
+    },
+    validationSchema: yup.object({
+      label: yup.string().trim().required("Enter a label"),
+      key: field
+        ? yup.string()
+        : yup.string().matches(KEY_RE, "Use a-z, 0-9 and _, starting with a letter"),
+      options: yup
+        .string()
+        .test("options", "Add at least one option", function (v) {
+          const n = splitOptions(v).length;
+          if (this.parent.kind === "select" && n === 0) return false;
+          return true;
+        })
+        .test("max", "At most 50 options", (v) => splitOptions(v).length <= 50),
+      position: yup
+        .number()
+        .typeError("Enter 0 or more")
+        .integer("Enter 0 or more")
+        .min(0, "Enter 0 or more")
+        .required("Enter 0 or more"),
+    }),
+    onSubmit: (v) => {
+      setSrv({});
+      save.mutate(
+        {
+          id: field?.id,
+          label: v.label.trim(),
+          ...(field ? {} : { key: v.key, kind: v.kind }),
+          ...(v.kind === "select" ? { options: splitOptions(v.options) } : {}),
+          position: Number(v.position),
+        },
+        {
+          onSuccess: () => {
+            toast.success("Field saved");
+            onClose();
+          },
+          onError: (err) =>
+            setSrv(
+              err instanceof ApiError && err.status !== 422
+                ? { _form: err.userMessage }
+                : fieldErrors(err),
+            ),
+        },
+      );
+    },
+  });
+  const kind = form.values.kind;
+  const errs = (k: string) => fieldError(form, k) ?? srv[k];
 
   return (
-    <form
-      noValidate
-      className="space-y-4"
-      onSubmit={(e) => {
-        e.preventDefault();
-        const next: Record<string, string> = {};
-        const opts = options
-          .split("\n")
-          .map((o) => o.trim())
-          .filter(Boolean);
-        if (!label.trim()) next.label = "Enter a label";
-        if (!field && !KEY_RE.test(key)) next.key = "Use a-z, 0-9 and _, starting with a letter";
-        if (kind === "select" && opts.length === 0) next.options = "Add at least one option";
-        if (opts.length > 50) next.options = "At most 50 options";
-        const pos = Number(position);
-        if (!Number.isInteger(pos) || pos < 0) next.position = "Enter 0 or more";
-        setErrs(next);
-        if (Object.keys(next).length) return;
-        save.mutate(
-          {
-            id: field?.id,
-            label: label.trim(),
-            ...(field ? {} : { key, kind }),
-            ...(kind === "select" ? { options: opts } : {}),
-            position: pos,
-          },
-          {
-            onSuccess: () => {
-              toast.success("Field saved");
-              onClose();
-            },
-            onError: (err) =>
-              setErrs(
-                err instanceof ApiError && err.status !== 422
-                  ? { _form: err.userMessage }
-                  : fieldErrors(err),
-              ),
-          },
-        );
-      }}
-    >
-      <Field label="Label" htmlFor="cf-label" error={errs.label}>
+    <form noValidate className="space-y-4" onSubmit={form.handleSubmit}>
+      <Field label="Label" htmlFor="cf-label" error={errs("label")}>
         <Input
           id="cf-label"
           maxLength={60}
-          value={label}
+          {...bind(form, "label")}
           onChange={(e) => {
-            setLabel(e.target.value);
-            if (!field && !keyTouched) setKey(keyFromLabel(e.target.value));
+            form.handleChange(e);
+            if (!field && !keyTouched) form.setFieldValue("key", keyFromLabel(e.target.value));
           }}
         />
       </Field>
       <Field
         label="Key"
         htmlFor="cf-key"
-        error={errs.key}
+        error={errs("key")}
         hint={field ? "The key and kind can't change once a field is made." : undefined}
       >
         <Input
           id="cf-key"
           className="font-mono"
           maxLength={40}
-          value={key}
+          {...bind(form, "key")}
           readOnly={!!field}
           disabled={!!field}
           autoCapitalize="none"
           spellCheck={false}
           onChange={(e) => {
             setKeyTouched(true);
-            setKey(e.target.value);
+            form.handleChange(e);
           }}
         />
       </Field>
       <Field label="Kind" htmlFor="cf-kind">
         <Select
           id="cf-kind"
-          value={kind}
+          {...bindSelect(form, "kind")}
           options={KINDS}
           searchable={false}
           disabled={!!field}
-          onChange={(e) => setKind(e.target.value as FieldKind)}
         />
       </Field>
       {kind === "select" && (
         <Field
           label="Options"
           htmlFor="cf-options"
-          error={errs.options}
+          error={errs("options")}
           hint="One per line, up to 50."
         >
-          <Textarea
-            id="cf-options"
-            rows={5}
-            value={options}
-            onChange={(e) => setOptions(e.target.value)}
-          />
+          <Textarea id="cf-options" rows={5} {...bind(form, "options")} />
         </Field>
       )}
-      <Field label="Position" htmlFor="cf-position" error={errs.position} hint="0 is shown first.">
-        <Input
-          id="cf-position"
-          type="number"
-          min={0}
-          value={position}
-          onChange={(e) => setPosition(e.target.value)}
-        />
+      <Field
+        label="Position"
+        htmlFor="cf-position"
+        error={errs("position")}
+        hint="0 is shown first."
+      >
+        <Input id="cf-position" type="number" min={0} {...bind(form, "position")} />
       </Field>
-      <FormError message={errs._form} />
+      <FormError message={srv._form} />
       <div className="flex justify-end gap-2">
         <Button variant="ghost" onClick={onClose}>
           Cancel

@@ -7,6 +7,7 @@ import { publicErrorMessage } from "@/components/public/errors";
 import { RatingPicker, scoreLabel } from "@/components/public/rating";
 import { Button, Card, EmptyState, Field, Skeleton, Textarea } from "@/components/ui/primitives";
 import { usePublicCsat, useSubmitPublicCsat } from "@/hooks/use-portal";
+import { bind, fieldError, useFormik, yup } from "@/lib/forms";
 
 /** `?score=N` from the email button; ignored unless it is a whole number from 1 to 5. */
 function parseScore(v: string | null): number | null {
@@ -67,10 +68,28 @@ function Frame({ children }: { children: React.ReactNode }) {
 function CsatForm({ token, presetScore }: { token: string; presetScore: number | null }) {
   const info = usePublicCsat(token);
   const submit = useSubmitPublicCsat(token);
-  const [score, setScore] = useState<number | null>(presetScore);
-  const [comment, setComment] = useState("");
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const formik = useFormik<{ score: number | null; comment: string }>({
+    initialValues: { score: presetScore, comment: "" },
+    validationSchema: yup.object({
+      score: yup
+        .number()
+        .typeError("Choose a rating from 1 to 5.")
+        .required("Choose a rating from 1 to 5.")
+        .min(1, "Choose a rating from 1 to 5.")
+        .max(5, "Choose a rating from 1 to 5."),
+      comment: yup.string().max(2000, "Use at most 2,000 characters."),
+    }),
+    onSubmit: (v) => {
+      setError(null);
+      submit.mutate(
+        { score: v.score as number, comment: v.comment.trim() || undefined },
+        { onSuccess: () => setDone(true), onError: (err) => setError(publicErrorMessage(err)) },
+      );
+    },
+  });
+  const score = formik.values.score;
 
   if (info.isPending) return <Skeleton className="h-72 rounded-2xl" />;
   if (info.isError) {
@@ -108,41 +127,39 @@ function CsatForm({ token, presetScore }: { token: string; presetScore: number |
 
   return (
     <Card className="rounded-2xl p-6 shadow-pop sm:p-8">
-      <div className="grid size-12 place-items-center rounded-2xl bg-primary-soft text-primary-ink">
+      <div className="bg-ai-gradient grid size-12 place-items-center rounded-2xl text-white shadow-[0_8px_20px_-8px_var(--ai-from)]">
         <Sparkles className="size-6" />
       </div>
       <h1 className="mt-5 text-2xl font-semibold tracking-tight">How did we do?</h1>
       {ticket && <p className="mt-1.5 truncate text-sm text-muted-foreground">{ticket}</p>}
 
-      <form
-        noValidate
-        className="mt-6 space-y-5"
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (score === null) return setError("Choose a rating from 1 to 5.");
-          setError(null);
-          submit.mutate(
-            { score, comment: comment.trim() || undefined },
-            { onSuccess: () => setDone(true), onError: (err) => setError(publicErrorMessage(err)) },
-          );
-        }}
-      >
-        <RatingPicker value={score} onChange={setScore} disabled={submit.isPending} />
-        <Field label="Anything you'd like to add? (optional)" htmlFor="csat-comment">
-          <Textarea
-            id="csat-comment"
-            rows={4}
-            maxLength={2000}
-            value={comment}
-            onChange={(e) => setComment(e.target.value)}
-          />
+      <form noValidate className="mt-6 space-y-5" onSubmit={formik.handleSubmit}>
+        <RatingPicker
+          value={score}
+          onChange={(n) => {
+            void formik.setFieldValue("score", n);
+            setError(null);
+          }}
+          disabled={submit.isPending}
+        />
+        {fieldError(formik, "score") && (
+          <p role="alert" className="text-xs text-danger">
+            {fieldError(formik, "score")}
+          </p>
+        )}
+        <Field
+          label="Anything you'd like to add? (optional)"
+          htmlFor="csat-comment"
+          error={fieldError(formik, "comment")}
+        >
+          <Textarea id="csat-comment" rows={4} maxLength={2000} {...bind(formik, "comment")} />
         </Field>
         {error && (
           <p role="alert" className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger">
             {error}
           </p>
         )}
-        <Button type="submit" size="lg" className="w-full" loading={submit.isPending}>
+        <Button type="submit" size="lg" variant="ai" className="w-full" loading={submit.isPending}>
           Send my rating
         </Button>
       </form>

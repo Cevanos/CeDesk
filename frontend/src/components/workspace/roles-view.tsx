@@ -29,6 +29,16 @@ import {
 } from "@/hooks/use-workspace";
 import type { CustomRole, RoleRightKey, RoleRights } from "@/hooks/use-workspace";
 import { ApiError } from "@/lib/api/client";
+import { bind, bindSelect, fieldError, useFormik, yup } from "@/lib/forms";
+
+const roleSchema = yup.object({
+  name: yup.string().trim().required("Enter a name"),
+  scope: yup.string().required(),
+  team_id: yup.string().when("scope", {
+    is: (v: string) => v !== "all",
+    then: (sch) => sch.required("Choose the team this role belongs to"),
+  }),
+});
 
 const scopeLabel = (s?: string) => ROLE_SCOPES.find((x) => x.value === s)?.label ?? s ?? "";
 
@@ -141,66 +151,56 @@ export function RolesView() {
 function RoleForm({ role, onClose }: { role: CustomRole | null; onClose: () => void }) {
   const save = useSaveRole();
   const teams = useTeams();
-  const [name, setName] = useState(role?.name ?? "");
-  const [rights, setRights] = useState<RoleRights>(
-    role
-      ? {
-          reply: role.reply,
-          assign_any: role.assign_any,
-          reports: role.reports,
-          settings: role.settings,
-          approve: role.approve,
-        }
-      : DEFAULT_ROLE_RIGHTS,
-  );
-  const [scope, setScope] = useState(role?.scope ?? "all");
-  const [teamId, setTeamId] = useState(role?.team_id ?? "");
-  const [errs, setErrs] = useState<Record<string, string>>({});
-
+  const [srv, setSrv] = useState<Record<string, string>>({});
+  const form = useFormik({
+    initialValues: {
+      name: role?.name ?? "",
+      rights: (role
+        ? {
+            reply: role.reply,
+            assign_any: role.assign_any,
+            reports: role.reports,
+            settings: role.settings,
+            approve: role.approve,
+          }
+        : DEFAULT_ROLE_RIGHTS) as RoleRights,
+      scope: (role?.scope ?? "all") as string,
+      team_id: role?.team_id ?? "",
+    },
+    validationSchema: roleSchema,
+    onSubmit: (v) => {
+      setSrv({});
+      save.mutate(
+        {
+          id: role?.id,
+          name: v.name.trim(),
+          ...v.rights,
+          scope: v.scope,
+          team_id: v.scope !== "all" ? v.team_id : null,
+        },
+        {
+          onSuccess: () => {
+            toast.success("Role saved");
+            onClose();
+          },
+          onError: (err) =>
+            setSrv(
+              err instanceof ApiError && err.status !== 422
+                ? { _form: err.userMessage }
+                : fieldErrors(err),
+            ),
+        },
+      );
+    },
+  });
+  const { rights, scope } = form.values;
   const needsTeam = scope !== "all";
-  const toggle = (k: RoleRightKey) => setRights((r) => ({ ...r, [k]: !r[k] }));
+  const toggle = (k: RoleRightKey) => form.setFieldValue("rights", { ...rights, [k]: !rights[k] });
 
   return (
-    <form
-      noValidate
-      className="space-y-4"
-      onSubmit={(e) => {
-        e.preventDefault();
-        const next: Record<string, string> = {};
-        if (!name.trim()) next.name = "Enter a name";
-        if (needsTeam && !teamId) next.team_id = "Choose the team this role belongs to";
-        setErrs(next);
-        if (Object.keys(next).length) return;
-        save.mutate(
-          {
-            id: role?.id,
-            name: name.trim(),
-            ...rights,
-            scope,
-            team_id: needsTeam ? teamId : null,
-          },
-          {
-            onSuccess: () => {
-              toast.success("Role saved");
-              onClose();
-            },
-            onError: (err) =>
-              setErrs(
-                err instanceof ApiError && err.status !== 422
-                  ? { _form: err.userMessage }
-                  : fieldErrors(err),
-              ),
-          },
-        );
-      }}
-    >
-      <Field label="Name" htmlFor="role-name" error={errs.name}>
-        <Input
-          id="role-name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          maxLength={60}
-        />
+    <form noValidate className="space-y-4" onSubmit={form.handleSubmit}>
+      <Field label="Name" htmlFor="role-name" error={fieldError(form, "name") ?? srv.name}>
+        <Input id="role-name" {...bind(form, "name")} maxLength={60} />
       </Field>
 
       <fieldset className="space-y-1.5">
@@ -233,39 +233,37 @@ function RoleForm({ role, onClose }: { role: CustomRole | null; onClose: () => v
         <p className="text-xs text-muted-foreground">
           Managing members, roles and security stays with Admins.
         </p>
-        {errs.actions && (
+        {srv.actions && (
           <p role="alert" className="text-xs text-danger">
-            {errs.actions}
+            {srv.actions}
           </p>
         )}
       </fieldset>
 
-      <Field label="Which tickets" htmlFor="role-scope" error={errs.scope}>
+      <Field label="Which tickets" htmlFor="role-scope" error={srv.scope}>
         <Select
           id="role-scope"
-          value={scope}
+          {...bindSelect(form, "scope")}
           options={ROLE_SCOPES.map((s) => ({ value: s.value, label: s.label }))}
-          onChange={(e) => setScope(e.target.value)}
         />
       </Field>
       {needsTeam && (
         <Field
           label="Team"
           htmlFor="role-team"
-          error={errs.team_id}
+          error={fieldError(form, "team_id") ?? srv.team_id}
           hint="The team whose tickets this role can work on."
         >
           <Select
             id="role-team"
             placeholder="Choose a team"
-            value={teamId}
+            {...bindSelect(form, "team_id")}
             options={(teams.data ?? []).map((t) => ({ value: t.id, label: t.name }))}
-            onChange={(e) => setTeamId(e.target.value)}
           />
         </Field>
       )}
 
-      <FormError message={errs._form} />
+      <FormError message={srv._form} />
       <div className="flex justify-end gap-2">
         <Button variant="ghost" onClick={onClose}>
           Cancel

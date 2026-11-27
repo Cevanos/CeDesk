@@ -6,7 +6,7 @@ Every way a customer message comes in goes through here:
   a rule on sentiment ("Upset customer goes first") sees the mood;
 - a customer reply (`customer_replies.customer_reply`): `clean`, then `retriage`. Topic
   and language come from everything the customer wrote, the mood from the newest message;
-- an import (md 8.2, Pranav): call `retriage(s, ticket_id)` once the ticket's messages are
+- an import (md 8.2): call `retriage(s, ticket_id)` once the ticket's messages are
   saved. Rules and webhooks don't run on imports; triage does (I4).
 
 Redaction runs on customer text only (subject included), when the workspace has it on

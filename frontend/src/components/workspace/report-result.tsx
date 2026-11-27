@@ -4,6 +4,7 @@ import { AlertTriangle } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { Card } from "@/components/ui/primitives";
+import { DataTable, RowTh, TBody, Td, Th, THead, Tr } from "@/components/ui/table";
 import {
   DASH,
   fillDayGaps,
@@ -333,40 +334,38 @@ export function ResultView({
             Show as a table
           </summary>
           <div className="mt-2 max-h-72 overflow-auto rounded-lg border border-border">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border text-left text-xs text-muted-foreground">
-                  <th scope="col" className="px-3 py-2 font-medium">
+            <DataTable minWidth="0">
+              <THead>
+                <tr>
+                  <Th className="px-3 py-2">
                     {result.group_by === "day"
                       ? "Day"
                       : result.group_by === "week"
                         ? "Week"
                         : "Month"}
-                  </th>
-                  <th scope="col" className="px-3 py-2 text-right font-medium">
+                  </Th>
+                  <Th right className="px-3 py-2">
                     {result.label}
-                  </th>
-                  <th scope="col" className="px-3 py-2 text-right font-medium">
+                  </Th>
+                  <Th right className="px-3 py-2">
                     Based on
-                  </th>
+                  </Th>
                 </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
+              </THead>
+              <TBody>
                 {rows.map((r) => (
-                  <tr key={r.key}>
-                    <th scope="row" className="px-3 py-1.5 text-left font-normal">
-                      {r.label}
-                    </th>
-                    <td className="px-3 py-1.5 text-right tabular-nums">
+                  <Tr key={r.key}>
+                    <RowTh className="px-3 py-1.5 font-normal">{r.label}</RowTh>
+                    <Td right className="px-3 py-1.5">
                       {formatValue(r.value, result.unit)}
-                    </td>
-                    <td className="px-3 py-1.5 text-right text-muted-foreground tabular-nums">
+                    </Td>
+                    <Td right muted className="px-3 py-1.5">
                       {r.value === null ? DASH : r.n.toLocaleString()}
-                    </td>
-                  </tr>
+                    </Td>
+                  </Tr>
                 ))}
-              </tbody>
-            </table>
+              </TBody>
+            </DataTable>
           </div>
         </details>
       )}

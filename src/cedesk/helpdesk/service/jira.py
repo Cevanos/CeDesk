@@ -12,7 +12,7 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from cedesk.crypto import Sealer
+from cedesk.crypto import CannotOpen, Sealer
 from cedesk.db import workspace_session
 from cedesk.egress import account_host
 from cedesk.helpdesk.domain import jira as rules
@@ -31,6 +31,7 @@ from cedesk.helpdesk.service.members import require
 
 APP = "jira"
 NOT_INSTALLED = "Install the Jira app first (Settings > Apps)."
+UNREADABLE = "The saved Jira token can't be read: install the Jira app again."
 
 PostFactory = Callable[[str, Mapping[str, str], str], AppPost]
 """(host, headers, label) -> a client. The app state holds the real one; tests a fake."""
@@ -105,7 +106,10 @@ async def _prepare(
             raise Conflict(NOT_INSTALLED)
         if await repo.count(s, ticket_id) >= rules.MAX_LINKS:
             raise Conflict(f"A ticket can have at most {rules.MAX_LINKS} Jira issues.")
-    token = sealer.open(bytes(app["secret_sealed"]), bound_to=bound(caller.workspace_id))
+    try:
+        token = sealer.open(bytes(app["secret_sealed"]), bound_to=bound(caller.workspace_id))
+    except CannotOpen as exc:  # CEDESK_SECRET_KEY changed since it was saved
+        raise Conflict(UNREADABLE) from exc
     return ticket, dict(app["settings"]), token
 
 

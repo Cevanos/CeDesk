@@ -1,3 +1,13 @@
+# Custom help-center domains (feature-gap plan 4.2): OFF. To turn on, see "Custom
+# help-center domains" in deploy/README.md: set CEDESK_TLS_ASK_KEY in deploy/.env, un-comment
+# this block (Caddy only accepts a global options block as the FIRST block of the file, so it
+# lives here) and the `https://` block at the bottom, and put the same key in place of <KEY>.
+# {
+# 	on_demand_tls {
+# 		ask http://api:8100/api/v1/internal/tls-ask?key=<KEY>
+# 	}
+# }
+
 # CEDESK_SITE is a domain (desk.example.com: Caddy gets an HTTPS certificate by itself)
 # or :80 (plain HTTP on the server's IP, for a short test only).
 {$CEDESK_SITE} {
@@ -73,4 +83,16 @@
 # 	handle {
 # 		respond 404
 # 	}
+# }
+
+# Custom help-center domains (plan 4.2), second half: OFF. Needs the global block at the top
+# of this file and CEDESK_FRONTEND_UPSTREAM set to where the frontend answers (for example
+# web:3000). Caddy asks the API before getting a certificate for any host that connects,
+# and the API says yes only for a domain an Admin has verified.
+#
+# https:// {
+# 	tls {
+# 		on_demand
+# 	}
+# 	reverse_proxy {$CEDESK_FRONTEND_UPSTREAM}
 # }

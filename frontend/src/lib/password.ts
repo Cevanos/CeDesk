@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as yup from "yup";
 
 import { ApiError } from "@/lib/api/client";
 
@@ -17,8 +17,9 @@ export const PASSWORD_HINT = `At least ${PASSWORD_MIN_ANY} characters, or more i
 
 /** A new password, as far as the browser can tell. */
 export const newPassword = () =>
-  z
+  yup
     .string()
+    .default("")
     .min(PASSWORD_MIN_ANY, `Use at least ${PASSWORD_MIN_ANY} characters`)
     .max(PASSWORD_MAX, `Use at most ${PASSWORD_MAX} characters`);
 
@@ -54,3 +55,16 @@ export function passwordError(
   if (!fieldless(e) || isWrongCurrentPassword(e)) return null;
   return anyMessage || /\bcharacters\b/i.test(e.message) ? e.message : null;
 }
+
+/** The change-password form: current password, a new one, and its confirmation. */
+export const changePasswordSchema = yup.object({
+  current_password: yup.string().default("").required("Enter your current password"),
+  new_password: newPassword(),
+  confirm: yup
+    .string()
+    .default("")
+    .test("match", "Passwords do not match", function (v) {
+      return v === this.parent.new_password;
+    }),
+});
+export type ChangePasswordValues = yup.InferType<typeof changePasswordSchema>;

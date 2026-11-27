@@ -34,6 +34,7 @@ import {
   type Item,
 } from "@/components/workspace/item-builder";
 import { EVENT_LABEL } from "@/components/workspace/rules-view";
+import { useContactFields } from "@/hooks/use-contacts";
 import { useAutomationCatalog } from "@/hooks/use-workspace";
 import type {
   AutoItem,
@@ -58,8 +59,7 @@ import { cn } from "@/lib/utils";
 
 const FALLBACK_LIMITS = { nodes: 50, conditions: 10, waitMinutes: 43_200 };
 
-const itemLabel = (i: AutoItem) =>
-  summarize(i as Item, [...AUTOMATION_CONDITION_KINDS, ...AUTOMATION_ACTION_KINDS]);
+const ITEM_KINDS = [...AUTOMATION_CONDITION_KINDS, ...AUTOMATION_ACTION_KINDS];
 
 const TYPE_META: Record<NodeType, { label: string; icon: typeof Zap }> = {
   trigger: { label: "Trigger", icon: Play },
@@ -75,6 +75,8 @@ function NodeCard({ id, data, selected }: NodeProps<CanvasNode>) {
   const meta = TYPE_META[node.type];
   const Icon = meta.icon;
   const catalog = useAutomationCatalog();
+  const contactFields = useContactFields().data;
+  const itemLabel = (i: AutoItem) => summarize(i as Item, ITEM_KINDS, contactFields);
   const ways = waysOf(node);
   const triggerLabel = (e: string) =>
     catalog.data?.triggers.find((t) => t.event === e)?.label ??

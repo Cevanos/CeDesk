@@ -18,6 +18,7 @@ from cedesk.db import workspace_session
 from cedesk.helpdesk.domain import audit as audit_rules
 from cedesk.helpdesk.domain import events
 from cedesk.helpdesk.domain import macros as engine
+from cedesk.helpdesk.domain import resolution as receipt_rules
 from cedesk.helpdesk.domain import rules as rule_engine
 from cedesk.helpdesk.domain import tickets as ticket_rules
 from cedesk.helpdesk.domain.audit import Area
@@ -31,6 +32,7 @@ from cedesk.helpdesk.repo import rules as rule_repo
 from cedesk.helpdesk.repo import tickets as ticket_repo
 from cedesk.helpdesk.repo.macros import Row
 from cedesk.helpdesk.service import audit, children, idempotency, routing, scope, sla, tickets
+from cedesk.helpdesk.service import resolution as receipts
 from cedesk.helpdesk.service import rules as automation
 from cedesk.helpdesk.service.auth import Sessionmaker
 from cedesk.helpdesk.service.errors import Conflict, Invalid, NotFound
@@ -319,6 +321,11 @@ async def run_macro(
         resolving = state.status is Status.resolved and before["status"] != Status.resolved.value
         if resolving:
             await children.refuse_open_children(s, ticket_id)  # all steps, or none
+            # A macro can't carry a resolution receipt (plan #5): where one is required,
+            # resolving through a macro is refused, as a status change or bulk change is.
+            # Everything the macro did is rolled back with it.
+            if (await receipts.load_setting(s)).needed(state.team_id):
+                raise Invalid(receipt_rules.MACRO_NEEDS_RECEIPT)
 
         routed_line: str | None = None
         routed_to: UUID | None = None
@@ -369,6 +376,8 @@ async def run_macro(
         assert final is not None
         actor = None if routed_line else caller.member_id
         for event, extra in events.after_change(before, after, actor):
+            if event is events.Event.ticket_resolved:
+                extra = {**extra, "resolution": None}  # a macro never adds a receipt
             await outbox.add(
                 s,
                 caller.workspace_id,

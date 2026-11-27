@@ -159,8 +159,16 @@ class BulkOut(BaseModel):
 async def bulk_change(
     body: BulkIn, caller: CallerDep, sm: SessionmakerDep, request: Request
 ) -> BulkOut:
-    within(request.app.state.bulk_requests, str(caller.member_id), "bulk changes")
-    results = await bulk.change_many(sm, caller, body.ticket_ids, body.action, body.given())
+    results = await bulk.change_many(
+        sm,
+        caller,
+        body.ticket_ids,
+        body.action,
+        body.given(),
+        spend=lambda: within(
+            request.app.state.bulk_requests, str(caller.member_id), "bulk changes"
+        ),
+    )
     out = [
         BulkResultOut(
             ticket_id=r.ticket_id,
@@ -281,9 +289,12 @@ async def send_transcript(
     settings: SettingsDep,
     request: Request,
 ) -> TranscriptOut:
-    within(request.app.state.transcript_requests, str(caller.member_id), "transcripts")
-    within(request.app.state.transcript_workspace, str(caller.workspace_id), "transcripts")
+
+    def spend() -> None:
+        within(request.app.state.transcript_requests, str(caller.member_id), "transcripts")
+        within(request.app.state.transcript_workspace, str(caller.workspace_id), "transcripts")
+
     sent = await transcript.send(
-        sm, caller, ticket_id, to=body.to, fallback=fallback_sender(settings)
+        sm, caller, ticket_id, to=body.to, fallback=fallback_sender(settings), spend=spend
     )
     return TranscriptOut(to=sent.to, to_customer=sent.to_customer, messages=sent.messages)

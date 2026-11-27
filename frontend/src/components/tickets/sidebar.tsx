@@ -37,6 +37,7 @@ import {
 import { useAgents, useTeams, useTicketTypes } from "@/hooks/use-workspace";
 import { ApiError } from "@/lib/api/client";
 import type { Priority, Ticket, TicketStatus } from "@/lib/api/types";
+import { bind, fieldError, useFormik, yup } from "@/lib/forms";
 import { cn, formatDateTime, initials } from "@/lib/utils";
 
 /** Compact, borderless-until-hover controls for the properties panel. */
@@ -80,7 +81,6 @@ export function TicketSidebar({ ticket, etag }: { ticket: Ticket; etag: string |
   const types = useTicketTypes();
   const agents = useAgents();
   const { ask, dialog } = useConfirm();
-  const [tag, setTag] = useState("");
   const [tab, setTab] = useState<"details" | "customer" | "files" | "more">("details");
 
   const patch = (p: TicketPatch) =>
@@ -95,6 +95,30 @@ export function TicketSidebar({ ticket, etag }: { ticket: Ticket; etag: string |
         },
       },
     );
+
+  const tagForm = useFormik({
+    initialValues: { tag: "" },
+    validationSchema: yup.object({
+      tag: yup
+        .string()
+        .trim()
+        .lowercase()
+        .max(40, "Tags are at most 40 characters.")
+        .test(
+          "dup",
+          "That tag is already on this ticket.",
+          (v) => !(ticket.tags ?? []).includes((v ?? "").trim().toLowerCase()),
+        )
+        .test("max", "A ticket can have at most 20 tags.", () => (ticket.tags ?? []).length < 20),
+    }),
+    onSubmit: (v, { resetForm }) => {
+      const t = v.tag.trim().toLowerCase();
+      if (!t) return;
+      patch({ add_tags: [t] });
+      resetForm();
+    },
+  });
+  const tagError = fieldError(tagForm, "tag");
 
   // `can_edit` comes from the API (view-only tickets); the role matrix still applies.
   const canEdit = perms.editTicket && (ticket as { can_edit?: boolean }).can_edit !== false;
@@ -326,23 +350,9 @@ export function TicketSidebar({ ticket, etag }: { ticket: Ticket; etag: string |
             )}
           </div>
           {perms.editTicket && (
-            <form
-              className="mt-3 flex gap-2"
-              onSubmit={(e) => {
-                e.preventDefault();
-                const v = tag.trim().toLowerCase();
-                if (!v || (ticket.tags ?? []).includes(v)) return;
-                if ((ticket.tags ?? []).length >= 20) {
-                  toast.error("A ticket can have at most 20 tags.");
-                  return;
-                }
-                patch({ add_tags: [v] });
-                setTag("");
-              }}
-            >
+            <form className="mt-3 flex gap-2" onSubmit={tagForm.handleSubmit} noValidate>
               <Input
-                value={tag}
-                onChange={(e) => setTag(e.target.value)}
+                {...bind(tagForm, "tag")}
                 placeholder="Add tag"
                 aria-label="Add tag"
                 maxLength={40}
@@ -355,6 +365,11 @@ export function TicketSidebar({ ticket, etag }: { ticket: Ticket; etag: string |
                 <Plus className="size-4" />
               </button>
             </form>
+          )}
+          {perms.editTicket && tagError && (
+            <p role="alert" className="mt-1.5 text-xs text-danger">
+              {tagError}
+            </p>
           )}
         </Section>
 

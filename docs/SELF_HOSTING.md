@@ -283,6 +283,12 @@ docker compose up -d --build
 The database must be the new, empty one `docker compose up -d db` made (it creates the
 roles first). The migrations then find it up to date.
 
+## Reporting database (BI tools)
+
+Metabase, Power BI or Looker can read CeDesk's `reporting` views (no personal data) with
+their own read-only login: `cedesk reporting-user create report_bi --all`. How to make
+the login and connect safely: [REPORTING_DATABASE.md](REPORTING_DATABASE.md).
+
 ## When something is wrong
 
 | What | Do |
