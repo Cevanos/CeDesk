@@ -39,7 +39,7 @@ CeDesk works with AI apps that speak MCP (the Model Context Protocol): Claude, C
 - **The address.** On CeDesk Cloud the address to give the app is **https://mcp.cedesk.in/mcp**. A self-hosted CeDesk has its own address: **https://(your CeDesk's address)/mcp**. Ask your Admin if you are not sure.
 - **You approve it.** The app opens CeDesk in your browser. You sign in the usual way (password, two-step code, single sign-on and your workspace's IP allowlist all apply) and see a page that says **Connect (app)?**, with your name, your email, your workspace and what the app asks for. Select **Approve** or **Deny**. There is no workspace to pick: you sign in to one workspace, and the app is connected to that one.
 - **The app acts as you.** Every tool runs with your role. What you can't do in CeDesk, the app can't do either. If an Admin changes your role, the app's tools change with it at once.
-- **Every change is recorded.** Changes the app makes are in the audit log as "(your name) via (app name)". Approving and disconnecting an app are recorded too.
+- **Every change is recorded.** What the app does shows as "(your name) via (app name)": on the ticket, for its replies, notes and changes, and in the audit log for setup changes. Approving and disconnecting an app are in the audit log too.
 - **Each member connects their own app.** An Admin can't connect an app for someone else, and an API key or another app can't approve one.
 
 ## What the app may do (scopes)
@@ -173,7 +173,7 @@ Apps can't upload or download attachments, merge tickets, or create tickets.
 
 ## Check it worked
 
-Ask the app "Find my open tickets in CeDesk". It answers with your tickets and links to them. The app appears under **My account › Connected apps** with "Last used" today.
+Ask the app "Find my open tickets in CeDesk". It answers with your tickets and links to them. The app appears under **My account › Connected apps** with today's date as "Last used".
 
 ## Troubleshooting
 

@@ -101,6 +101,37 @@ Every error, whatever its status, has one shape:
   (`PUT /api/v1/me/status`) or an Admin does (`PATCH /api/v1/agents/{id}/routing`).
   Light agents have no status and are never routed.
 
+## Demo workspace for AI-app directory reviewers
+
+Claude's connector directory and OpenAI's app review each test the MCP connector
+(`src/cedesk/mcp/`) with an account we give them. `cedesk seed-demo` makes that account: a
+workspace like the mock with 6 tickets and 7 members who all sign in with one password and
+nothing else (no two-step code, no emailed code; a new workspace doesn't require 2FA).
+What to test with it, and the demo video: [testing/MCP_DIRECTORY_REVIEW.md](testing/MCP_DIRECTORY_REVIEW.md).
+
+On CeDesk Cloud, before each submission:
+
+```bash
+# On the Cloud server, in deploy/. A new slug each time: an old one is taken.
+docker compose exec api uv run --no-sync cedesk seed-demo \
+    --slug review-2612 --name "CeDesk review" --email-domain review.cedesk.in
+# Asks twice for the one password of all 7 accounts (10+ characters; a new one each time).
+```
+
+- `--email-domain`: the accounts are `alex@<domain>`, `riley@<domain>`, ... Use a domain
+  whose mail we receive: the Admin gets security alerts ("Member added", one per member
+  on creation) and password-reset mail goes there. The default, `acme-store.in`, is not ours.
+- Give reviewers: the MCP address `https://mcp.cedesk.in/mcp`, the workspace address (the
+  slug), and two accounts: `alex@<domain>` (Admin: every tool works) and `riley@<domain>`
+  (Light agent: reads, but changes are refused). Supervisor `sam@` and agent `casey@` are
+  there for role tests. Send the password through the directory's own form, never in a
+  public listing.
+- The demo's customers have `example.com` addresses, so a reply reaches nobody.
+- Retire the previous review workspace: sign in to it as Alex, deactivate the other six
+  in **Settings › Workspace › Members**, disconnect Alex's apps under **Connected apps**, and
+  change Alex's password to a long random one. Deactivated members' apps stop at once.
+  There is no command that deletes a workspace.
+
 ## Events, logs and the API file
 
 - **Outbox.** Every ticket change writes its events to `hd_outbox` in the same

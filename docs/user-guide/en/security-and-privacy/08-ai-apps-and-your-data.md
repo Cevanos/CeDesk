@@ -60,7 +60,7 @@ For each connected app CeDesk keeps:
 
 Sign-in codes last 60 seconds and can be used once. Access tokens last 1 hour; renewal tokens last 30 days and are replaced on every use. Ended codes and tokens are deleted a day after they end.
 
-Changes the app makes are in the [audit log](audit-log.md) as "(member) via (app)", like any change the member makes, and approving and disconnecting an app are recorded there too. The audit log keeps the change, not the data the app read.
+What the app does shows as "(member) via (app)": on the ticket for its replies, notes and changes, and in the [audit log](audit-log.md) for setup changes. Approving and disconnecting an app are in the audit log too. CeDesk records changes, not what the app read.
 
 ## How to end a connection
 
