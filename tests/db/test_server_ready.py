@@ -114,3 +114,41 @@ async def test_demo_workspace(client: AsyncClient, app_sessionmaker: Sm) -> None
     # Running it again for the same address fails cleanly.
     with pytest.raises(Exception, match="taken"):
         await seed_demo(app_sessionmaker, slug=slug, name="Acme Store", password=PASSWORD)
+
+
+async def test_a_reviewers_demo_workspace_signs_in_with_a_password_alone(
+    client: AsyncClient, app_sessionmaker: Sm
+) -> None:
+    # What AI-app directory reviewers get: their own domain, a fresh workspace per run, and
+    # sign-in with the password only (no two-step code, no setup asked for).
+    domain = "review.example.com"
+    first, second = (f"review-{uuid4().hex[:8]}" for _ in range(2))
+    accounts = await seed_demo(
+        app_sessionmaker, slug=first, name="CeDesk review", password=PASSWORD, email_domain=domain
+    )
+    keys = ("alex", "sam", "jordan", "casey", "taylor", "morgan", "riley")
+    assert [e for _, e, _ in accounts] == [f"{k}@{domain}" for k in keys]
+    for _, address, role in accounts:
+        r = await client.post(
+            "/api/v1/auth/sign-in",
+            json={"workspace": first, "email": address, "password": PASSWORD},
+        )
+        assert r.status_code == 200, r.text
+        assert r.json()["two_factor_required"] is False, role
+        me = await client.get("/api/v1/me", headers=bearer(r.json()["token"]))
+        assert me.status_code == 200 and me.json()["two_factor_setup_required"] is False
+    # The next submission gets a fresh workspace with the same addresses.
+    await seed_demo(
+        app_sessionmaker, slug=second, name="CeDesk review", password=PASSWORD, email_domain=domain
+    )
+    admin = await sign_in(client, second, f"alex@{domain}")
+    page = (await client.get("/api/v1/tickets", headers=bearer(admin))).json()
+    assert len(page["tickets"]) == 6
+    with pytest.raises(Exception, match="Not an email domain"):
+        await seed_demo(
+            app_sessionmaker,
+            slug=f"review-{uuid4().hex[:8]}",
+            name="CeDesk review",
+            password=PASSWORD,
+            email_domain="not a domain",
+        )

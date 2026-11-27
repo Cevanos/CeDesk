@@ -274,7 +274,11 @@ def _seed_demo(args: argparse.Namespace) -> int:
         engine = make_engine(get_settings().database_url)
         try:
             return await seed_demo(
-                make_sessionmaker(engine), slug=args.slug, name=args.name, password=password
+                make_sessionmaker(engine),
+                slug=args.slug,
+                name=args.name,
+                password=password,
+                email_domain=args.email_domain,
             )
         finally:
             await engine.dispose()
@@ -778,6 +782,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     demo.add_argument("--slug", default="acme-store")
     demo.add_argument("--name", default="Acme Store")
+    demo.add_argument(
+        "--email-domain",
+        default="acme-store.in",
+        help="The accounts' domain (alex@<domain>, ...); on a real server, one whose mail you get",
+    )
     workflow = sub.add_parser(
         "seed-workflow",
         help="Add the default saved replies, rules and macros to an existing workspace",

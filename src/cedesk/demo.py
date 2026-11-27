@@ -3,9 +3,11 @@
 Built only through the services, the same code the API runs, so every rule applies:
 routing picks the agents and writes its reasons, notes notify the people mentioned, and
 every change writes its system line. Passwords are never stored in the code: all demo
-accounts share the one password asked for at the prompt.
+accounts share the one password asked for at the prompt. They sign in with that password
+alone (no two-step sign-in), so a demo workspace also serves app-directory reviewers.
 """
 
+import re
 from dataclasses import dataclass
 from uuid import UUID
 
@@ -15,10 +17,14 @@ from cedesk.helpdesk.domain.routing import AgentStatus
 from cedesk.helpdesk.domain.tickets import Channel, Priority, Status
 from cedesk.helpdesk.service import auth, catalog, members, messages, routing, tickets
 from cedesk.helpdesk.service.auth import Sessionmaker
+from cedesk.helpdesk.service.errors import Invalid
 from cedesk.helpdesk.service.messages import MessageKind
 from cedesk.helpdesk.service.tickets import NewTicket
 
 DOMAIN = "acme-store.in"
+# The demo accounts get email (security alerts to the Admin, password resets): on a real
+# server, give a domain whose mail you receive.
+_DOMAIN = re.compile(r"^[a-z0-9-]{1,63}(?:\.[a-z0-9-]{1,63})+$")
 
 
 @dataclass(frozen=True)
@@ -46,19 +52,28 @@ TEAMS = {
 }
 
 
-def email(key: str) -> str:
-    return f"{key}@{DOMAIN}"
+def email(key: str, domain: str = DOMAIN) -> str:
+    return f"{key}@{domain}"
+
+
+def check_domain(domain: str) -> str:
+    cleaned = domain.strip().lower()
+    if len(cleaned) > 253 or not _DOMAIN.match(cleaned):
+        raise Invalid(f"Not an email domain: {domain!r}. Use one like review.example.com.")
+    return cleaned
 
 
 async def seed_demo(
-    sm: Sessionmaker, *, slug: str, name: str, password: str
+    sm: Sessionmaker, *, slug: str, name: str, password: str, email_domain: str = DOMAIN
 ) -> list[tuple[str, str, str]]:
-    """Creates the workspace and fills it. Returns (name, email, role) of every account."""
+    """Creates the workspace and fills it. Returns (name, email, role) of every account.
+    Each run needs a new `slug`; `email_domain` names the accounts (`alex@<domain>`)."""
+    domain = check_domain(email_domain)
     await auth.create_workspace(
         sm,
         name=name,
         slug=slug,
-        admin_email=email(ADMIN.key),
+        admin_email=email(ADMIN.key, domain),
         admin_name=ADMIN.name,
         admin_password=password,
     )
@@ -67,7 +82,7 @@ async def seed_demo(
     async def as_(key: str) -> Caller:
         if key not in callers:
             callers[key] = (
-                await auth.sign_in(sm, workspace=slug, email=email(key), password=password)
+                await auth.sign_in(sm, workspace=slug, email=email(key, domain), password=password)
             ).caller
         return callers[key]
 
@@ -75,7 +90,7 @@ async def seed_demo(
     ids: dict[str, UUID] = {ADMIN.key: admin.member_id}
     for m in MEMBERS:
         row = await members.add_member(
-            sm, admin, email=email(m.key), name=m.name, role=m.role, password=password
+            sm, admin, email=email(m.key, domain), name=m.name, role=m.role, password=password
         )
         ids[m.key] = row["id"]
     # New agents start Offline (md 14.5): switch everyone on, as they would at the start of
@@ -252,4 +267,4 @@ async def seed_demo(
 
     for caller in callers.values():
         await auth.sign_out(sm, caller)
-    return [(m.name, email(m.key), m.role.value) for m in (ADMIN, *MEMBERS)]
+    return [(m.name, email(m.key, domain), m.role.value) for m in (ADMIN, *MEMBERS)]
